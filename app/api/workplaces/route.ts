@@ -1,10 +1,10 @@
-import { NextResponse } from "next/server"
-import { z } from "zod"
-import { requireCurrentUser } from "@/lib/api/current-user"
-import { jsonError, parseJsonBody } from "@/lib/api/http"
-import { prisma } from "@/lib/prisma"
+import { NextResponse } from "next/server";
+import { z } from "zod";
+import { requireCurrentUser } from "@/lib/api/current-user";
+import { jsonError, parseJsonBody } from "@/lib/api/http";
+import { prisma } from "@/lib/prisma";
 
-const colorRegex = /^#[0-9A-Fa-f]{6}$/
+const colorRegex = /^#[0-9A-Fa-f]{6}$/;
 
 const createWorkplaceSchema = z
   .object({
@@ -12,18 +12,18 @@ const createWorkplaceSchema = z
     type: z.enum(["GENERAL", "CRAM_SCHOOL"]),
     color: z.string().regex(colorRegex, "HEX形式(#RRGGBB)で入力してください"),
   })
-  .strict()
+  .strict();
 
 export async function POST(request: Request) {
   try {
-    const current = await requireCurrentUser()
+    const current = await requireCurrentUser();
     if ("response" in current) {
-      return current.response
+      return current.response;
     }
 
-    const body = await parseJsonBody(request, createWorkplaceSchema)
+    const body = await parseJsonBody(request, createWorkplaceSchema);
     if (!body.success) {
-      return body.response
+      return body.response;
     }
 
     const workplace = await prisma.workplace.create({
@@ -33,20 +33,20 @@ export async function POST(request: Request) {
         type: body.data.type,
         color: body.data.color,
       },
-    })
+    });
 
-    return NextResponse.json({ data: workplace }, { status: 201 })
+    return NextResponse.json({ data: workplace }, { status: 201 });
   } catch (error) {
-    console.error("POST /api/workplaces failed", error)
-    return jsonError("勤務先の作成に失敗しました", 500)
+    console.error("POST /api/workplaces failed", error);
+    return jsonError("勤務先の作成に失敗しました", 500);
   }
 }
 
 export async function GET() {
   try {
-    const current = await requireCurrentUser()
+    const current = await requireCurrentUser();
     if ("response" in current) {
-      return current.response
+      return current.response;
     }
 
     const workplaces = await prisma.workplace.findMany({
@@ -61,11 +61,11 @@ export async function GET() {
         },
       },
       orderBy: { createdAt: "desc" },
-    })
+    });
 
-    return NextResponse.json({ data: workplaces })
+    return NextResponse.json({ data: workplaces });
   } catch (error) {
-    console.error("GET /api/workplaces failed", error)
-    return jsonError("勤務先一覧の取得に失敗しました", 500)
+    console.error("GET /api/workplaces failed", error);
+    return jsonError("勤務先一覧の取得に失敗しました", 500);
   }
 }
