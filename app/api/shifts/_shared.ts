@@ -114,6 +114,10 @@ async function resolveLessonTimeRange(
     if (timetables[index]?.period !== expectedPeriod) {
       throw new ShiftValidationError("コマ範囲に連続した時間割が存在しません")
     }
+
+    if (timetables[index]?.type !== lessonRange.lessonType) {
+      throw new ShiftValidationError("lessonType が統一されていません")
+    }
   }
 
   const first = timetables[0]
@@ -121,6 +125,10 @@ async function resolveLessonTimeRange(
 
   if (!first || !last) {
     throw new ShiftValidationError("指定コマ範囲の時間割が見つかりません")
+  }
+
+  if (first.startTime.getTime() === last.endTime.getTime()) {
+    throw new ShiftValidationError("コマ範囲から算出された時刻が不正です")
   }
 
   return {

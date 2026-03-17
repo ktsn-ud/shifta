@@ -132,12 +132,15 @@ export async function DELETE(_: Request, context: Context) {
       return jsonError("シフトが見つかりません", 404)
     }
 
+    const deletedLessonRange = Boolean(existing.lessonRange)
+
     await prisma.shift.delete({ where: { id } })
 
     return NextResponse.json({
       data: {
         id,
         deleted: true,
+        deletedLessonRange,
       },
     })
   } catch (error) {
