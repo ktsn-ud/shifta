@@ -1,0 +1,24 @@
+services:
+  codex:
+    build:
+      context: ..
+      dockerfile: docker/Dockerfile
+    container_name: codex-sandbox
+    working_dir: /workspace
+
+    volumes:
+      - ../:/workspace
+      - ${HOME}/.codex/auth.json:/home/node/.codex/auth.json
+      - ../.env.example:/workspace/.env:ro
+
+    user: node
+    environment:
+      HOME: /home/node
+      CODEX_HOME: /home/node/.codex
+      NEXT_DEVTOOLS_URL: http://host.docker.internal:3000
+
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
+
+    stdin_open: true
+    tty: true
