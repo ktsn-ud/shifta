@@ -17,8 +17,12 @@ export const { handlers, auth, signIn, signOut } = NextAuth({
       const isLoggedIn = !!auth;
       const isLoginPage = request.nextUrl.pathname === "/login";
 
+      if (isLoggedIn && isLoginPage) {
+        return Response.redirect(new URL("/my", request.url)); // Redirect to home page
+      }
+
       if (!isLoggedIn && !isLoginPage) {
-        return false; // Redirect to login page
+        return Response.redirect(new URL("/login", request.url)); // Redirect to login page
       }
 
       return true; // Allow access to the requested page
