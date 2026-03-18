@@ -6,7 +6,7 @@ import { jsonError, parseJsonBody } from "@/lib/api/http";
 import { requireOwnedWorkplace } from "@/lib/api/workplace";
 import { prisma } from "@/lib/prisma";
 
-const timetableSchema = z
+const timetableItemSchema = z
   .object({
     type: z.enum(["NORMAL", "INTENSIVE"]),
     period: z.coerce.number().int().positive(),
@@ -14,6 +14,15 @@ const timetableSchema = z
     endTime: z.string().regex(TIME_ONLY_REGEX, "HH:MM形式で入力してください"),
   })
   .strict();
+
+const timetableCreateSchema = z.union([
+  timetableItemSchema,
+  z
+    .object({
+      items: z.array(timetableItemSchema).min(1),
+    })
+    .strict(),
+]);
 
 type Context = {
   params: Promise<{ workplaceId: string }>;
@@ -41,6 +50,16 @@ async function hasDuplicateTimetable(
   return Boolean(existing);
 }
 
+function toCreateItems(
+  data: z.infer<typeof timetableCreateSchema>,
+): Array<z.infer<typeof timetableItemSchema>> {
+  if ("items" in data) {
+    return data.items;
+  }
+
+  return [data];
+}
+
 export async function POST(request: Request, context: Context) {
   try {
     const current = await requireCurrentUser();
@@ -61,35 +80,82 @@ export async function POST(request: Request, context: Context) {
       return jsonError("時間割はCRAM_SCHOOL勤務先でのみ操作できます", 400);
     }
 
-    const body = await parseJsonBody(request, timetableSchema);
+    const body = await parseJsonBody(request, timetableCreateSchema);
     if (!body.success) {
       return body.response;
     }
 
-    if (!validateTimeRange(body.data.startTime, body.data.endTime)) {
-      return jsonError("startTime は endTime より前にしてください", 400);
+    const createItems = toCreateItems(body.data);
+
+    for (const item of createItems) {
+      if (!validateTimeRange(item.startTime, item.endTime)) {
+        return jsonError("startTime は endTime より前にしてください", 400);
+      }
     }
 
-    const duplicated = await hasDuplicateTimetable(
-      workplaceId,
-      body.data.type,
-      body.data.period,
-    );
-    if (duplicated) {
+    const duplicateKeys = new Set<string>();
+    const seenKeys = new Set<string>();
+    for (const item of createItems) {
+      const key = `${item.type}:${item.period}`;
+      if (seenKeys.has(key)) {
+        duplicateKeys.add(key);
+      }
+      seenKeys.add(key);
+    }
+    if (duplicateKeys.size > 0) {
       return jsonError("同じ type と period の時間割が既に存在します", 409);
     }
 
-    const timetable = await prisma.timetable.create({
-      data: {
+    if (createItems.length === 1) {
+      const duplicated = await hasDuplicateTimetable(
         workplaceId,
-        type: body.data.type,
-        period: body.data.period,
-        startTime: parseTimeOnly(body.data.startTime),
-        endTime: parseTimeOnly(body.data.endTime),
-      },
-    });
+        createItems[0]!.type,
+        createItems[0]!.period,
+      );
+      if (duplicated) {
+        return jsonError("同じ type と period の時間割が既に存在します", 409);
+      }
+    } else {
+      const existed = await prisma.timetable.findMany({
+        where: {
+          workplaceId,
+          OR: createItems.map((item) => ({
+            type: item.type,
+            period: item.period,
+          })),
+        },
+        select: { id: true },
+      });
+      if (existed.length > 0) {
+        return jsonError("同じ type と period の時間割が既に存在します", 409);
+      }
+    }
 
-    return NextResponse.json({ data: timetable }, { status: 201 });
+    const created = await prisma.$transaction(
+      createItems.map((item) =>
+        prisma.timetable.create({
+          data: {
+            workplaceId,
+            type: item.type,
+            period: item.period,
+            startTime: parseTimeOnly(item.startTime),
+            endTime: parseTimeOnly(item.endTime),
+          },
+        }),
+      ),
+    );
+
+    if ("items" in body.data) {
+      return NextResponse.json(
+        {
+          data: created,
+          count: created.length,
+        },
+        { status: 201 },
+      );
+    }
+
+    return NextResponse.json({ data: created[0] }, { status: 201 });
   } catch (error) {
     console.error("POST /api/workplaces/:workplaceId/timetables failed", error);
     return jsonError("時間割の作成に失敗しました", 500);

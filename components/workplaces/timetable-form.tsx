@@ -1,4 +1,5 @@
 "use client";
+
 import { useEffect, useMemo, useState } from "react";
 import { useRouter } from "next/navigation";
 import { z } from "zod";
@@ -60,6 +61,16 @@ type FormValues = {
 };
 
 type FormErrors = Partial<Record<keyof FormValues | "form", string>>;
+type RowErrors = Partial<Record<keyof FormValues, string>>;
+
+function createEmptyRow(type: TimetableType = "NORMAL"): FormValues {
+  return {
+    type,
+    period: "",
+    startTime: "",
+    endTime: "",
+  };
+}
 
 function toTimeOnly(value: string): string {
   const date = new Date(value);
@@ -93,8 +104,8 @@ async function readApiErrorMessage(
   return fallback;
 }
 
-function validate(values: FormValues): FormErrors {
-  const errors: FormErrors = {};
+function validateRow(values: FormValues): RowErrors {
+  const errors: RowErrors = {};
   const period = Number(values.period);
 
   if (!values.period || Number.isInteger(period) === false) {
@@ -122,6 +133,45 @@ function validate(values: FormValues): FormErrors {
   return errors;
 }
 
+function validateRows(rows: FormValues[]): {
+  rowErrors: RowErrors[];
+  hasError: boolean;
+} {
+  const rowErrors = rows.map((row) => validateRow(row));
+  let hasError = rowErrors.some((error) => Object.keys(error).length > 0);
+
+  const seen = new Map<string, number>();
+
+  rows.forEach((row, index) => {
+    const period = Number(row.period);
+    if (!Number.isInteger(period) || period <= 0) {
+      return;
+    }
+
+    const key = `${row.type}:${period}`;
+    const existed = seen.get(key);
+
+    if (existed !== undefined) {
+      rowErrors[index] = {
+        ...rowErrors[index],
+        period: "同じコマ種別とコマ番号が重複しています。",
+      };
+      rowErrors[existed] = {
+        ...rowErrors[existed],
+        period:
+          rowErrors[existed]?.period ??
+          "同じコマ種別とコマ番号が重複しています。",
+      };
+      hasError = true;
+      return;
+    }
+
+    seen.set(key, index);
+  });
+
+  return { rowErrors, hasError };
+}
+
 export function TimetableForm({
   mode,
   workplaceId,
@@ -135,13 +185,12 @@ export function TimetableForm({
     name: string;
     type: "GENERAL" | "CRAM_SCHOOL";
   } | null>(null);
-  const [values, setValues] = useState<FormValues>({
-    type: "NORMAL",
-    period: "",
-    startTime: "",
-    endTime: "",
-  });
+  const [values, setValues] = useState<FormValues>(() => createEmptyRow());
+  const [createRows, setCreateRows] = useState<FormValues[]>(() => [
+    createEmptyRow(),
+  ]);
   const [errors, setErrors] = useState<FormErrors>({});
+  const [rowErrors, setRowErrors] = useState<RowErrors[]>([]);
   const [isLoading, setIsLoading] = useState(true);
   const [isSubmitting, setIsSubmitting] = useState(false);
 
@@ -261,43 +310,71 @@ export function TimetableForm({
   }, [isEdit, timetableId, workplaceId]);
 
   const handleSubmit = async () => {
-    const validationErrors = validate(values);
-    if (Object.keys(validationErrors).length > 0) {
-      setErrors(validationErrors);
-      return;
+    if (isEdit) {
+      const validationErrors = validateRow(values);
+      if (Object.keys(validationErrors).length > 0) {
+        setErrors(validationErrors);
+        return;
+      }
+    } else {
+      const result = validateRows(createRows);
+      setRowErrors(result.rowErrors);
+      if (result.hasError) {
+        setErrors({ form: "入力内容を確認してください。" });
+        return;
+      }
     }
 
     setIsSubmitting(true);
     setErrors({});
 
     try {
-      const response = await fetch(
-        isEdit
-          ? `/api/workplaces/${workplaceId}/timetables/${timetableId}`
-          : `/api/workplaces/${workplaceId}/timetables`,
-        {
-          method: isEdit ? "PUT" : "POST",
-          headers: {
-            "Content-Type": "application/json",
+      if (isEdit) {
+        const response = await fetch(
+          `/api/workplaces/${workplaceId}/timetables/${timetableId}`,
+          {
+            method: "PUT",
+            headers: {
+              "Content-Type": "application/json",
+            },
+            body: JSON.stringify({
+              type: values.type,
+              period: Number(values.period),
+              startTime: values.startTime,
+              endTime: values.endTime,
+            }),
           },
-          body: JSON.stringify({
-            type: values.type,
-            period: Number(values.period),
-            startTime: values.startTime,
-            endTime: values.endTime,
-          }),
-        },
-      );
-
-      if (response.ok === false) {
-        throw new Error(
-          await readApiErrorMessage(
-            response,
-            isEdit
-              ? "時間割の更新に失敗しました。"
-              : "時間割の作成に失敗しました。",
-          ),
         );
+
+        if (response.ok === false) {
+          throw new Error(
+            await readApiErrorMessage(response, "時間割の更新に失敗しました。"),
+          );
+        }
+      } else {
+        const response = await fetch(
+          `/api/workplaces/${workplaceId}/timetables`,
+          {
+            method: "POST",
+            headers: {
+              "Content-Type": "application/json",
+            },
+            body: JSON.stringify({
+              items: createRows.map((row) => ({
+                type: row.type,
+                period: Number(row.period),
+                startTime: row.startTime,
+                endTime: row.endTime,
+              })),
+            }),
+          },
+        );
+
+        if (response.ok === false) {
+          throw new Error(
+            await readApiErrorMessage(response, "時間割の作成に失敗しました。"),
+          );
+        }
       }
 
       router.push(listHref);
@@ -360,108 +437,279 @@ export function TimetableForm({
       </header>
 
       <Form
-        className="max-w-xl"
+        className="max-w-2xl"
         onSubmit={(event) => {
           event.preventDefault();
           void handleSubmit();
         }}
       >
-        <Field>
-          <FieldLabel>コマ種別</FieldLabel>
-          <FieldContent>
-            <RadioGroup
-              value={values.type}
-              onValueChange={(value) => {
-                setValues((current) => ({
+        {isEdit ? (
+          <>
+            <Field>
+              <FieldLabel>コマ種別</FieldLabel>
+              <FieldContent>
+                <RadioGroup
+                  value={values.type}
+                  onValueChange={(value) => {
+                    setValues((current) => ({
+                      ...current,
+                      type: value as TimetableType,
+                    }));
+                  }}
+                >
+                  <Field orientation="horizontal">
+                    <FieldLabel htmlFor="timetable-type-normal">
+                      NORMAL
+                    </FieldLabel>
+                    <RadioGroupItem id="timetable-type-normal" value="NORMAL" />
+                  </Field>
+                  <Field orientation="horizontal">
+                    <FieldLabel htmlFor="timetable-type-intensive">
+                      INTENSIVE
+                    </FieldLabel>
+                    <RadioGroupItem
+                      id="timetable-type-intensive"
+                      value="INTENSIVE"
+                    />
+                  </Field>
+                </RadioGroup>
+              </FieldContent>
+            </Field>
+
+            <Field data-invalid={Boolean(errors.period)}>
+              <FieldLabel htmlFor="period">コマ番号</FieldLabel>
+              <FieldContent>
+                <Input
+                  id="period"
+                  type="number"
+                  min="1"
+                  step="1"
+                  value={values.period}
+                  onChange={(event) => {
+                    const nextValue = event.currentTarget.value;
+                    setValues((current) => ({
+                      ...current,
+                      period: nextValue,
+                    }));
+                  }}
+                />
+                <FieldDescription>
+                  type 内で一意の番号を指定してください（例: 通常期1限）。
+                </FieldDescription>
+                <FormErrorMessage message={errors.period} />
+              </FieldContent>
+            </Field>
+
+            <Field data-invalid={Boolean(errors.startTime)}>
+              <FieldLabel htmlFor="start-time">開始時刻</FieldLabel>
+              <FieldContent>
+                <Input
+                  id="start-time"
+                  type="time"
+                  value={values.startTime}
+                  onChange={(event) => {
+                    const nextValue = event.currentTarget.value;
+                    setValues((current) => ({
+                      ...current,
+                      startTime: nextValue,
+                    }));
+                  }}
+                />
+                <FormErrorMessage message={errors.startTime} />
+              </FieldContent>
+            </Field>
+
+            <Field data-invalid={Boolean(errors.endTime)}>
+              <FieldLabel htmlFor="end-time">終了時刻</FieldLabel>
+              <FieldContent>
+                <Input
+                  id="end-time"
+                  type="time"
+                  value={values.endTime}
+                  onChange={(event) => {
+                    const nextValue = event.currentTarget.value;
+                    setValues((current) => ({
+                      ...current,
+                      endTime: nextValue,
+                    }));
+                  }}
+                />
+                <FormErrorMessage message={errors.endTime} />
+              </FieldContent>
+            </Field>
+          </>
+        ) : (
+          <>
+            {createRows.map((row, index) => {
+              const error = rowErrors[index] ?? {};
+              return (
+                <div
+                  key={`${index}-${row.type}-${row.period}`}
+                  className="space-y-4 rounded-md border p-4"
+                >
+                  <div className="flex items-center justify-between gap-2">
+                    <p className="text-sm font-medium">コマ {index + 1}</p>
+                    {createRows.length > 1 ? (
+                      <Button
+                        type="button"
+                        size="sm"
+                        variant="outline"
+                        disabled={isSubmitting}
+                        onClick={() => {
+                          setCreateRows((current) =>
+                            current.filter((_, rowIndex) => rowIndex !== index),
+                          );
+                          setRowErrors((current) =>
+                            current.filter((_, rowIndex) => rowIndex !== index),
+                          );
+                        }}
+                      >
+                        削除
+                      </Button>
+                    ) : null}
+                  </div>
+
+                  <Field>
+                    <FieldLabel>コマ種別</FieldLabel>
+                    <FieldContent>
+                      <RadioGroup
+                        value={row.type}
+                        onValueChange={(value) => {
+                          setCreateRows((current) =>
+                            current.map((item, rowIndex) =>
+                              rowIndex === index
+                                ? { ...item, type: value as TimetableType }
+                                : item,
+                            ),
+                          );
+                        }}
+                      >
+                        <Field orientation="horizontal">
+                          <FieldLabel htmlFor={`row-${index}-type-normal`}>
+                            NORMAL
+                          </FieldLabel>
+                          <RadioGroupItem
+                            id={`row-${index}-type-normal`}
+                            value="NORMAL"
+                          />
+                        </Field>
+                        <Field orientation="horizontal">
+                          <FieldLabel htmlFor={`row-${index}-type-intensive`}>
+                            INTENSIVE
+                          </FieldLabel>
+                          <RadioGroupItem
+                            id={`row-${index}-type-intensive`}
+                            value="INTENSIVE"
+                          />
+                        </Field>
+                      </RadioGroup>
+                    </FieldContent>
+                  </Field>
+
+                  <Field data-invalid={Boolean(error.period)}>
+                    <FieldLabel htmlFor={`row-${index}-period`}>
+                      コマ番号
+                    </FieldLabel>
+                    <FieldContent>
+                      <Input
+                        id={`row-${index}-period`}
+                        type="number"
+                        min="1"
+                        step="1"
+                        value={row.period}
+                        onChange={(event) => {
+                          const nextValue = event.currentTarget.value;
+                          setCreateRows((current) =>
+                            current.map((item, rowIndex) =>
+                              rowIndex === index
+                                ? { ...item, period: nextValue }
+                                : item,
+                            ),
+                          );
+                        }}
+                      />
+                      <FormErrorMessage message={error.period} />
+                    </FieldContent>
+                  </Field>
+
+                  <Field data-invalid={Boolean(error.startTime)}>
+                    <FieldLabel htmlFor={`row-${index}-start-time`}>
+                      開始時刻
+                    </FieldLabel>
+                    <FieldContent>
+                      <Input
+                        id={`row-${index}-start-time`}
+                        type="time"
+                        value={row.startTime}
+                        onChange={(event) => {
+                          const nextValue = event.currentTarget.value;
+                          setCreateRows((current) =>
+                            current.map((item, rowIndex) =>
+                              rowIndex === index
+                                ? { ...item, startTime: nextValue }
+                                : item,
+                            ),
+                          );
+                        }}
+                      />
+                      <FormErrorMessage message={error.startTime} />
+                    </FieldContent>
+                  </Field>
+
+                  <Field data-invalid={Boolean(error.endTime)}>
+                    <FieldLabel htmlFor={`row-${index}-end-time`}>
+                      終了時刻
+                    </FieldLabel>
+                    <FieldContent>
+                      <Input
+                        id={`row-${index}-end-time`}
+                        type="time"
+                        value={row.endTime}
+                        onChange={(event) => {
+                          const nextValue = event.currentTarget.value;
+                          setCreateRows((current) =>
+                            current.map((item, rowIndex) =>
+                              rowIndex === index
+                                ? { ...item, endTime: nextValue }
+                                : item,
+                            ),
+                          );
+                        }}
+                      />
+                      <FormErrorMessage message={error.endTime} />
+                    </FieldContent>
+                  </Field>
+                </div>
+              );
+            })}
+
+            <Button
+              type="button"
+              variant="outline"
+              disabled={isSubmitting}
+              onClick={() => {
+                setCreateRows((current) => [
                   ...current,
-                  type: value as TimetableType,
-                }));
+                  createEmptyRow(current[current.length - 1]?.type ?? "NORMAL"),
+                ]);
               }}
             >
-              <Field orientation="horizontal">
-                <FieldLabel htmlFor="timetable-type-normal">NORMAL</FieldLabel>
-                <RadioGroupItem id="timetable-type-normal" value="NORMAL" />
-              </Field>
-              <Field orientation="horizontal">
-                <FieldLabel htmlFor="timetable-type-intensive">
-                  INTENSIVE
-                </FieldLabel>
-                <RadioGroupItem
-                  id="timetable-type-intensive"
-                  value="INTENSIVE"
-                />
-              </Field>
-            </RadioGroup>
-          </FieldContent>
-        </Field>
-
-        <Field data-invalid={Boolean(errors.period)}>
-          <FieldLabel htmlFor="period">コマ番号</FieldLabel>
-          <FieldContent>
-            <Input
-              id="period"
-              type="number"
-              min="1"
-              step="1"
-              value={values.period}
-              onChange={(event) => {
-                const nextValue = event.currentTarget.value;
-                setValues((current) => ({
-                  ...current,
-                  period: nextValue,
-                }));
-              }}
-            />
-            <FieldDescription>
-              type 内で一意の番号を指定してください（例: 通常期1限）。
-            </FieldDescription>
-            <FormErrorMessage message={errors.period} />
-          </FieldContent>
-        </Field>
-
-        <Field data-invalid={Boolean(errors.startTime)}>
-          <FieldLabel htmlFor="start-time">開始時刻</FieldLabel>
-          <FieldContent>
-            <Input
-              id="start-time"
-              type="time"
-              value={values.startTime}
-              onChange={(event) => {
-                const nextValue = event.currentTarget.value;
-                setValues((current) => ({
-                  ...current,
-                  startTime: nextValue,
-                }));
-              }}
-            />
-            <FormErrorMessage message={errors.startTime} />
-          </FieldContent>
-        </Field>
-
-        <Field data-invalid={Boolean(errors.endTime)}>
-          <FieldLabel htmlFor="end-time">終了時刻</FieldLabel>
-          <FieldContent>
-            <Input
-              id="end-time"
-              type="time"
-              value={values.endTime}
-              onChange={(event) => {
-                const nextValue = event.currentTarget.value;
-                setValues((current) => ({
-                  ...current,
-                  endTime: nextValue,
-                }));
-              }}
-            />
-            <FormErrorMessage message={errors.endTime} />
-          </FieldContent>
-        </Field>
+              コマを追加する
+            </Button>
+          </>
+        )}
 
         <FormErrorMessage message={errors.form} />
 
         <div className="flex flex-wrap gap-2">
           <Button type="submit" disabled={isSubmitting}>
-            {isSubmitting ? "保存中..." : isEdit ? "保存" : "作成"}
+            {isSubmitting
+              ? "保存中..."
+              : isEdit
+                ? "保存"
+                : createRows.length > 1
+                  ? "まとめて作成"
+                  : "作成"}
           </Button>
           <Button
             type="button"
