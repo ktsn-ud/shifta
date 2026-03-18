@@ -6,25 +6,24 @@ import { Separator } from "@/components/ui/separator";
 import { SidebarTrigger } from "@/components/ui/sidebar";
 
 const routeTitles: Array<{ path: string; title: string }> = [
-  { path: "/my/calendar", title: "Calendar" },
-  { path: "/my/summary", title: "Payroll Summary" },
-  { path: "/my/workplaces", title: "Workplace Management" },
-  { path: "/my/workplace", title: "Workplace Management" },
-  { path: "/my/payroll", title: "Payroll Rules" },
-  { path: "/my/timetable", title: "Timetable" },
-  { path: "/my/settings", title: "Settings" },
-  { path: "/my/bulk", title: "Bulk Registration" },
-  { path: "/my/shifts/bulk", title: "Bulk Registration" },
-  { path: "/my", title: "Dashboard" },
+  { path: "/my/calendar", title: "カレンダー" },
+  { path: "/my/summary", title: "給与サマリー" },
+  { path: "/my/workplaces", title: "勤務先管理" },
+  { path: "/my/workplace", title: "勤務先管理" },
+  { path: "/my/payroll", title: "給与ルール" },
+  { path: "/my/timetable", title: "時間割" },
+  { path: "/my/bulk", title: "一括登録" },
+  { path: "/my/shifts/bulk", title: "一括登録" },
+  { path: "/my", title: "ダッシュボード" },
 ];
 
 function getCurrentTitle(pathname: string): string {
   if (pathname.includes("/payroll-rules")) {
-    return "Payroll Rules";
+    return "給与ルール";
   }
 
   if (pathname.includes("/timetables")) {
-    return "Timetable";
+    return "時間割";
   }
 
   const matched = routeTitles.find(

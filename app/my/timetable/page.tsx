@@ -19,6 +19,7 @@ import {
   TableHeader,
   TableRow,
 } from "@/components/ui/table";
+import { formatWorkplaceType } from "@/lib/enum-labels";
 
 const workplaceListResponseSchema = z.object({
   data: z.array(
@@ -115,9 +116,9 @@ export default function TimetablePage() {
   return (
     <section className="space-y-6 p-4 md:p-6">
       <header>
-        <h2 className="text-xl font-semibold">Timetable</h2>
+        <h2 className="text-xl font-semibold">時間割</h2>
         <p className="mt-1 text-sm text-muted-foreground">
-          塾時間割を管理する勤務先（CRAM_SCHOOL）を選択してください。
+          塾時間割を管理する勤務先（塾タイプ）を選択してください。
         </p>
       </header>
 
@@ -130,7 +131,7 @@ export default function TimetablePage() {
       <Card>
         <CardHeader>
           <CardTitle>勤務先選択</CardTitle>
-          <CardDescription>CRAM_SCHOOL勤務先のみ表示されます。</CardDescription>
+          <CardDescription>塾タイプの勤務先のみ表示されます。</CardDescription>
         </CardHeader>
         <CardContent>
           {isLoading ? (
@@ -148,7 +149,7 @@ export default function TimetablePage() {
                 {workplaces.length === 0 ? (
                   <TableRow>
                     <TableCell colSpan={3} className="h-16 text-center">
-                      CRAM_SCHOOL 勤務先がありません。
+                      塾タイプの勤務先がありません。
                     </TableCell>
                   </TableRow>
                 ) : (
@@ -157,7 +158,9 @@ export default function TimetablePage() {
                       <TableCell className="font-medium">
                         {workplace.name}
                       </TableCell>
-                      <TableCell>{workplace.type}</TableCell>
+                      <TableCell>
+                        {formatWorkplaceType(workplace.type)}
+                      </TableCell>
                       <TableCell>
                         <div className="flex justify-end">
                           <Link

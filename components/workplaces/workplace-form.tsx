@@ -23,6 +23,7 @@ import {
   SelectValue,
 } from "@/components/ui/select";
 import { toDateOnlyString } from "@/lib/calendar/date";
+import { formatHolidayType, formatWorkplaceType } from "@/lib/enum-labels";
 import { messages, toErrorMessage } from "@/lib/messages";
 
 const colorRegex = /^#[0-9A-Fa-f]{6}$/;
@@ -510,13 +511,13 @@ export function WorkplaceForm({ mode, workplaceId }: WorkplaceFormProps) {
               >
                 <Field orientation="horizontal">
                   <FieldLabel htmlFor="workplace-type-general">
-                    GENERAL
+                    {formatWorkplaceType("GENERAL")}
                   </FieldLabel>
                   <RadioGroupItem id="workplace-type-general" value="GENERAL" />
                 </Field>
                 <Field orientation="horizontal">
                   <FieldLabel htmlFor="workplace-type-cram">
-                    CRAM_SCHOOL
+                    {formatWorkplaceType("CRAM_SCHOOL")}
                   </FieldLabel>
                   <RadioGroupItem
                     id="workplace-type-cram"
@@ -831,11 +832,17 @@ export function WorkplaceForm({ mode, workplaceId }: WorkplaceFormProps) {
                               <SelectValue />
                             </SelectTrigger>
                             <SelectContent>
-                              <SelectItem value="NONE">NONE</SelectItem>
-                              <SelectItem value="WEEKEND">WEEKEND</SelectItem>
-                              <SelectItem value="HOLIDAY">HOLIDAY</SelectItem>
+                              <SelectItem value="NONE">
+                                {formatHolidayType("NONE")}
+                              </SelectItem>
+                              <SelectItem value="WEEKEND">
+                                {formatHolidayType("WEEKEND")}
+                              </SelectItem>
+                              <SelectItem value="HOLIDAY">
+                                {formatHolidayType("HOLIDAY")}
+                              </SelectItem>
                               <SelectItem value="WEEKEND_HOLIDAY">
-                                WEEKEND_HOLIDAY
+                                {formatHolidayType("WEEKEND_HOLIDAY")}
                               </SelectItem>
                             </SelectContent>
                           </Select>

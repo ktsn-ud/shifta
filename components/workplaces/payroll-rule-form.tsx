@@ -15,6 +15,7 @@ import {
 import { Input } from "@/components/ui/input";
 import { RadioGroup, RadioGroupItem } from "@/components/ui/radio-group";
 import { dateKeyFromApiDate } from "@/lib/calendar/date";
+import { formatHolidayType, formatWorkplaceType } from "@/lib/enum-labels";
 import { messages, toErrorMessage } from "@/lib/messages";
 
 const workplaceResponseSchema = z.object({
@@ -525,7 +526,7 @@ export function PayrollRuleForm({
         <h2 className="text-xl font-semibold">{pageTitle}</h2>
         <p className="text-sm text-muted-foreground">
           {workplace
-            ? `${workplace.name} (${workplace.type}) の給与ルールを設定します。`
+            ? `${workplace.name}（${formatWorkplaceType(workplace.type)}）の給与ルールを設定します。`
             : "勤務先ごとの給与ルールを設定します。"}
         </p>
       </header>
@@ -767,12 +768,14 @@ export function PayrollRuleForm({
                     }}
                   >
                     <Field orientation="horizontal">
-                      <FieldLabel htmlFor="holiday-type-none">NONE</FieldLabel>
+                      <FieldLabel htmlFor="holiday-type-none">
+                        {formatHolidayType("NONE")}
+                      </FieldLabel>
                       <RadioGroupItem id="holiday-type-none" value="NONE" />
                     </Field>
                     <Field orientation="horizontal">
                       <FieldLabel htmlFor="holiday-type-weekend">
-                        WEEKEND
+                        {formatHolidayType("WEEKEND")}
                       </FieldLabel>
                       <RadioGroupItem
                         id="holiday-type-weekend"
@@ -781,7 +784,7 @@ export function PayrollRuleForm({
                     </Field>
                     <Field orientation="horizontal">
                       <FieldLabel htmlFor="holiday-type-holiday">
-                        HOLIDAY
+                        {formatHolidayType("HOLIDAY")}
                       </FieldLabel>
                       <RadioGroupItem
                         id="holiday-type-holiday"
@@ -790,7 +793,7 @@ export function PayrollRuleForm({
                     </Field>
                     <Field orientation="horizontal">
                       <FieldLabel htmlFor="holiday-type-weekend-holiday">
-                        WEEKEND_HOLIDAY
+                        {formatHolidayType("WEEKEND_HOLIDAY")}
                       </FieldLabel>
                       <RadioGroupItem
                         id="holiday-type-weekend-holiday"
@@ -808,8 +811,7 @@ export function PayrollRuleForm({
               <FieldLabel>補足</FieldLabel>
               <FieldContent>
                 <FieldDescription>
-                  CRAM_SCHOOL
-                  はコマ給のみ必須です。GENERAL向け項目は固定値で保存されます。
+                  塾タイプはコマ給のみ必須です。一般タイプ向け項目は固定値で保存されます。
                 </FieldDescription>
               </FieldContent>
             </Field>

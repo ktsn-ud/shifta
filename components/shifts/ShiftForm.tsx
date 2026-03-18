@@ -31,6 +31,7 @@ import {
   dateKeyFromApiDate,
   toDateKey,
 } from "@/lib/calendar/date";
+import { formatLessonType, formatShiftType } from "@/lib/enum-labels";
 import { messages, toErrorMessage } from "@/lib/messages";
 
 const LAST_WORKPLACE_ID_KEY = "shifta:last-workplace-id";
@@ -659,8 +660,7 @@ export function ShiftForm({ mode, shiftId, initialDate }: ShiftFormProps) {
       }
 
       if (selectedWorkplace?.type !== "CRAM_SCHOOL") {
-        nextErrors.shiftType =
-          "LESSON型は CRAM_SCHOOL 勤務先でのみ選択できます";
+        nextErrors.shiftType = "授業シフトは塾タイプ勤務先でのみ選択できます";
       }
 
       const hasTimetables = timetables.length > 0;
@@ -1016,7 +1016,9 @@ export function ShiftForm({ mode, shiftId, initialDate }: ShiftFormProps) {
                 }}
               >
                 <Field orientation="horizontal">
-                  <FieldLabel htmlFor="shift-type-normal">NORMAL</FieldLabel>
+                  <FieldLabel htmlFor="shift-type-normal">
+                    {formatShiftType("NORMAL")}
+                  </FieldLabel>
                   <RadioGroupItem
                     id="shift-type-normal"
                     value="NORMAL"
@@ -1024,7 +1026,9 @@ export function ShiftForm({ mode, shiftId, initialDate }: ShiftFormProps) {
                   />
                 </Field>
                 <Field orientation="horizontal">
-                  <FieldLabel htmlFor="shift-type-lesson">LESSON</FieldLabel>
+                  <FieldLabel htmlFor="shift-type-lesson">
+                    {formatShiftType("LESSON")}
+                  </FieldLabel>
                   <RadioGroupItem
                     id="shift-type-lesson"
                     value="LESSON"
@@ -1034,7 +1038,9 @@ export function ShiftForm({ mode, shiftId, initialDate }: ShiftFormProps) {
                   />
                 </Field>
                 <Field orientation="horizontal">
-                  <FieldLabel htmlFor="shift-type-other">OTHER</FieldLabel>
+                  <FieldLabel htmlFor="shift-type-other">
+                    {formatShiftType("OTHER")}
+                  </FieldLabel>
                   <RadioGroupItem
                     id="shift-type-other"
                     value="OTHER"
@@ -1043,7 +1049,7 @@ export function ShiftForm({ mode, shiftId, initialDate }: ShiftFormProps) {
                 </Field>
               </RadioGroup>
               <FieldDescription>
-                LESSON は CRAM_SCHOOL 勤務先選択時のみ有効です。
+                授業は塾タイプ勤務先選択時のみ有効です。
               </FieldDescription>
               <FormErrorMessage message={errors.shiftType} />
             </FieldContent>
@@ -1064,7 +1070,7 @@ export function ShiftForm({ mode, shiftId, initialDate }: ShiftFormProps) {
                   >
                     <Field orientation="horizontal">
                       <FieldLabel htmlFor="lesson-type-normal">
-                        NORMAL
+                        {formatLessonType("NORMAL")}
                       </FieldLabel>
                       <RadioGroupItem
                         id="lesson-type-normal"
@@ -1074,7 +1080,7 @@ export function ShiftForm({ mode, shiftId, initialDate }: ShiftFormProps) {
                     </Field>
                     <Field orientation="horizontal">
                       <FieldLabel htmlFor="lesson-type-intensive">
-                        INTENSIVE
+                        {formatLessonType("INTENSIVE")}
                       </FieldLabel>
                       <RadioGroupItem
                         id="lesson-type-intensive"

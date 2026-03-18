@@ -183,7 +183,7 @@ export default function SummaryPage() {
     <section className="space-y-6 p-4 md:p-6">
       <header className="space-y-3">
         <div>
-          <h2 className="text-xl font-semibold">Payroll Summary</h2>
+          <h2 className="text-xl font-semibold">給与サマリー</h2>
           <p className="mt-1 text-sm text-muted-foreground">
             期間別の概算給与と勤務時間を確認できます。
           </p>

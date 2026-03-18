@@ -62,7 +62,7 @@ export default function Page() {
     <section className="space-y-6 p-4 md:p-6">
       <header className="flex flex-wrap items-center justify-between gap-3">
         <div>
-          <h2 className="text-xl font-semibold">Dashboard</h2>
+          <h2 className="text-xl font-semibold">ダッシュボード</h2>
           <p className="mt-1 text-sm text-muted-foreground">
             当月のシフト状況と概算値を確認できます。
           </p>

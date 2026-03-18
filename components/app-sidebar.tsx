@@ -23,7 +23,6 @@ import {
   LandmarkIcon,
   LayoutDashboardIcon,
   SchoolIcon,
-  Settings2Icon,
   TablePropertiesIcon,
   WalletCardsIcon,
 } from "lucide-react";
@@ -41,30 +40,29 @@ type NavItem = {
 };
 
 const mainNavItems: NavItem[] = [
-  { title: "Dashboard", href: "/my", icon: <LayoutDashboardIcon /> },
-  { title: "Calendar", href: "/my/calendar", icon: <CalendarDaysIcon /> },
+  { title: "ダッシュボード", href: "/my", icon: <LayoutDashboardIcon /> },
+  { title: "カレンダー", href: "/my/calendar", icon: <CalendarDaysIcon /> },
   {
-    title: "Payroll Summary",
+    title: "給与サマリー",
     href: "/my/summary",
     icon: <WalletCardsIcon />,
   },
   {
-    title: "Workplace Management",
+    title: "勤務先管理",
     href: "/my/workplaces",
     icon: <LandmarkIcon />,
   },
   {
-    title: "Payroll Rules",
+    title: "給与ルール",
     href: "/my/payroll",
     icon: <TablePropertiesIcon />,
   },
-  { title: "Timetable", href: "/my/timetable", icon: <SchoolIcon /> },
+  { title: "時間割", href: "/my/timetable", icon: <SchoolIcon /> },
 ];
 
 const secondaryNavItems: NavItem[] = [
-  { title: "Settings", href: "/my/settings", icon: <Settings2Icon /> },
   {
-    title: "Bulk Registration",
+    title: "一括登録",
     href: "/my/shifts/bulk",
     icon: <CalendarDaysIcon />,
   },
@@ -106,7 +104,7 @@ export function AppSidebar({
 
       <SidebarContent>
         <SidebarGroup>
-          <SidebarGroupLabel>Menu</SidebarGroupLabel>
+          <SidebarGroupLabel>メニュー</SidebarGroupLabel>
           <SidebarGroupContent>
             <SidebarMenu>
               {mainNavItems.map((item) => (

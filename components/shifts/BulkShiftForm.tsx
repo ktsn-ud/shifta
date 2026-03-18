@@ -32,6 +32,7 @@ import {
   formatMonthLabel,
   toDateKey,
 } from "@/lib/calendar/date";
+import { formatLessonType, formatShiftType } from "@/lib/enum-labels";
 import { messages, toErrorMessage } from "@/lib/messages";
 import { cn } from "@/lib/utils";
 
@@ -675,7 +676,7 @@ export function BulkShiftForm() {
       if (row.shiftType === "LESSON") {
         if (selectedWorkplace?.type !== "CRAM_SCHOOL") {
           rowErrors.shiftType =
-            "LESSON型は塾勤務先（CRAM_SCHOOL）でのみ選択できます。";
+            "授業シフトは塾タイプ勤務先でのみ選択できます。";
         }
 
         const startPeriod = Number(row.startPeriod);
@@ -1042,7 +1043,7 @@ export function BulkShiftForm() {
                   <div className="flex items-center gap-2">
                     <RadioGroupItem value="NORMAL" id="default-shift-normal" />
                     <FieldLabel htmlFor="default-shift-normal">
-                      NORMAL
+                      {formatShiftType("NORMAL")}
                     </FieldLabel>
                   </div>
                   <div className="flex items-center gap-2">
@@ -1052,12 +1053,14 @@ export function BulkShiftForm() {
                       disabled={selectedWorkplace?.type !== "CRAM_SCHOOL"}
                     />
                     <FieldLabel htmlFor="default-shift-lesson">
-                      LESSON
+                      {formatShiftType("LESSON")}
                     </FieldLabel>
                   </div>
                   <div className="flex items-center gap-2">
                     <RadioGroupItem value="OTHER" id="default-shift-other" />
-                    <FieldLabel htmlFor="default-shift-other">OTHER</FieldLabel>
+                    <FieldLabel htmlFor="default-shift-other">
+                      {formatShiftType("OTHER")}
+                    </FieldLabel>
                   </div>
                 </RadioGroup>
               </FieldContent>
@@ -1111,7 +1114,7 @@ export function BulkShiftForm() {
                         id="default-lesson-normal"
                       />
                       <FieldLabel htmlFor="default-lesson-normal">
-                        NORMAL
+                        {formatLessonType("NORMAL")}
                       </FieldLabel>
                     </div>
                     <div className="flex items-center gap-2">
@@ -1120,7 +1123,7 @@ export function BulkShiftForm() {
                         id="default-lesson-intensive"
                       />
                       <FieldLabel htmlFor="default-lesson-intensive">
-                        INTENSIVE
+                        {formatLessonType("INTENSIVE")}
                       </FieldLabel>
                     </div>
                   </RadioGroup>
@@ -1339,7 +1342,7 @@ export function BulkShiftForm() {
                                 id={`${row.date}-shift-normal`}
                               />
                               <FieldLabel htmlFor={`${row.date}-shift-normal`}>
-                                NORMAL
+                                {formatShiftType("NORMAL")}
                               </FieldLabel>
                             </div>
                             <div className="flex items-center gap-2">
@@ -1351,7 +1354,7 @@ export function BulkShiftForm() {
                                 }
                               />
                               <FieldLabel htmlFor={`${row.date}-shift-lesson`}>
-                                LESSON
+                                {formatShiftType("LESSON")}
                               </FieldLabel>
                             </div>
                             <div className="flex items-center gap-2">
@@ -1360,7 +1363,7 @@ export function BulkShiftForm() {
                                 id={`${row.date}-shift-other`}
                               />
                               <FieldLabel htmlFor={`${row.date}-shift-other`}>
-                                OTHER
+                                {formatShiftType("OTHER")}
                               </FieldLabel>
                             </div>
                           </RadioGroup>
@@ -1419,7 +1422,7 @@ export function BulkShiftForm() {
                                 <FieldLabel
                                   htmlFor={`${row.date}-lesson-type-normal`}
                                 >
-                                  NORMAL
+                                  {formatLessonType("NORMAL")}
                                 </FieldLabel>
                               </div>
                               <div className="flex items-center gap-2">
@@ -1430,7 +1433,7 @@ export function BulkShiftForm() {
                                 <FieldLabel
                                   htmlFor={`${row.date}-lesson-type-intensive`}
                                 >
-                                  INTENSIVE
+                                  {formatLessonType("INTENSIVE")}
                                 </FieldLabel>
                               </div>
                             </RadioGroup>

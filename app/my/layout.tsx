@@ -11,7 +11,7 @@ export default async function Layout({
 }) {
   const session = await auth();
   const user = {
-    name: session?.user?.name ?? "User",
+    name: session?.user?.name ?? "ユーザー",
     email: session?.user?.email ?? "unknown@example.com",
     avatar: session?.user?.image,
   };

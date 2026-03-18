@@ -1,7 +1,5 @@
 "use client";
 
-import Link from "next/link";
-
 import { signOutAction } from "@/lib/actions/auth";
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
 import {
@@ -19,7 +17,7 @@ import {
   SidebarMenuItem,
   useSidebar,
 } from "@/components/ui/sidebar";
-import { EllipsisVerticalIcon, LogOutIcon, Settings2Icon } from "lucide-react";
+import { EllipsisVerticalIcon, LogOutIcon } from "lucide-react";
 
 export function NavUser({
   user,
@@ -84,24 +82,13 @@ export function NavUser({
 
             <DropdownMenuSeparator />
 
-            <DropdownMenuGroup>
-              <DropdownMenuItem
-                render={<Link href="/my/settings" prefetch={false} />}
-              >
-                <Settings2Icon />
-                Settings
-              </DropdownMenuItem>
-            </DropdownMenuGroup>
-
-            <DropdownMenuSeparator />
-
             <form action={signOutAction}>
               <DropdownMenuItem
                 variant="destructive"
                 render={<button type="submit" className="w-full" />}
               >
                 <LogOutIcon />
-                Log out
+                ログアウト
               </DropdownMenuItem>
             </form>
           </DropdownMenuContent>

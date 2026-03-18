@@ -21,6 +21,7 @@ import {
 } from "@/components/ui/form";
 import { Input } from "@/components/ui/input";
 import { RadioGroup, RadioGroupItem } from "@/components/ui/radio-group";
+import { formatLessonType } from "@/lib/enum-labels";
 import { messages, toErrorMessage } from "@/lib/messages";
 
 const workplaceResponseSchema = z.object({
@@ -434,7 +435,7 @@ export function TimetableForm({
           <CardHeader>
             <CardTitle>操作対象外の勤務先です</CardTitle>
             <CardDescription>
-              時間割は CRAM_SCHOOL 勤務先でのみ操作できます。
+              時間割は塾タイプの勤務先でのみ操作できます。
             </CardDescription>
           </CardHeader>
         </Card>
@@ -484,13 +485,13 @@ export function TimetableForm({
                 >
                   <Field orientation="horizontal">
                     <FieldLabel htmlFor="timetable-type-normal">
-                      NORMAL
+                      {formatLessonType("NORMAL")}
                     </FieldLabel>
                     <RadioGroupItem id="timetable-type-normal" value="NORMAL" />
                   </Field>
                   <Field orientation="horizontal">
                     <FieldLabel htmlFor="timetable-type-intensive">
-                      INTENSIVE
+                      {formatLessonType("INTENSIVE")}
                     </FieldLabel>
                     <RadioGroupItem
                       id="timetable-type-intensive"
@@ -519,7 +520,7 @@ export function TimetableForm({
                   }}
                 />
                 <FieldDescription>
-                  type 内で一意の番号を指定してください（例: 通常期1限）。
+                  コマ種別内で一意の番号を指定してください（例: 通常期1限）。
                 </FieldDescription>
                 <FormErrorMessage message={errors.period} />
               </FieldContent>
@@ -611,7 +612,7 @@ export function TimetableForm({
                       >
                         <Field orientation="horizontal">
                           <FieldLabel htmlFor={`row-${index}-type-normal`}>
-                            NORMAL
+                            {formatLessonType("NORMAL")}
                           </FieldLabel>
                           <RadioGroupItem
                             id={`row-${index}-type-normal`}
@@ -620,7 +621,7 @@ export function TimetableForm({
                         </Field>
                         <Field orientation="horizontal">
                           <FieldLabel htmlFor={`row-${index}-type-intensive`}>
-                            INTENSIVE
+                            {formatLessonType("INTENSIVE")}
                           </FieldLabel>
                           <RadioGroupItem
                             id={`row-${index}-type-intensive`}

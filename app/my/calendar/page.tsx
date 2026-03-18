@@ -48,7 +48,7 @@ export default function CalendarPage() {
     <section className="space-y-6 p-4 md:p-6">
       <header className="flex flex-wrap items-end justify-between gap-3">
         <div>
-          <h2 className="text-xl font-semibold">Calendar</h2>
+          <h2 className="text-xl font-semibold">カレンダー</h2>
           <p className="mt-1 text-sm text-muted-foreground">
             月を切り替えてシフト一覧を確認できます。
           </p>

@@ -19,6 +19,7 @@ import {
   TableHeader,
   TableRow,
 } from "@/components/ui/table";
+import { formatWorkplaceType } from "@/lib/enum-labels";
 
 const workplaceListResponseSchema = z.object({
   data: z.array(
@@ -111,7 +112,7 @@ export default function PayrollPage() {
   return (
     <section className="space-y-6 p-4 md:p-6">
       <header>
-        <h2 className="text-xl font-semibold">Payroll Rules</h2>
+        <h2 className="text-xl font-semibold">給与ルール</h2>
         <p className="mt-1 text-sm text-muted-foreground">
           給与ルールを管理する勤務先を選択してください。
         </p>
@@ -155,7 +156,9 @@ export default function PayrollPage() {
                       <TableCell className="font-medium">
                         {workplace.name}
                       </TableCell>
-                      <TableCell>{workplace.type}</TableCell>
+                      <TableCell>
+                        {formatWorkplaceType(workplace.type)}
+                      </TableCell>
                       <TableCell>
                         <div className="flex justify-end">
                           <Link

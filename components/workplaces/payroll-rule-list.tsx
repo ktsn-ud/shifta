@@ -287,7 +287,7 @@ export function PayrollRuleList({ workplaceId }: PayrollRuleListProps) {
     <section className="space-y-6 p-4 md:p-6">
       <header className="flex flex-wrap items-start justify-between gap-3">
         <div>
-          <h2 className="text-xl font-semibold">Payroll Rules</h2>
+          <h2 className="text-xl font-semibold">給与ルール</h2>
           <p className="mt-1 text-sm text-muted-foreground">
             {workplace
               ? `${workplace.name} の給与ルールを管理します。`

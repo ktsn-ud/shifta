@@ -28,6 +28,7 @@ import {
   TableHeader,
   TableRow,
 } from "@/components/ui/table";
+import { formatLessonType } from "@/lib/enum-labels";
 import { messages, toErrorMessage } from "@/lib/messages";
 
 const workplaceResponseSchema = z.object({
@@ -313,7 +314,7 @@ export function TimetableList({ workplaceId }: TimetableListProps) {
     <section className="space-y-6 p-4 md:p-6">
       <header className="flex flex-wrap items-start justify-between gap-3">
         <div>
-          <h2 className="text-xl font-semibold">Timetable</h2>
+          <h2 className="text-xl font-semibold">時間割</h2>
           <p className="mt-1 text-sm text-muted-foreground">
             {workplace
               ? `${workplace.name} の塾時間割を管理します。`
@@ -359,14 +360,14 @@ export function TimetableList({ workplaceId }: TimetableListProps) {
           <CardHeader>
             <CardTitle>操作対象外の勤務先です</CardTitle>
             <CardDescription>
-              時間割は CRAM_SCHOOL 勤務先でのみ操作できます。
+              時間割は塾タイプの勤務先でのみ操作できます。
             </CardDescription>
           </CardHeader>
         </Card>
       ) : (
         <div className="grid gap-4 xl:grid-cols-2">
-          {renderTable("通常期 (NORMAL)", normalTimetables)}
-          {renderTable("講習期 (INTENSIVE)", intensiveTimetables)}
+          {renderTable(formatLessonType("NORMAL"), normalTimetables)}
+          {renderTable(formatLessonType("INTENSIVE"), intensiveTimetables)}
         </div>
       )}
 

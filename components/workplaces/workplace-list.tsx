@@ -28,6 +28,7 @@ import {
   TableHeader,
   TableRow,
 } from "@/components/ui/table";
+import { formatWorkplaceType } from "@/lib/enum-labels";
 import { messages, toErrorMessage } from "@/lib/messages";
 
 const workplaceSchema = z.object({
@@ -211,7 +212,7 @@ export function WorkplaceList() {
     <section className="space-y-6 p-4 md:p-6">
       <header className="flex flex-wrap items-start justify-between gap-3">
         <div>
-          <h2 className="text-xl font-semibold">Workplace Management</h2>
+          <h2 className="text-xl font-semibold">勤務先管理</h2>
           <p className="mt-1 text-sm text-muted-foreground">
             勤務先の作成・編集・削除を行います。
           </p>
@@ -267,7 +268,9 @@ export function WorkplaceList() {
                       <TableCell className="font-medium">
                         {workplace.name}
                       </TableCell>
-                      <TableCell>{workplace.type}</TableCell>
+                      <TableCell>
+                        {formatWorkplaceType(workplace.type)}
+                      </TableCell>
                       <TableCell>
                         <div className="flex items-center gap-2">
                           <span
@@ -281,8 +284,8 @@ export function WorkplaceList() {
                         </div>
                       </TableCell>
                       <TableCell className="text-sm text-muted-foreground">
-                        Shift {workplace._count.shifts} / Rule{" "}
-                        {workplace._count.payrollRules} / Timetable{" "}
+                        シフト {workplace._count.shifts} / 給与ルール{" "}
+                        {workplace._count.payrollRules} / 時間割{" "}
                         {workplace._count.timetables}
                       </TableCell>
                       <TableCell>
@@ -362,7 +365,7 @@ export function WorkplaceList() {
 
           {deletingTarget ? (
             <div className="rounded-md border bg-muted/30 px-3 py-2 text-sm text-muted-foreground">
-              関連データ: Shift {deletingTarget._count.shifts} 件 / 給与ルール{" "}
+              関連データ: シフト {deletingTarget._count.shifts} 件 / 給与ルール{" "}
               {deletingTarget._count.payrollRules} 件 / 時間割{" "}
               {deletingTarget._count.timetables} 件
             </div>
