@@ -21,6 +21,7 @@ export default function CalendarPage() {
   const [month, setMonth] = useState(() => startOfMonth(new Date()));
   const [selectedDate, setSelectedDate] = useState(() => new Date());
   const [modalOpen, setModalOpen] = useState(false);
+  const [successMessage, setSuccessMessage] = useState<string | null>(null);
 
   const { shifts, isLoading, errorMessage, reload } = useMonthShifts(month);
 
@@ -74,6 +75,12 @@ export default function CalendarPage() {
         </div>
       </header>
 
+      {successMessage ? (
+        <p className="rounded-md border border-emerald-600/40 bg-emerald-500/10 px-3 py-2 text-sm text-emerald-700">
+          {successMessage}
+        </p>
+      ) : null}
+
       {errorMessage ? (
         <p className="rounded-md border border-destructive/40 bg-destructive/5 px-3 py-2 text-sm text-destructive">
           {errorMessage}
@@ -92,6 +99,7 @@ export default function CalendarPage() {
         onNavigatePrev={() => setMonth((current) => addMonths(current, -1))}
         onNavigateNext={() => setMonth((current) => addMonths(current, 1))}
         onDateClick={(date) => {
+          setSuccessMessage(null);
           setSelectedDate(date);
           const dayShifts = shiftsByDate.get(toDateKey(date)) ?? [];
           if (dayShifts.length === 0) {
@@ -121,6 +129,7 @@ export default function CalendarPage() {
           }
 
           await reload();
+          setSuccessMessage("シフトを削除しました。");
         }}
       />
     </section>

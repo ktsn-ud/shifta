@@ -2,7 +2,7 @@
 
 import { useMemo, useState } from "react";
 import { EditIcon, PlusIcon, Trash2Icon } from "lucide-react";
-import { ConfirmDialog } from "@/components/modal/confirm-dialog";
+import { DeleteConfirmDialog } from "@/components/shifts/DeleteConfirmDialog";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import {
@@ -81,6 +81,10 @@ function formatEstimatedPay(value: number | null): string {
   }).format(value);
 }
 
+function formatShiftLabel(shift: ShiftListModalShift): string {
+  return `${formatTime(shift.startTime)} - ${formatTime(shift.endTime)} ${shift.workplace.name}`;
+}
+
 export function ShiftListModal({
   open,
   onOpenChange,
@@ -90,7 +94,10 @@ export function ShiftListModal({
   onEditShift,
   onDeleteShift,
 }: ShiftListModalProps) {
-  const [deleteTargetId, setDeleteTargetId] = useState<string | null>(null);
+  const [deleteTarget, setDeleteTarget] = useState<ShiftListModalShift | null>(
+    null,
+  );
+
   const sortedShifts = useMemo(() => {
     return [...shifts].sort((left, right) =>
       left.startTime.localeCompare(right.startTime),
@@ -189,7 +196,7 @@ export function ShiftListModal({
                           size="sm"
                           onClick={(event) => {
                             event.stopPropagation();
-                            setDeleteTargetId(shift.id);
+                            setDeleteTarget(shift);
                           }}
                         >
                           <Trash2Icon className="size-4" />
@@ -205,21 +212,21 @@ export function ShiftListModal({
         </DialogContent>
       </Dialog>
 
-      <ConfirmDialog
-        open={deleteTargetId !== null}
+      <DeleteConfirmDialog
+        open={deleteTarget !== null}
         onOpenChange={(next) => {
           if (!next) {
-            setDeleteTargetId(null);
+            setDeleteTarget(null);
           }
         }}
-        title="このシフトを削除しますか？"
-        description="削除後は元に戻せません。"
-        onConfirm={async () => {
-          if (!deleteTargetId) {
+        shiftLabel={deleteTarget ? formatShiftLabel(deleteTarget) : undefined}
+        onDelete={async () => {
+          if (!deleteTarget) {
             return;
           }
-          await onDeleteShift(deleteTargetId);
-          setDeleteTargetId(null);
+
+          await onDeleteShift(deleteTarget.id);
+          setDeleteTarget(null);
         }}
       />
     </>
