@@ -149,6 +149,25 @@ async function buildEventDescription(
   ].join("\n");
 }
 
+async function assertLinkedGoogleEvent(
+  calendar: Awaited<ReturnType<typeof getCalendarClientByUserId>>,
+  calendarId: string,
+  googleEventId: string,
+  shiftId: string,
+): Promise<void> {
+  const response = await calendar.events.get({
+    calendarId,
+    eventId: googleEventId,
+  });
+
+  const linkedShiftId =
+    response.data.extendedProperties?.private?.shiftId ?? null;
+
+  if (linkedShiftId !== shiftId) {
+    throw new Error("Googleイベントの所有検証に失敗しました");
+  }
+}
+
 export async function createCalendarEvent(
   shift: ShiftWithLessonRange,
   workplace: Workplace,
@@ -214,6 +233,13 @@ export async function updateCalendarEvent(
   const eventDateTime = buildEventDateTime(shift);
   const description = await buildEventDescription(shift, workplace);
 
+  await assertLinkedGoogleEvent(
+    calendar,
+    user.calendarId,
+    shift.googleEventId,
+    shift.id,
+  );
+
   await calendar.events.patch({
     calendarId: user.calendarId,
     eventId: shift.googleEventId,
@@ -245,6 +271,7 @@ export async function updateCalendarEvent(
 
 export async function deleteCalendarEvent(
   googleEventId: string,
+  shiftId: string,
   user: User,
 ): Promise<void> {
   if (!user.calendarId) {
@@ -252,6 +279,12 @@ export async function deleteCalendarEvent(
   }
 
   const calendar = await getCalendarClientByUserId(user.id);
+  await assertLinkedGoogleEvent(
+    calendar,
+    user.calendarId,
+    googleEventId,
+    shiftId,
+  );
 
   await calendar.events.delete({
     calendarId: user.calendarId,

@@ -55,10 +55,7 @@ const bulkCreateSchema = z
 
 type BulkShiftItem = z.infer<typeof bulkShiftItemSchema>;
 
-type NormalizedBulkShiftItem = Omit<
-  ShiftInput,
-  "workplaceId" | "googleEventId"
->;
+type NormalizedBulkShiftItem = Omit<ShiftInput, "workplaceId">;
 
 type CreatedShift = {
   id: string;

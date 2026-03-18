@@ -359,7 +359,7 @@ export async function syncShiftDeletion(
       throw new Error("ユーザーが見つかりません");
     }
 
-    await deleteCalendarEvent(googleEventId, user);
+    await deleteCalendarEvent(googleEventId, shiftId, user);
 
     logSyncEvent({
       userId,

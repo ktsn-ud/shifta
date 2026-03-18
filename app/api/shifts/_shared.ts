@@ -37,7 +37,6 @@ export const shiftInputSchema = z
       .regex(TIME_ONLY_REGEX, "HH:MM形式で入力してください")
       .optional(),
     breakMinutes: z.coerce.number().int().min(0).default(0),
-    googleEventId: z.string().trim().min(1).nullable().optional(),
     lessonRange: lessonRangeSchema.optional(),
   })
   .strict();
@@ -52,7 +51,6 @@ export type BuiltShiftData = {
     endTime: Date;
     breakMinutes: number;
     shiftType: "NORMAL" | "LESSON" | "OTHER";
-    googleEventId: string | null;
   };
   lessonRange: {
     startPeriod: number;
@@ -184,7 +182,6 @@ export async function buildShiftData(
         endTime: lessonTimes.endTime,
         breakMinutes: input.breakMinutes,
         shiftType: input.shiftType,
-        googleEventId: input.googleEventId ?? null,
       },
       lessonRange: {
         startPeriod: lessonRange.startPeriod,
@@ -204,7 +201,6 @@ export async function buildShiftData(
       endTime,
       breakMinutes: input.breakMinutes,
       shiftType: input.shiftType,
-      googleEventId: input.googleEventId ?? null,
     },
     lessonRange: null,
   };
