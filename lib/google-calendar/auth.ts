@@ -1,6 +1,10 @@
 import type { Session } from "next-auth";
 import { google } from "googleapis";
 import { prisma } from "@/lib/prisma";
+import {
+  decryptOAuthToken,
+  encryptOAuthToken,
+} from "@/lib/security/oauth-token-crypto";
 import { GOOGLE_CALENDAR_SCOPE } from "@/lib/google-calendar/constants";
 
 type GoogleAccountRecord = {
@@ -90,7 +94,19 @@ async function getGoogleAccountByUserId(
     );
   }
 
-  return account;
+  try {
+    return {
+      ...account,
+      access_token: decryptOAuthToken(account.access_token),
+      refresh_token: decryptOAuthToken(account.refresh_token),
+    };
+  } catch (error) {
+    console.error("Failed to decrypt Google OAuth token", error);
+    throw new GoogleCalendarAuthError(
+      "TOKEN_EXPIRED",
+      "Googleトークンの復号に失敗しました。再ログインしてください",
+    );
+  }
 }
 
 async function refreshGoogleTokenIfNeeded(
@@ -131,8 +147,8 @@ async function refreshGoogleTokenIfNeeded(
       provider: "google",
     },
     data: {
-      access_token: nextAccessToken ?? null,
-      refresh_token: nextRefreshToken ?? null,
+      access_token: encryptOAuthToken(nextAccessToken ?? null),
+      refresh_token: encryptOAuthToken(nextRefreshToken ?? null),
       expires_at: nextExpiresAt ?? null,
       scope: nextScope ?? null,
     },

@@ -7,6 +7,7 @@ import {
   GOOGLE_CALENDAR_SCOPE,
 } from "@/lib/google-calendar/constants";
 import { prisma } from "@/lib/prisma";
+import { encryptOAuthToken } from "@/lib/security/oauth-token-crypto";
 
 export const { handlers, auth, signIn, signOut } = NextAuth({
   adapter: PrismaAdapter(prisma),
@@ -36,6 +37,7 @@ export const { handlers, auth, signIn, signOut } = NextAuth({
             scope?: string | null;
             access_token?: string | null;
             refresh_token?: string | null;
+            id_token?: string | null;
             expires_at?: number | null;
           } = {};
 
@@ -43,11 +45,18 @@ export const { handlers, auth, signIn, signOut } = NextAuth({
             accountUpdateData.scope = account.scope ?? null;
           }
           if (account.access_token !== undefined) {
-            accountUpdateData.access_token = account.access_token ?? null;
+            accountUpdateData.access_token = encryptOAuthToken(
+              account.access_token ?? null,
+            );
           }
           if (account.refresh_token !== undefined) {
-            accountUpdateData.refresh_token = account.refresh_token ?? null;
+            accountUpdateData.refresh_token = encryptOAuthToken(
+              account.refresh_token ?? null,
+            );
           }
+          accountUpdateData.id_token = encryptOAuthToken(
+            account.id_token ?? null,
+          );
           if (account.expires_at !== undefined) {
             accountUpdateData.expires_at = account.expires_at ?? null;
           }
