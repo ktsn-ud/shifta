@@ -18,6 +18,14 @@ const routeTitles: Array<{ path: string; title: string }> = [
 ];
 
 function getCurrentTitle(pathname: string): string {
+  if (pathname.includes("/payroll-rules")) {
+    return "Payroll Rules";
+  }
+
+  if (pathname.includes("/timetables")) {
+    return "Timetable";
+  }
+
   const matched = routeTitles.find(
     (item) => pathname === item.path || pathname.startsWith(`${item.path}/`),
   );
