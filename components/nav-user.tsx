@@ -1,5 +1,6 @@
 "use client";
 
+import { useTheme } from "next-themes";
 import { signOutAction } from "@/lib/actions/auth";
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
 import {
@@ -8,6 +9,8 @@ import {
   DropdownMenuGroup,
   DropdownMenuItem,
   DropdownMenuLabel,
+  DropdownMenuRadioGroup,
+  DropdownMenuRadioItem,
   DropdownMenuSeparator,
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
@@ -29,7 +32,9 @@ export function NavUser({
   };
 }) {
   const { isMobile } = useSidebar();
+  const { theme, setTheme } = useTheme();
   const fallback = user.name.slice(0, 2).toUpperCase();
+  const currentTheme = theme ?? "system";
 
   return (
     <SidebarMenu>
@@ -78,6 +83,25 @@ export function NavUser({
                   </div>
                 </div>
               </DropdownMenuLabel>
+            </DropdownMenuGroup>
+
+            <DropdownMenuSeparator />
+            <DropdownMenuGroup>
+              <DropdownMenuLabel>表示モード</DropdownMenuLabel>
+              <DropdownMenuRadioGroup
+                value={currentTheme}
+                onValueChange={(value) => setTheme(value)}
+              >
+                <DropdownMenuRadioItem value="light">
+                  ライト
+                </DropdownMenuRadioItem>
+                <DropdownMenuRadioItem value="dark">
+                  ダーク
+                </DropdownMenuRadioItem>
+                <DropdownMenuRadioItem value="system">
+                  システム
+                </DropdownMenuRadioItem>
+              </DropdownMenuRadioGroup>
             </DropdownMenuGroup>
 
             <DropdownMenuSeparator />
