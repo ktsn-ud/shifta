@@ -90,13 +90,6 @@ async function getGoogleAccountByUserId(
     );
   }
 
-  if (hasCalendarScope(account.scope) === false) {
-    throw new GoogleCalendarAuthError(
-      "SCOPE_MISSING",
-      "Google Calendar の権限が不足しています",
-    );
-  }
-
   return account;
 }
 
@@ -130,6 +123,7 @@ async function refreshGoogleTokenIfNeeded(
   const nextExpiresAt = credentials.expiry_date
     ? Math.floor(credentials.expiry_date / 1000)
     : account.expires_at;
+  const nextScope = credentials.scope ?? account.scope;
 
   await prisma.account.updateMany({
     where: {
@@ -140,6 +134,7 @@ async function refreshGoogleTokenIfNeeded(
       access_token: nextAccessToken ?? null,
       refresh_token: nextRefreshToken ?? null,
       expires_at: nextExpiresAt ?? null,
+      scope: nextScope ?? null,
     },
   });
 
@@ -156,7 +151,49 @@ async function refreshGoogleTokenIfNeeded(
     access_token: nextAccessToken ?? undefined,
     refresh_token: nextRefreshToken ?? undefined,
     expiry_date: nextExpiresAt ? nextExpiresAt * 1000 : undefined,
+    scope: nextScope ?? undefined,
   });
+}
+
+async function syncAccountScopeFromTokenInfo(
+  userId: string,
+  account: GoogleAccountRecord,
+  oauth2Client: InstanceType<typeof google.auth.OAuth2>,
+): Promise<string | null> {
+  const currentScope = account.scope;
+  if (hasCalendarScope(currentScope)) {
+    return currentScope;
+  }
+
+  const accessToken = oauth2Client.credentials.access_token;
+  if (!accessToken) {
+    return currentScope;
+  }
+
+  try {
+    const tokenInfo = await oauth2Client.getTokenInfo(accessToken);
+    const scopeFromToken =
+      Array.isArray(tokenInfo.scopes) && tokenInfo.scopes.length > 0
+        ? tokenInfo.scopes.join(" ")
+        : currentScope;
+
+    if (scopeFromToken !== currentScope) {
+      await prisma.account.updateMany({
+        where: {
+          userId,
+          provider: "google",
+        },
+        data: {
+          scope: scopeFromToken ?? null,
+        },
+      });
+    }
+
+    return scopeFromToken;
+  } catch (error) {
+    console.warn("Failed to synchronize Google account scope", error);
+    return currentScope;
+  }
 }
 
 export async function getGoogleAuthByUserId(
@@ -185,15 +222,29 @@ export async function getGoogleAuthByUserId(
     access_token: account.access_token ?? undefined,
     refresh_token: account.refresh_token ?? undefined,
     expiry_date: account.expires_at ? account.expires_at * 1000 : undefined,
+    scope: account.scope ?? undefined,
   });
 
   await refreshGoogleTokenIfNeeded(userId, account, oauth2Client);
 
-  if (account.expires_at) {
+  const effectiveScope = await syncAccountScopeFromTokenInfo(
+    userId,
+    account,
+    oauth2Client,
+  );
+  if (hasCalendarScope(effectiveScope) === false) {
+    throw new GoogleCalendarAuthError(
+      "SCOPE_MISSING",
+      "Google Calendar の権限が不足しています",
+    );
+  }
+
+  const expiryDate = oauth2Client.credentials.expiry_date;
+  if (expiryDate) {
     await prisma.user.update({
       where: { id: userId },
       data: {
-        googleTokenExpiresAt: new Date(account.expires_at * 1000),
+        googleTokenExpiresAt: new Date(expiryDate),
       },
     });
   }

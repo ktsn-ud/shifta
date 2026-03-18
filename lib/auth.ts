@@ -31,6 +31,38 @@ export const { handlers, auth, signIn, signOut } = NextAuth({
       }
 
       try {
+        if (account.providerAccountId) {
+          const accountUpdateData: {
+            scope?: string | null;
+            access_token?: string | null;
+            refresh_token?: string | null;
+            expires_at?: number | null;
+          } = {};
+
+          if (account.scope !== undefined) {
+            accountUpdateData.scope = account.scope ?? null;
+          }
+          if (account.access_token !== undefined) {
+            accountUpdateData.access_token = account.access_token ?? null;
+          }
+          if (account.refresh_token !== undefined) {
+            accountUpdateData.refresh_token = account.refresh_token ?? null;
+          }
+          if (account.expires_at !== undefined) {
+            accountUpdateData.expires_at = account.expires_at ?? null;
+          }
+
+          if (Object.keys(accountUpdateData).length > 0) {
+            await prisma.account.updateMany({
+              where: {
+                provider: "google",
+                providerAccountId: account.providerAccountId,
+              },
+              data: accountUpdateData,
+            });
+          }
+        }
+
         const existingUser = await prisma.user.findUnique({
           where: { email: user.email },
           select: { id: true },
