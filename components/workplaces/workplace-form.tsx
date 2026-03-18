@@ -4,6 +4,7 @@ import { useRouter } from "next/navigation";
 import { z } from "zod";
 import { FormErrorMessage } from "@/components/form/form-error-message";
 import { Button } from "@/components/ui/button";
+import { Checkbox } from "@/components/ui/checkbox";
 import {
   Field,
   FieldContent,
@@ -13,8 +14,17 @@ import {
 } from "@/components/ui/form";
 import { Input } from "@/components/ui/input";
 import { RadioGroup, RadioGroupItem } from "@/components/ui/radio-group";
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select";
+import { toDateOnlyString } from "@/lib/calendar/date";
 
 const colorRegex = /^#[0-9A-Fa-f]{6}$/;
+const timeRegex = /^([01]\d|2[0-3]):([0-5]\d)$/;
 
 const workplaceSchema = z.object({
   id: z.string(),
@@ -28,6 +38,7 @@ const workplaceDetailResponseSchema = z.object({
 });
 
 type WorkplaceType = "GENERAL" | "CRAM_SCHOOL";
+type HolidayType = "NONE" | "WEEKEND" | "HOLIDAY" | "WEEKEND_HOLIDAY";
 type WorkplaceFormMode = "create" | "edit";
 
 type WorkplaceFormProps = {
@@ -41,7 +52,22 @@ type FormValues = {
   color: string;
 };
 
-type FormErrors = Partial<Record<keyof FormValues | "form", string>>;
+type InitialRuleValues = {
+  startDate: string;
+  endDate: string;
+  baseHourlyWage: string;
+  perLessonWage: string;
+  holidayHourlyWage: string;
+  nightMultiplier: string;
+  overtimeMultiplier: string;
+  dailyOvertimeThreshold: string;
+  nightStart: string;
+  nightEnd: string;
+  holidayType: HolidayType;
+};
+
+type FormErrorKey = keyof FormValues | keyof InitialRuleValues | "form";
+type FormErrors = Partial<Record<FormErrorKey, string>>;
 
 async function readApiErrorMessage(
   response: Response,
@@ -59,7 +85,12 @@ async function readApiErrorMessage(
   return fallback;
 }
 
-function validate(values: FormValues): FormErrors {
+function validate(
+  values: FormValues,
+  isEdit: boolean,
+  createInitialRule: boolean,
+  initialRuleValues: InitialRuleValues,
+): FormErrors {
   const errors: FormErrors = {};
   const trimmedName = values.name.trim();
 
@@ -71,6 +102,94 @@ function validate(values: FormValues): FormErrors {
 
   if (colorRegex.test(values.color) === false) {
     errors.color = "色はHEX形式(#RRGGBB)で入力してください。";
+  }
+
+  if (isEdit || createInitialRule === false) {
+    return errors;
+  }
+
+  if (!initialRuleValues.startDate) {
+    errors.startDate = "適用開始日は必須です。";
+  }
+
+  if (
+    initialRuleValues.endDate &&
+    initialRuleValues.startDate &&
+    initialRuleValues.endDate <= initialRuleValues.startDate
+  ) {
+    errors.endDate = "適用終了日は開始日より後の日付を指定してください。";
+  }
+
+  if (values.type === "CRAM_SCHOOL") {
+    const perLessonWage = Number(initialRuleValues.perLessonWage);
+    if (
+      !initialRuleValues.perLessonWage ||
+      Number.isFinite(perLessonWage) === false
+    ) {
+      errors.perLessonWage = "コマ給は必須です。";
+    } else if (perLessonWage <= 0) {
+      errors.perLessonWage = "コマ給は正の数で入力してください。";
+    }
+
+    return errors;
+  }
+
+  const baseHourlyWage = Number(initialRuleValues.baseHourlyWage);
+  if (
+    !initialRuleValues.baseHourlyWage ||
+    Number.isFinite(baseHourlyWage) === false
+  ) {
+    errors.baseHourlyWage = "基本時給は必須です。";
+  } else if (baseHourlyWage <= 0) {
+    errors.baseHourlyWage = "基本時給は正の数で入力してください。";
+  }
+
+  if (initialRuleValues.holidayHourlyWage) {
+    const holidayHourlyWage = Number(initialRuleValues.holidayHourlyWage);
+    if (
+      Number.isFinite(holidayHourlyWage) === false ||
+      holidayHourlyWage <= 0
+    ) {
+      errors.holidayHourlyWage = "休日時給は正の数で入力してください。";
+    }
+  }
+
+  const nightMultiplier = Number(initialRuleValues.nightMultiplier);
+  if (
+    !initialRuleValues.nightMultiplier ||
+    Number.isFinite(nightMultiplier) === false
+  ) {
+    errors.nightMultiplier = "深夜割増率は必須です。";
+  } else if (nightMultiplier < 1) {
+    errors.nightMultiplier = "深夜割増率は1.0以上で入力してください。";
+  }
+
+  const overtimeMultiplier = Number(initialRuleValues.overtimeMultiplier);
+  if (
+    !initialRuleValues.overtimeMultiplier ||
+    Number.isFinite(overtimeMultiplier) === false
+  ) {
+    errors.overtimeMultiplier = "残業割増率は必須です。";
+  } else if (overtimeMultiplier < 1) {
+    errors.overtimeMultiplier = "残業割増率は1.0以上で入力してください。";
+  }
+
+  const threshold = Number(initialRuleValues.dailyOvertimeThreshold);
+  if (
+    !initialRuleValues.dailyOvertimeThreshold ||
+    Number.isFinite(threshold) === false
+  ) {
+    errors.dailyOvertimeThreshold = "1日所定時間は必須です。";
+  } else if (threshold <= 0) {
+    errors.dailyOvertimeThreshold = "1日所定時間は正の数で入力してください。";
+  }
+
+  if (timeRegex.test(initialRuleValues.nightStart) === false) {
+    errors.nightStart = "深夜開始時刻はHH:MM形式で入力してください。";
+  }
+
+  if (timeRegex.test(initialRuleValues.nightEnd) === false) {
+    errors.nightEnd = "深夜終了時刻はHH:MM形式で入力してください。";
   }
 
   return errors;
@@ -88,6 +207,22 @@ export function WorkplaceForm({ mode, workplaceId }: WorkplaceFormProps) {
   const [errors, setErrors] = useState<FormErrors>({});
   const [isLoading, setIsLoading] = useState(isEdit);
   const [isSubmitting, setIsSubmitting] = useState(false);
+  const [createInitialRule, setCreateInitialRule] = useState(true);
+  const [initialRuleValues, setInitialRuleValues] = useState<InitialRuleValues>(
+    () => ({
+      startDate: toDateOnlyString(new Date()),
+      endDate: "",
+      baseHourlyWage: "1000",
+      perLessonWage: "2000",
+      holidayHourlyWage: "",
+      nightMultiplier: "1.25",
+      overtimeMultiplier: "1.25",
+      dailyOvertimeThreshold: "8",
+      nightStart: "22:00",
+      nightEnd: "05:00",
+      holidayType: "NONE",
+    }),
+  );
 
   const pageTitle = useMemo(
     () => (isEdit ? "勤務先編集" : "勤務先作成"),
@@ -163,7 +298,12 @@ export function WorkplaceForm({ mode, workplaceId }: WorkplaceFormProps) {
   }, [isEdit, workplaceId]);
 
   const handleSubmit = async () => {
-    const validationErrors = validate(values);
+    const validationErrors = validate(
+      values,
+      isEdit,
+      createInitialRule,
+      initialRuleValues,
+    );
     if (Object.keys(validationErrors).length > 0) {
       setErrors(validationErrors);
       return;
@@ -173,6 +313,74 @@ export function WorkplaceForm({ mode, workplaceId }: WorkplaceFormProps) {
     setErrors({});
 
     try {
+      const payload: {
+        name: string;
+        type: WorkplaceType;
+        color: string;
+        initialPayrollRule?: {
+          startDate: string;
+          endDate: string | null;
+          baseHourlyWage: number;
+          perLessonWage: number | null;
+          holidayHourlyWage: number | null;
+          nightMultiplier: number;
+          overtimeMultiplier: number;
+          nightStart: string;
+          nightEnd: string;
+          dailyOvertimeThreshold: number;
+          holidayType: HolidayType;
+        };
+      } = {
+        name: values.name.trim(),
+        type: values.type,
+        color: values.color.toUpperCase(),
+      };
+
+      if (!isEdit && createInitialRule) {
+        payload.initialPayrollRule = {
+          startDate: initialRuleValues.startDate,
+          endDate: initialRuleValues.endDate ? initialRuleValues.endDate : null,
+          baseHourlyWage:
+            values.type === "CRAM_SCHOOL"
+              ? 1
+              : Number(initialRuleValues.baseHourlyWage),
+          perLessonWage:
+            values.type === "CRAM_SCHOOL"
+              ? Number(initialRuleValues.perLessonWage)
+              : null,
+          holidayHourlyWage:
+            values.type === "CRAM_SCHOOL"
+              ? null
+              : initialRuleValues.holidayHourlyWage
+                ? Number(initialRuleValues.holidayHourlyWage)
+                : null,
+          nightMultiplier:
+            values.type === "CRAM_SCHOOL"
+              ? 1
+              : Number(initialRuleValues.nightMultiplier),
+          overtimeMultiplier:
+            values.type === "CRAM_SCHOOL"
+              ? 1
+              : Number(initialRuleValues.overtimeMultiplier),
+          nightStart:
+            values.type === "CRAM_SCHOOL"
+              ? "22:00"
+              : initialRuleValues.nightStart,
+          nightEnd:
+            values.type === "CRAM_SCHOOL"
+              ? "05:00"
+              : initialRuleValues.nightEnd,
+          dailyOvertimeThreshold:
+            values.type === "CRAM_SCHOOL"
+              ? 8
+              : Number(initialRuleValues.dailyOvertimeThreshold),
+          holidayType:
+            values.type === "CRAM_SCHOOL"
+              ? "NONE"
+              : initialRuleValues.holidayType,
+        };
+      }
+
       const response = await fetch(
         isEdit ? `/api/workplaces/${workplaceId}` : "/api/workplaces",
         {
@@ -180,11 +388,7 @@ export function WorkplaceForm({ mode, workplaceId }: WorkplaceFormProps) {
           headers: {
             "Content-Type": "application/json",
           },
-          body: JSON.stringify({
-            name: values.name.trim(),
-            type: values.type,
-            color: values.color.toUpperCase(),
-          }),
+          body: JSON.stringify(payload),
         },
       );
 
@@ -229,7 +433,7 @@ export function WorkplaceForm({ mode, workplaceId }: WorkplaceFormProps) {
         <p className="text-sm text-muted-foreground">読み込み中です...</p>
       ) : (
         <Form
-          className="max-w-xl"
+          className="max-w-2xl"
           onSubmit={(event) => {
             event.preventDefault();
             void handleSubmit();
@@ -310,6 +514,299 @@ export function WorkplaceForm({ mode, workplaceId }: WorkplaceFormProps) {
               <FormErrorMessage message={errors.color} />
             </FieldContent>
           </Field>
+
+          {!isEdit ? (
+            <>
+              <Field orientation="horizontal">
+                <Checkbox
+                  checked={createInitialRule}
+                  onCheckedChange={(checked) => {
+                    setCreateInitialRule(Boolean(checked));
+                  }}
+                  disabled={isSubmitting}
+                />
+                <FieldContent>
+                  <FieldLabel htmlFor="create-initial-rule">
+                    初期給与ルールを同時に作成する
+                  </FieldLabel>
+                  <FieldDescription>
+                    勤務先作成と同時に、最初の給与ルールを作成します。
+                  </FieldDescription>
+                </FieldContent>
+              </Field>
+
+              {createInitialRule ? (
+                <>
+                  <Field data-invalid={Boolean(errors.startDate)}>
+                    <FieldLabel htmlFor="initial-rule-start-date">
+                      適用開始日
+                    </FieldLabel>
+                    <FieldContent>
+                      <Input
+                        id="initial-rule-start-date"
+                        type="date"
+                        value={initialRuleValues.startDate}
+                        onChange={(event) => {
+                          const nextValue = event.currentTarget.value;
+                          setInitialRuleValues((current) => ({
+                            ...current,
+                            startDate: nextValue,
+                          }));
+                        }}
+                      />
+                      <FormErrorMessage message={errors.startDate} />
+                    </FieldContent>
+                  </Field>
+
+                  <Field data-invalid={Boolean(errors.endDate)}>
+                    <FieldLabel htmlFor="initial-rule-end-date">
+                      適用終了日
+                    </FieldLabel>
+                    <FieldContent>
+                      <Input
+                        id="initial-rule-end-date"
+                        type="date"
+                        value={initialRuleValues.endDate}
+                        onChange={(event) => {
+                          const nextValue = event.currentTarget.value;
+                          setInitialRuleValues((current) => ({
+                            ...current,
+                            endDate: nextValue,
+                          }));
+                        }}
+                      />
+                      <FieldDescription>
+                        空欄の場合は現在有効として扱います。
+                      </FieldDescription>
+                      <FormErrorMessage message={errors.endDate} />
+                    </FieldContent>
+                  </Field>
+
+                  {values.type === "CRAM_SCHOOL" ? (
+                    <Field data-invalid={Boolean(errors.perLessonWage)}>
+                      <FieldLabel htmlFor="initial-rule-per-lesson-wage">
+                        コマ給
+                      </FieldLabel>
+                      <FieldContent>
+                        <Input
+                          id="initial-rule-per-lesson-wage"
+                          type="number"
+                          min="0"
+                          step="0.01"
+                          value={initialRuleValues.perLessonWage}
+                          onChange={(event) => {
+                            const nextValue = event.currentTarget.value;
+                            setInitialRuleValues((current) => ({
+                              ...current,
+                              perLessonWage: nextValue,
+                            }));
+                          }}
+                        />
+                        <FormErrorMessage message={errors.perLessonWage} />
+                      </FieldContent>
+                    </Field>
+                  ) : (
+                    <>
+                      <Field data-invalid={Boolean(errors.baseHourlyWage)}>
+                        <FieldLabel htmlFor="initial-rule-base-hourly-wage">
+                          基本時給
+                        </FieldLabel>
+                        <FieldContent>
+                          <Input
+                            id="initial-rule-base-hourly-wage"
+                            type="number"
+                            min="0"
+                            step="0.01"
+                            value={initialRuleValues.baseHourlyWage}
+                            onChange={(event) => {
+                              const nextValue = event.currentTarget.value;
+                              setInitialRuleValues((current) => ({
+                                ...current,
+                                baseHourlyWage: nextValue,
+                              }));
+                            }}
+                          />
+                          <FormErrorMessage message={errors.baseHourlyWage} />
+                        </FieldContent>
+                      </Field>
+
+                      <Field data-invalid={Boolean(errors.holidayHourlyWage)}>
+                        <FieldLabel htmlFor="initial-rule-holiday-hourly-wage">
+                          休日時給
+                        </FieldLabel>
+                        <FieldContent>
+                          <Input
+                            id="initial-rule-holiday-hourly-wage"
+                            type="number"
+                            min="0"
+                            step="0.01"
+                            value={initialRuleValues.holidayHourlyWage}
+                            onChange={(event) => {
+                              const nextValue = event.currentTarget.value;
+                              setInitialRuleValues((current) => ({
+                                ...current,
+                                holidayHourlyWage: nextValue,
+                              }));
+                            }}
+                          />
+                          <FieldDescription>
+                            空欄の場合、基本時給と同等として扱います。
+                          </FieldDescription>
+                          <FormErrorMessage
+                            message={errors.holidayHourlyWage}
+                          />
+                        </FieldContent>
+                      </Field>
+
+                      <Field data-invalid={Boolean(errors.nightMultiplier)}>
+                        <FieldLabel htmlFor="initial-rule-night-multiplier">
+                          深夜割増率
+                        </FieldLabel>
+                        <FieldContent>
+                          <Input
+                            id="initial-rule-night-multiplier"
+                            type="number"
+                            min="1"
+                            step="0.01"
+                            value={initialRuleValues.nightMultiplier}
+                            onChange={(event) => {
+                              const nextValue = event.currentTarget.value;
+                              setInitialRuleValues((current) => ({
+                                ...current,
+                                nightMultiplier: nextValue,
+                              }));
+                            }}
+                          />
+                          <FormErrorMessage message={errors.nightMultiplier} />
+                        </FieldContent>
+                      </Field>
+
+                      <Field data-invalid={Boolean(errors.overtimeMultiplier)}>
+                        <FieldLabel htmlFor="initial-rule-overtime-multiplier">
+                          残業割増率
+                        </FieldLabel>
+                        <FieldContent>
+                          <Input
+                            id="initial-rule-overtime-multiplier"
+                            type="number"
+                            min="1"
+                            step="0.01"
+                            value={initialRuleValues.overtimeMultiplier}
+                            onChange={(event) => {
+                              const nextValue = event.currentTarget.value;
+                              setInitialRuleValues((current) => ({
+                                ...current,
+                                overtimeMultiplier: nextValue,
+                              }));
+                            }}
+                          />
+                          <FormErrorMessage
+                            message={errors.overtimeMultiplier}
+                          />
+                        </FieldContent>
+                      </Field>
+
+                      <Field
+                        data-invalid={Boolean(errors.dailyOvertimeThreshold)}
+                      >
+                        <FieldLabel htmlFor="initial-rule-daily-threshold">
+                          1日所定時間
+                        </FieldLabel>
+                        <FieldContent>
+                          <Input
+                            id="initial-rule-daily-threshold"
+                            type="number"
+                            min="0"
+                            step="0.01"
+                            value={initialRuleValues.dailyOvertimeThreshold}
+                            onChange={(event) => {
+                              const nextValue = event.currentTarget.value;
+                              setInitialRuleValues((current) => ({
+                                ...current,
+                                dailyOvertimeThreshold: nextValue,
+                              }));
+                            }}
+                          />
+                          <FormErrorMessage
+                            message={errors.dailyOvertimeThreshold}
+                          />
+                        </FieldContent>
+                      </Field>
+
+                      <Field data-invalid={Boolean(errors.nightStart)}>
+                        <FieldLabel htmlFor="initial-rule-night-start">
+                          深夜開始時刻
+                        </FieldLabel>
+                        <FieldContent>
+                          <Input
+                            id="initial-rule-night-start"
+                            type="time"
+                            value={initialRuleValues.nightStart}
+                            onChange={(event) => {
+                              const nextValue = event.currentTarget.value;
+                              setInitialRuleValues((current) => ({
+                                ...current,
+                                nightStart: nextValue,
+                              }));
+                            }}
+                          />
+                          <FormErrorMessage message={errors.nightStart} />
+                        </FieldContent>
+                      </Field>
+
+                      <Field data-invalid={Boolean(errors.nightEnd)}>
+                        <FieldLabel htmlFor="initial-rule-night-end">
+                          深夜終了時刻
+                        </FieldLabel>
+                        <FieldContent>
+                          <Input
+                            id="initial-rule-night-end"
+                            type="time"
+                            value={initialRuleValues.nightEnd}
+                            onChange={(event) => {
+                              const nextValue = event.currentTarget.value;
+                              setInitialRuleValues((current) => ({
+                                ...current,
+                                nightEnd: nextValue,
+                              }));
+                            }}
+                          />
+                          <FormErrorMessage message={errors.nightEnd} />
+                        </FieldContent>
+                      </Field>
+
+                      <Field>
+                        <FieldLabel>休日判定</FieldLabel>
+                        <FieldContent>
+                          <Select
+                            value={initialRuleValues.holidayType}
+                            onValueChange={(value) => {
+                              setInitialRuleValues((current) => ({
+                                ...current,
+                                holidayType: value as HolidayType,
+                              }));
+                            }}
+                          >
+                            <SelectTrigger>
+                              <SelectValue />
+                            </SelectTrigger>
+                            <SelectContent>
+                              <SelectItem value="NONE">NONE</SelectItem>
+                              <SelectItem value="WEEKEND">WEEKEND</SelectItem>
+                              <SelectItem value="HOLIDAY">HOLIDAY</SelectItem>
+                              <SelectItem value="WEEKEND_HOLIDAY">
+                                WEEKEND_HOLIDAY
+                              </SelectItem>
+                            </SelectContent>
+                          </Select>
+                        </FieldContent>
+                      </Field>
+                    </>
+                  )}
+                </>
+              ) : null}
+            </>
+          ) : null}
 
           <FormErrorMessage message={errors.form} />
 
