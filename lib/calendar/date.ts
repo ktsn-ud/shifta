@@ -5,12 +5,49 @@ function pad(value: number): string {
 }
 
 export function toDateKey(date: Date): string {
-  return `${date.getFullYear()}-${pad(date.getMonth() + 1)}-${pad(date.getDate())}`;
+  return (
+    String(date.getFullYear()) +
+    "-" +
+    pad(date.getMonth() + 1) +
+    "-" +
+    pad(date.getDate())
+  );
 }
 
 export function dateKeyFromApiDate(value: string): string {
   const date = new Date(value);
-  return `${date.getUTCFullYear()}-${pad(date.getUTCMonth() + 1)}-${pad(date.getUTCDate())}`;
+  return (
+    String(date.getUTCFullYear()) +
+    "-" +
+    pad(date.getUTCMonth() + 1) +
+    "-" +
+    pad(date.getUTCDate())
+  );
+}
+
+export function toDateOnlyString(date: Date): string {
+  return toDateKey(date);
+}
+
+export function dateFromDateKey(key: string): Date | null {
+  const [yearString, monthString, dayString] = key.split("-");
+  const year = Number(yearString);
+  const month = Number(monthString);
+  const day = Number(dayString);
+
+  if (
+    Number.isInteger(year) === false ||
+    Number.isInteger(month) === false ||
+    Number.isInteger(day) === false
+  ) {
+    return null;
+  }
+
+  if (month < 1 || month > 12 || day < 1 || day > 31) {
+    return null;
+  }
+
+  return new Date(year, month - 1, day);
 }
 
 export function addMonths(base: Date, months: number): Date {
@@ -26,11 +63,11 @@ export function endOfMonth(date: Date): Date {
 }
 
 export function formatMonthLabel(date: Date): string {
-  return `${date.getFullYear()}年${date.getMonth() + 1}月`;
+  return String(date.getFullYear()) + "年" + String(date.getMonth() + 1) + "月";
 }
 
 export function toMonthInputValue(date: Date): string {
-  return `${date.getFullYear()}-${pad(date.getMonth() + 1)}`;
+  return String(date.getFullYear()) + "-" + pad(date.getMonth() + 1);
 }
 
 export function fromMonthInputValue(value: string): Date | null {
@@ -38,7 +75,7 @@ export function fromMonthInputValue(value: string): Date | null {
   const year = Number(yearString);
   const month = Number(monthString);
 
-  if (!Number.isInteger(year) || !Number.isInteger(month)) {
+  if (Number.isInteger(year) === false || Number.isInteger(month) === false) {
     return null;
   }
 

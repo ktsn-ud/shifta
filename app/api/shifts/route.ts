@@ -5,6 +5,11 @@ import { requireCurrentUser } from "@/lib/api/current-user";
 import { DATE_ONLY_REGEX, parseDateOnly } from "@/lib/api/date-time";
 import { jsonError, parseJsonBody } from "@/lib/api/http";
 import { requireOwnedWorkplace } from "@/lib/api/workplace";
+import {
+  calculateWorkedMinutes,
+  estimateShiftPay,
+  findApplicablePayrollRule,
+} from "@/lib/payroll/estimate";
 import { prisma } from "@/lib/prisma";
 import {
   buildShiftData,
@@ -23,6 +28,7 @@ const shiftListQuerySchema = z
       .string()
       .regex(DATE_ONLY_REGEX, "YYYY-MM-DD形式で入力してください")
       .optional(),
+    includeEstimate: z.enum(["true", "false"]).optional(),
   })
   .refine(
     (value) => {
@@ -108,6 +114,7 @@ export async function GET(request: Request) {
       workplaceId: url.searchParams.get("workplaceId") ?? undefined,
       startDate: url.searchParams.get("startDate") ?? undefined,
       endDate: url.searchParams.get("endDate") ?? undefined,
+      includeEstimate: url.searchParams.get("includeEstimate") ?? undefined,
     });
 
     if (!query.success) {
@@ -157,7 +164,75 @@ export async function GET(request: Request) {
       orderBy: [{ date: "desc" }, { startTime: "desc" }],
     });
 
-    return NextResponse.json({ data: shifts });
+    if (query.data.includeEstimate !== "true") {
+      return NextResponse.json({ data: shifts });
+    }
+
+    const workplaceIds = Array.from(
+      new Set(shifts.map((shift) => shift.workplaceId)),
+    );
+
+    if (workplaceIds.length === 0) {
+      return NextResponse.json({ data: [] });
+    }
+
+    const payrollRules = await prisma.payrollRule.findMany({
+      where: {
+        workplaceId: {
+          in: workplaceIds,
+        },
+      },
+      orderBy: [{ workplaceId: "asc" }, { startDate: "desc" }],
+    });
+
+    const rulesByWorkplace = new Map<string, typeof payrollRules>();
+    for (const rule of payrollRules) {
+      const existing = rulesByWorkplace.get(rule.workplaceId) ?? [];
+      existing.push(rule);
+      rulesByWorkplace.set(rule.workplaceId, existing);
+    }
+
+    const withEstimate = shifts.map((shift) => {
+      const rules = rulesByWorkplace.get(shift.workplaceId) ?? [];
+      const selectedRule = findApplicablePayrollRule(rules, shift.date);
+      const workedMinutes = calculateWorkedMinutes({
+        date: shift.date,
+        startTime: shift.startTime,
+        endTime: shift.endTime,
+        breakMinutes: shift.breakMinutes,
+        shiftType: shift.shiftType,
+        lessonRange: shift.lessonRange
+          ? {
+              startPeriod: shift.lessonRange.startPeriod,
+              endPeriod: shift.lessonRange.endPeriod,
+            }
+          : null,
+      });
+      const estimatedPay = estimateShiftPay(
+        {
+          date: shift.date,
+          startTime: shift.startTime,
+          endTime: shift.endTime,
+          breakMinutes: shift.breakMinutes,
+          shiftType: shift.shiftType,
+          lessonRange: shift.lessonRange
+            ? {
+                startPeriod: shift.lessonRange.startPeriod,
+                endPeriod: shift.lessonRange.endPeriod,
+              }
+            : null,
+        },
+        selectedRule,
+      );
+
+      return {
+        ...shift,
+        workedMinutes,
+        estimatedPay,
+      };
+    });
+
+    return NextResponse.json({ data: withEstimate });
   } catch (error) {
     console.error("GET /api/shifts failed", error);
     return jsonError("シフト一覧の取得に失敗しました", 500);
