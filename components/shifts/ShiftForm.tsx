@@ -263,6 +263,8 @@ export function ShiftForm({ mode, shiftId, initialDate }: ShiftFormProps) {
   const selectedWorkplace = useMemo(() => {
     return workplaces.find((workplace) => workplace.id === form.workplaceId);
   }, [form.workplaceId, workplaces]);
+  const selectedWorkplaceId = selectedWorkplace?.id;
+  const selectedWorkplaceType = selectedWorkplace?.type;
 
   const lessonPeriods = useMemo(() => {
     return timetables
@@ -443,7 +445,7 @@ export function ShiftForm({ mode, shiftId, initialDate }: ShiftFormProps) {
   }, [form.workplaceId, mode, workplaces]);
 
   useEffect(() => {
-    if (selectedWorkplace?.type !== "CRAM_SCHOOL") {
+    if (!selectedWorkplaceId || selectedWorkplaceType !== "CRAM_SCHOOL") {
       setTimetables([]);
 
       setForm((current) => {
@@ -468,7 +470,7 @@ export function ShiftForm({ mode, shiftId, initialDate }: ShiftFormProps) {
 
       try {
         const response = await fetch(
-          `/api/workplaces/${selectedWorkplace.id}/timetables`,
+          `/api/workplaces/${selectedWorkplaceId}/timetables`,
           {
             signal: abortController.signal,
             cache: "no-store",
@@ -507,7 +509,7 @@ export function ShiftForm({ mode, shiftId, initialDate }: ShiftFormProps) {
     return () => {
       abortController.abort();
     };
-  }, [selectedWorkplace?.id, selectedWorkplace?.type]);
+  }, [selectedWorkplaceId, selectedWorkplaceType]);
 
   useEffect(() => {
     if (
@@ -934,7 +936,9 @@ export function ShiftForm({ mode, shiftId, initialDate }: ShiftFormProps) {
             <FieldContent>
               <Select
                 value={form.workplaceId}
-                onValueChange={(value) => updateForm("workplaceId", value)}
+                onValueChange={(value) =>
+                  updateForm("workplaceId", value ?? "")
+                }
                 disabled={disabled}
               >
                 <SelectTrigger className="w-full">
@@ -1061,7 +1065,9 @@ export function ShiftForm({ mode, shiftId, initialDate }: ShiftFormProps) {
                 <FieldContent>
                   <Select
                     value={form.startPeriod}
-                    onValueChange={(value) => updateForm("startPeriod", value)}
+                    onValueChange={(value) =>
+                      updateForm("startPeriod", value ?? "")
+                    }
                     disabled={
                       disabled ||
                       isTimetableLoading ||
@@ -1090,7 +1096,9 @@ export function ShiftForm({ mode, shiftId, initialDate }: ShiftFormProps) {
                 <FieldContent>
                   <Select
                     value={form.endPeriod}
-                    onValueChange={(value) => updateForm("endPeriod", value)}
+                    onValueChange={(value) =>
+                      updateForm("endPeriod", value ?? "")
+                    }
                     disabled={
                       disabled ||
                       isTimetableLoading ||
