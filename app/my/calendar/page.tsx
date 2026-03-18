@@ -7,6 +7,7 @@ import { MonthCalendar } from "@/components/calendar/MonthCalendar";
 import { ShiftListModal } from "@/components/calendar/ShiftListModal";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
+import { CalendarLoadingSkeleton } from "@/components/ui/loading-skeletons";
 import {
   addMonths,
   dateKeyFromApiDate,
@@ -83,26 +84,24 @@ export default function CalendarPage() {
       ) : null}
 
       {isLoading ? (
-        <p className="text-sm text-muted-foreground">
-          シフトを読み込み中です...
-        </p>
-      ) : null}
-
-      <MonthCalendar
-        month={month}
-        shifts={shifts}
-        onNavigatePrev={() => setMonth((current) => addMonths(current, -1))}
-        onNavigateNext={() => setMonth((current) => addMonths(current, 1))}
-        onDateClick={(date) => {
-          setSelectedDate(date);
-          const dayShifts = shiftsByDate.get(toDateKey(date)) ?? [];
-          if (dayShifts.length === 0) {
-            handleCreateShift(date);
-            return;
-          }
-          setModalOpen(true);
-        }}
-      />
+        <CalendarLoadingSkeleton />
+      ) : (
+        <MonthCalendar
+          month={month}
+          shifts={shifts}
+          onNavigatePrev={() => setMonth((current) => addMonths(current, -1))}
+          onNavigateNext={() => setMonth((current) => addMonths(current, 1))}
+          onDateClick={(date) => {
+            setSelectedDate(date);
+            const dayShifts = shiftsByDate.get(toDateKey(date)) ?? [];
+            if (dayShifts.length === 0) {
+              handleCreateShift(date);
+              return;
+            }
+            setModalOpen(true);
+          }}
+        />
+      )}
 
       <ShiftListModal
         open={modalOpen}

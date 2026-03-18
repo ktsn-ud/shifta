@@ -13,6 +13,7 @@ import {
   Form,
 } from "@/components/ui/form";
 import { Input } from "@/components/ui/input";
+import { FormLoadingSkeleton } from "@/components/ui/loading-skeletons";
 import { RadioGroup, RadioGroupItem } from "@/components/ui/radio-group";
 import { dateKeyFromApiDate } from "@/lib/calendar/date";
 import { formatHolidayType, formatWorkplaceType } from "@/lib/enum-labels";
@@ -532,7 +533,7 @@ export function PayrollRuleForm({
       </header>
 
       {isLoading ? (
-        <p className="text-sm text-muted-foreground">読み込み中です...</p>
+        <FormLoadingSkeleton />
       ) : (
         <Form
           className="max-w-2xl"

@@ -11,6 +11,7 @@ import {
   CardHeader,
   CardTitle,
 } from "@/components/ui/card";
+import { TableLoadingSkeleton } from "@/components/ui/loading-skeletons";
 import {
   Table,
   TableBody,
@@ -133,7 +134,7 @@ export default function PayrollPage() {
         </CardHeader>
         <CardContent>
           {isLoading ? (
-            <p className="text-sm text-muted-foreground">読み込み中です...</p>
+            <TableLoadingSkeleton rows={5} columns={3} />
           ) : (
             <Table>
               <TableHeader>

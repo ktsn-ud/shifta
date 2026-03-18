@@ -12,6 +12,7 @@ import {
   CardHeader,
   CardTitle,
 } from "@/components/ui/card";
+import { TableLoadingSkeleton } from "@/components/ui/loading-skeletons";
 import {
   Dialog,
   DialogContent,
@@ -243,7 +244,7 @@ export function WorkplaceList() {
         </CardHeader>
         <CardContent>
           {isLoading ? (
-            <p className="text-sm text-muted-foreground">読み込み中です...</p>
+            <TableLoadingSkeleton rows={6} columns={5} />
           ) : (
             <Table>
               <TableHeader>

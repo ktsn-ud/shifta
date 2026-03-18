@@ -14,6 +14,7 @@ import {
   Form,
 } from "@/components/ui/form";
 import { Input } from "@/components/ui/input";
+import { FormLoadingSkeleton } from "@/components/ui/loading-skeletons";
 import { RadioGroup, RadioGroupItem } from "@/components/ui/radio-group";
 import {
   Select,
@@ -471,7 +472,7 @@ export function WorkplaceForm({ mode, workplaceId }: WorkplaceFormProps) {
       </header>
 
       {isLoading ? (
-        <p className="text-sm text-muted-foreground">読み込み中です...</p>
+        <FormLoadingSkeleton />
       ) : (
         <Form
           className="max-w-2xl"

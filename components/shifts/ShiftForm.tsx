@@ -25,6 +25,7 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
+import { Skeleton } from "@/components/ui/skeleton";
 import { TimePicker } from "@/components/ui/time-picker";
 import {
   dateFromDateKey,
@@ -933,9 +934,12 @@ export function ShiftForm({ mode, shiftId, initialDate }: ShiftFormProps) {
       </header>
 
       {isShiftLoading ? (
-        <p className="text-sm text-muted-foreground">
-          シフト情報を読み込み中です...
-        </p>
+        <div className="flex max-w-2xl flex-col gap-3 rounded-xl border p-4">
+          <Skeleton className="h-5 w-32" />
+          <Skeleton className="h-10 w-full" />
+          <Skeleton className="h-10 w-full" />
+          <Skeleton className="h-10 w-full" />
+        </div>
       ) : null}
 
       {errors.form ? (

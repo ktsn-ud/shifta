@@ -25,6 +25,7 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
+import { Skeleton } from "@/components/ui/skeleton";
 import { TIME_ONLY_REGEX, toMinutes } from "@/lib/api/date-time";
 import {
   addMonths,
@@ -863,6 +864,14 @@ export function BulkShiftForm() {
         <section className="space-y-4 rounded-xl border p-4">
           <h3 className="text-base font-semibold">1. 勤務先選択</h3>
 
+          {isWorkplaceLoading ? (
+            <div className="flex max-w-md flex-col gap-2">
+              <Skeleton className="h-4 w-20" />
+              <Skeleton className="h-10 w-full" />
+              <Skeleton className="h-3 w-48" />
+            </div>
+          ) : null}
+
           <Field>
             <FieldLabel htmlFor="bulk-workplace">勤務先</FieldLabel>
             <FieldContent>
@@ -883,13 +892,7 @@ export function BulkShiftForm() {
                 disabled={isWorkplaceLoading || workplaces.length === 0}
               >
                 <SelectTrigger id="bulk-workplace" className="w-full md:w-72">
-                  <SelectValue
-                    placeholder={
-                      isWorkplaceLoading
-                        ? "勤務先を読み込み中です..."
-                        : "勤務先を選択"
-                    }
-                  >
+                  <SelectValue placeholder="勤務先を選択">
                     {selectedWorkplace?.name}
                   </SelectValue>
                 </SelectTrigger>
@@ -1270,9 +1273,10 @@ export function BulkShiftForm() {
           <h3 className="text-base font-semibold">4. 選択日の詳細入力</h3>
 
           {isTimetableLoading ? (
-            <p className="text-sm text-muted-foreground">
-              時間割を読み込み中です...
-            </p>
+            <div className="flex flex-col gap-2">
+              <Skeleton className="h-4 w-32" />
+              <Skeleton className="h-20 w-full" />
+            </div>
           ) : null}
 
           {selectedRows.length === 0 ? (

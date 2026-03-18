@@ -20,6 +20,7 @@ import {
   Form,
 } from "@/components/ui/form";
 import { Input } from "@/components/ui/input";
+import { FormLoadingSkeleton } from "@/components/ui/loading-skeletons";
 import { RadioGroup, RadioGroupItem } from "@/components/ui/radio-group";
 import { formatLessonType } from "@/lib/enum-labels";
 import { messages, toErrorMessage } from "@/lib/messages";
@@ -423,7 +424,7 @@ export function TimetableForm({
   if (isLoading) {
     return (
       <section className="space-y-6 p-4 md:p-6">
-        <p className="text-sm text-muted-foreground">読み込み中です...</p>
+        <FormLoadingSkeleton />
       </section>
     );
   }

@@ -14,6 +14,10 @@ import {
   CardTitle,
 } from "@/components/ui/card";
 import {
+  CalendarLoadingSkeleton,
+  StatCardsLoadingSkeleton,
+} from "@/components/ui/loading-skeletons";
+import {
   addMonths,
   dateKeyFromApiDate,
   startOfMonth,
@@ -81,37 +85,41 @@ export default function Page() {
         </div>
       </header>
 
-      <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
-        <Card size="sm">
-          <CardHeader>
-            <CardTitle>今月の概算給与</CardTitle>
-            <CardDescription>シフト一覧から算出した暫定値</CardDescription>
-          </CardHeader>
-          <CardContent className="text-2xl font-semibold">
-            {formatCurrency(summary.totalEstimatedPay)}
-          </CardContent>
-        </Card>
+      {isLoading ? (
+        <StatCardsLoadingSkeleton />
+      ) : (
+        <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
+          <Card size="sm">
+            <CardHeader>
+              <CardTitle>今月の概算給与</CardTitle>
+              <CardDescription>シフト一覧から算出した暫定値</CardDescription>
+            </CardHeader>
+            <CardContent className="text-2xl font-semibold">
+              {formatCurrency(summary.totalEstimatedPay)}
+            </CardContent>
+          </Card>
 
-        <Card size="sm">
-          <CardHeader>
-            <CardTitle>今月の勤務時間</CardTitle>
-            <CardDescription>休憩控除後の合計時間</CardDescription>
-          </CardHeader>
-          <CardContent className="text-2xl font-semibold">
-            {(summary.totalWorkedMinutes / 60).toFixed(1)} 時間
-          </CardContent>
-        </Card>
+          <Card size="sm">
+            <CardHeader>
+              <CardTitle>今月の勤務時間</CardTitle>
+              <CardDescription>休憩控除後の合計時間</CardDescription>
+            </CardHeader>
+            <CardContent className="text-2xl font-semibold">
+              {(summary.totalWorkedMinutes / 60).toFixed(1)} 時間
+            </CardContent>
+          </Card>
 
-        <Card size="sm">
-          <CardHeader>
-            <CardTitle>今月のシフト件数</CardTitle>
-            <CardDescription>登録済み件数</CardDescription>
-          </CardHeader>
-          <CardContent className="text-2xl font-semibold">
-            {summary.shiftCount} 件
-          </CardContent>
-        </Card>
-      </div>
+          <Card size="sm">
+            <CardHeader>
+              <CardTitle>今月のシフト件数</CardTitle>
+              <CardDescription>登録済み件数</CardDescription>
+            </CardHeader>
+            <CardContent className="text-2xl font-semibold">
+              {summary.shiftCount} 件
+            </CardContent>
+          </Card>
+        </div>
+      )}
 
       {errorMessage ? (
         <p className="rounded-md border border-destructive/40 bg-destructive/5 px-3 py-2 text-sm text-destructive">
@@ -120,26 +128,24 @@ export default function Page() {
       ) : null}
 
       {isLoading ? (
-        <p className="text-sm text-muted-foreground">
-          シフトを読み込み中です...
-        </p>
-      ) : null}
-
-      <MonthCalendar
-        month={month}
-        shifts={shifts}
-        onNavigatePrev={() => setMonth((current) => addMonths(current, -1))}
-        onNavigateNext={() => setMonth((current) => addMonths(current, 1))}
-        onDateClick={(date) => {
-          setSelectedDate(date);
-          const dayShifts = shiftsByDate.get(toDateKey(date)) ?? [];
-          if (dayShifts.length === 0) {
-            handleCreateShift(date);
-            return;
-          }
-          setModalOpen(true);
-        }}
-      />
+        <CalendarLoadingSkeleton />
+      ) : (
+        <MonthCalendar
+          month={month}
+          shifts={shifts}
+          onNavigatePrev={() => setMonth((current) => addMonths(current, -1))}
+          onNavigateNext={() => setMonth((current) => addMonths(current, 1))}
+          onDateClick={(date) => {
+            setSelectedDate(date);
+            const dayShifts = shiftsByDate.get(toDateKey(date)) ?? [];
+            if (dayShifts.length === 0) {
+              handleCreateShift(date);
+              return;
+            }
+            setModalOpen(true);
+          }}
+        />
+      )}
 
       <ShiftListModal
         open={modalOpen}

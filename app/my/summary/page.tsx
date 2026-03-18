@@ -16,6 +16,8 @@ import {
   ChartTooltipContent,
 } from "@/components/ui/chart";
 import { Input } from "@/components/ui/input";
+import { StatCardsLoadingSkeleton } from "@/components/ui/loading-skeletons";
+import { Skeleton } from "@/components/ui/skeleton";
 import {
   Table,
   TableBody,
@@ -251,12 +253,47 @@ export default function SummaryPage() {
       ) : null}
 
       {isLoading ? (
-        <p className="text-sm text-muted-foreground">
-          集計データを読み込み中です...
-        </p>
-      ) : null}
-
-      {summary ? (
+        <>
+          <StatCardsLoadingSkeleton count={4} className="lg:grid-cols-4" />
+          <div className="grid gap-4 lg:grid-cols-3">
+            {Array.from({ length: 3 }).map((_, index) => (
+              <Card size="sm" key={`summary-sub-card-${index}`}>
+                <CardHeader>
+                  <Skeleton className="h-5 w-28" />
+                  <Skeleton className="h-4 w-40" />
+                </CardHeader>
+                <CardContent className="flex flex-col gap-2">
+                  <Skeleton className="h-8 w-32" />
+                  <Skeleton className="h-4 w-24" />
+                </CardContent>
+              </Card>
+            ))}
+          </div>
+          <div className="grid gap-4 xl:grid-cols-2">
+            <Card>
+              <CardHeader>
+                <Skeleton className="h-5 w-32" />
+                <Skeleton className="h-4 w-40" />
+              </CardHeader>
+              <CardContent>
+                <Skeleton className="h-[280px] w-full" />
+              </CardContent>
+            </Card>
+            <Card>
+              <CardHeader>
+                <Skeleton className="h-5 w-32" />
+                <Skeleton className="h-4 w-40" />
+              </CardHeader>
+              <CardContent className="flex flex-col gap-3">
+                <Skeleton className="h-10 w-full" />
+                <Skeleton className="h-9 w-full" />
+                <Skeleton className="h-9 w-full" />
+                <Skeleton className="h-9 w-full" />
+              </CardContent>
+            </Card>
+          </div>
+        </>
+      ) : summary ? (
         <>
           <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
             <Card size="sm">
