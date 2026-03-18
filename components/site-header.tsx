@@ -10,8 +10,6 @@ const routeTitles: Array<{ path: string; title: string }> = [
   { path: "/my/summary", title: "給与サマリー" },
   { path: "/my/workplaces", title: "勤務先管理" },
   { path: "/my/workplace", title: "勤務先管理" },
-  { path: "/my/payroll", title: "給与ルール" },
-  { path: "/my/timetable", title: "時間割" },
   { path: "/my/bulk", title: "一括登録" },
   { path: "/my/shifts/bulk", title: "一括登録" },
   { path: "/my", title: "ダッシュボード" },

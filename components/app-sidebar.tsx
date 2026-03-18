@@ -22,8 +22,6 @@ import {
   CommandIcon,
   LandmarkIcon,
   LayoutDashboardIcon,
-  SchoolIcon,
-  TablePropertiesIcon,
   WalletCardsIcon,
 } from "lucide-react";
 
@@ -52,12 +50,6 @@ const mainNavItems: NavItem[] = [
     href: "/my/workplaces",
     icon: <LandmarkIcon />,
   },
-  {
-    title: "給与ルール",
-    href: "/my/payroll",
-    icon: <TablePropertiesIcon />,
-  },
-  { title: "時間割", href: "/my/timetable", icon: <SchoolIcon /> },
 ];
 
 const secondaryNavItems: NavItem[] = [
