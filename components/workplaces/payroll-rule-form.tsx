@@ -1,6 +1,4 @@
 "use client";
-
-import Link from "next/link";
 import { useEffect, useMemo, useState } from "react";
 import { useRouter } from "next/navigation";
 import { z } from "zod";
@@ -782,12 +780,14 @@ export function PayrollRuleForm({
               {isSubmitting ? "保存中..." : isEdit ? "保存" : "作成"}
             </Button>
             <Button
-              asChild
               type="button"
               variant="outline"
               disabled={isSubmitting}
+              onClick={() => {
+                router.push(listHref);
+              }}
             >
-              <Link href={listHref}>キャンセル</Link>
+              キャンセル
             </Button>
           </div>
         </Form>

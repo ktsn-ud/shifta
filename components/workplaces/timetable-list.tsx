@@ -270,12 +270,16 @@ export function TimetableList({ workplaceId }: TimetableListProps) {
                   <TableCell>{toTimeOnly(timetable.endTime)}</TableCell>
                   <TableCell>
                     <div className="flex justify-end gap-2">
-                      <Button asChild size="sm" variant="outline">
-                        <Link
-                          href={`/my/workplaces/${workplaceId}/timetables/${timetable.id}/edit`}
-                        >
-                          編集
-                        </Link>
+                      <Button
+                        size="sm"
+                        variant="outline"
+                        render={
+                          <Link
+                            href={`/my/workplaces/${workplaceId}/timetables/${timetable.id}/edit`}
+                          />
+                        }
+                      >
+                        編集
                       </Button>
                       <Button
                         size="sm"
@@ -310,14 +314,16 @@ export function TimetableList({ workplaceId }: TimetableListProps) {
           </p>
         </div>
         <div className="flex flex-wrap gap-2">
-          <Button asChild variant="outline">
-            <Link href="/my/workplaces">勤務先一覧へ</Link>
+          <Button variant="outline" render={<Link href="/my/workplaces" />}>
+            勤務先一覧へ
           </Button>
           {workplace?.type === "CRAM_SCHOOL" ? (
-            <Button asChild>
-              <Link href={`/my/workplaces/${workplaceId}/timetables/new`}>
-                新規時間割追加
-              </Link>
+            <Button
+              render={
+                <Link href={`/my/workplaces/${workplaceId}/timetables/new`} />
+              }
+            >
+              新規時間割追加
             </Button>
           ) : (
             <Button disabled>新規時間割追加</Button>

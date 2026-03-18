@@ -160,12 +160,15 @@ export default function TimetablePage() {
                       <TableCell>{workplace.type}</TableCell>
                       <TableCell>
                         <div className="flex justify-end">
-                          <Button asChild size="sm">
-                            <Link
-                              href={`/my/workplaces/${workplace.id}/timetables`}
-                            >
-                              時間割管理
-                            </Link>
+                          <Button
+                            size="sm"
+                            render={
+                              <Link
+                                href={`/my/workplaces/${workplace.id}/timetables`}
+                              />
+                            }
+                          >
+                            時間割管理
                           </Button>
                         </div>
                       </TableCell>

@@ -1,6 +1,4 @@
 "use client";
-
-import Link from "next/link";
 import { useEffect, useMemo, useState } from "react";
 import { useRouter } from "next/navigation";
 import { z } from "zod";
@@ -320,12 +318,14 @@ export function WorkplaceForm({ mode, workplaceId }: WorkplaceFormProps) {
               {isSubmitting ? "保存中..." : isEdit ? "保存" : "作成"}
             </Button>
             <Button
-              asChild
               type="button"
               variant="outline"
               disabled={isSubmitting}
+              onClick={() => {
+                router.push("/my/workplaces");
+              }}
             >
-              <Link href="/my/workplaces">キャンセル</Link>
+              キャンセル
             </Button>
           </div>
         </Form>

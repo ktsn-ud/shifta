@@ -158,12 +158,15 @@ export default function PayrollPage() {
                       <TableCell>{workplace.type}</TableCell>
                       <TableCell>
                         <div className="flex justify-end">
-                          <Button asChild size="sm">
-                            <Link
-                              href={`/my/workplaces/${workplace.id}/payroll-rules`}
-                            >
-                              給与ルール管理
-                            </Link>
+                          <Button
+                            size="sm"
+                            render={
+                              <Link
+                                href={`/my/workplaces/${workplace.id}/payroll-rules`}
+                              />
+                            }
+                          >
+                            給与ルール管理
                           </Button>
                         </div>
                       </TableCell>

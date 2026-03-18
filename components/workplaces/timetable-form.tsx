@@ -1,6 +1,4 @@
 "use client";
-
-import Link from "next/link";
 import { useEffect, useMemo, useState } from "react";
 import { useRouter } from "next/navigation";
 import { z } from "zod";
@@ -338,8 +336,13 @@ export function TimetableForm({
             </CardDescription>
           </CardHeader>
         </Card>
-        <Button asChild variant="outline">
-          <Link href={listHref}>一覧へ戻る</Link>
+        <Button
+          variant="outline"
+          onClick={() => {
+            router.push(listHref);
+          }}
+        >
+          一覧へ戻る
         </Button>
       </section>
     );
@@ -458,12 +461,14 @@ export function TimetableForm({
             {isSubmitting ? "保存中..." : isEdit ? "保存" : "作成"}
           </Button>
           <Button
-            asChild
             type="button"
             variant="outline"
             disabled={isSubmitting}
+            onClick={() => {
+              router.push(listHref);
+            }}
           >
-            <Link href={listHref}>キャンセル</Link>
+            キャンセル
           </Button>
         </div>
       </Form>

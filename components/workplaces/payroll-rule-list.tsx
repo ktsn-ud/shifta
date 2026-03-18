@@ -288,13 +288,15 @@ export function PayrollRuleList({ workplaceId }: PayrollRuleListProps) {
           </p>
         </div>
         <div className="flex flex-wrap gap-2">
-          <Button asChild variant="outline">
-            <Link href="/my/workplaces">勤務先一覧へ</Link>
+          <Button variant="outline" render={<Link href="/my/workplaces" />}>
+            勤務先一覧へ
           </Button>
-          <Button asChild>
-            <Link href={`/my/workplaces/${workplaceId}/payroll-rules/new`}>
-              新規ルール追加
-            </Link>
+          <Button
+            render={
+              <Link href={`/my/workplaces/${workplaceId}/payroll-rules/new`} />
+            }
+          >
+            新規ルール追加
           </Button>
         </div>
       </header>
@@ -372,12 +374,16 @@ export function PayrollRuleList({ workplaceId }: PayrollRuleListProps) {
                       ) : null}
                       <TableCell>
                         <div className="flex justify-end gap-2">
-                          <Button asChild variant="outline" size="sm">
-                            <Link
-                              href={`/my/workplaces/${workplaceId}/payroll-rules/${rule.id}/edit`}
-                            >
-                              編集
-                            </Link>
+                          <Button
+                            variant="outline"
+                            size="sm"
+                            render={
+                              <Link
+                                href={`/my/workplaces/${workplaceId}/payroll-rules/${rule.id}/edit`}
+                              />
+                            }
+                          >
+                            編集
                           </Button>
                           <Button
                             size="sm"

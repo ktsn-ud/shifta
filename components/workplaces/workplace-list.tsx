@@ -204,9 +204,7 @@ export function WorkplaceList() {
             勤務先の作成・編集・削除を行います。
           </p>
         </div>
-        <Button asChild>
-          <Link href="/my/workplaces/new">新規追加</Link>
-        </Button>
+        <Button render={<Link href="/my/workplaces/new" />}>新規追加</Button>
       </header>
 
       {infoMessage ? (
@@ -275,25 +273,39 @@ export function WorkplaceList() {
                       </TableCell>
                       <TableCell>
                         <div className="flex flex-wrap justify-end gap-2">
-                          <Button asChild size="sm" variant="outline">
-                            <Link href={`/my/workplaces/${workplace.id}/edit`}>
-                              編集
-                            </Link>
+                          <Button
+                            size="sm"
+                            variant="outline"
+                            render={
+                              <Link
+                                href={`/my/workplaces/${workplace.id}/edit`}
+                              />
+                            }
+                          >
+                            編集
                           </Button>
-                          <Button asChild size="sm" variant="outline">
-                            <Link
-                              href={`/my/workplaces/${workplace.id}/payroll-rules`}
-                            >
-                              給与ルール
-                            </Link>
+                          <Button
+                            size="sm"
+                            variant="outline"
+                            render={
+                              <Link
+                                href={`/my/workplaces/${workplace.id}/payroll-rules`}
+                              />
+                            }
+                          >
+                            給与ルール
                           </Button>
                           {workplace.type === "CRAM_SCHOOL" ? (
-                            <Button asChild size="sm" variant="outline">
-                              <Link
-                                href={`/my/workplaces/${workplace.id}/timetables`}
-                              >
-                                時間割
-                              </Link>
+                            <Button
+                              size="sm"
+                              variant="outline"
+                              render={
+                                <Link
+                                  href={`/my/workplaces/${workplace.id}/timetables`}
+                                />
+                              }
+                            >
+                              時間割
                             </Button>
                           ) : (
                             <Button size="sm" variant="outline" disabled>
