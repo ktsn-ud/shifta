@@ -15,16 +15,19 @@ datasource db {
 }
 
 model User {
-  id            String      @id @default(cuid())
-  name          String?
-  email         String      @unique
-  emailVerified DateTime?
-  image         String?
-  accounts      Account[]
-  sessions      Session[]
-  workplaces    Workplace[]
-  createdAt     DateTime    @default(now())
-  updatedAt     DateTime    @updatedAt
+  id                   String      @id @default(cuid())
+  name                 String?
+  email                String      @unique
+  emailVerified        DateTime?
+  image                String?
+  calendarId           String?
+  // Google access token expiry (from OAuth account metadata)
+  googleTokenExpiresAt DateTime?
+  accounts             Account[]
+  sessions             Session[]
+  workplaces           Workplace[]
+  createdAt            DateTime    @default(now())
+  updatedAt            DateTime    @updatedAt
 }
 
 model Account {
@@ -137,17 +140,20 @@ model Timetable {
 }
 
 model Shift {
-  id            String            @id @default(cuid())
-  workplaceId   String
-  date          DateTime          @db.Date
-  startTime     DateTime          @db.Time(0)
-  endTime       DateTime          @db.Time(0)
-  breakMinutes  Int               @default(0)
-  shiftType     ShiftType
-  googleEventId String?
-  createdAt     DateTime          @default(now())
-  workplace     Workplace         @relation(fields: [workplaceId], references: [id], onDelete: Cascade)
-  lessonRange   ShiftLessonRange?
+  id               String            @id @default(cuid())
+  workplaceId      String
+  date             DateTime          @db.Date
+  startTime        DateTime          @db.Time(0)
+  endTime          DateTime          @db.Time(0)
+  breakMinutes     Int               @default(0)
+  shiftType        ShiftType
+  googleEventId    String?
+  googleSyncStatus String            @default("PENDING")
+  googleSyncError  String?
+  googleSyncedAt   DateTime?
+  createdAt        DateTime          @default(now())
+  workplace        Workplace         @relation(fields: [workplaceId], references: [id], onDelete: Cascade)
+  lessonRange      ShiftLessonRange?
 
   @@index([workplaceId, date])
 }

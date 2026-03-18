@@ -44,6 +44,9 @@ function createShift(
     breakMinutes: 60,
     shiftType: "NORMAL",
     googleEventId: null,
+    googleSyncStatus: "PENDING",
+    googleSyncError: null,
+    googleSyncedAt: null,
     createdAt: date("2026-03-20"),
   };
 
