@@ -219,6 +219,8 @@ describe("shift flow integration", () => {
             endTime: "1970-01-01T17:00:00.000Z",
             shiftType: "NORMAL",
             estimatedPay: 8000,
+            googleSyncStatus: "SUCCESS",
+            googleSyncError: null,
             workplace: {
               id: "workplace-1",
               name: "勤務先A",
@@ -229,6 +231,7 @@ describe("shift flow integration", () => {
         onCreateShift={jest.fn()}
         onEditShift={jest.fn()}
         onDeleteShift={onDeleteShift}
+        onRetrySync={jest.fn()}
       />,
     );
 

@@ -131,6 +131,26 @@ export default function CalendarPage() {
           await reload();
           setSuccessMessage("シフトを削除しました。");
         }}
+        onRetrySync={async (shiftId) => {
+          const response = await fetch(`/api/shifts/${shiftId}/retry-sync`, {
+            method: "POST",
+          });
+
+          if (response.ok === false) {
+            const payload = (await response.json()) as {
+              error?: string;
+              details?: { detail?: string };
+            };
+            throw new Error(
+              payload.details?.detail ??
+                payload.error ??
+                "Google Calendar への再同期に失敗しました",
+            );
+          }
+
+          await reload();
+          setSuccessMessage("Google Calendar へ再同期しました。");
+        }}
       />
     </section>
   );

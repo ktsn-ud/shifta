@@ -26,6 +26,8 @@ type ShiftListModalShift = {
   startTime: string;
   endTime: string;
   shiftType: "NORMAL" | "LESSON" | "OTHER";
+  googleSyncStatus: "PENDING" | "SUCCESS" | "FAILED";
+  googleSyncError: string | null;
   estimatedPay: number | null;
   workplace: {
     id: string;
@@ -42,6 +44,7 @@ type ShiftListModalProps = {
   onCreateShift: (date: Date) => void;
   onEditShift: (shiftId: string) => void;
   onDeleteShift: (shiftId: string) => Promise<void> | void;
+  onRetrySync: (shiftId: string) => Promise<void> | void;
 };
 
 function formatDate(date: Date): string {
@@ -85,6 +88,19 @@ function formatShiftLabel(shift: ShiftListModalShift): string {
   return `${formatTime(shift.startTime)} - ${formatTime(shift.endTime)} ${shift.workplace.name}`;
 }
 
+function formatSyncStatus(status: ShiftListModalShift["googleSyncStatus"]): {
+  label: string;
+  variant: "secondary" | "destructive";
+} {
+  if (status === "FAILED") {
+    return { label: "失敗", variant: "destructive" };
+  }
+  if (status === "SUCCESS") {
+    return { label: "成功", variant: "secondary" };
+  }
+  return { label: "同期中", variant: "secondary" };
+}
+
 export function ShiftListModal({
   open,
   onOpenChange,
@@ -93,10 +109,13 @@ export function ShiftListModal({
   onCreateShift,
   onEditShift,
   onDeleteShift,
+  onRetrySync,
 }: ShiftListModalProps) {
   const [deleteTarget, setDeleteTarget] = useState<ShiftListModalShift | null>(
     null,
   );
+  const [retryingShiftId, setRetryingShiftId] = useState<string | null>(null);
+  const [retryError, setRetryError] = useState<string | null>(null);
 
   const sortedShifts = useMemo(() => {
     return [...shifts].sort((left, right) =>
@@ -129,13 +148,14 @@ export function ShiftListModal({
                 <TableHead>勤務先</TableHead>
                 <TableHead>種別</TableHead>
                 <TableHead>給与予想</TableHead>
+                <TableHead>同期</TableHead>
                 <TableHead className="w-32 text-right">操作</TableHead>
               </TableRow>
             </TableHeader>
             <TableBody>
               {sortedShifts.length === 0 ? (
                 <TableRow>
-                  <TableCell colSpan={5} className="py-6 text-center">
+                  <TableCell colSpan={6} className="py-6 text-center">
                     この日のシフトは未登録です。
                   </TableCell>
                 </TableRow>
@@ -177,7 +197,50 @@ export function ShiftListModal({
                       {formatEstimatedPay(shift.estimatedPay)}
                     </TableCell>
                     <TableCell>
+                      <div className="space-y-1">
+                        <Badge
+                          variant={
+                            formatSyncStatus(shift.googleSyncStatus).variant
+                          }
+                        >
+                          {formatSyncStatus(shift.googleSyncStatus).label}
+                        </Badge>
+                        {shift.googleSyncStatus === "FAILED" ? (
+                          <p className="text-xs text-destructive">
+                            {shift.googleSyncError ??
+                              "Google Calendar への同期に失敗しました"}
+                          </p>
+                        ) : null}
+                      </div>
+                    </TableCell>
+                    <TableCell>
                       <div className="flex justify-end gap-2">
+                        {shift.googleSyncStatus === "FAILED" ? (
+                          <Button
+                            type="button"
+                            variant="outline"
+                            size="sm"
+                            onClick={async (event) => {
+                              event.stopPropagation();
+                              setRetryError(null);
+                              setRetryingShiftId(shift.id);
+                              try {
+                                await onRetrySync(shift.id);
+                              } catch {
+                                setRetryError(
+                                  "Google Calendar への再同期に失敗しました",
+                                );
+                              } finally {
+                                setRetryingShiftId(null);
+                              }
+                            }}
+                            disabled={retryingShiftId === shift.id}
+                          >
+                            {retryingShiftId === shift.id
+                              ? "再試行中..."
+                              : "再試行"}
+                          </Button>
+                        ) : null}
                         <Button
                           type="button"
                           variant="outline"
@@ -209,6 +272,12 @@ export function ShiftListModal({
               )}
             </TableBody>
           </Table>
+
+          {retryError ? (
+            <p className="rounded-md border border-destructive/40 bg-destructive/5 px-3 py-2 text-sm text-destructive">
+              {retryError}
+            </p>
+          ) : null}
         </DialogContent>
       </Dialog>
 

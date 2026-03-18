@@ -15,6 +15,9 @@ type MonthShift = {
   endTime: string;
   breakMinutes: number;
   shiftType: "NORMAL" | "LESSON" | "OTHER";
+  googleSyncStatus: "PENDING" | "SUCCESS" | "FAILED";
+  googleSyncError: string | null;
+  googleSyncedAt: string | null;
   workedMinutes: number;
   estimatedPay: number | null;
   workplace: {
