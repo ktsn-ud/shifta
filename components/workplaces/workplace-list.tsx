@@ -287,13 +287,19 @@ export function WorkplaceList() {
                               給与ルール
                             </Link>
                           </Button>
-                          <Button asChild size="sm" variant="outline">
-                            <Link
-                              href={`/my/workplaces/${workplace.id}/timetables`}
-                            >
+                          {workplace.type === "CRAM_SCHOOL" ? (
+                            <Button asChild size="sm" variant="outline">
+                              <Link
+                                href={`/my/workplaces/${workplace.id}/timetables`}
+                              >
+                                時間割
+                              </Link>
+                            </Button>
+                          ) : (
+                            <Button size="sm" variant="outline" disabled>
                               時間割
-                            </Link>
-                          </Button>
+                            </Button>
+                          )}
                           <Button
                             size="sm"
                             variant="destructive"
