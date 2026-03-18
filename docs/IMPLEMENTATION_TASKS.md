@@ -72,6 +72,8 @@
 
 ### Phase 10: Google Calendar連携 (External Integration)
 
+- T10-P: Prisma スキーマ更新（Google Calendar関連フィールド）
+- T10-0: SCR_015 カレンダー初期化UI実装（新規/未登録ユーザー向け）
 - T10-1: Google Calendar API クライアント実装
 - T10-2: イベント作成・更新・削除ロジック実装
 - T10-3: 同期ステータス管理
@@ -960,74 +962,450 @@
 
 ## **Phase 10: Google Calendar連携 (External Integration)**
 
+### **Google Calendar 統合の全体方針**
+
+**基本戦略**:
+
+1. **一ユーザー＝一カレンダー**: Shifta 専用カレンダーをユーザーごとに作成
+   - Google Calendar API で新規カレンダーを作成
+   - User.calendarId に保存
+2. **イベント名**: 勤務先名（Workplace.name）を使用
+   - 例: 「店舗A」「塾B」
+3. **データの正**: アプリDB（Shift レコード）が正
+   - Google Calendar は表示・同期用途のみ
+   - Google Calendar で編集されたイベントは逆同期しない
+4. **スコープ**: `https://www.googleapis.com/auth/calendar.app.created`
+   - 既知のサードパーティアプリケーション向けスコープ
+   - セキュリティ: ユーザーの他カレンダーには未アクセス
+
+### **Google Calendar 初期化フロー**
+
+```
+新規ユーザー / 既存未登録ユーザー:
+1. ログイン → NextAuth で Google OAuth 認証
+2. ユーザープロフィール初期化画面へ
+3. 「Shifta カレンダーを設定する」ボタン
+4. Google Calendar API で 専用カレンダーを作成
+5. Prisma User に calendarId を保存
+6. ダッシュボードへ（T5-2）
+
+既存登録済みユーザー:
+- User.calendarId が存在 → シフト登録時に自動的に Google Calendar へ同期
+```
+
+---
+
+### **T10-P: Prisma スキーマ更新（Google Calendar関連フィールド）**
+
+**概要**: Google Calendar 統合に必要な Prisma スキーマを更新。User と Shift モデルに新フィールドを追加し、マイグレーションを作成。
+
+**実装対象**:
+
+- `prisma/schema.prisma` - User と Shift モデルを更新
+- 新マイグレーション作成
+
+**User モデルへの追加フィールド**:
+
+```prisma
+model User {
+  // ... 既存フィールド ...
+
+  // Google Calendar 関連
+  calendarId String? // Shifta 専用カレンダーID（初期化後に設定）
+  googleTokenExpiresAt DateTime? // Google アクセストークン有効期限
+
+  // 関連
+  shifts Shift[]
+}
+```
+
+**Shift モデルへの追加フィールド**:
+
+```prisma
+model Shift {
+  // ... 既存フィールド ...
+
+  // Google Calendar 同期関連
+  googleEventId String? // Google Calendar イベントID
+  googleSyncStatus String @default("PENDING") // PENDING | SUCCESS | FAILED
+  googleSyncError String? // 同期エラー時のエラーメッセージ
+  googleSyncedAt DateTime? // 最後の同期タイムスタンプ
+
+  // ... 既存フィールド ...
+}
+```
+
+**Shift メモ**:
+
+- googleEventId: Google Calendar 上のイベント ID（成功時のみ設定）
+- googleSyncStatus: 同期ステータス
+  - PENDING: 初期状態、同期処理中
+  - SUCCESS: Google Calendar への同期成功
+  - FAILED: 同期失敗（エラーメッセージを googleSyncError に記録）
+- googleSyncedAt: 最後の同期試行時刻（成功・失敗を問わず更新）
+
+**実装手順**:
+
+1. `prisma/schema.prisma` を編集
+   - User に 2 フィールド追加
+   - Shift に 4 フィールド追加
+2. `prisma generate` でクライアント再生成
+3. `prisma migrate dev --name add_google_calendar_fields` で新マイグレーション作成
+4. Neon でマイグレーション実行確認
+5. TypeScript 型定義ファイルが更新されることを確認（`@prisma/client` 型参照 OK）
+
+**バージョン管理**:
+
+- `prisma/migrations/<timestamp>_add_google_calendar_fields/migration.sql` が生成される
+- Git に commit する
+
+**DONE条件**:
+
+- prisma generate が成功（型エラーなし）
+- 新マイグレーション SQL が作成
+- Neon でテーブル構造確認
+- 既存 User/Shift レコードが破損しないこと確認
+
+**参照**: DESIGN_SPECIFICATION.md - 7. 外部連携
+
+---
+
+### **Google Calendar 初期化フロー**
+
+```
+新規ユーザー / 既存未登録ユーザー:
+1. ログイン → NextAuth で Google OAuth 認証
+2. ユーザープロフィール初期化画面へ
+3. 「Shifta カレンダーを設定する」ボタン
+4. Google Calendar API で 専用カレンダーを作成
+5. Prisma User に calendarId を保存
+6. ダッシュボードへ（T5-2）
+
+既存登録済みユーザー:
+- User.calendarId が存在 → シフト登録時に自動的に Google Calendar へ同期
+```
+
+---
+
+### **T10-0: SCR_015 カレンダー初期化UI実装（新規ユーザー向け）**
+
+**概要**: ユーザーログイン直後、Shifta 専用カレンダーを初期化する画面。新規ユーザーおよび既存ユーザーでカレンダー未登録の場合が対象。
+
+**実装対象**:
+
+- `app/my/calendar-setup/page.tsx` - カレンダー初期化画面
+- `app/api/calendar/initialize` - カレンダー作成API
+- ミドルウェア: User.calendarId なしの場合、このページへリダイレクト
+
+**UI フロー**:
+
+1. **タイトル**: 「Shifta カレンダーを設定しましょう」
+2. **説明文**:
+   - 「シフト情報を Google Calendar と同期するための専用カレンダーを作成します。」
+   - 「ログイン中の Google アカウント（メールアドレス）に統合されます。」
+3. **ボタン**:
+   - 「Google Calendar で設定する」（CTA）
+   - 「スキップ」（非推奨だが可能）
+
+**APIロジック** (`POST /api/calendar/initialize`):
+
+1. 認証確認（session から userId 取得）
+2. User に calendarId がすでに存在 → 409 Conflict（既に設定済み）
+3. Google Calendar API で新規カレンダー作成：
+   ```json
+   {
+     "summary": "Shifta シフト",
+     "description": "Shifta で管理するシフト・給与情報",
+     "timeZone": "Asia/Tokyo",
+     "visibility": "private"
+   }
+   ```
+4. 返却の calendarId を Prisma User に保存
+5. googleTokenExpiresAt があれば更新（NextAuth から取得）
+6. レスポンス: `{ calendarId: "...", success: true }`
+7. フロント: `/my` へリダイレクト（ダッシュボード）
+
+**エラーハンドリング**:
+
+- Google API 呼び出し失敗 → 500 + エラーメッセージ表示
+- トークン期限切れ → 認証画面へ誘導
+
+**DONE条件**:
+
+- カレンダー初期化UI表示
+- API 呼び出し成功 → User に calendarId 保存
+- ダッシュボードへ遷移
+- 既に登録済みの場合は 409 返却
+
+**参照**: DESIGN_SPECIFICATION.md - 7. 外部連携
+
+---
+
 ### **T10-1: Google Calendar API クライアント実装**
 
-**概要**: Google Calendar API のクライアントセットアップ。
+**概要**: Google Calendar API のクライアントセットアップ。公式 `googleapis` ライブラリを使用し、NextAuth.js + Prisma と統合。
 
 **実装対象**:
 
 - `lib/google-calendar/client.ts` - Google Calendar API クライアント
-- OAuth 2.0 フロー
+- 関数: `getCalendarClient(session: Session): calendar_v3.Calendar`
+- 関数: `createShiftaCalendar(auth: any): Promise<string>`（calendarId 返却）
+- `lib/google-calendar/auth.ts` - トークン管理
 
 **要件**:
 
-- NextAuth.js で Google OAuth 連携
-- Access Token 管理（Prisma Session で保存）
-- API呼び出しヘルパー関数
+1. **認証フロー**:
+   - NextAuth.js で Google OAuth との連携（既存）
+   - Access Token / Refresh Token を Prisma Session に保存
+   - トークン有効期限チェック & 自動リフレッシュ
+
+2. **スコープ管理**:
+   - `https://www.googleapis.com/auth/calendar.app.created`
+   - `googleapis` パッケージから `google.calendar()` で v3 API へアクセス
+   - `.env.local` に CLIENT_ID / CLIENT_SECRET を記載
+
+3. **カレンダー作成** (`createShiftaCalendar`):
+
+   ```typescript
+   async function createShiftaCalendar(auth: any): Promise<string> {
+     const calendar = google.calendar({ version: "v3", auth });
+     const response = await calendar.calendars.insert({
+       requestBody: {
+         summary: "Shifta シフト",
+         description: "Shifta で管理するシフト・給与情報",
+         timeZone: "Asia/Tokyo",
+         visibility: "private",
+       },
+     });
+     return response.data.id!; // calendarId
+   }
+   ```
+
+4. **トークン管理**:
+   - NextAuth の account object から accessToken, expiresAt を取得
+   - User に googleTokenExpiresAt を保存
+   - トークン期限切れ時は Refresh Token で更新（NextAuth が自動処理）
+
+**エラーハンドリング**:
+
+- 401 Unauthorized → セッション無効（再ログイン）
+- 403 Forbidden → スコープ不足
+- 500 API エラー → ログ記録、ユーザーへ通知
 
 **DONE条件**:
 
 - Google Calendar API へのアクセスが可能
-- トークン管理が機能
+- createShiftaCalendar で新規カレンダー作成・calendarId 返却
+- トークン管理が機能（期限チェック・リフレッシュ）
+- エラーログ記録
+
+**参照ドキュメント**:
+
+- https://googleapis.dev/nodejs/googleapis/latest/calendar/
+- DESIGN_SPECIFICATION.md - 7. 外部連携
 
 ---
 
 ### **T10-2: イベント作成・更新・削除ロジック実装**
 
-**概要**: Shift ↔ Google Calendar イベント同期ロジック。
+**概要**: Shift ↔ Google Calendar イベント同期ロジック。データの正はアプリDB。イベント名は勤務先名を使用。
 
 **実装対象**:
 
 - `lib/google-calendar/syncEvent.ts`
-- 関数: `createCalendarEvent(shift: Shift, gmailUser: string): Promise<string>`（googleEventId 返却）
-- 関数: `updateCalendarEvent(googleEventId: string, shift: Shift): Promise<void>`
-- 関数: `deleteCalendarEvent(googleEventId: string): Promise<void>`
+- 関数: `createCalendarEvent(shift: Shift, workplace: Workplace, user: User, session: Session): Promise<string>`（googleEventId 返却）
+- 関数: `updateCalendarEvent(shift: Shift, workplace: Workplace, user: User, session: Session): Promise<void>`
+- 関数: `deleteCalendarEvent(googleEventId: string, user: User, session: Session): Promise<void>`
 
-**イベント属性** (DESIGN_SPECIFICATION.md - 7.3参照):
+**イベント属性仕様**:
 
-- title: `[LESSON] 塾B` or `[OTHER] コンビニA` など
-- start: ISO 8601 形式
-- end: ISO 8601 形式
-- color: 勤務先.color → Google Calendar colorId に変換
-- extendedProperties: workplaceId などメタデータ
+1. **title（イベント名）**: 勤務先名
+   - 例: 「店舗A」「塾B」「コンビニC」
+
+2. **start / end**: ISO 8601 形式
+   - 例: `2026-03-20T10:00:00+09:00`
+   - タイムゾーン: Asia/Tokyo
+   - 日跨ぎシフト対応：endTime が翌日の場合
+
+3. **description**: シフト情報の詳細
+
+   ```
+   勤務先: 店舗A
+   時間: 10:00 - 18:00 (休憩60分)
+   タイプ: NORMAL
+   給与：7,700円（予想）
+   ```
+
+4. **color**: 勤務先.color → Google Calendar colorId への変換
+   - 対応表（例）:
+     - #FF0000 (赤) → colorId "1"
+     - #4285F4 (青) → colorId "2"
+     - #EA4335 (オレンジ) → colorId "17"
+     - (完全なマッピングは実装時に Google Calendar API ドキュメント確認)
+
+5. **extendedProperties**: メタデータ
+
+   ```json
+   {
+     "shiftId": "...",
+     "workplaceId": "...",
+     "shiftType": "NORMAL",
+     "workplaceName": "店舗A"
+   }
+   ```
+
+6. **visibility**: "private" - ユーザー自身のみ表示
+
+7. **availability**: "busy" - スケジュール上は「予定あり」
+
+**実装ロジック**:
+
+#### createCalendarEvent
+
+```typescript
+async function createCalendarEvent(
+  shift: Shift,
+  workplace: Workplace,
+  user: User,
+  session: Session,
+): Promise<string> {
+  // 1. calendarId の確認
+  if (!user.calendarId) throw new Error("Calendar not initialized");
+
+  // 2. Google Calendar クライアント取得
+  const calendar = getCalendarClient(session);
+
+  // 3. 給与予想を計算（T7-1/T7-2）
+  const wage = await calculateShiftWage(shift, payrollRule);
+
+  // 4. イベント本体を構築
+  const event = {
+    summary: workplace.name,
+    start: { dateTime: shift.startTime, timeZone: "Asia/Tokyo" },
+    end: { dateTime: shift.endTime, timeZone: "Asia/Tokyo" },
+    colorId: mapColorToColorId(workplace.color),
+    description: `...(上記フォーマット)...`,
+    visibility: "private",
+    availability: "busy",
+    extendedProperties: {
+      private: {
+        shiftId: shift.id,
+        workplaceId: workplace.id,
+        shiftType: shift.shiftType,
+      },
+    },
+  };
+
+  // 5. Google Calendar に作成
+  const response = await calendar.events.insert({
+    calendarId: user.calendarId,
+    requestBody: event,
+  });
+
+  // 6. googleEventId 返却
+  return response.data.id!;
+}
+```
+
+#### updateCalendarEvent / deleteCalendarEvent
+
+- 同様に user.calendarId と googleEventId を使用
+- 更新時：既存イベントを patch で更新
+- 削除時：イベント削除（Shift DB 削除時に呼び出し）
+
+**エラーハンドリング**:
+
+- calendarId なし → 初期化画面へリダイレクト（フロント）
+- トークン期限切れ → 自動リフレッシュ（NextAuth） or 再認証
+- API 404 → イベント削除済み（DB 上は保持、syncStatus = FAILED）
+- API 500 → ログ記録、syncStatus = FAILED、ユーザーへ通知
 
 **DONE条件**:
 
 - イベント作成・更新・削除が動作
-- Google Calendar で確認可能
+- Google Calendar で勤務先名のイベントが表示
+- カラー・説明・メタデータが正確に保存
+- エラー時も Shift DB に googleSyncStatus 記録
 
 ---
 
 ### **T10-3: 同期ステータス管理**
 
-**概要**: Google Calendar 同期失敗時の処理。
+**概要**: Google Calendar 同期の成功・失敗を追跡し、ユーザーへのレポートとリトライ対象管理を実現。
 
 **実装対象**:
 
-- Shift に `googleSyncStatus` フィールド（SUCCESS, FAILED, PENDING）
-- エラーメッセージ保存
+- Shift に以下フィールドを追加（T1-4で追加予定）:
+  - `googleSyncStatus` (enum: PENDING | SUCCESS | FAILED, default: PENDING)
+  - `googleSyncError` (String?) - エラーメッセージ（FAILED時のみ）
+  - `googleSyncedAt` (DateTime?) - 最後の同期タイムスタンプ
+- `lib/google-calendar/syncStatus.ts` - ステータス管理関数
+- API: `GET /api/shifts/:id/sync-status` - 単一シフトの同期ステータス確認
 
-**エラーハンドリング**:
+**同期フロー**:
 
-- API エラー → ステータス = FAILED
-- ログ記録、ユーザーへの通知（オプション）
-- リトライロジック（将来）
+1. **シフト作成時**:
+   - DB保存時点で googleSyncStatus = PENDING
+   - 非同期で Google Calendar へ作成開始
+   - 成功 → PENDING → SUCCESS + googleEventId 保存
+   - 失敗 → PENDING → FAILED + googleSyncError 保存
+
+2. **シフト更新時**:
+   - googleEventId があれば patch で更新
+   - なければ新規作成（失敗した元イベント作成をリトライ）
+   - ステータス更新：SUCCESS → SUCCESS or FAILED
+
+3. **シフト削除時**:
+   - googleEventId があれば削除実行
+   - 削除失敗でも Shift DB からは削除（ゴミ掃除は後で）
+   - ステータス記録：最後の状態を保持（監査用）
+
+**エラーハンドリング詳細**:
+
+| エラー           | 原因                                 | googleSyncError の内容                      | 対応                       |
+| ---------------- | ------------------------------------ | ------------------------------------------- | -------------------------- |
+| 401 Unauthorized | トークン期限切れ or スコープ不足     | "Google auth failed: 401"                   | 再認証画面へ誘導           |
+| 403 Forbidden    | スコープ不足                         | "Insufficient permissions"                  | 管理者へ報告               |
+| 404 Not Found    | カレンダー削除済み（calendarId無効） | "Calendar not found"                        | 初期化画面へ誘導           |
+| 409 Conflict     | 同じ googleEventId が既に存在する    | "Event conflict: ..."                       | イベント取得 & 更新        |
+| 500+ API Error   | Google API 一時的エラー              | "Google API error: 503 Service Unavailable" | ログ記録、ユーザーへ通知   |
+| Network Timeout  | ネットワーク障害                     | "Request timeout"                           | リトライキュー登録（全体） |
+
+**ユーザーへの通知**:
+
+- UI で FAILED ステータスを表示：
+  - シフト一覧で「⚠️ Google Calendar への同期に失敗しました」
+  - エラーメッセージの詳細表示（オプション）
+  - 「再試行」ボタン → API: `POST /api/shifts/:id/retry-sync`
+
+**リトライロジック**:
+
+- 手動リトライ: ユーザーがボタンクリック → API 呼び出し
+- 自動リトライ（将来）: バッチジョブで FAILED ステータスを定期的に再実行
+
+**ログ記録**:
+
+- 全同期試行を JSON ログに記録：
+  ```json
+  {
+    "timestamp": "2026-03-20T15:30:00Z",
+    "userId": "...",
+    "shiftId": "...",
+    "action": "create",
+    "status": "SUCCESS",
+    "googleEventId": "abc123",
+    "duration_ms": 234
+  }
+  ```
 
 **DONE条件**:
 
-- 同期失敗時も DB 保存
-- ステータス表示
-- エラーログ記録
+- googleSyncStatus / googleSyncError フィールド機能
+- 作成・更新・削除時にステータス記録
+- UI で FAILED ステータス表示
+- 手動リトライボタン機能
+- エラーログ記録（JSON 形式）
+- 認可エラー時の再認証フロー
 
 ---
 
@@ -1188,7 +1566,7 @@
 
 ### **T12-3: エラーハンドリング・ユーザーメッセージ改善**
 
-**概要**: エラーメッセージの充実、エッジケース対応。
+**概要**: エラーメッセージの充実、エッジケース対応。全操作成功・失敗時にトーストメッセージで通知。
 
 **実装対象**:
 
@@ -1196,11 +1574,193 @@
 - ネットワークエラー → ユーザーへの通知
 - Google Calendar 同期失敗 →ユーザーへの通知
 - タイムアウトエラーハンドリング
+- **トーストメッセージシステム**: shadcn/ui `sonner` を使用した success/error/warning 通知
+
+**トーストメッセージ実装仕様**:
+
+1. **基本設定** (`components/ui/sonner.tsx`)：
+   - shadcn/ui の Sonner ライブラリを使用
+   - ルートレイアウト（`app/layout.tsx`）に `<Toaster />` を埋め込み
+
+2. **成功時メッセージ**:
+
+   ```typescript
+   import { toast } from "sonner";
+
+   // シフト作成成功
+   toast.success("シフトを登録しました", {
+     description: "2026年3月20日 10:00 - 18:00",
+   });
+
+   // カレンダー初期化成功
+   toast.success("Google Calendar を設定しました", {
+     description: "これからシフト情報が同期されます",
+   });
+
+   // 勤務先作成成功
+   toast.success("勤務先を追加しました", {
+     description: "店舗A",
+   });
+   ```
+
+3. **エラーメッセージ** (toast.error):
+
+   ```typescript
+   // バリデーションエラー
+   toast.error("入力エラーがあります", {
+     description: "開始時刻は終了時刻より前である必要があります",
+   });
+
+   // ネットワークエラー
+   toast.error("通信エラーが発生しました", {
+     description: "インターネット接続を確認し、しばらく後に再度お試しください",
+   });
+
+   // Google Calendar 同期失敗
+   toast.error("Google Calendar への同期に失敗しました", {
+     description: "しばらく後に「再試行」ボタンから再度お試しください。",
+   });
+
+   // タイムアウト
+   toast.error("リクエストがタイムアウトしました", {
+     description: "インターネット接続または サーバーの状態を確認してください",
+   });
+   ```
+
+4. **警告メッセージ** (toast.warning):
+
+   ```typescript
+   // 同日の重複シフト警告
+   toast.warning("同じ日に複数のシフトがあります", {
+     description: "14:00 - 18:00 のシフトと時間が重複しています",
+   });
+
+   // Google Calendar トークン期限切れ近い
+   toast.warning("Google Calendar の再認証が必要です", {
+     description: "「設定」から再度セットアップしてください",
+   });
+   ```
+
+5. **ローディング状態メッセージ**:
+
+   ```typescript
+   // 成功前のローディング表示
+   const toastId = toast.loading("シフトを登録中...");
+
+   // 完了後に置き換え
+   setTimeout(() => {
+     toast.success("シフトを登録しました", { id: toastId });
+   }, 1000);
+   ```
+
+**トーストメッセージの配置・スタイル**:
+
+- **位置**: トップライト（デフォルト）
+- **自動消去**: 成功 = 4 秒、エラー = 6 秒
+- **トーンオブボイス**: 敬体（です・ます）、促進的（前向き）
+
+**実装対象ファイル**:
+
+- `components/ui/sonner.tsx` - 既存（shadcn init で作成済み、確認）
+- `app/layout.tsx` - `<Toaster />` 埋め込み確認
+- `app/api/**/route.ts` - API エラーハンドリング時にトースト返却
+- `app/my/**/page.tsx` - フロント側のフォーム送信時にトースト表示
+- `lib/utils.ts` - ユーティリティ関数（トーストメッセージ定型文）
+
+**エラーハンドリングパターン**:
+
+#### API 側（例：Shift 作成）:
+
+```typescript
+// app/api/shifts/route.ts
+export async function POST(req: Request) {
+  try {
+    // ... シフト作成処理 ...
+    return Response.json({
+      success: true,
+      message: "シフトを登録しました",
+    });
+  } catch (error) {
+    if (error instanceof ValidationError) {
+      return Response.json(
+        {
+          success: false,
+          message: "バリデーションエラー",
+          details: error.details,
+        },
+        { status: 400 },
+      );
+    }
+    // ... その他エラー ...
+  }
+}
+```
+
+#### フロント側（例：Shift 作成フォーム）:
+
+```typescript
+// app/my/shifts/new/page.tsx
+async function onSubmit(data: ShiftFormData) {
+  try {
+    const response = await fetch("/api/shifts", {
+      method: "POST",
+      body: JSON.stringify(data),
+    });
+
+    if (!response.ok) {
+      const error = await response.json();
+      toast.error(error.message, {
+        description: error.details?.[0],
+      });
+      return;
+    }
+
+    const result = await response.json();
+    toast.success(result.message, {
+      description: `${data.date} ${data.startTime} - ${data.endTime}`,
+    });
+
+    // ナビゲーション
+    router.push("/my/calendar");
+  } catch (err) {
+    toast.error("通信エラーが発生しました");
+  }
+}
+```
+
+**メッセージ定型文辞書** (`lib/messages.ts`):
+
+```typescript
+export const messages = {
+  success: {
+    shiftCreated: (date: string, time: string) =>
+      `シフトを登録しました - ${date} ${time}`,
+    shiftUpdated: "シフトを更新しました",
+    shiftDeleted: "シフトを削除しました",
+    calendarInitialized: "Google Calendar を設定しました",
+    workplaceCreated: "スタッフ先を追加しました",
+  },
+  error: {
+    validationError: "入力エラーがあります",
+    networkError: "通信エラーが発生しました",
+    googleCalendarSyncFailed: "Google Calendar への同期に失敗しました",
+    timeoutError: "リクエストがタイムアウトしました",
+  },
+  warning: {
+    shiftOverlap: "同じ日に複数のシフトがあります",
+    googleTokenExpiringSoon: "Google Calendar の再認証が必要です",
+  },
+};
+```
 
 **DONE条件**:
 
-- すべてのエラーケースでユーザーに適切な日本語メッセージ表示
-- ユーザーが次のアクションを知っている
+- `<Toaster />` がルートレイアウトに埋め込まれている
+- 全操作（作成・更新・削除）成功時に success トースト表示
+- エラー発生時に error/warning トースト表示
+- トーストメッセージがすべて日本語かつ明確
+- メッセージ定型文が統一管理されている
+- ローディング・エラー・成功のトーン が一貫
 
 ---
 
@@ -1279,15 +1839,17 @@ Phase 9 (設定管理) ← Phase 3, 4 に依存
 ├─ T9-2: 給与ルール管理 ← T3-3 に依存
 └─ T9-3: 塾時間割管理 ← T3-4 に依存
 
-Phase 10 (Google Calendar) ← Phase 6 に依存
-├─ T10-1: Google Calendar API クライアント
-├─ T10-2: イベント同期ロジック
-└─ T10-3: 同期ステータス
+Phase 10 (Google Calendar) ← Phase 2, 3 に依存
+├─ T10-P: Prisma スキーマ更新 ← すべての T10 タスクの前提
+├─ T10-0: カレンダー初期化UI ← T10-P に依存
+├─ T10-1: Google Calendar API クライアント ← T10-P, T10-0 に依存
+├─ T10-2: イベント同期ロジック ← T10-1 に依存
+└─ T10-3: 同期ステータス ← T10-2 に依存
 
 Phase 11 (一括登録) ← Phase 6, 7, 10 に依存
-├─ T11-1: 一括登録UI
-├─ T11-2: 一括登録API
-└─ T11-3: E2Eテスト
+├─ T11-1: 一括登録UI ← T6-1, T6-2, T6-3 に依存
+├─ T11-2: 一括登録API ← T3-5, T10-3 に依存
+└─ T11-3: E2Eテスト ← T11-1, T11-2 に依存
 
 Phase 12 (統合) ← 全 Phase に依存
 ├─ T12-1: E2Eテスト
@@ -1311,7 +1873,7 @@ Phase 12 (統合) ← 全 Phase に依存
 7. **Phase 7** (ビジネスロジック): T7-1, T7-2, T7-3, T7-4 - **計算エンジン**
 8. **Phase 8** (給与集計): T8-1, T8-2, T8-3 - **レポート**
 9. **Phase 9** (設定管理): T9-1, T9-2, T9-3 - **管理画面**
-10. **Phase 10** (Google Calendar): T10-1, T10-2, T10-3 - **外部連携**
+10. **Phase 10** (Google Calendar): T10-P, T10-0, T10-1, T10-2, T10-3 - **Prisma更新・外部連携・初期化**
 11. **Phase 11** (一括登録): T11-1, T11-2, T11-3 - **高度な機能**
 12. **Phase 12** (統合): T12-1, T12-2, T12-3, T12-4 - **完成化**
 
