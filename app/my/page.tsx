@@ -2,6 +2,7 @@
 
 import { useMemo, useState } from "react";
 import { useRouter } from "next/navigation";
+import { toast } from "sonner";
 import { MonthCalendar } from "@/components/calendar/MonthCalendar";
 import { ShiftListModal } from "@/components/calendar/ShiftListModal";
 import { Button } from "@/components/ui/button";
@@ -19,6 +20,7 @@ import {
   toDateKey,
 } from "@/lib/calendar/date";
 import { summarizeShifts, useMonthShifts } from "@/hooks/use-month-shifts";
+import { messages } from "@/lib/messages";
 
 function formatCurrency(value: number): string {
   return new Intl.NumberFormat("ja-JP", {
@@ -158,6 +160,7 @@ export default function Page() {
           }
 
           await reload();
+          toast.success(messages.success.shiftDeleted);
         }}
         onRetrySync={async (shiftId) => {
           const response = await fetch(`/api/shifts/${shiftId}/retry-sync`, {
@@ -178,6 +181,7 @@ export default function Page() {
           }
 
           await reload();
+          toast.success(messages.success.calendarSyncRetried);
         }}
       />
     </section>

@@ -3,6 +3,7 @@
 import { useEffect, useMemo, useState } from "react";
 import { useRouter } from "next/navigation";
 import { ChevronLeftIcon, ChevronRightIcon, Trash2Icon } from "lucide-react";
+import { toast } from "sonner";
 import { z } from "zod";
 import { FormErrorMessage } from "@/components/form/form-error-message";
 import { Button } from "@/components/ui/button";
@@ -31,6 +32,7 @@ import {
   formatMonthLabel,
   toDateKey,
 } from "@/lib/calendar/date";
+import { messages, toErrorMessage } from "@/lib/messages";
 import { cn } from "@/lib/utils";
 
 const LAST_WORKPLACE_ID_KEY = "shifta:last-workplace-id";
@@ -780,11 +782,22 @@ export function BulkShiftForm() {
 
     if (!validated.success) {
       setErrors(validated.errors);
+      const firstRowError = Object.values(validated.errors.rows ?? {})
+        .flatMap((rowError) => Object.values(rowError))
+        .find((message): message is string => Boolean(message));
+      toast.error(messages.error.validation, {
+        description:
+          firstRowError ??
+          validated.errors.workplaceId ??
+          validated.errors.selectedDates,
+        duration: 6000,
+      });
       return;
     }
 
     setIsSubmitting(true);
     setErrors({});
+    const loadingToastId = toast.loading("シフトを一括登録中です...");
 
     try {
       const response = await fetch("/api/shifts/bulk", {
@@ -804,15 +817,27 @@ export function BulkShiftForm() {
         );
       }
 
+      const payload = (await response.json()) as {
+        summary?: {
+          total?: number;
+        };
+      };
+      const createdCount = payload.summary?.total ?? validated.payload.length;
+      toast.success(messages.success.shiftsBulkCreated(createdCount), {
+        id: loadingToastId,
+      });
       router.push("/my/calendar");
       router.refresh();
     } catch (error) {
       console.error("failed to submit bulk shifts", error);
+      const message = toErrorMessage(error, messages.error.bulkShiftSaveFailed);
       setErrors({
-        form:
-          error instanceof Error
-            ? error.message
-            : "シフト一括登録に失敗しました。",
+        form: message,
+      });
+      toast.error(messages.error.bulkShiftSaveFailed, {
+        id: loadingToastId,
+        description: message,
+        duration: 6000,
       });
     } finally {
       setIsSubmitting(false);

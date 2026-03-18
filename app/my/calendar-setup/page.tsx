@@ -2,6 +2,7 @@
 
 import { useState } from "react";
 import { useRouter } from "next/navigation";
+import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
 import {
   Card,
@@ -12,6 +13,7 @@ import {
   CardTitle,
 } from "@/components/ui/card";
 import { CALENDAR_SETUP_SKIP_COOKIE } from "@/lib/google-calendar/constants";
+import { messages } from "@/lib/messages";
 
 export default function CalendarSetupPage() {
   const router = useRouter();
@@ -28,11 +30,15 @@ export default function CalendarSetupPage() {
       });
 
       if (response.ok) {
+        toast.success(messages.success.calendarInitialized, {
+          description: "これからシフト情報が同期されます。",
+        });
         router.replace("/my");
         return;
       }
 
       if (response.status === 409) {
+        toast.warning(messages.warning.calendarAlreadyInitialized);
         router.replace("/my");
         return;
       }
@@ -44,9 +50,17 @@ export default function CalendarSetupPage() {
       setErrorMessage(
         payload.error ?? "Googleカレンダーの初期設定に失敗しました",
       );
+      toast.error(messages.error.calendarInitializeFailed, {
+        description: payload.error ?? "しばらくしてから再度お試しください。",
+        duration: 6000,
+      });
     } catch (error) {
       console.error("calendar initialization failed", error);
       setErrorMessage("Googleカレンダーの初期設定に失敗しました");
+      toast.error(messages.error.calendarInitializeFailed, {
+        description: messages.error.network,
+        duration: 6000,
+      });
     } finally {
       setIsSubmitting(false);
     }

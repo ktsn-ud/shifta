@@ -3,6 +3,7 @@
 import Link from "next/link";
 import { useSearchParams } from "next/navigation";
 import { useEffect, useMemo, useState } from "react";
+import { toast } from "sonner";
 import { z } from "zod";
 import { Button, buttonVariants } from "@/components/ui/button";
 import {
@@ -29,6 +30,7 @@ import {
   TableRow,
 } from "@/components/ui/table";
 import { dateKeyFromApiDate } from "@/lib/calendar/date";
+import { messages, toErrorMessage } from "@/lib/messages";
 
 const workplaceResponseSchema = z.object({
   data: z.object({
@@ -264,13 +266,18 @@ export function PayrollRuleList({ workplaceId }: PayrollRuleListProps) {
       );
       setDeletingRuleId(null);
       setInfoMessage("給与ルールを削除しました。");
+      toast.success(messages.success.payrollRuleDeleted);
     } catch (error) {
       console.error("failed to delete payroll rule", error);
-      setDeleteError(
-        error instanceof Error
-          ? error.message
-          : "給与ルールの削除に失敗しました。",
+      const message = toErrorMessage(
+        error,
+        messages.error.payrollRuleDeleteFailed,
       );
+      setDeleteError(message);
+      toast.error(messages.error.payrollRuleDeleteFailed, {
+        description: message,
+        duration: 6000,
+      });
     } finally {
       setIsDeleting(false);
     }

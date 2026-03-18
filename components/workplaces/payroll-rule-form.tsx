@@ -1,6 +1,7 @@
 "use client";
 import { useEffect, useMemo, useState } from "react";
 import { useRouter } from "next/navigation";
+import { toast } from "sonner";
 import { z } from "zod";
 import { FormErrorMessage } from "@/components/form/form-error-message";
 import { Button } from "@/components/ui/button";
@@ -14,6 +15,7 @@ import {
 import { Input } from "@/components/ui/input";
 import { RadioGroup, RadioGroupItem } from "@/components/ui/radio-group";
 import { dateKeyFromApiDate } from "@/lib/calendar/date";
+import { messages, toErrorMessage } from "@/lib/messages";
 
 const workplaceResponseSchema = z.object({
   data: z.object({
@@ -394,11 +396,20 @@ export function PayrollRuleForm({
     const validationErrors = validate(values, workplaceType);
     if (Object.keys(validationErrors).length > 0) {
       setErrors(validationErrors);
+      const firstValidationMessage = Object.values(validationErrors).find(
+        (value): value is string =>
+          typeof value === "string" && value.length > 0,
+      );
+      toast.error(messages.error.validation, {
+        description: firstValidationMessage,
+        duration: 6000,
+      });
       return;
     }
 
     setIsSubmitting(true);
     setErrors({});
+    const loadingToastId = toast.loading("給与ルールを保存中です...");
 
     const payload = {
       startDate: values.startDate,
@@ -454,6 +465,11 @@ export function PayrollRuleForm({
           ...parsedError.fieldErrors,
           form: parsedError.message,
         }));
+        toast.error(messages.error.payrollRuleSaveFailed, {
+          id: loadingToastId,
+          description: parsedError.message,
+          duration: 6000,
+        });
         return;
       }
 
@@ -466,21 +482,37 @@ export function PayrollRuleForm({
           : null;
 
       if (warningMessage) {
-        const params = new URLSearchParams({ warning: warningMessage });
-        router.push(`${listHref}?${params.toString()}`);
+        toast.warning(messages.warning.payrollRuleOverlap, {
+          id: loadingToastId,
+          description: warningMessage,
+          duration: 6000,
+        });
+        router.push(listHref);
       } else {
+        toast.success(
+          isEdit
+            ? messages.success.payrollRuleUpdated
+            : messages.success.payrollRuleCreated,
+          {
+            id: loadingToastId,
+          },
+        );
         router.push(listHref);
       }
       router.refresh();
     } catch (error) {
       console.error("failed to submit payroll rule form", error);
+      const message = toErrorMessage(
+        error,
+        messages.error.payrollRuleSaveFailed,
+      );
       setErrors({
-        form:
-          error instanceof Error
-            ? error.message
-            : isEdit
-              ? "給与ルールの更新に失敗しました。"
-              : "給与ルールの作成に失敗しました。",
+        form: message,
+      });
+      toast.error(messages.error.payrollRuleSaveFailed, {
+        id: loadingToastId,
+        description: message,
+        duration: 6000,
       });
     } finally {
       setIsSubmitting(false);

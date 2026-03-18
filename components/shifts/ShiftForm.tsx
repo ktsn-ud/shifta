@@ -2,6 +2,7 @@
 
 import { useEffect, useMemo, useState } from "react";
 import { useRouter } from "next/navigation";
+import { toast } from "sonner";
 import { z } from "zod";
 import { FormErrorMessage } from "@/components/form/form-error-message";
 import { Button } from "@/components/ui/button";
@@ -30,6 +31,7 @@ import {
   dateKeyFromApiDate,
   toDateKey,
 } from "@/lib/calendar/date";
+import { messages, toErrorMessage } from "@/lib/messages";
 
 const LAST_WORKPLACE_ID_KEY = "shifta:last-workplace-id";
 const DATE_ONLY_REGEX = /^\d{4}-\d{2}-\d{2}$/;
@@ -800,6 +802,14 @@ export function ShiftForm({ mode, shiftId, initialDate }: ShiftFormProps) {
       !validation.candidateTimes
     ) {
       setErrors(validation.errors);
+      const firstValidationMessage = Object.values(validation.errors).find(
+        (value): value is string =>
+          typeof value === "string" && value.length > 0,
+      );
+      toast.error(messages.error.validation, {
+        description: firstValidationMessage,
+        duration: 6000,
+      });
       return;
     }
 
@@ -843,6 +853,7 @@ export function ShiftForm({ mode, shiftId, initialDate }: ShiftFormProps) {
     }
 
     setIsSubmitting(true);
+    const loadingToastId = toast.loading("シフトを保存中です...");
 
     try {
       const overlapMessage = await checkOverlapWarning(
@@ -850,6 +861,10 @@ export function ShiftForm({ mode, shiftId, initialDate }: ShiftFormProps) {
       );
       if (overlapMessage) {
         setWarningMessage(overlapMessage);
+        toast.warning(messages.warning.shiftOverlap, {
+          description: overlapMessage,
+          duration: 6000,
+        });
       }
 
       const endpoint =
@@ -870,16 +885,28 @@ export function ShiftForm({ mode, shiftId, initialDate }: ShiftFormProps) {
       }
 
       window.localStorage.setItem(LAST_WORKPLACE_ID_KEY, form.workplaceId);
+      toast.success(
+        mode === "create"
+          ? messages.success.shiftCreated
+          : messages.success.shiftUpdated,
+        {
+          id: loadingToastId,
+          description: `${form.date} ${validation.candidateTimes.startTime} - ${validation.candidateTimes.endTime}`,
+        },
+      );
       router.push("/my/calendar");
     } catch (error) {
       console.error("failed to save shift", error);
+      const message = toErrorMessage(error, messages.error.shiftSaveFailed);
       setErrors((current) => ({
         ...current,
-        form:
-          error instanceof Error
-            ? error.message
-            : "シフトの保存に失敗しました。",
+        form: message,
       }));
+      toast.error(messages.error.shiftSaveFailed, {
+        id: loadingToastId,
+        description: message,
+        duration: 6000,
+      });
     } finally {
       setIsSubmitting(false);
     }

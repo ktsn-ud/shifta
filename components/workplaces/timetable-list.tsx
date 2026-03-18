@@ -2,6 +2,7 @@
 
 import Link from "next/link";
 import { useEffect, useMemo, useState } from "react";
+import { toast } from "sonner";
 import { z } from "zod";
 import { Button, buttonVariants } from "@/components/ui/button";
 import {
@@ -27,6 +28,7 @@ import {
   TableHeader,
   TableRow,
 } from "@/components/ui/table";
+import { messages, toErrorMessage } from "@/lib/messages";
 
 const workplaceResponseSchema = z.object({
   data: z.object({
@@ -227,11 +229,18 @@ export function TimetableList({ workplaceId }: TimetableListProps) {
       );
       setDeletingId(null);
       setInfoMessage("時間割を削除しました。");
+      toast.success(messages.success.timetableDeleted);
     } catch (error) {
       console.error("failed to delete timetable", error);
-      setDeleteError(
-        error instanceof Error ? error.message : "時間割の削除に失敗しました。",
+      const message = toErrorMessage(
+        error,
+        messages.error.timetableDeleteFailed,
       );
+      setDeleteError(message);
+      toast.error(messages.error.timetableDeleteFailed, {
+        description: message,
+        duration: 6000,
+      });
     } finally {
       setIsDeleting(false);
     }

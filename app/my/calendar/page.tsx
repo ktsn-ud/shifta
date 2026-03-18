@@ -2,6 +2,7 @@
 
 import { useMemo, useState } from "react";
 import { useRouter } from "next/navigation";
+import { toast } from "sonner";
 import { MonthCalendar } from "@/components/calendar/MonthCalendar";
 import { ShiftListModal } from "@/components/calendar/ShiftListModal";
 import { Button } from "@/components/ui/button";
@@ -15,13 +16,13 @@ import {
   toMonthInputValue,
 } from "@/lib/calendar/date";
 import { useMonthShifts } from "@/hooks/use-month-shifts";
+import { messages } from "@/lib/messages";
 
 export default function CalendarPage() {
   const router = useRouter();
   const [month, setMonth] = useState(() => startOfMonth(new Date()));
   const [selectedDate, setSelectedDate] = useState(() => new Date());
   const [modalOpen, setModalOpen] = useState(false);
-  const [successMessage, setSuccessMessage] = useState<string | null>(null);
 
   const { shifts, isLoading, errorMessage, reload } = useMonthShifts(month);
 
@@ -75,12 +76,6 @@ export default function CalendarPage() {
         </div>
       </header>
 
-      {successMessage ? (
-        <p className="rounded-md border border-emerald-600/40 bg-emerald-500/10 px-3 py-2 text-sm text-emerald-700">
-          {successMessage}
-        </p>
-      ) : null}
-
       {errorMessage ? (
         <p className="rounded-md border border-destructive/40 bg-destructive/5 px-3 py-2 text-sm text-destructive">
           {errorMessage}
@@ -99,7 +94,6 @@ export default function CalendarPage() {
         onNavigatePrev={() => setMonth((current) => addMonths(current, -1))}
         onNavigateNext={() => setMonth((current) => addMonths(current, 1))}
         onDateClick={(date) => {
-          setSuccessMessage(null);
           setSelectedDate(date);
           const dayShifts = shiftsByDate.get(toDateKey(date)) ?? [];
           if (dayShifts.length === 0) {
@@ -129,7 +123,7 @@ export default function CalendarPage() {
           }
 
           await reload();
-          setSuccessMessage("シフトを削除しました。");
+          toast.success(messages.success.shiftDeleted);
         }}
         onRetrySync={async (shiftId) => {
           const response = await fetch(`/api/shifts/${shiftId}/retry-sync`, {
@@ -149,7 +143,7 @@ export default function CalendarPage() {
           }
 
           await reload();
-          setSuccessMessage("Google Calendar へ再同期しました。");
+          toast.success(messages.success.calendarSyncRetried);
         }}
       />
     </section>

@@ -2,6 +2,7 @@
 
 import Link from "next/link";
 import { useEffect, useMemo, useState } from "react";
+import { toast } from "sonner";
 import { z } from "zod";
 import { Button, buttonVariants } from "@/components/ui/button";
 import {
@@ -27,6 +28,7 @@ import {
   TableHeader,
   TableRow,
 } from "@/components/ui/table";
+import { messages, toErrorMessage } from "@/lib/messages";
 
 const workplaceSchema = z.object({
   id: z.string(),
@@ -177,19 +179,29 @@ export function WorkplaceList() {
       );
 
       if (parsed.data.warning) {
+        toast.warning(messages.success.workplaceDeleted, {
+          description: parsed.data.warning,
+          duration: 6000,
+        });
         setInfoMessage(
           `${deletingTarget.name} を削除しました。${parsed.data.warning}`,
         );
       } else {
+        toast.success(messages.success.workplaceDeleted, {
+          description: deletingTarget.name,
+        });
         setInfoMessage(`${deletingTarget.name} を削除しました。`);
       }
 
       setDeletingId(null);
     } catch (error) {
       console.error("failed to delete workplace", error);
-      setDeleteError(
-        error instanceof Error ? error.message : "勤務先の削除に失敗しました。",
-      );
+      const message = toErrorMessage(error, "勤務先の削除に失敗しました。");
+      setDeleteError(message);
+      toast.error(messages.error.workplaceDeleteFailed, {
+        description: message,
+        duration: 6000,
+      });
     } finally {
       setIsDeleting(false);
     }

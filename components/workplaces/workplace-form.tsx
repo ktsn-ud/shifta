@@ -1,6 +1,7 @@
 "use client";
 import { useEffect, useMemo, useState } from "react";
 import { useRouter } from "next/navigation";
+import { toast } from "sonner";
 import { z } from "zod";
 import { FormErrorMessage } from "@/components/form/form-error-message";
 import { Button } from "@/components/ui/button";
@@ -22,6 +23,7 @@ import {
   SelectValue,
 } from "@/components/ui/select";
 import { toDateOnlyString } from "@/lib/calendar/date";
+import { messages, toErrorMessage } from "@/lib/messages";
 
 const colorRegex = /^#[0-9A-Fa-f]{6}$/;
 const timeRegex = /^([01]\d|2[0-3]):([0-5]\d)$/;
@@ -306,11 +308,20 @@ export function WorkplaceForm({ mode, workplaceId }: WorkplaceFormProps) {
     );
     if (Object.keys(validationErrors).length > 0) {
       setErrors(validationErrors);
+      const firstValidationMessage = Object.values(validationErrors).find(
+        (value): value is string =>
+          typeof value === "string" && value.length > 0,
+      );
+      toast.error(messages.error.validation, {
+        description: firstValidationMessage,
+        duration: 6000,
+      });
       return;
     }
 
     setIsSubmitting(true);
     setErrors({});
+    const loadingToastId = toast.loading("勤務先を保存中です...");
 
     try {
       const payload: {
@@ -415,20 +426,34 @@ export function WorkplaceForm({ mode, workplaceId }: WorkplaceFormProps) {
         responsePayload.data?.type === "CRAM_SCHOOL" &&
         responsePayload.data.id
       ) {
+        toast.success(messages.success.workplaceCreated, {
+          id: loadingToastId,
+          description: payload.name,
+        });
         router.push(`/my/workplaces/${responsePayload.data.id}/timetables/new`);
       } else {
+        toast.success(
+          isEdit
+            ? messages.success.workplaceUpdated
+            : messages.success.workplaceCreated,
+          {
+            id: loadingToastId,
+            description: payload.name,
+          },
+        );
         router.push("/my/workplaces");
       }
       router.refresh();
     } catch (error) {
       console.error("failed to submit workplace form", error);
+      const message = toErrorMessage(error, messages.error.workplaceSaveFailed);
       setErrors({
-        form:
-          error instanceof Error
-            ? error.message
-            : isEdit
-              ? "勤務先の更新に失敗しました。"
-              : "勤務先の作成に失敗しました。",
+        form: message,
+      });
+      toast.error(messages.error.workplaceSaveFailed, {
+        id: loadingToastId,
+        description: message,
+        duration: 6000,
       });
     } finally {
       setIsSubmitting(false);

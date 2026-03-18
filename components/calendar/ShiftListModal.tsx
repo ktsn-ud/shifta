@@ -2,6 +2,7 @@
 
 import { useMemo, useState } from "react";
 import { EditIcon, PlusIcon, Trash2Icon } from "lucide-react";
+import { toast } from "sonner";
 import { DeleteConfirmDialog } from "@/components/shifts/DeleteConfirmDialog";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -20,6 +21,7 @@ import {
   TableHeader,
   TableRow,
 } from "@/components/ui/table";
+import { messages } from "@/lib/messages";
 
 type ShiftListModalShift = {
   id: string;
@@ -226,10 +228,16 @@ export function ShiftListModal({
                               setRetryingShiftId(shift.id);
                               try {
                                 await onRetrySync(shift.id);
-                              } catch {
-                                setRetryError(
-                                  "Google Calendar への再同期に失敗しました",
-                                );
+                              } catch (error) {
+                                const message =
+                                  error instanceof Error
+                                    ? error.message
+                                    : messages.error.calendarSyncFailed;
+                                setRetryError(message);
+                                toast.error(messages.error.calendarSyncFailed, {
+                                  description: message,
+                                  duration: 6000,
+                                });
                               } finally {
                                 setRetryingShiftId(null);
                               }

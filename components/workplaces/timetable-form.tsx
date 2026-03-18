@@ -2,6 +2,7 @@
 
 import { useEffect, useMemo, useState } from "react";
 import { useRouter } from "next/navigation";
+import { toast } from "sonner";
 import { z } from "zod";
 import { FormErrorMessage } from "@/components/form/form-error-message";
 import { Button } from "@/components/ui/button";
@@ -20,6 +21,7 @@ import {
 } from "@/components/ui/form";
 import { Input } from "@/components/ui/input";
 import { RadioGroup, RadioGroupItem } from "@/components/ui/radio-group";
+import { messages, toErrorMessage } from "@/lib/messages";
 
 const workplaceResponseSchema = z.object({
   data: z.object({
@@ -314,6 +316,14 @@ export function TimetableForm({
       const validationErrors = validateRow(values);
       if (Object.keys(validationErrors).length > 0) {
         setErrors(validationErrors);
+        const firstValidationMessage = Object.values(validationErrors).find(
+          (value): value is string =>
+            typeof value === "string" && value.length > 0,
+        );
+        toast.error(messages.error.validation, {
+          description: firstValidationMessage,
+          duration: 6000,
+        });
         return;
       }
     } else {
@@ -321,12 +331,20 @@ export function TimetableForm({
       setRowErrors(result.rowErrors);
       if (result.hasError) {
         setErrors({ form: "入力内容を確認してください。" });
+        const firstRowError = result.rowErrors
+          .flatMap((rowError) => Object.values(rowError))
+          .find((value): value is string => typeof value === "string");
+        toast.error(messages.error.validation, {
+          description: firstRowError ?? "入力内容を確認してください。",
+          duration: 6000,
+        });
         return;
       }
     }
 
     setIsSubmitting(true);
     setErrors({});
+    const loadingToastId = toast.loading("時間割を保存中です...");
 
     try {
       if (isEdit) {
@@ -351,6 +369,9 @@ export function TimetableForm({
             await readApiErrorMessage(response, "時間割の更新に失敗しました。"),
           );
         }
+        toast.success(messages.success.timetableUpdated, {
+          id: loadingToastId,
+        });
       } else {
         const response = await fetch(
           `/api/workplaces/${workplaceId}/timetables`,
@@ -375,19 +396,23 @@ export function TimetableForm({
             await readApiErrorMessage(response, "時間割の作成に失敗しました。"),
           );
         }
+        toast.success(messages.success.timetableCreated(createRows.length), {
+          id: loadingToastId,
+        });
       }
 
       router.push(listHref);
       router.refresh();
     } catch (error) {
       console.error("failed to submit timetable form", error);
+      const message = toErrorMessage(error, messages.error.timetableSaveFailed);
       setErrors({
-        form:
-          error instanceof Error
-            ? error.message
-            : isEdit
-              ? "時間割の更新に失敗しました。"
-              : "時間割の作成に失敗しました。",
+        form: message,
+      });
+      toast.error(messages.error.timetableSaveFailed, {
+        id: loadingToastId,
+        description: message,
+        duration: 6000,
       });
     } finally {
       setIsSubmitting(false);
