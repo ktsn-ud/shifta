@@ -3,7 +3,7 @@
 import Link from "next/link";
 import { useEffect, useMemo, useState } from "react";
 import { z } from "zod";
-import { Button } from "@/components/ui/button";
+import { Button, buttonVariants } from "@/components/ui/button";
 import {
   Card,
   CardContent,
@@ -270,17 +270,15 @@ export function TimetableList({ workplaceId }: TimetableListProps) {
                   <TableCell>{toTimeOnly(timetable.endTime)}</TableCell>
                   <TableCell>
                     <div className="flex justify-end gap-2">
-                      <Button
-                        size="sm"
-                        variant="outline"
-                        render={
-                          <Link
-                            href={`/my/workplaces/${workplaceId}/timetables/${timetable.id}/edit`}
-                          />
-                        }
+                      <Link
+                        href={`/my/workplaces/${workplaceId}/timetables/${timetable.id}/edit`}
+                        className={buttonVariants({
+                          size: "sm",
+                          variant: "outline",
+                        })}
                       >
                         編集
-                      </Button>
+                      </Link>
                       <Button
                         size="sm"
                         variant="destructive"
@@ -314,17 +312,19 @@ export function TimetableList({ workplaceId }: TimetableListProps) {
           </p>
         </div>
         <div className="flex flex-wrap gap-2">
-          <Button variant="outline" render={<Link href="/my/workplaces" />}>
+          <Link
+            href="/my/workplaces"
+            className={buttonVariants({ variant: "outline" })}
+          >
             勤務先一覧へ
-          </Button>
+          </Link>
           {workplace?.type === "CRAM_SCHOOL" ? (
-            <Button
-              render={
-                <Link href={`/my/workplaces/${workplaceId}/timetables/new`} />
-              }
+            <Link
+              href={`/my/workplaces/${workplaceId}/timetables/new`}
+              className={buttonVariants({})}
             >
               新規時間割追加
-            </Button>
+            </Link>
           ) : (
             <Button disabled>新規時間割追加</Button>
           )}

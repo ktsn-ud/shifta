@@ -4,7 +4,7 @@ import Link from "next/link";
 import { useSearchParams } from "next/navigation";
 import { useEffect, useMemo, useState } from "react";
 import { z } from "zod";
-import { Button } from "@/components/ui/button";
+import { Button, buttonVariants } from "@/components/ui/button";
 import {
   Card,
   CardContent,
@@ -288,16 +288,18 @@ export function PayrollRuleList({ workplaceId }: PayrollRuleListProps) {
           </p>
         </div>
         <div className="flex flex-wrap gap-2">
-          <Button variant="outline" render={<Link href="/my/workplaces" />}>
+          <Link
+            href="/my/workplaces"
+            className={buttonVariants({ variant: "outline" })}
+          >
             勤務先一覧へ
-          </Button>
-          <Button
-            render={
-              <Link href={`/my/workplaces/${workplaceId}/payroll-rules/new`} />
-            }
+          </Link>
+          <Link
+            href={`/my/workplaces/${workplaceId}/payroll-rules/new`}
+            className={buttonVariants({})}
           >
             新規ルール追加
-          </Button>
+          </Link>
         </div>
       </header>
 
@@ -374,17 +376,15 @@ export function PayrollRuleList({ workplaceId }: PayrollRuleListProps) {
                       ) : null}
                       <TableCell>
                         <div className="flex justify-end gap-2">
-                          <Button
-                            variant="outline"
-                            size="sm"
-                            render={
-                              <Link
-                                href={`/my/workplaces/${workplaceId}/payroll-rules/${rule.id}/edit`}
-                              />
-                            }
+                          <Link
+                            href={`/my/workplaces/${workplaceId}/payroll-rules/${rule.id}/edit`}
+                            className={buttonVariants({
+                              variant: "outline",
+                              size: "sm",
+                            })}
                           >
                             編集
-                          </Button>
+                          </Link>
                           <Button
                             size="sm"
                             variant="destructive"

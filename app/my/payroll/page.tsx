@@ -3,7 +3,7 @@
 import Link from "next/link";
 import { useEffect, useState } from "react";
 import { z } from "zod";
-import { Button } from "@/components/ui/button";
+import { buttonVariants } from "@/components/ui/button";
 import {
   Card,
   CardContent,
@@ -158,16 +158,12 @@ export default function PayrollPage() {
                       <TableCell>{workplace.type}</TableCell>
                       <TableCell>
                         <div className="flex justify-end">
-                          <Button
-                            size="sm"
-                            render={
-                              <Link
-                                href={`/my/workplaces/${workplace.id}/payroll-rules`}
-                              />
-                            }
+                          <Link
+                            href={`/my/workplaces/${workplace.id}/payroll-rules`}
+                            className={buttonVariants({ size: "sm" })}
                           >
                             給与ルール管理
-                          </Button>
+                          </Link>
                         </div>
                       </TableCell>
                     </TableRow>

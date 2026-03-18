@@ -3,7 +3,7 @@
 import Link from "next/link";
 import { useEffect, useMemo, useState } from "react";
 import { z } from "zod";
-import { Button } from "@/components/ui/button";
+import { Button, buttonVariants } from "@/components/ui/button";
 import {
   Card,
   CardContent,
@@ -204,7 +204,9 @@ export function WorkplaceList() {
             勤務先の作成・編集・削除を行います。
           </p>
         </div>
-        <Button render={<Link href="/my/workplaces/new" />}>新規追加</Button>
+        <Link href="/my/workplaces/new" className={buttonVariants({})}>
+          新規追加
+        </Link>
       </header>
 
       {infoMessage ? (
@@ -273,40 +275,34 @@ export function WorkplaceList() {
                       </TableCell>
                       <TableCell>
                         <div className="flex flex-wrap justify-end gap-2">
-                          <Button
-                            size="sm"
-                            variant="outline"
-                            render={
-                              <Link
-                                href={`/my/workplaces/${workplace.id}/edit`}
-                              />
-                            }
+                          <Link
+                            href={`/my/workplaces/${workplace.id}/edit`}
+                            className={buttonVariants({
+                              size: "sm",
+                              variant: "outline",
+                            })}
                           >
                             編集
-                          </Button>
-                          <Button
-                            size="sm"
-                            variant="outline"
-                            render={
-                              <Link
-                                href={`/my/workplaces/${workplace.id}/payroll-rules`}
-                              />
-                            }
+                          </Link>
+                          <Link
+                            href={`/my/workplaces/${workplace.id}/payroll-rules`}
+                            className={buttonVariants({
+                              size: "sm",
+                              variant: "outline",
+                            })}
                           >
                             給与ルール
-                          </Button>
+                          </Link>
                           {workplace.type === "CRAM_SCHOOL" ? (
-                            <Button
-                              size="sm"
-                              variant="outline"
-                              render={
-                                <Link
-                                  href={`/my/workplaces/${workplace.id}/timetables`}
-                                />
-                              }
+                            <Link
+                              href={`/my/workplaces/${workplace.id}/timetables`}
+                              className={buttonVariants({
+                                size: "sm",
+                                variant: "outline",
+                              })}
                             >
                               時間割
-                            </Button>
+                            </Link>
                           ) : (
                             <Button size="sm" variant="outline" disabled>
                               時間割

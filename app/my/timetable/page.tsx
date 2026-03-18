@@ -3,7 +3,7 @@
 import Link from "next/link";
 import { useEffect, useState } from "react";
 import { z } from "zod";
-import { Button } from "@/components/ui/button";
+import { buttonVariants } from "@/components/ui/button";
 import {
   Card,
   CardContent,
@@ -160,16 +160,12 @@ export default function TimetablePage() {
                       <TableCell>{workplace.type}</TableCell>
                       <TableCell>
                         <div className="flex justify-end">
-                          <Button
-                            size="sm"
-                            render={
-                              <Link
-                                href={`/my/workplaces/${workplace.id}/timetables`}
-                              />
-                            }
+                          <Link
+                            href={`/my/workplaces/${workplace.id}/timetables`}
+                            className={buttonVariants({ size: "sm" })}
                           >
                             時間割管理
-                          </Button>
+                          </Link>
                         </div>
                       </TableCell>
                     </TableRow>
