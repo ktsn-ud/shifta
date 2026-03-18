@@ -50,7 +50,7 @@ const mainNavItems: NavItem[] = [
   },
   {
     title: "Workplace Management",
-    href: "/my/workplace",
+    href: "/my/workplaces",
     icon: <LandmarkIcon />,
   },
   {

@@ -7,7 +7,7 @@ import { prisma } from "@/lib/prisma";
 const colorRegex = /^#[0-9A-Fa-f]{6}$/;
 
 type Context = {
-  params: Promise<{ id: string }>;
+  params: Promise<{ workplaceId: string }>;
 };
 
 const updateWorkplaceSchema = z
@@ -49,8 +49,8 @@ export async function GET(_: Request, context: Context) {
       return current.response;
     }
 
-    const { id } = await context.params;
-    const workplace = await findOwnedWorkplace(id, current.user.id);
+    const { workplaceId } = await context.params;
+    const workplace = await findOwnedWorkplace(workplaceId, current.user.id);
 
     if (!workplace) {
       return jsonError("勤務先が見つかりません", 404);
@@ -70,8 +70,8 @@ export async function PUT(request: Request, context: Context) {
       return current.response;
     }
 
-    const { id } = await context.params;
-    const existing = await findOwnedWorkplace(id, current.user.id);
+    const { workplaceId } = await context.params;
+    const existing = await findOwnedWorkplace(workplaceId, current.user.id);
     if (!existing) {
       return jsonError("勤務先が見つかりません", 404);
     }
@@ -82,7 +82,7 @@ export async function PUT(request: Request, context: Context) {
     }
 
     const workplace = await prisma.workplace.update({
-      where: { id },
+      where: { id: workplaceId },
       data: body.data,
     });
 
@@ -100,8 +100,8 @@ export async function DELETE(_: Request, context: Context) {
       return current.response;
     }
 
-    const { id } = await context.params;
-    const existing = await findOwnedWorkplace(id, current.user.id);
+    const { workplaceId } = await context.params;
+    const existing = await findOwnedWorkplace(workplaceId, current.user.id);
     if (!existing) {
       return jsonError("勤務先が見つかりません", 404);
     }
@@ -112,11 +112,11 @@ export async function DELETE(_: Request, context: Context) {
       timetables: existing._count.timetables,
     };
 
-    await prisma.workplace.delete({ where: { id } });
+    await prisma.workplace.delete({ where: { id: workplaceId } });
 
     return NextResponse.json({
       data: {
-        id,
+        id: workplaceId,
         deleted: true,
         relatedCounts,
       },

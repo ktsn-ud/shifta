@@ -8,6 +8,7 @@ import { SidebarTrigger } from "@/components/ui/sidebar";
 const routeTitles: Array<{ path: string; title: string }> = [
   { path: "/my/calendar", title: "Calendar" },
   { path: "/my/summary", title: "Payroll Summary" },
+  { path: "/my/workplaces", title: "Workplace Management" },
   { path: "/my/workplace", title: "Workplace Management" },
   { path: "/my/payroll", title: "Payroll Rules" },
   { path: "/my/timetable", title: "Timetable" },
