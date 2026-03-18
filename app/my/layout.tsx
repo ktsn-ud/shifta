@@ -1,8 +1,13 @@
+import type { Metadata } from "next";
 import { TooltipProvider } from "@/components/ui/tooltip";
 import { SidebarInset, SidebarProvider } from "@/components/ui/sidebar";
 import { AppSidebar } from "@/components/app-sidebar";
 import { SiteHeader } from "@/components/site-header";
 import { auth } from "@/lib/auth";
+
+export const metadata: Metadata = {
+  title: { absolute: "ホーム｜Shifta" },
+};
 
 export default async function Layout({
   children,

@@ -1,3 +1,4 @@
+import type { Metadata } from "next";
 import { LogIn } from "@/components/auth/login-button";
 import {
   Card,
@@ -7,6 +8,10 @@ import {
   CardHeader,
   CardTitle,
 } from "@/components/ui/card";
+
+export const metadata: Metadata = {
+  title: "ログイン",
+};
 
 export default function Page() {
   return (
