@@ -7,17 +7,17 @@ type FieldErrors<T extends Record<string, unknown>> = Partial<
   Record<keyof T, string>
 >;
 
-type FormOptions<TSchema extends z.ZodTypeAny> = {
-  schema: TSchema;
-  initialValues: z.infer<TSchema>;
+type FormOptions<TValues extends Record<string, unknown>> = {
+  schema: z.ZodType<TValues>;
+  initialValues: TValues;
 };
 
-export function useFormWithValidation<TSchema extends z.ZodTypeAny>({
+export function useFormWithValidation<TValues extends Record<string, unknown>>({
   schema,
   initialValues,
-}: FormOptions<TSchema>) {
-  type Values = z.infer<TSchema>;
-  type FormValues = Values & Record<string, unknown>;
+}: FormOptions<TValues>) {
+  type Values = TValues;
+  type FormValues = Values;
 
   const [values, setValues] = useState<Values>(initialValues);
   const [errors, setErrors] = useState<FieldErrors<FormValues>>({});
@@ -49,8 +49,11 @@ export function useFormWithValidation<TSchema extends z.ZodTypeAny>({
     const nextErrors: FieldErrors<FormValues> = {};
     for (const issue of parsed.error.issues) {
       const field = issue.path[0];
-      if (typeof field === "string" && !nextErrors[field]) {
-        nextErrors[field] = issue.message;
+      if (typeof field === "string") {
+        const nextErrorsRecord = nextErrors as Record<string, string>;
+        if (!nextErrorsRecord[field]) {
+          nextErrorsRecord[field] = issue.message;
+        }
       }
     }
 
