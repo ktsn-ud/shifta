@@ -160,6 +160,7 @@ export function MonthCalendar({
                 disabled={!cell.isCurrentMonth}
                 className={cn(
                   "group relative flex min-h-24 flex-col items-center border-b border-r px-1 py-2 text-left transition-colors last:border-r-0 hover:bg-muted/40 focus-visible:ring-2 focus-visible:ring-ring focus-visible:outline-hidden md:min-h-28",
+                  cell.isCurrentMonth && "cursor-pointer",
                   !cell.isCurrentMonth &&
                     "cursor-not-allowed bg-muted/20 text-muted-foreground/70 hover:bg-muted/20",
                 )}

@@ -126,4 +126,25 @@
   html {
     @apply font-sans;
   }
+  button:not(:disabled),
+  input[type="button"]:not(:disabled),
+  input[type="submit"]:not(:disabled),
+  input[type="reset"]:not(:disabled),
+  a[href],
+  label[for],
+  summary,
+  [role="button"]:not([aria-disabled="true"]),
+  [role="menuitem"]:not([aria-disabled="true"]):not([data-disabled]),
+  [role="menuitemcheckbox"]:not([aria-disabled="true"]):not([data-disabled]),
+  [role="menuitemradio"]:not([aria-disabled="true"]):not([data-disabled]),
+  [role="option"]:not([aria-disabled="true"]):not([data-disabled]) {
+    cursor: pointer;
+  }
+  button:disabled,
+  input[type="button"]:disabled,
+  input[type="submit"]:disabled,
+  input[type="reset"]:disabled,
+  [role="button"][aria-disabled="true"] {
+    cursor: not-allowed;
+  }
 }
