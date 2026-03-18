@@ -4,7 +4,7 @@ import { requireCurrentUser } from "@/lib/api/current-user";
 import { DATE_ONLY_REGEX, TIME_ONLY_REGEX } from "@/lib/api/date-time";
 import { jsonError, parseJsonBody } from "@/lib/api/http";
 import { requireOwnedWorkplace } from "@/lib/api/workplace";
-import { syncShiftAfterCreate } from "@/lib/google-calendar/syncStatus";
+import { syncShiftsAfterBulkCreate } from "@/lib/google-calendar/syncStatus";
 import { prisma } from "@/lib/prisma";
 import {
   buildShiftData,
@@ -165,14 +165,9 @@ export async function POST(request: Request) {
     const createdShifts = await createShiftsInTransaction(builtItems);
     const createdShiftIds = createdShifts.map((shift) => shift.id);
 
-    const syncResults = await Promise.all(
-      createdShiftIds.map(async (shiftId) => {
-        const result = await syncShiftAfterCreate(shiftId, current.user.id);
-        return {
-          shiftId,
-          ...result,
-        };
-      }),
+    const syncResults = await syncShiftsAfterBulkCreate(
+      createdShiftIds,
+      current.user.id,
     );
 
     const latest =

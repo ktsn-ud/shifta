@@ -128,6 +128,23 @@ async function findShiftForSync(shiftId: string, userId: string) {
   });
 }
 
+async function findShiftsForSync(shiftIds: string[], userId: string) {
+  return prisma.shift.findMany({
+    where: {
+      id: {
+        in: shiftIds,
+      },
+      workplace: {
+        userId,
+      },
+    },
+    include: {
+      lessonRange: true,
+      workplace: true,
+    },
+  });
+}
+
 async function findUserForSync(userId: string): Promise<User | null> {
   return prisma.user.findUnique({
     where: { id: userId },
@@ -211,6 +228,104 @@ export async function syncShiftAfterCreate(
   userId: string,
 ): Promise<SyncResult> {
   return runShiftSync(shiftId, userId, "create");
+}
+
+export async function syncShiftsAfterBulkCreate(
+  shiftIds: string[],
+  userId: string,
+): Promise<Array<{ shiftId: string } & SyncResult>> {
+  if (shiftIds.length === 0) {
+    return [];
+  }
+
+  const [user, shifts] = await Promise.all([
+    findUserForSync(userId),
+    findShiftsForSync(shiftIds, userId),
+  ]);
+
+  const shiftsById = new Map(shifts.map((shift) => [shift.id, shift]));
+
+  return Promise.all(
+    shiftIds.map(async (shiftId) => {
+      const startedAt = Date.now();
+      const shift = shiftsById.get(shiftId);
+
+      await updateSyncStatus(shiftId, "PENDING", {
+        error: null,
+      });
+
+      if (!shift || !user) {
+        const errorMessage = "同期対象のシフトまたはユーザーが見つかりません";
+        await updateSyncStatus(shiftId, "FAILED", {
+          error: errorMessage,
+        });
+
+        logSyncEvent({
+          userId,
+          shiftId,
+          action: "create",
+          status: "FAILED",
+          error: errorMessage,
+          durationMs: Date.now() - startedAt,
+        });
+
+        return {
+          shiftId,
+          ok: false as const,
+          errorMessage,
+        };
+      }
+
+      try {
+        const googleEventId = await createCalendarEvent(
+          shift,
+          shift.workplace,
+          user,
+        );
+
+        await updateSyncStatus(shiftId, "SUCCESS", {
+          googleEventId,
+          error: null,
+        });
+
+        logSyncEvent({
+          userId,
+          shiftId,
+          action: "create",
+          status: "SUCCESS",
+          googleEventId,
+          durationMs: Date.now() - startedAt,
+        });
+
+        return {
+          shiftId,
+          ok: true as const,
+          googleEventId,
+        };
+      } catch (error) {
+        const errorMessage = formatGoogleSyncError(error);
+
+        await updateSyncStatus(shiftId, "FAILED", {
+          error: errorMessage,
+        });
+
+        logSyncEvent({
+          userId,
+          shiftId,
+          action: "create",
+          status: "FAILED",
+          error: errorMessage,
+          durationMs: Date.now() - startedAt,
+        });
+
+        return {
+          shiftId,
+          ok: false as const,
+          errorMessage,
+        };
+      }
+    }),
+  );
 }
 
 export async function syncShiftAfterUpdate(
