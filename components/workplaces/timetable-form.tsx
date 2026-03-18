@@ -405,9 +405,10 @@ export function TimetableForm({
               step="1"
               value={values.period}
               onChange={(event) => {
+                const nextValue = event.currentTarget.value;
                 setValues((current) => ({
                   ...current,
-                  period: event.currentTarget.value,
+                  period: nextValue,
                 }));
               }}
             />
@@ -426,9 +427,10 @@ export function TimetableForm({
               type="time"
               value={values.startTime}
               onChange={(event) => {
+                const nextValue = event.currentTarget.value;
                 setValues((current) => ({
                   ...current,
-                  startTime: event.currentTarget.value,
+                  startTime: nextValue,
                 }));
               }}
             />
@@ -444,9 +446,10 @@ export function TimetableForm({
               type="time"
               value={values.endTime}
               onChange={(event) => {
+                const nextValue = event.currentTarget.value;
                 setValues((current) => ({
                   ...current,
-                  endTime: event.currentTarget.value,
+                  endTime: nextValue,
                 }));
               }}
             />

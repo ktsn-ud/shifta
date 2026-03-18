@@ -516,9 +516,10 @@ export function PayrollRuleForm({
                 type="date"
                 value={values.startDate}
                 onChange={(event) => {
+                  const nextValue = event.currentTarget.value;
                   setValues((current) => ({
                     ...current,
-                    startDate: event.currentTarget.value,
+                    startDate: nextValue,
                   }));
                 }}
               />
@@ -534,9 +535,10 @@ export function PayrollRuleForm({
                 type="date"
                 value={values.endDate}
                 onChange={(event) => {
+                  const nextValue = event.currentTarget.value;
                   setValues((current) => ({
                     ...current,
-                    endDate: event.currentTarget.value,
+                    endDate: nextValue,
                   }));
                 }}
               />
@@ -558,9 +560,10 @@ export function PayrollRuleForm({
                   step="0.01"
                   value={values.perLessonWage}
                   onChange={(event) => {
+                    const nextValue = event.currentTarget.value;
                     setValues((current) => ({
                       ...current,
-                      perLessonWage: event.currentTarget.value,
+                      perLessonWage: nextValue,
                     }));
                   }}
                 />
@@ -579,9 +582,10 @@ export function PayrollRuleForm({
                     step="0.01"
                     value={values.baseHourlyWage}
                     onChange={(event) => {
+                      const nextValue = event.currentTarget.value;
                       setValues((current) => ({
                         ...current,
-                        baseHourlyWage: event.currentTarget.value,
+                        baseHourlyWage: nextValue,
                       }));
                     }}
                   />
@@ -599,9 +603,10 @@ export function PayrollRuleForm({
                     step="0.01"
                     value={values.holidayHourlyWage}
                     onChange={(event) => {
+                      const nextValue = event.currentTarget.value;
                       setValues((current) => ({
                         ...current,
-                        holidayHourlyWage: event.currentTarget.value,
+                        holidayHourlyWage: nextValue,
                       }));
                     }}
                   />
@@ -622,9 +627,10 @@ export function PayrollRuleForm({
                     step="0.01"
                     value={values.nightMultiplier}
                     onChange={(event) => {
+                      const nextValue = event.currentTarget.value;
                       setValues((current) => ({
                         ...current,
-                        nightMultiplier: event.currentTarget.value,
+                        nightMultiplier: nextValue,
                       }));
                     }}
                   />
@@ -644,9 +650,10 @@ export function PayrollRuleForm({
                     step="0.01"
                     value={values.overtimeMultiplier}
                     onChange={(event) => {
+                      const nextValue = event.currentTarget.value;
                       setValues((current) => ({
                         ...current,
-                        overtimeMultiplier: event.currentTarget.value,
+                        overtimeMultiplier: nextValue,
                       }));
                     }}
                   />
@@ -666,9 +673,10 @@ export function PayrollRuleForm({
                     step="0.01"
                     value={values.dailyOvertimeThreshold}
                     onChange={(event) => {
+                      const nextValue = event.currentTarget.value;
                       setValues((current) => ({
                         ...current,
-                        dailyOvertimeThreshold: event.currentTarget.value,
+                        dailyOvertimeThreshold: nextValue,
                       }));
                     }}
                   />
@@ -684,9 +692,10 @@ export function PayrollRuleForm({
                     type="time"
                     value={values.nightStart}
                     onChange={(event) => {
+                      const nextValue = event.currentTarget.value;
                       setValues((current) => ({
                         ...current,
-                        nightStart: event.currentTarget.value,
+                        nightStart: nextValue,
                       }));
                     }}
                   />
@@ -702,9 +711,10 @@ export function PayrollRuleForm({
                     type="time"
                     value={values.nightEnd}
                     onChange={(event) => {
+                      const nextValue = event.currentTarget.value;
                       setValues((current) => ({
                         ...current,
-                        nightEnd: event.currentTarget.value,
+                        nightEnd: nextValue,
                       }));
                     }}
                   />
