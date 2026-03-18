@@ -2,6 +2,10 @@ import { NextResponse } from "next/server";
 import { requireCurrentUser } from "@/lib/api/current-user";
 import { jsonError, parseJsonBody } from "@/lib/api/http";
 import { requireOwnedWorkplace } from "@/lib/api/workplace";
+import {
+  syncShiftAfterUpdate,
+  syncShiftDeletion,
+} from "@/lib/google-calendar/syncStatus";
 import { prisma } from "@/lib/prisma";
 import {
   buildShiftData,
@@ -116,7 +120,21 @@ export async function PUT(request: Request, context: Context) {
       });
     });
 
-    return NextResponse.json({ data: updated });
+    if (updated) {
+      await syncShiftAfterUpdate(updated.id, current.user.id);
+    }
+
+    const latest = updated
+      ? await prisma.shift.findUnique({
+          where: { id: updated.id },
+          include: {
+            lessonRange: true,
+            workplace: true,
+          },
+        })
+      : null;
+
+    return NextResponse.json({ data: latest });
   } catch (error) {
     console.error("PUT /api/shifts/:id failed", error);
     return jsonError("シフト更新に失敗しました", 500);
@@ -138,6 +156,7 @@ export async function DELETE(_: Request, context: Context) {
 
     const deletedLessonRange = Boolean(existing.lessonRange);
 
+    await syncShiftDeletion(id, current.user.id, existing.googleEventId);
     await prisma.shift.delete({ where: { id } });
 
     return NextResponse.json({

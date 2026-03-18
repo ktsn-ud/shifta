@@ -11,6 +11,7 @@ import {
   findApplicablePayrollRule,
 } from "@/lib/payroll/estimate";
 import { prisma } from "@/lib/prisma";
+import { syncShiftAfterCreate } from "@/lib/google-calendar/syncStatus";
 import {
   buildShiftData,
   ShiftValidationError,
@@ -95,7 +96,21 @@ export async function POST(request: Request) {
       });
     });
 
-    return NextResponse.json({ data: created }, { status: 201 });
+    if (created) {
+      await syncShiftAfterCreate(created.id, current.user.id);
+    }
+
+    const latest = created
+      ? await prisma.shift.findUnique({
+          where: { id: created.id },
+          include: {
+            lessonRange: true,
+            workplace: true,
+          },
+        })
+      : null;
+
+    return NextResponse.json({ data: latest }, { status: 201 });
   } catch (error) {
     console.error("POST /api/shifts failed", error);
     return jsonError("シフトの作成に失敗しました", 500);
