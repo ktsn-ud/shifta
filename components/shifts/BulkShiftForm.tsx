@@ -870,48 +870,48 @@ export function BulkShiftForm() {
               <Skeleton className="h-10 w-full" />
               <Skeleton className="h-3 w-48" />
             </div>
-          ) : null}
+          ) : (
+            <Field>
+              <FieldLabel htmlFor="bulk-workplace">勤務先</FieldLabel>
+              <FieldContent>
+                <Select
+                  value={selectedWorkplaceId}
+                  onValueChange={(value) => {
+                    if (value === null) {
+                      return;
+                    }
 
-          <Field>
-            <FieldLabel htmlFor="bulk-workplace">勤務先</FieldLabel>
-            <FieldContent>
-              <Select
-                value={selectedWorkplaceId}
-                onValueChange={(value) => {
-                  if (value === null) {
-                    return;
-                  }
-
-                  setSelectedWorkplaceId(value);
-                  setErrors((current) => ({
-                    ...current,
-                    workplaceId: undefined,
-                    form: undefined,
-                  }));
-                }}
-                disabled={isWorkplaceLoading || workplaces.length === 0}
-              >
-                <SelectTrigger id="bulk-workplace" className="w-full md:w-72">
-                  <SelectValue placeholder="勤務先を選択">
-                    {selectedWorkplace?.name}
-                  </SelectValue>
-                </SelectTrigger>
-                <SelectContent>
-                  <SelectGroup>
-                    {workplaces.map((workplace) => (
-                      <SelectItem key={workplace.id} value={workplace.id}>
-                        {workplace.name}
-                      </SelectItem>
-                    ))}
-                  </SelectGroup>
-                </SelectContent>
-              </Select>
-              <FieldDescription>
-                前回選択した勤務先を初期表示します。
-              </FieldDescription>
-              <FormErrorMessage message={errors.workplaceId} />
-            </FieldContent>
-          </Field>
+                    setSelectedWorkplaceId(value);
+                    setErrors((current) => ({
+                      ...current,
+                      workplaceId: undefined,
+                      form: undefined,
+                    }));
+                  }}
+                  disabled={workplaces.length === 0}
+                >
+                  <SelectTrigger id="bulk-workplace" className="w-full md:w-72">
+                    <SelectValue placeholder="勤務先を選択">
+                      {selectedWorkplace?.name}
+                    </SelectValue>
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectGroup>
+                      {workplaces.map((workplace) => (
+                        <SelectItem key={workplace.id} value={workplace.id}>
+                          {workplace.name}
+                        </SelectItem>
+                      ))}
+                    </SelectGroup>
+                  </SelectContent>
+                </Select>
+                <FieldDescription>
+                  前回選択した勤務先を初期表示します。
+                </FieldDescription>
+                <FormErrorMessage message={errors.workplaceId} />
+              </FieldContent>
+            </Field>
+          )}
         </section>
 
         <section className="space-y-4 rounded-xl border p-4">
@@ -1275,11 +1275,9 @@ export function BulkShiftForm() {
           {isTimetableLoading ? (
             <div className="flex flex-col gap-2">
               <Skeleton className="h-4 w-32" />
-              <Skeleton className="h-20 w-full" />
+              <Skeleton className="h-32 w-full" />
             </div>
-          ) : null}
-
-          {selectedRows.length === 0 ? (
+          ) : selectedRows.length === 0 ? (
             <p className="text-sm text-muted-foreground">
               カレンダーから日付を選択してください。
             </p>

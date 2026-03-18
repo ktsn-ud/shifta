@@ -920,6 +920,26 @@ export function ShiftForm({ mode, shiftId, initialDate }: ShiftFormProps) {
     isShiftLoading ||
     workplaces.length === 0;
 
+  if (isShiftLoading) {
+    return (
+      <section className="space-y-6 p-4 md:p-6">
+        <header className="space-y-2">
+          <h2 className="text-xl font-semibold">シフト編集</h2>
+          <p className="text-sm text-muted-foreground">
+            既存シフトを更新します。更新後はカレンダー画面へ戻ります。
+          </p>
+        </header>
+
+        <div className="flex max-w-2xl flex-col gap-3 rounded-xl border p-4">
+          <Skeleton className="h-5 w-32" />
+          <Skeleton className="h-10 w-full" />
+          <Skeleton className="h-10 w-full" />
+          <Skeleton className="h-10 w-full" />
+        </div>
+      </section>
+    );
+  }
+
   return (
     <section className="space-y-6 p-4 md:p-6">
       <header className="space-y-2">
@@ -932,15 +952,6 @@ export function ShiftForm({ mode, shiftId, initialDate }: ShiftFormProps) {
             : "既存シフトを更新します。更新後はカレンダー画面へ戻ります。"}
         </p>
       </header>
-
-      {isShiftLoading ? (
-        <div className="flex max-w-2xl flex-col gap-3 rounded-xl border p-4">
-          <Skeleton className="h-5 w-32" />
-          <Skeleton className="h-10 w-full" />
-          <Skeleton className="h-10 w-full" />
-          <Skeleton className="h-10 w-full" />
-        </div>
-      ) : null}
 
       {errors.form ? (
         <p className="rounded-md border border-destructive/40 bg-destructive/5 px-3 py-2 text-sm text-destructive">

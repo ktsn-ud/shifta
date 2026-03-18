@@ -14,7 +14,12 @@ type StatCardsLoadingSkeletonProps = {
 
 function FormLoadingSkeleton({ className }: { className?: string }) {
   return (
-    <div className={cn("flex max-w-2xl flex-col gap-6", className)}>
+    <div
+      className={cn(
+        "flex min-h-[560px] max-w-2xl flex-col gap-6 rounded-xl border p-4",
+        className,
+      )}
+    >
       <div className="flex flex-col gap-2">
         <Skeleton className="h-4 w-28" />
         <Skeleton className="h-10 w-full" />
@@ -47,7 +52,7 @@ function TableLoadingSkeleton({
       {Array.from({ length: rows }).map((_, rowIndex) => (
         <div
           key={`table-row-${rowIndex}`}
-          className="grid gap-3"
+          className="grid min-h-10 items-center gap-3"
           style={{
             gridTemplateColumns: `repeat(${columns}, minmax(0, 1fr))`,
           }}
@@ -69,7 +74,7 @@ function TableLoadingSkeleton({
 
 function CalendarLoadingSkeleton() {
   return (
-    <section className="rounded-xl border">
+    <section className="min-h-[640px] rounded-xl border md:min-h-[760px]">
       <header className="flex items-center justify-between border-b px-3 py-2 md:px-4">
         <Skeleton className="h-9 w-20" />
         <Skeleton className="h-6 w-32" />
@@ -84,9 +89,12 @@ function CalendarLoadingSkeleton() {
         ))}
       </div>
 
-      <div className="grid grid-cols-7 gap-px p-px">
+      <div className="grid grid-cols-7">
         {Array.from({ length: 42 }).map((_, index) => (
-          <div key={`calendar-cell-${index}`} className="rounded-md border p-2">
+          <div
+            key={`calendar-cell-${index}`}
+            className="flex min-h-24 flex-col items-center border-b border-r px-1 py-2 md:min-h-28"
+          >
             <Skeleton className="h-4 w-5" />
             <div className="mt-3 flex gap-1">
               <Skeleton className="size-2 rounded-full" />
