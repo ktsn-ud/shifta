@@ -938,7 +938,9 @@ export function ShiftForm({ mode, shiftId, initialDate }: ShiftFormProps) {
                 disabled={disabled}
               >
                 <SelectTrigger className="w-full">
-                  <SelectValue placeholder="勤務先を選択" />
+                  <SelectValue placeholder="勤務先を選択">
+                    {selectedWorkplace?.name}
+                  </SelectValue>
                 </SelectTrigger>
                 <SelectContent>
                   <SelectGroup>
