@@ -4,6 +4,7 @@ import { prisma } from "@/lib/prisma";
 import {
   decryptOAuthToken,
   encryptOAuthToken,
+  OAuthTokenCryptoError,
 } from "@/lib/security/oauth-token-crypto";
 import { GOOGLE_CALENDAR_SCOPE } from "@/lib/google-calendar/constants";
 
@@ -102,6 +103,16 @@ async function getGoogleAccountByUserId(
     };
   } catch (error) {
     console.error("Failed to decrypt Google OAuth token", error);
+    if (
+      error instanceof OAuthTokenCryptoError &&
+      error.code === "MISSING_ENCRYPTION_SECRET"
+    ) {
+      throw new GoogleCalendarAuthError(
+        "GOOGLE_ENV_MISSING",
+        "Googleトークン復号鍵が未設定です。AUTH_SECRET または GOOGLE_TOKEN_ENCRYPTION_KEY を設定してください",
+      );
+    }
+
     throw new GoogleCalendarAuthError(
       "TOKEN_EXPIRED",
       "Googleトークンの復号に失敗しました。再ログインしてください",
