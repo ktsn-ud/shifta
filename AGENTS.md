@@ -91,6 +91,8 @@
 2. **影響範囲特定**: UI / API / DB スキーマ / 外部連携のいずれが対象か判定
 3. **実装**: ガイドラインに従い、最小差分で実装
    - もし `prisma generate` や `prisma migrate dev` を実行する必要がある場合は実装を中断し、ユーザーに依頼
+   - もし `pnpm add` / `pnpm install` / `pnpm remove` / `pnpm update` などのパッケージ操作が必要な場合は実装を中断し、ユーザーに依頼
+   - もし `pnpm dev` の実行が必要な場合もエージェントは実行せず、ユーザーに依頼
 4. **検証**: 実装後に `pnpm lint` を実行（`pnpm build` は不要）
 5. **整形**: `pnpm format` を実行
 6. **コミット**: Gitコミット規約に従ってコミット
