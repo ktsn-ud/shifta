@@ -1,11 +1,32 @@
 import { LogIn } from "@/components/auth/login-button";
+import {
+  Card,
+  CardContent,
+  CardDescription,
+  CardFooter,
+  CardHeader,
+  CardTitle,
+} from "@/components/ui/card";
 
 export default function Page() {
   return (
-    <div>
-      <h1>Login Page</h1>
-      <p>Please log in to access the application.</p>
-      <LogIn />
-    </div>
+    <main className="flex min-h-svh items-center justify-center bg-muted/30 p-4">
+      <Card className="w-full max-w-md">
+        <CardHeader>
+          <CardTitle>Shifta へようこそ</CardTitle>
+          <CardDescription>
+            ログインすると、シフト登録と給与の確認を始められます。
+          </CardDescription>
+        </CardHeader>
+        <CardContent>
+          <p className="text-sm text-muted-foreground">
+            カレンダーと連携する Google アカウントでサインインしてください。
+          </p>
+        </CardContent>
+        <CardFooter>
+          <LogIn />
+        </CardFooter>
+      </Card>
+    </main>
   );
 }
