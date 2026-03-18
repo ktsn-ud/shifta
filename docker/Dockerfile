@@ -11,6 +11,7 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
   curl \
   vim \
   less \
+  ripgrep \
   procps \
   ca-certificates \
   socat \
