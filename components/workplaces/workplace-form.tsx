@@ -403,7 +403,22 @@ export function WorkplaceForm({ mode, workplaceId }: WorkplaceFormProps) {
         );
       }
 
-      router.push("/my/workplaces");
+      const responsePayload = (await response.json()) as {
+        data?: {
+          id?: string;
+          type?: WorkplaceType;
+        };
+      };
+
+      if (
+        !isEdit &&
+        responsePayload.data?.type === "CRAM_SCHOOL" &&
+        responsePayload.data.id
+      ) {
+        router.push(`/my/workplaces/${responsePayload.data.id}/timetables/new`);
+      } else {
+        router.push("/my/workplaces");
+      }
       router.refresh();
     } catch (error) {
       console.error("failed to submit workplace form", error);
