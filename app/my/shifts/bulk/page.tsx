@@ -1,5 +1,5 @@
 import { BulkShiftForm } from "@/components/shifts/BulkShiftForm";
 
-export default function BulkPage() {
+export default function ShiftBulkPage() {
   return <BulkShiftForm />;
 }

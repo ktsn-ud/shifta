@@ -73,7 +73,7 @@ export default function Page() {
           >
             新規シフト登録
           </Button>
-          <Button type="button" onClick={() => router.push("/my/bulk")}>
+          <Button type="button" onClick={() => router.push("/my/shifts/bulk")}>
             一括登録
           </Button>
         </div>

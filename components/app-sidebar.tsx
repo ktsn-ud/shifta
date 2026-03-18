@@ -65,7 +65,7 @@ const secondaryNavItems: NavItem[] = [
   { title: "Settings", href: "/my/settings", icon: <Settings2Icon /> },
   {
     title: "Bulk Registration",
-    href: "/my/bulk",
+    href: "/my/shifts/bulk",
     icon: <CalendarDaysIcon />,
   },
 ];

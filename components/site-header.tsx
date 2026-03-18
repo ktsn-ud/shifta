@@ -14,6 +14,7 @@ const routeTitles: Array<{ path: string; title: string }> = [
   { path: "/my/timetable", title: "Timetable" },
   { path: "/my/settings", title: "Settings" },
   { path: "/my/bulk", title: "Bulk Registration" },
+  { path: "/my/shifts/bulk", title: "Bulk Registration" },
   { path: "/my", title: "Dashboard" },
 ];
 
