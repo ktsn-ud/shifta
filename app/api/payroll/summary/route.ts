@@ -3,17 +3,7 @@ import { z } from "zod";
 import { requireCurrentUser } from "@/lib/api/current-user";
 import { DATE_ONLY_REGEX, parseDateOnly } from "@/lib/api/date-time";
 import { jsonError } from "@/lib/api/http";
-import type {
-  PayrollRule,
-  Shift,
-  ShiftLessonRange,
-  Workplace,
-} from "@/lib/generated/prisma/client";
-import { calculateLessonShiftWage } from "@/lib/payroll/calculateLessonShiftWage";
-import {
-  calculateOtherShiftWage,
-  type PayrollResult,
-} from "@/lib/payroll/calculateShiftWage";
+import { summarizeByPeriod } from "@/lib/payroll/summarizeByPeriod";
 import { prisma } from "@/lib/prisma";
 
 const summaryQuerySchema = z
@@ -32,25 +22,6 @@ const summaryQuerySchema = z
       path: ["startDate"],
     },
   );
-
-type ShiftWithRelations = Shift & {
-  lessonRange: ShiftLessonRange | null;
-  workplace: Pick<Workplace, "id" | "name" | "color">;
-};
-
-type PeriodSummary = {
-  totalWage: number;
-  totalWorkHours: number;
-  totalNightHours: number;
-  totalOvertimeHours: number;
-  byWorkplace: Array<{
-    workplaceId: string;
-    workplaceName: string;
-    workplaceColor: string;
-    wage: number;
-    workHours: number;
-  }>;
-};
 
 function shiftMonthClamped(date: Date, monthOffset: number): Date {
   const year = date.getUTCFullYear();
@@ -77,124 +48,6 @@ function shiftMonthClamped(date: Date, monthOffset: number): Date {
 
 function startOfYear(date: Date): Date {
   return new Date(Date.UTC(date.getUTCFullYear(), 0, 1));
-}
-
-function isWithin(date: Date, startDate: Date, endDate: Date): boolean {
-  const time = date.getTime();
-  return time >= startDate.getTime() && time <= endDate.getTime();
-}
-
-function findApplicableRule(
-  rulesByWorkplace: Map<string, PayrollRule[]>,
-  workplaceId: string,
-  shiftDate: Date,
-): PayrollRule | null {
-  const rules = rulesByWorkplace.get(workplaceId) ?? [];
-  const shiftTime = shiftDate.getTime();
-
-  for (const rule of rules) {
-    const startTime = rule.startDate.getTime();
-    const endTime = rule.endDate?.getTime() ?? Number.POSITIVE_INFINITY;
-
-    if (startTime <= shiftTime && shiftTime < endTime) {
-      return rule;
-    }
-  }
-
-  return null;
-}
-
-function roundHours(value: number): number {
-  return Math.round(value * 100) / 100;
-}
-
-function calculateShiftResult(
-  shift: ShiftWithRelations,
-  rulesByWorkplace: Map<string, PayrollRule[]>,
-): PayrollResult {
-  const rule = findApplicableRule(
-    rulesByWorkplace,
-    shift.workplaceId,
-    shift.date,
-  );
-  if (!rule) {
-    throw new Error(`該当する給与ルールが見つかりません: shiftId=${shift.id}`);
-  }
-
-  if (shift.shiftType === "LESSON") {
-    if (!shift.lessonRange) {
-      throw new Error(
-        `LESSON型のコマ範囲が見つかりません: shiftId=${shift.id}`,
-      );
-    }
-    return calculateLessonShiftWage(shift, shift.lessonRange, rule);
-  }
-
-  return calculateOtherShiftWage(shift, rule);
-}
-
-function summarizePeriod(
-  shifts: ShiftWithRelations[],
-  rulesByWorkplace: Map<string, PayrollRule[]>,
-  startDate: Date,
-  endDate: Date,
-): PeriodSummary {
-  const targetShifts = shifts.filter((shift) =>
-    isWithin(shift.date, startDate, endDate),
-  );
-
-  const byWorkplace = new Map<
-    string,
-    {
-      workplaceId: string;
-      workplaceName: string;
-      workplaceColor: string;
-      wage: number;
-      workHours: number;
-    }
-  >();
-
-  let totalWage = 0;
-  let totalWorkHours = 0;
-  let totalNightHours = 0;
-  let totalOvertimeHours = 0;
-
-  for (const shift of targetShifts) {
-    const result = calculateShiftResult(shift, rulesByWorkplace);
-
-    totalWage += result.totalWage;
-    totalWorkHours += result.workHours;
-    totalNightHours += result.nightHours;
-    totalOvertimeHours += result.overtimeHours;
-
-    const existing = byWorkplace.get(shift.workplaceId);
-    if (existing) {
-      existing.wage += result.totalWage;
-      existing.workHours += result.workHours;
-    } else {
-      byWorkplace.set(shift.workplaceId, {
-        workplaceId: shift.workplace.id,
-        workplaceName: shift.workplace.name,
-        workplaceColor: shift.workplace.color,
-        wage: result.totalWage,
-        workHours: result.workHours,
-      });
-    }
-  }
-
-  return {
-    totalWage: Math.round(totalWage),
-    totalWorkHours: roundHours(totalWorkHours),
-    totalNightHours: roundHours(totalNightHours),
-    totalOvertimeHours: roundHours(totalOvertimeHours),
-    byWorkplace: Array.from(byWorkplace.values())
-      .map((item) => ({
-        ...item,
-        wage: Math.round(item.wage),
-        workHours: roundHours(item.workHours),
-      }))
-      .sort((left, right) => right.wage - left.wage),
-  };
 }
 
 export async function GET(request: Request) {
@@ -254,39 +107,32 @@ export async function GET(request: Request) {
       new Set(shifts.map((shift) => shift.workplaceId)),
     );
 
-    const rulesByWorkplace = new Map<string, PayrollRule[]>();
-    if (workplaceIds.length > 0) {
-      const rules = await prisma.payrollRule.findMany({
-        where: {
-          workplaceId: {
-            in: workplaceIds,
+    const payrollRules = workplaceIds.length
+      ? await prisma.payrollRule.findMany({
+          where: {
+            workplaceId: {
+              in: workplaceIds,
+            },
           },
-        },
-        orderBy: [{ workplaceId: "asc" }, { startDate: "desc" }],
-      });
+          orderBy: [{ workplaceId: "asc" }, { startDate: "asc" }],
+        })
+      : [];
 
-      for (const rule of rules) {
-        const existing = rulesByWorkplace.get(rule.workplaceId) ?? [];
-        existing.push(rule);
-        rulesByWorkplace.set(rule.workplaceId, existing);
-      }
-    }
-
-    const currentSummary = summarizePeriod(
+    const currentSummary = summarizeByPeriod(
       shifts,
-      rulesByWorkplace,
+      payrollRules,
       startDate,
       endDate,
     );
-    const previousSummary = summarizePeriod(
+    const previousSummary = summarizeByPeriod(
       shifts,
-      rulesByWorkplace,
+      payrollRules,
       previousStartDate,
       previousEndDate,
     );
-    const cumulativeSummary = summarizePeriod(
+    const cumulativeSummary = summarizeByPeriod(
       shifts,
-      rulesByWorkplace,
+      payrollRules,
       cumulativeStartDate,
       endDate,
     );
