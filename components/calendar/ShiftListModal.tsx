@@ -209,8 +209,7 @@ export function ShiftListModal({
                         </Badge>
                         {shift.googleSyncStatus === "FAILED" ? (
                           <p className="text-xs text-destructive">
-                            {shift.googleSyncError ??
-                              "Google Calendar への同期に失敗しました"}
+                            Google Calendar への同期に失敗しました
                           </p>
                         ) : null}
                       </div>

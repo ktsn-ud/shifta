@@ -30,51 +30,56 @@ type SyncLog = {
   error?: string;
 };
 
-function formatGoogleSyncError(error: unknown): string {
-  if (error instanceof Error) {
-    const candidate = error as Error & {
-      code?: number | string;
-      status?: number;
-      response?: {
-        status?: number;
-        data?: unknown;
-      };
-    };
-
-    const status =
-      candidate.status ?? candidate.response?.status ?? Number(candidate.code);
-
-    if (status === 401) {
-      return "Google auth failed: 401";
-    }
-
-    if (status === 403) {
-      return "Insufficient permissions";
-    }
-
-    if (status === 404) {
-      return "Calendar not found";
-    }
-
-    if (status === 409) {
-      return `Event conflict: ${candidate.message}`;
-    }
-
-    if (typeof status === "number" && status >= 500) {
-      return `Google API error: ${status} ${candidate.message}`;
-    }
-
-    if (
-      candidate.message.includes("timeout") ||
-      String(candidate.code).toUpperCase().includes("ETIMEDOUT")
-    ) {
-      return "Request timeout";
-    }
-
-    return candidate.message;
+function extractGoogleErrorStatus(error: unknown): number | null {
+  if (!(error instanceof Error)) {
+    return null;
   }
 
-  return "Google Calendar sync failed";
+  const candidate = error as Error & {
+    code?: number | string;
+    status?: number;
+    response?: {
+      status?: number;
+    };
+  };
+
+  const status =
+    candidate.status ?? candidate.response?.status ?? Number(candidate.code);
+
+  return Number.isFinite(status) ? status : null;
+}
+
+function formatGoogleSyncError(error: unknown): string {
+  const status = extractGoogleErrorStatus(error);
+  if (status === 401) {
+    return "Google認証に失敗しました。再ログインしてください";
+  }
+  if (status === 403) {
+    return "Google Calendar へのアクセス権限が不足しています";
+  }
+  if (status === 404) {
+    return "同期先のGoogle Calendarイベントが見つかりません";
+  }
+  if (status === 409) {
+    return "Google Calendar 上で競合が発生しました。再試行してください";
+  }
+  if (typeof status === "number" && status >= 500) {
+    return "Google Calendar 側で一時的なエラーが発生しました";
+  }
+
+  if (error instanceof Error) {
+    const code = String(
+      (error as Error & { code?: number | string }).code ?? "",
+    ).toUpperCase();
+    if (
+      error.message.toLowerCase().includes("timeout") ||
+      code.includes("ETIMEDOUT")
+    ) {
+      return "Google Calendar との通信がタイムアウトしました";
+    }
+  }
+
+  return "Google Calendar との同期に失敗しました";
 }
 
 function logSyncEvent(entry: SyncLog): void {
@@ -201,6 +206,13 @@ async function runShiftSync(
       googleEventId,
     };
   } catch (error) {
+    console.error("Google Calendar shift sync failed", {
+      action,
+      userId,
+      shiftId,
+      error,
+    });
+
     const errorMessage = formatGoogleSyncError(error);
 
     await updateSyncStatus(shiftId, "FAILED", {
@@ -303,6 +315,13 @@ export async function syncShiftsAfterBulkCreate(
           googleEventId,
         };
       } catch (error) {
+        console.error("Google Calendar bulk shift sync failed", {
+          action: "create",
+          userId,
+          shiftId,
+          error,
+        });
+
         const errorMessage = formatGoogleSyncError(error);
 
         await updateSyncStatus(shiftId, "FAILED", {
@@ -370,6 +389,14 @@ export async function syncShiftDeletion(
       durationMs: Date.now() - startedAt,
     });
   } catch (error) {
+    console.error("Google Calendar shift deletion sync failed", {
+      action: "delete",
+      userId,
+      shiftId,
+      googleEventId,
+      error,
+    });
+
     const errorMessage = formatGoogleSyncError(error);
 
     logSyncEvent({

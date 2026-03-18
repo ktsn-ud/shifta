@@ -176,13 +176,10 @@ export default function Page() {
           if (response.ok === false) {
             const payload = (await response.json()) as {
               error?: string;
-              details?: { detail?: string };
             };
 
             throw new Error(
-              payload.details?.detail ??
-                payload.error ??
-                "Google Calendar への再同期に失敗しました",
+              payload.error ?? "Google Calendar への再同期に失敗しました",
             );
           }
 

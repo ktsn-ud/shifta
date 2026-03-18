@@ -25,7 +25,7 @@ export async function POST(_: Request, context: Context) {
     }
 
     return jsonError("Google Calendar の再同期に失敗しました", 502, {
-      detail: result.errorMessage,
+      code: "GOOGLE_SYNC_FAILED",
     });
   } catch (error) {
     console.error("POST /api/shifts/:id/retry-sync failed", error);
