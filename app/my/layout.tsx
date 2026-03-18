@@ -2,8 +2,20 @@ import { TooltipProvider } from "@/components/ui/tooltip";
 import { SidebarInset, SidebarProvider } from "@/components/ui/sidebar";
 import { AppSidebar } from "@/components/app-sidebar";
 import { SiteHeader } from "@/components/site-header";
+import { auth } from "@/lib/auth";
 
-export default function Layout({ children }: { children: React.ReactNode }) {
+export default async function Layout({
+  children,
+}: {
+  children: React.ReactNode;
+}) {
+  const session = await auth();
+  const user = {
+    name: session?.user?.name ?? "User",
+    email: session?.user?.email ?? "unknown@example.com",
+    avatar: session?.user?.image,
+  };
+
   return (
     <TooltipProvider>
       <SidebarProvider
@@ -14,7 +26,7 @@ export default function Layout({ children }: { children: React.ReactNode }) {
           } as React.CSSProperties
         }
       >
-        <AppSidebar variant="inset" />
+        <AppSidebar variant="inset" user={user} />
         <SidebarInset>
           <SiteHeader />
           {children}
