@@ -18,6 +18,7 @@
     "@dnd-kit/modifiers": "^9.0.0",
     "@dnd-kit/sortable": "^10.0.0",
     "@dnd-kit/utilities": "^3.2.2",
+    "@holiday-jp/holiday_jp": "^2.5.1",
     "@prisma/adapter-neon": "^6.19.2",
     "@prisma/client": "^6.19.2",
     "@tanstack/react-table": "^8.21.3",
