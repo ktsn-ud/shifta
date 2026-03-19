@@ -169,7 +169,7 @@ export default function ShiftConfirmPage() {
   }, [loadShiftConfirmationData]);
 
   return (
-    <section className="space-y-6 p-4 md:p-6">
+    <section className="flex flex-col gap-6 p-4 md:h-[calc(100svh-var(--header-height))] md:overflow-hidden md:p-6">
       <header>
         <h2 className="text-xl font-semibold">シフト確定</h2>
         <p className="mt-1 text-sm text-muted-foreground">
@@ -183,40 +183,52 @@ export default function ShiftConfirmPage() {
         </p>
       ) : null}
 
-      <section className="space-y-3">
-        <h3 className="text-lg font-semibold">未確定シフト</h3>
-        {isLoading ? (
-          <UnconfirmedShiftCardsSkeleton />
-        ) : unconfirmedShifts.length === 0 ? (
-          <p className="text-sm text-muted-foreground">
-            未確定シフトはありません
-          </p>
-        ) : (
-          <div className="p-1">
-            <div className="flex flex-col gap-3">
-              {unconfirmedShifts.map((shift) => (
-                <ConfirmShiftCard
-                  key={shift.id}
-                  shift={shift}
-                  onActionCompleted={loadShiftConfirmationData}
-                />
-              ))}
-            </div>
+      <div className="flex flex-col gap-6 md:min-h-0 md:flex-1 md:grid md:grid-cols-[minmax(0,1fr)_1px_minmax(0,1fr)] md:gap-6">
+        <section className="space-y-3 md:flex md:min-h-0 md:flex-col">
+          <h3 className="text-lg font-semibold">未確定シフト</h3>
+          <div className="md:min-h-0 md:overflow-y-auto md:pr-2">
+            {isLoading ? (
+              <UnconfirmedShiftCardsSkeleton />
+            ) : unconfirmedShifts.length === 0 ? (
+              <p className="text-sm text-muted-foreground">
+                未確定シフトはまだありません
+              </p>
+            ) : (
+              <div className="p-1">
+                <div className="flex flex-col gap-3">
+                  {unconfirmedShifts.map((shift) => (
+                    <ConfirmShiftCard
+                      key={shift.id}
+                      shift={shift}
+                      onActionCompleted={loadShiftConfirmationData}
+                    />
+                  ))}
+                </div>
+              </div>
+            )}
           </div>
-        )}
-      </section>
+        </section>
 
-      {isLoading ? (
-        <section className="space-y-3">
+        <div
+          aria-hidden="true"
+          className="hidden w-px self-stretch bg-border md:mb-[15px] md:block"
+        />
+
+        <section className="space-y-3 md:flex md:min-h-0 md:flex-col">
           <h3 className="text-lg font-semibold">今月の確定済みシフト</h3>
-          <ConfirmedShiftTableSkeleton />
+          <div className="md:min-h-0 md:overflow-y-auto md:pr-2">
+            {isLoading ? (
+              <ConfirmedShiftTableSkeleton />
+            ) : confirmedShiftGroups.length > 0 ? (
+              <ConfirmedShiftsList groups={confirmedShiftGroups} />
+            ) : (
+              <p className="text-sm text-muted-foreground">
+                今月の確定済みシフトはまだありません
+              </p>
+            )}
+          </div>
         </section>
-      ) : confirmedShiftGroups.length > 0 ? (
-        <section className="space-y-3">
-          <h3 className="text-lg font-semibold">今月の確定済みシフト</h3>
-          <ConfirmedShiftsList groups={confirmedShiftGroups} />
-        </section>
-      ) : null}
+      </div>
     </section>
   );
 }
