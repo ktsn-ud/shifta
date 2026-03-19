@@ -91,6 +91,19 @@
 - T12-3: エラーハンドリング・ユーザーメッセージ改善
 - T12-4: ドキュメント整備
 
+### Phase 13: シフト確定機能 (Shift Confirmation)
+
+- T13-0: Prismaスキーマに isConfirmed フィールド追加
+- T13-1: シフト確定ページUI実装（SCR_015）
+- T13-2: 未確定シフト取得API実装
+- T13-3: 確定済みシフト取得API実装
+- T13-4: シフト確定処理（PATCH）API実装
+- T13-5: シフト削除処理（DELETE）API実装
+- T13-6: シフト確定ページにデータ連携実装
+- T13-7: シフト確定・削除フロー実装（UI ⇔ API 連携）
+- T13-8: シフト確定ページのナビゲーション追加
+- T13-9: 統合テスト・UI 検証（SCR_015）
+
 ---
 
 ## 2. 詳細タスク仕様（実装対象のみ）
@@ -1945,6 +1958,450 @@ Phase 12 (統合) ← 全 Phase に依存
 2. テスト結果
 3. スクリーンショット（UI変更の場合）
 ```
+
+---
+
+## **Phase 13: シフト確定機能 (Shift Confirmation)**
+
+### **T13-0: Prismaスキーマに isConfirmed フィールドを追加**
+
+**概要**: Shift モデルに `isConfirmed` boolean フィールドを追加。
+
+**実装対象**:
+
+- `prisma/schema.prisma` の Shift モデルに `isConfirmed` フィールドを追加
+  - 型: `boolean`
+  - デフォルト: `false`
+  - DB マイグレーション実行（自動で既存データに `false` が割り当てられる）
+
+**完了条件**:
+
+- Shift スキーマに `isConfirmed` フィールドが存在
+- `prisma migrate dev` で マイグレーションファイルが自動生成される
+- 型定義ファイルが更新される（`prisma generate`）
+
+---
+
+### **T13-1: シフト確定ページUI実装 (SCR_015)**
+
+**概要**: `/my/shifts/confirm` ページの UI を実装。未確定シフトをカードリスト形式で表示し、確定済みシフトを下部に表示。
+
+**実装対象**:
+
+- ページコンポーネント: `app/my/shifts/confirm/page.tsx`
+- 未確定シフトカード: `components/shifts/ConfirmShiftCard.tsx`
+- 確定済みシフトテーブル: `components/shifts/ConfirmedShiftsList.tsx`
+
+**UI要件**（DESIGN_SPECIFICATION.md 9.3 SCR_015 参照）:
+
+**Part 1: 未確定シフトリスト（上部）**
+
+- 本日以前で `isConfirmed = false` のシフトを date ASC で表示
+- 各シフトをカード形式で表示：
+  - 日付（読み取り専用）
+  - 勤務先名（読み取り専用）
+  - 開始時刻（編集可能な TIME 入力フィールド）
+  - 終了時刻（編集可能な TIME 入力フィールド）
+  - 休憩時間（編集可能な NUMBER 入力フィールド）
+  - 「確定」ボタン
+  - 「削除」ボタン
+- カードが複数の場合、スクロール可能な領域に縦並び
+- リストが空の場合、「未確定シフトはありません」メッセージ表示
+
+**Part 2: 今月の確定済みシフト（下部）**
+
+- 当月内で `isConfirmed = true` のシフトを表示
+- 勤務先ごとにグループ化
+- グループ内は date ASC で表示
+- テーブル形式：日付 | 時間帯（実勤務時間表示） | 状態（✓）
+- セクションが空の場合は非表示
+
+**スタイリング**:
+
+- shadcn/ui Card, Input, Button コンポーネントを使用
+- 背景はダッシュボードと統一
+- モバイル対応（カード幅制約）
+
+**完了条件**:
+
+- ページレイアウトが要件通り実装済み
+- Part 1, Part 2 の各要素が正確に表示される
+- 編集フィールド（TIME, NUMBER）が操作可能
+- TypeScript 型エラーなし
+
+---
+
+### **T13-2: 未確定シフト取得API実装**
+
+**概要**: 本日以前で未確定のシフト一覧を取得する API エンドポイントを実装。
+
+**実装対象**:
+
+- API ルート: `app/api/shifts/unconfirmed/route.ts`
+
+**API 仕様**:
+
+**GET `/api/shifts/unconfirmed`**
+
+**クエリパラメータ**: なし
+
+**レスポンス**:
+
+```json
+{
+  "shifts": [
+    {
+      "id": "shift-id",
+      "date": "2026-03-05",
+      "startTime": "10:00",
+      "endTime": "18:00",
+      "breakMinutes": 60,
+      "isConfirmed": false,
+      "workplace": {
+        "id": "workplace-id",
+        "name": "コンビニA",
+        "color": "#FF5733"
+      }
+    }
+    // ...
+  ]
+}
+```
+
+**ロジック**:
+
+- `GET /api/shifts/unconfirmed` の呼び出しで、認証ユーザーの Workplace に紐付く Shift を取得
+- 条件: `date <= today` AND `isConfirmed = false`
+- 並べ替え: `date ASC`
+- 関連データを include: Workplace（color, name を含む）
+
+**エラーハンドリング**:
+
+- 未認証: 401 Unauthorized
+- DB エラー: 500 Internal Server Error + エラーログ出力
+
+**完了条件**:
+
+- API が正常に実装されている
+- レスポンス形式が仕様通り
+- 条件フィルタが正確に機能
+- エラーハンドリングが実装済み
+
+---
+
+### **T13-3: 確定済みシフト取得API実装**
+
+**概要**: 当月内で確定済みのシフト一覧を取得する API エンドポイントを実装。
+
+**実装対象**:
+
+- API ルート: `app/api/shifts/confirmed-current-month/route.ts`
+
+**API 仕様**:
+
+**GET `/api/shifts/confirmed-current-month`**
+
+**クエリパラメータ**: なし
+
+**レスポンス**:
+
+```json
+{
+  "shifts": [
+    {
+      "id": "shift-id",
+      "date": "2026-03-05",
+      "startTime": "10:00",
+      "endTime": "18:00",
+      "breakMinutes": 60,
+      "workDurationHours": 7.5,
+      "isConfirmed": true,
+      "workplace": {
+        "id": "workplace-id",
+        "name": "コンビニA"
+      }
+    }
+    // ...
+  ]
+}
+```
+
+**ロジック**:
+
+- 認証ユーザーの Workplace に紐付く Shift を取得
+- 条件: `date` が当月内（月初～月末） AND `isConfirmed = true`
+- 並べ替え: 勤務先でグループ化後、グループ内は date ASC
+- 関連データ include: Workplace（name を含む）
+- workDurationHours: (endTime - startTime - breakMinutes) から時間を計算
+
+**エラーハンドリング**:
+
+- 未認証: 401 Unauthorized
+- DB エラー: 500 Internal Server Error
+
+**完了条件**:
+
+- API が正常に実装されている
+- 当月判定が正確
+- workDurationHours が正確に計算される
+- グループ化と並べ替えが要件通り
+
+---
+
+### **T13-4: シフト確定処理（PATCH）API実装**
+
+**概要**: シフトを確定状態に更新する API エンドポイントを実装。
+
+**実装対象**:
+
+- API ルート: `app/api/shifts/[id]/confirm/route.ts`
+
+**API 仕様**:
+
+**PATCH `/api/shifts/[id]/confirm`**
+
+**パスパラメータ**:
+
+- `id`: Shift ID
+
+**リクエストボディ** (オプション):
+
+```json
+{
+  "startTime": "10:00",
+  "endTime": "18:00",
+  "breakMinutes": 60
+}
+```
+
+（編集された時刻がある場合のみ送信）
+
+**レスポンス** (成功):
+
+```json
+{
+  "id": "shift-id",
+  "isConfirmed": true,
+  "date": "2026-03-05",
+  "startTime": "10:00",
+  "endTime": "18:00",
+  "breakMinutes": 60
+}
+```
+
+**ロジック**:
+
+1. リクエストボディの値があれば、シフトの startTime, endTime, breakMinutes を更新
+2. `isConfirmed` を `true` に更新
+3. DB で確定処理を実行
+4. 更新後のシフト情報をレスポンス
+
+**バリデーション**:
+
+- startTime < endTime（あれば）
+- breakMinutes >= 0（あれば）
+- shift が存在するか確認
+- 認証ユーザーが所有するシフトか確認
+
+**エラーハンドリング**:
+
+- 未認証: 401 Unauthorized
+- 不正な ID: 404 Not Found
+- バリデーションエラー: 400 Bad Request
+- DB エラー: 500 Internal Server Error
+
+**完了条件**:
+
+- PATCH エンドポイントが正常に実装
+- 時刻編集と確定が同時に実行可能
+- バリデーションが完全に機能
+- レスポンス形式が仕様通り
+
+---
+
+### **T13-5: シフト削除処理（DELETE）API実装**
+
+**概要**: シフト確定ページからシフトを削除する DELETE API エンドポイントを実装。
+
+**実装対象**:
+
+- API ルート: `app/api/shifts/[id]/route.ts` に DELETE メソッドを追加（既存 GET, PATCH と共存）
+
+**API 仕様**:
+
+**DELETE `/api/shifts/[id]`**
+
+**パスパラメータ**:
+
+- `id`: Shift ID
+
+**レスポンス** (成功):
+
+```json
+{
+  "id": "shift-id",
+  "message": "Shift deleted successfully"
+}
+```
+
+**ロジック**:
+
+1. Shift が存在するか確認
+2. 所有権確認（認証ユーザーの勤務先に紐付くシフトか）
+3. ShiftLessonRange が存在すれば削除
+4. Shift を削除
+5. Google Calendar との同期（既存フロー）
+
+**バリデーション**:
+
+- シフトの存在確認
+- 所有権確認
+
+**エラーハンドリング**:
+
+- 未認証: 401 Unauthorized
+- 不正な ID: 404 Not Found
+- 権限なし: 403 Forbidden
+- DB エラー: 500 Internal Server Error
+
+**完了条件**:
+
+- DELETE エンドポイントが正常に実装
+- 関連データ（ShiftLessonRange）も削除される
+- Google Calendar 同期ロジックが動作
+- エラーハンドリングが完全
+
+---
+
+### **T13-6: シフト確定ページにデータ連携実装**
+
+**概要**: T13-2, T13-3 の API を呼び出して、ページに未確定・確定済みシフトを表示。
+
+**実装対象**:
+
+- `app/my/shifts/confirm/page.tsx` にデータ取得ロジック追加
+- API 呼び出し: `GET /api/shifts/unconfirmed`, `GET /api/shifts/confirmed-current-month`
+- useEffect または Server Component で API データ取得
+- エラー処理・ローディング状態
+
+**実装内容**:
+
+1. ページ読み込み時に両 API を呼び出し
+2. 未確定シフト → Part 1 に表示
+3. 確定済みシフト → Part 2 に表示（勤務先ごとにグループ化）
+4. ローディング表示を実装
+5. API エラー時の通知（toast / alert）
+
+**完了条件**:
+
+- API データがページに反映される
+- ローディング・エラー状態が適切に処理される
+- 初期表示とリロード後の動作が正常
+
+---
+
+### **T13-7: シフト確定・削除フロー実装（UI ⇔ API 連携）**
+
+**概要**: UI の「確定」「削除」ボタンクライアント側のロジックを実装し、API と連携。
+
+**実装対象**:
+
+- `components/shifts/ConfirmShiftCard.tsx` のボタンハンドラ実装
+  - 確定ボタン: PATCH `/api/shifts/[id]/confirm` 呼び出し → カード削除
+  - 削除ボタン: DELETE `/api/shifts/[id]` 呼び出し → 確認ダイアログ → カード削除
+
+**実装内容**:
+
+1. **確定ボタン**:
+   - 編集フィールド（時刻、休憩時間）の値を取得
+   - バリデーション実行
+   - PATCH リクエスト送信
+   - 成功時: カードを画面から削除、トースト通知 → Part 2 の確定済みシフトにも追加される場合は再読み込み
+   - エラー時: エラーメッセージ表示
+
+2. **削除ボタン**:
+   - 削除確認ダイアログ表示（`confirm()` または モーダル）
+   - 確認後 DELETE リクエスト送信
+   - 成功時: カードを画面から削除
+   - エラー時: エラーメッセージ表示
+
+3. **バリデーション**:
+   - 開始時刻 < 終了時刻
+   - 休憩時間 0～240
+   - エラーメッセージ表示
+
+**完了条件**:
+
+- 確定・削除ボタンが正常に機能
+- バリデーションエラーが適切に表示される
+- API 成功時の UI 更新が正確
+- API エラー時の処理が完全
+
+---
+
+### **T13-8: シフト確定ページのナビゲーション追加**
+
+**概要**: ダッシュボード（SCR_002）の左メニューに「シフト確定」リンクを追加。
+
+**実装対象**:
+
+- `components/nav-main.tsx` または `components/app-sidebar.tsx` にメニュー項目を追加
+
+**実装内容**:
+
+1. メニューリンク追加：
+   - ラベル: 「シフト確定」
+   - パス: `/my/shifts/confirm`
+   - アイコン: 適切なアイコン（例：チェックマーク）
+
+2. 画面遷移が正常に機能すること
+
+**完了条件**:
+
+- メニューに「シフト確定」が表示される
+- クリックで `/my/shifts/confirm` へ遷移できる
+- 他のメニュー項目と同じレベルのできばえ
+
+---
+
+### **T13-9: 統合テスト・UI 検証 (SCR_015)**
+
+**概要**: シフト確定ページの E2E テスト、UI の視覚的検証を実施。
+
+**実装対象**:
+
+- 主要フロー検証
+- エラーハンドリング検証
+
+**テスト項目**:
+
+1. **未確定シフト表示**:
+   - 本日以前のシフトが正確に表示される
+   - 勤務先情報が表示される
+
+2. **確定済みシフト表示**:
+   - 今月の確定済みシフトが勤務先ごとにグループ化されて表示される
+   - 実勤務時間が正確に計算されている
+
+3. **シフト確定フロー**:
+   - 時刻編集 → 確定ボタン → API 呼び出し → カード削除
+   - トースト通知が表示される
+
+4. **シフト削除フロー**:
+   - 削除ボタン → 確認ダイアログ → API 呼び出し → カード削除
+
+5. **バリデーション**:
+   - 不正な時刻入力時にエラーメッセージが表示される
+
+6. **ローディング・エラー状態**:
+   - API エラー時のメッセージが表示される
+
+**完了条件**:
+
+- 主要フロー全て が正常に動作
+- UI が設計仕様通りに表示される
+- レスポンシブ対応確認（モバイル表示）
+- パフォーマンス上の問題がない
 
 ---
 
