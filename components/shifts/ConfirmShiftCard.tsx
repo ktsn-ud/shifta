@@ -167,7 +167,7 @@ export function ConfirmShiftCard({
           <div className="flex items-center gap-1.5 text-sm text-muted-foreground">
             <span
               aria-hidden="true"
-              className="size-2.5 shrink-0 rounded-full border border-border/70"
+              className="size-2.5 shrink-0 rounded-full"
               style={{ backgroundColor: shift.workplaceColor }}
             />
             <p>{shift.workplaceName}</p>
