@@ -19,6 +19,7 @@ import {
 } from "@/components/ui/sidebar";
 import {
   CalendarDaysIcon,
+  CheckCheckIcon,
   CommandIcon,
   LandmarkIcon,
   LayoutDashboardIcon,
@@ -49,6 +50,11 @@ const mainNavItems: NavItem[] = [
     title: "勤務先管理",
     href: "/my/workplaces",
     icon: <LandmarkIcon />,
+  },
+  {
+    title: "シフト確定",
+    href: "/my/shifts/confirm",
+    icon: <CheckCheckIcon />,
   },
 ];
 
