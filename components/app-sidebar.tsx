@@ -42,6 +42,11 @@ const mainNavItems: NavItem[] = [
   { title: "ダッシュボード", href: "/my", icon: <LayoutDashboardIcon /> },
   { title: "カレンダー", href: "/my/calendar", icon: <CalendarDaysIcon /> },
   {
+    title: "シフト確定",
+    href: "/my/shifts/confirm",
+    icon: <CheckCheckIcon />,
+  },
+  {
     title: "給与サマリー",
     href: "/my/summary",
     icon: <WalletCardsIcon />,
@@ -50,11 +55,6 @@ const mainNavItems: NavItem[] = [
     title: "勤務先管理",
     href: "/my/workplaces",
     icon: <LandmarkIcon />,
-  },
-  {
-    title: "シフト確定",
-    href: "/my/shifts/confirm",
-    icon: <CheckCheckIcon />,
   },
 ];
 
