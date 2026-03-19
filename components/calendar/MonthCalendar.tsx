@@ -191,7 +191,7 @@ export function MonthCalendar({
                 {isToday ? (
                   <span
                     aria-hidden
-                    className="pointer-events-none absolute top-1.5 left-1/2 size-8 -translate-x-1/2 rounded-full bg-primary/20"
+                    className="pointer-events-none absolute top-0.5 left-1/2 size-8 -translate-x-1/2 rounded-full bg-primary/20"
                   />
                 ) : null}
 
