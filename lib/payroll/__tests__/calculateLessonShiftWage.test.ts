@@ -22,6 +22,7 @@ function createShift(overrides: Partial<Shift> = {}): Shift {
     startTime: time("16:30"),
     endTime: time("19:50"),
     breakMinutes: 0,
+    isConfirmed: false,
     shiftType: "LESSON",
     googleEventId: null,
     googleSyncStatus: "PENDING",

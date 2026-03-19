@@ -147,6 +147,7 @@ model Shift {
   startTime        DateTime          @db.Time(0)
   endTime          DateTime          @db.Time(0)
   breakMinutes     Int               @default(0)
+  isConfirmed      Boolean           @default(false)
   shiftType        ShiftType
   googleEventId    String?
   googleSyncStatus String            @default("PENDING")
