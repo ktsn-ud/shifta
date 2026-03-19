@@ -1,5 +1,5 @@
 import { randomUUID } from "node:crypto";
-import { NextResponse } from "next/server";
+import { after, NextResponse } from "next/server";
 import { z } from "zod";
 import { requireCurrentUser } from "@/lib/api/current-user";
 import { DATE_ONLY_REGEX, TIME_ONLY_REGEX } from "@/lib/api/date-time";
@@ -14,6 +14,8 @@ import {
   ShiftValidationError,
   type ShiftInput,
 } from "../_shared";
+
+export const maxDuration = 60;
 
 const commonShiftItemSchema = z
   .object({
@@ -170,11 +172,6 @@ export async function POST(request: Request) {
     const createdShifts = await createShiftsInTransaction(builtItems);
     const createdShiftIds = createdShifts.map((shift) => shift.id);
 
-    const syncResults = await syncShiftsAfterBulkCreate(
-      createdShiftIds,
-      current.user.id,
-    );
-
     const latest =
       createdShiftIds.length > 0
         ? await prisma.shift.findMany({
@@ -191,31 +188,45 @@ export async function POST(request: Request) {
           })
         : [];
 
-    const syncedCount = syncResults.filter((result) => result.ok).length;
-    const firstFailedSync = syncResults.find((result) => result.ok === false);
-    const requiresCalendarSetup = syncResults.some(
-      (result) => result.ok === false && result.requiresCalendarSetup,
-    );
+    after(async () => {
+      try {
+        const syncResults = await syncShiftsAfterBulkCreate(
+          createdShiftIds,
+          current.user.id,
+        );
+        const syncedCount = syncResults.filter((result) => result.ok).length;
+        const failedCount = syncResults.length - syncedCount;
+
+        console.info("POST /api/shifts/bulk background sync completed", {
+          userId: current.user.id,
+          total: syncResults.length,
+          synced: syncedCount,
+          failed: failedCount,
+        });
+      } catch (error) {
+        console.error("POST /api/shifts/bulk background sync failed", {
+          userId: current.user.id,
+          shiftCount: createdShiftIds.length,
+          error,
+        });
+      }
+    });
 
     return NextResponse.json(
       {
         data: latest,
         summary: {
           total: createdShiftIds.length,
-          synced: syncedCount,
-          failed: createdShiftIds.length - syncedCount,
+          synced: 0,
+          failed: 0,
+          pending: createdShiftIds.length,
         },
         sync: {
-          ok: syncedCount === createdShiftIds.length,
-          errorMessage:
-            firstFailedSync && firstFailedSync.ok === false
-              ? firstFailedSync.errorMessage
-              : null,
-          errorCode:
-            firstFailedSync && firstFailedSync.ok === false
-              ? firstFailedSync.errorCode
-              : null,
-          requiresCalendarSetup,
+          ok: true,
+          errorMessage: null,
+          errorCode: null,
+          requiresCalendarSetup: false,
+          pending: createdShiftIds.length > 0,
         },
       },
       { status: 201 },

@@ -849,8 +849,12 @@ export function BulkShiftForm() {
           total?: number;
           failed?: number;
         };
+        sync?: {
+          pending?: boolean;
+        };
       };
       const createdCount = payload.summary?.total ?? validated.payload.length;
+      const isSyncPending = payload.sync?.pending === true;
 
       const syncFailure = parseGoogleSyncFailureFromPayload(
         payload,
@@ -883,6 +887,9 @@ export function BulkShiftForm() {
 
       toast.success(messages.success.shiftsBulkCreated(createdCount), {
         id: loadingToastId,
+        description: isSyncPending
+          ? "Google Calendar 同期はバックグラウンドで実行中です。"
+          : undefined,
       });
       router.push("/my/calendar");
       router.refresh();
