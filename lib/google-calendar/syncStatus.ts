@@ -49,8 +49,9 @@ type ResolvedSyncError = {
   requiresCalendarSetup: boolean;
 };
 
-const BULK_SYNC_CONCURRENCY = 5;
+const BULK_SYNC_CONCURRENCY = 3;
 const SYNC_RETRY_DELAYS_MS = [500, 1500] as const;
+const RATE_LIMIT_RETRY_DELAYS_MS = [2000, 6000] as const;
 const RETRYABLE_STATUS_CODES = new Set([408, 409, 429]);
 const RETRYABLE_ERROR_CODES = [
   "ETIMEDOUT",
@@ -80,6 +81,105 @@ function extractGoogleErrorStatus(error: unknown): number | null {
   return Number.isFinite(status) ? status : null;
 }
 
+type GoogleErrorReasonCandidate = {
+  reason?: unknown;
+};
+
+type GoogleErrorWithMetadata = Error & {
+  response?: {
+    status?: number;
+    data?: {
+      error?: {
+        message?: unknown;
+        errors?: unknown;
+      };
+    };
+  };
+  cause?: {
+    message?: unknown;
+    errors?: unknown;
+  };
+};
+
+function getGoogleErrorReasons(error: unknown): string[] {
+  if (!(error instanceof Error)) {
+    return [];
+  }
+
+  const candidate = error as GoogleErrorWithMetadata;
+  const sources = [
+    candidate.response?.data?.error?.errors,
+    candidate.cause?.errors,
+  ];
+  const reasons: string[] = [];
+
+  for (const source of sources) {
+    if (!Array.isArray(source)) {
+      continue;
+    }
+
+    for (const item of source) {
+      if (!item || typeof item !== "object") {
+        continue;
+      }
+
+      const reason = (item as GoogleErrorReasonCandidate).reason;
+      if (typeof reason === "string" && reason.length > 0) {
+        reasons.push(reason.toLowerCase());
+      }
+    }
+  }
+
+  return reasons;
+}
+
+function getGoogleErrorMessages(error: unknown): string[] {
+  if (!(error instanceof Error)) {
+    return [];
+  }
+
+  const candidate = error as GoogleErrorWithMetadata;
+  const messages = [
+    error.message,
+    candidate.response?.data?.error?.message,
+    candidate.cause?.message,
+  ];
+
+  return messages
+    .filter((message): message is string => {
+      return typeof message === "string" && message.length > 0;
+    })
+    .map((message) => message.toLowerCase());
+}
+
+function isGoogleRateLimitError(error: unknown): boolean {
+  const reasons = getGoogleErrorReasons(error);
+  const hasRateLimitReason = reasons.some((reason) => {
+    return (
+      reason.includes("ratelimit") ||
+      reason.includes("rate_limit") ||
+      reason.includes("userratelimitexceeded") ||
+      reason.includes("quotaexceeded")
+    );
+  });
+
+  const messages = getGoogleErrorMessages(error);
+  const hasRateLimitMessage = messages.some((message) => {
+    return (
+      message.includes("rate limit exceeded") ||
+      message.includes("user rate limit exceeded") ||
+      message.includes("quota exceeded")
+    );
+  });
+
+  if (hasRateLimitReason || hasRateLimitMessage) {
+    return true;
+  }
+
+  const status = extractGoogleErrorStatus(error);
+  return status === 429;
+}
+
 function extractGoogleErrorCode(error: unknown): string {
   if (!(error instanceof Error)) {
     return "";
@@ -93,6 +193,10 @@ function extractGoogleErrorCode(error: unknown): string {
 function isRetryableGoogleSyncError(error: unknown): boolean {
   if (error instanceof GoogleCalendarSyncError) {
     return false;
+  }
+
+  if (isGoogleRateLimitError(error)) {
+    return true;
   }
 
   const status = extractGoogleErrorStatus(error);
@@ -137,14 +241,17 @@ async function executeWithSyncRetry<T>(
     try {
       return await operation();
     } catch (error) {
-      const hasRetryLeft = attempt < SYNC_RETRY_DELAYS_MS.length;
+      const delays = isGoogleRateLimitError(error)
+        ? RATE_LIMIT_RETRY_DELAYS_MS
+        : SYNC_RETRY_DELAYS_MS;
+      const hasRetryLeft = attempt < delays.length;
       const shouldRetry = hasRetryLeft && isRetryableGoogleSyncError(error);
 
       if (!shouldRetry) {
         throw error;
       }
 
-      const delayMs = SYNC_RETRY_DELAYS_MS[attempt] ?? 0;
+      const delayMs = delays[attempt] ?? 0;
       console.warn("Google Calendar sync retry scheduled", {
         action: context.action,
         userId: context.userId,
@@ -168,6 +275,15 @@ function resolveGoogleSyncError(error: unknown): ResolvedSyncError {
   }
 
   const status = extractGoogleErrorStatus(error);
+  if (isGoogleRateLimitError(error)) {
+    return {
+      message:
+        "Google Calendar の利用上限に達しました。時間を置いて再試行してください",
+      code: null,
+      requiresCalendarSetup: false,
+    };
+  }
+
   if (status === 401) {
     return {
       message: "Google認証に失敗しました。再ログインしてください",
