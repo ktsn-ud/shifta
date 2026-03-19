@@ -203,13 +203,7 @@ export default function ShiftConfirmPage() {
                   <ConfirmShiftCard
                     key={shift.id}
                     shift={shift}
-                    onChange={(shiftId, patch) => {
-                      setUnconfirmedShifts((current) =>
-                        current.map((item) =>
-                          item.id === shiftId ? { ...item, ...patch } : item,
-                        ),
-                      );
-                    }}
+                    onActionCompleted={loadShiftConfirmationData}
                   />
                 ))}
               </div>

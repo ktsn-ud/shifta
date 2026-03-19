@@ -1,30 +1,221 @@
 "use client";
 
+import { useEffect, useState } from "react";
+import { useRouter } from "next/navigation";
+import { toast } from "sonner";
+import { TIME_ONLY_REGEX, toMinutes } from "@/lib/api/date-time";
+import {
+  parseGoogleSyncFailureFromPayload,
+  readGoogleSyncFailureFromErrorResponse,
+} from "@/lib/google-calendar/clientSync";
+import { CALENDAR_SETUP_PATH } from "@/lib/google-calendar/constants";
+import { messages, toErrorMessage } from "@/lib/messages";
+import type { UnconfirmedShiftItem } from "@/components/shifts/shift-confirmation-types";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
-import type { UnconfirmedShiftItem } from "@/components/shifts/shift-confirmation-types";
 
 type ConfirmShiftCardProps = {
   shift: UnconfirmedShiftItem;
-  onChange?: (
-    shiftId: string,
-    patch: Pick<UnconfirmedShiftItem, "startTime" | "endTime" | "breakMinutes">,
-  ) => void;
-  onConfirm?: (shiftId: string) => void;
-  onDelete?: (shiftId: string) => void;
-  confirmDisabled?: boolean;
-  deleteDisabled?: boolean;
+  onActionCompleted?: () => Promise<void> | void;
 };
+
+type ValidationResult = {
+  startTime: string;
+  endTime: string;
+  breakMinutes: number;
+};
+
+function validateShiftInput(
+  startTime: string,
+  endTime: string,
+  breakMinutesText: string,
+):
+  | { success: true; data: ValidationResult }
+  | { success: false; message: string } {
+  if (!TIME_ONLY_REGEX.test(startTime)) {
+    return {
+      success: false,
+      message: "開始時刻はHH:MM形式で入力してください。",
+    };
+  }
+
+  if (!TIME_ONLY_REGEX.test(endTime)) {
+    return {
+      success: false,
+      message: "終了時刻はHH:MM形式で入力してください。",
+    };
+  }
+
+  if (toMinutes(startTime) >= toMinutes(endTime)) {
+    return {
+      success: false,
+      message: "開始時刻は終了時刻より前にしてください。",
+    };
+  }
+
+  const breakMinutes = Number(breakMinutesText);
+  if (!Number.isInteger(breakMinutes)) {
+    return {
+      success: false,
+      message: "休憩時間は整数で入力してください。",
+    };
+  }
+
+  if (breakMinutes < 0 || breakMinutes > 240) {
+    return {
+      success: false,
+      message: "休憩時間は0〜240分で入力してください。",
+    };
+  }
+
+  return {
+    success: true,
+    data: {
+      startTime,
+      endTime,
+      breakMinutes,
+    },
+  };
+}
 
 export function ConfirmShiftCard({
   shift,
-  onChange,
-  onConfirm,
-  onDelete,
-  confirmDisabled = false,
-  deleteDisabled = false,
+  onActionCompleted,
 }: ConfirmShiftCardProps) {
+  const router = useRouter();
+  const [startTime, setStartTime] = useState(shift.startTime);
+  const [endTime, setEndTime] = useState(shift.endTime);
+  const [breakMinutes, setBreakMinutes] = useState(String(shift.breakMinutes));
+  const [isConfirming, setIsConfirming] = useState(false);
+  const [isDeleting, setIsDeleting] = useState(false);
+  const [errorMessage, setErrorMessage] = useState<string | null>(null);
+
+  useEffect(() => {
+    setStartTime(shift.startTime);
+    setEndTime(shift.endTime);
+    setBreakMinutes(String(shift.breakMinutes));
+    setErrorMessage(null);
+  }, [shift.breakMinutes, shift.endTime, shift.id, shift.startTime]);
+
+  const isMutating = isConfirming || isDeleting;
+
+  const handleConfirm = async () => {
+    setErrorMessage(null);
+    const validation = validateShiftInput(startTime, endTime, breakMinutes);
+    if (!validation.success) {
+      setErrorMessage(validation.message);
+      return;
+    }
+
+    setIsConfirming(true);
+    try {
+      const response = await fetch(`/api/shifts/${shift.id}/confirm`, {
+        method: "PATCH",
+        headers: {
+          "content-type": "application/json",
+        },
+        body: JSON.stringify(validation.data),
+      });
+
+      if (response.ok === false) {
+        const apiError = await readGoogleSyncFailureFromErrorResponse(
+          response,
+          messages.error.shiftConfirmFailed,
+        );
+        throw new Error(apiError.message);
+      }
+
+      const payload = (await response.json()) as unknown;
+      const syncFailure = parseGoogleSyncFailureFromPayload(
+        payload,
+        messages.error.calendarSyncFailed,
+      );
+
+      await onActionCompleted?.();
+
+      if (syncFailure) {
+        toast.error(messages.error.calendarSyncFailed, {
+          description: syncFailure.requiresCalendarSetup
+            ? syncFailure.message
+            : `${syncFailure.message} シフトは確定済みです。`,
+          duration: 6000,
+        });
+
+        if (syncFailure.requiresCalendarSetup) {
+          queueMicrotask(() => {
+            router.push(CALENDAR_SETUP_PATH);
+          });
+        }
+        return;
+      }
+
+      toast.success(messages.success.shiftConfirmed);
+    } catch (error) {
+      console.error("failed to confirm shift", error);
+      setErrorMessage(toErrorMessage(error, messages.error.shiftConfirmFailed));
+    } finally {
+      setIsConfirming(false);
+    }
+  };
+
+  const handleDelete = async () => {
+    setErrorMessage(null);
+
+    const confirmed = window.confirm(
+      `${shift.date} ${shift.workplaceName} のシフトを削除しますか？`,
+    );
+    if (!confirmed) {
+      return;
+    }
+
+    setIsDeleting(true);
+    try {
+      const response = await fetch(`/api/shifts/${shift.id}`, {
+        method: "DELETE",
+      });
+
+      if (response.ok === false) {
+        const apiError = await readGoogleSyncFailureFromErrorResponse(
+          response,
+          messages.error.shiftDeleteFailed,
+        );
+        throw new Error(apiError.message);
+      }
+
+      const payload = (await response.json()) as unknown;
+      const syncFailure = parseGoogleSyncFailureFromPayload(
+        payload,
+        messages.error.calendarSyncFailed,
+      );
+
+      await onActionCompleted?.();
+
+      if (syncFailure) {
+        toast.error(messages.error.calendarSyncFailed, {
+          description: syncFailure.requiresCalendarSetup
+            ? syncFailure.message
+            : `${syncFailure.message} シフトは削除済みです。`,
+          duration: 6000,
+        });
+
+        if (syncFailure.requiresCalendarSetup) {
+          queueMicrotask(() => {
+            router.push(CALENDAR_SETUP_PATH);
+          });
+        }
+        return;
+      }
+
+      toast.success(messages.success.shiftDeleted);
+    } catch (error) {
+      console.error("failed to delete shift", error);
+      setErrorMessage(toErrorMessage(error, messages.error.shiftDeleteFailed));
+    } finally {
+      setIsDeleting(false);
+    }
+  };
+
   return (
     <Card size="sm">
       <CardHeader>
@@ -38,14 +229,9 @@ export function ConfirmShiftCard({
             開始時刻
             <Input
               type="time"
-              value={shift.startTime}
-              onChange={(event) => {
-                onChange?.(shift.id, {
-                  startTime: event.currentTarget.value,
-                  endTime: shift.endTime,
-                  breakMinutes: shift.breakMinutes,
-                });
-              }}
+              value={startTime}
+              disabled={isMutating}
+              onChange={(event) => setStartTime(event.currentTarget.value)}
             />
           </label>
 
@@ -53,14 +239,9 @@ export function ConfirmShiftCard({
             終了時刻
             <Input
               type="time"
-              value={shift.endTime}
-              onChange={(event) => {
-                onChange?.(shift.id, {
-                  startTime: shift.startTime,
-                  endTime: event.currentTarget.value,
-                  breakMinutes: shift.breakMinutes,
-                });
-              }}
+              value={endTime}
+              disabled={isMutating}
+              onChange={(event) => setEndTime(event.currentTarget.value)}
             />
           </label>
 
@@ -69,36 +250,31 @@ export function ConfirmShiftCard({
             <Input
               type="number"
               min={0}
-              value={String(shift.breakMinutes)}
-              onChange={(event) => {
-                const nextBreakMinutes = Number(event.currentTarget.value);
-                onChange?.(shift.id, {
-                  startTime: shift.startTime,
-                  endTime: shift.endTime,
-                  breakMinutes: Number.isFinite(nextBreakMinutes)
-                    ? nextBreakMinutes
-                    : 0,
-                });
-              }}
+              max={240}
+              value={breakMinutes}
+              disabled={isMutating}
+              onChange={(event) => setBreakMinutes(event.currentTarget.value)}
             />
           </label>
         </div>
+
+        {errorMessage ? (
+          <p className="rounded-md border border-destructive/40 bg-destructive/5 px-3 py-2 text-sm text-destructive">
+            {errorMessage}
+          </p>
+        ) : null}
 
         <div className="flex flex-wrap justify-end gap-2">
           <Button
             type="button"
             variant="outline"
-            disabled={deleteDisabled}
-            onClick={() => onDelete?.(shift.id)}
+            disabled={isMutating}
+            onClick={handleDelete}
           >
-            削除
+            {isDeleting ? "削除中..." : "削除"}
           </Button>
-          <Button
-            type="button"
-            disabled={confirmDisabled}
-            onClick={() => onConfirm?.(shift.id)}
-          >
-            確定
+          <Button type="button" disabled={isMutating} onClick={handleConfirm}>
+            {isConfirming ? "確定中..." : "確定"}
           </Button>
         </div>
       </CardContent>
