@@ -58,12 +58,16 @@ export function encryptOAuthToken(token: string | null): string | null {
   return `${TOKEN_PREFIX}${iv.toString("base64url")}:${authTag.toString("base64url")}:${encrypted.toString("base64url")}`;
 }
 
+export function isEncryptedOAuthToken(token: string | null): token is string {
+  return Boolean(token?.startsWith(TOKEN_PREFIX));
+}
+
 export function decryptOAuthToken(token: string | null): string | null {
   if (!token) {
     return null;
   }
 
-  if (!token.startsWith(TOKEN_PREFIX)) {
+  if (!isEncryptedOAuthToken(token)) {
     throw new OAuthTokenCryptoError(
       "INVALID_TOKEN_FORMAT",
       "OAuthトークンが暗号化形式ではありません",

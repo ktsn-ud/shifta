@@ -2,10 +2,10 @@ import type { Session } from "next-auth";
 import { google } from "googleapis";
 import { prisma } from "@/lib/prisma";
 import {
-  decryptOAuthToken,
   encryptOAuthToken,
   OAuthTokenCryptoError,
 } from "@/lib/security/oauth-token-crypto";
+import { readOAuthTokenFromStorage } from "@/lib/security/oauth-token-storage";
 import { GOOGLE_CALENDAR_SCOPE } from "@/lib/google-calendar/constants";
 
 type GoogleAccountRecord = {
@@ -71,6 +71,27 @@ function isTokenExpired(expiresAt: number | null): boolean {
   return expiresAt - nowSeconds <= 60;
 }
 
+async function migrateLegacyPlainTextTokens(
+  userId: string,
+  accessToken: string | null,
+  refreshToken: string | null,
+): Promise<void> {
+  try {
+    await prisma.account.updateMany({
+      where: {
+        userId,
+        provider: "google",
+      },
+      data: {
+        access_token: encryptOAuthToken(accessToken),
+        refresh_token: encryptOAuthToken(refreshToken),
+      },
+    });
+  } catch (error) {
+    console.warn("Failed to migrate legacy google oauth token format", error);
+  }
+}
+
 async function getGoogleAccountByUserId(
   userId: string,
 ): Promise<GoogleAccountRecord> {
@@ -96,10 +117,21 @@ async function getGoogleAccountByUserId(
   }
 
   try {
+    const accessToken = readOAuthTokenFromStorage(account.access_token);
+    const refreshToken = readOAuthTokenFromStorage(account.refresh_token);
+
+    if (accessToken.wasPlainText || refreshToken.wasPlainText) {
+      await migrateLegacyPlainTextTokens(
+        userId,
+        accessToken.token,
+        refreshToken.token,
+      );
+    }
+
     return {
       ...account,
-      access_token: decryptOAuthToken(account.access_token),
-      refresh_token: decryptOAuthToken(account.refresh_token),
+      access_token: accessToken.token,
+      refresh_token: refreshToken.token,
     };
   } catch (error) {
     console.error("Failed to decrypt Google OAuth token", error);

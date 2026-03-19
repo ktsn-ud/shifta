@@ -9,8 +9,40 @@ import {
 import { prisma } from "@/lib/prisma";
 import { encryptOAuthToken } from "@/lib/security/oauth-token-crypto";
 
+const adapter = PrismaAdapter(prisma);
+const baseLinkAccount = adapter.linkAccount;
+
+if (!baseLinkAccount) {
+  throw new Error("Prisma adapter linkAccount is not available");
+}
+
+adapter.linkAccount = (async (
+  account: Parameters<NonNullable<typeof baseLinkAccount>>[0],
+) => {
+  if (account.provider !== "google") {
+    return baseLinkAccount(account);
+  }
+
+  try {
+    return await baseLinkAccount({
+      ...account,
+      access_token:
+        encryptOAuthToken(account.access_token ?? null) ?? undefined,
+      refresh_token:
+        encryptOAuthToken(account.refresh_token ?? null) ?? undefined,
+      id_token: encryptOAuthToken(account.id_token ?? null) ?? undefined,
+    });
+  } catch (error) {
+    console.error(
+      "Failed to encrypt oauth token on initial account link",
+      error,
+    );
+    return baseLinkAccount(account);
+  }
+}) as NonNullable<typeof adapter.linkAccount>;
+
 export const { handlers, auth, signIn, signOut } = NextAuth({
-  adapter: PrismaAdapter(prisma),
+  adapter,
   providers: [
     Google({
       clientId: process.env.AUTH_GOOGLE_ID!,
