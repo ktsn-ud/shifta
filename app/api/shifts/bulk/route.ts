@@ -1,3 +1,4 @@
+import { randomUUID } from "node:crypto";
 import { NextResponse } from "next/server";
 import { z } from "zod";
 import { requireCurrentUser } from "@/lib/api/current-user";
@@ -8,6 +9,7 @@ import { syncShiftsAfterBulkCreate } from "@/lib/google-calendar/syncStatus";
 import { prisma } from "@/lib/prisma";
 import {
   buildShiftData,
+  type BuiltShiftData,
   lessonRangeSchema,
   ShiftValidationError,
   type ShiftInput,
@@ -79,34 +81,40 @@ function normalizeBulkShiftItem(item: BulkShiftItem): NormalizedBulkShiftItem {
 }
 
 async function createShiftsInTransaction(
-  builtItems: Awaited<ReturnType<typeof buildShiftData>>[],
+  builtItems: BuiltShiftData[],
 ): Promise<CreatedShift[]> {
-  return prisma.$transaction(async (tx) => {
-    const created: CreatedShift[] = [];
+  if (builtItems.length === 0) {
+    return [];
+  }
 
-    for (const built of builtItems) {
-      const shift = await tx.shift.create({
-        data: built.shiftData,
-        select: {
-          id: true,
-        },
-      });
+  const shiftRows = builtItems.map((built) => ({
+    id: randomUUID(),
+    ...built.shiftData,
+  }));
 
-      if (built.lessonRange) {
-        await tx.shiftLessonRange.create({
-          data: {
-            shiftId: shift.id,
-            startPeriod: built.lessonRange.startPeriod,
-            endPeriod: built.lessonRange.endPeriod,
-          },
-        });
-      }
-
-      created.push({ id: shift.id });
+  const lessonRangeRows = builtItems.flatMap((built, index) => {
+    const shiftId = shiftRows[index]?.id;
+    if (!built.lessonRange || !shiftId) {
+      return [];
     }
 
-    return created;
+    return [
+      {
+        shiftId,
+        startPeriod: built.lessonRange.startPeriod,
+        endPeriod: built.lessonRange.endPeriod,
+      },
+    ];
   });
+
+  const queries = [prisma.shift.createMany({ data: shiftRows })];
+  if (lessonRangeRows.length > 0) {
+    queries.push(prisma.shiftLessonRange.createMany({ data: lessonRangeRows }));
+  }
+
+  await prisma.$transaction(queries);
+
+  return shiftRows.map((row) => ({ id: row.id }));
 }
 
 export async function POST(request: Request) {
@@ -131,7 +139,7 @@ export async function POST(request: Request) {
 
     const normalizedItems = body.data.shifts.map(normalizeBulkShiftItem);
 
-    const builtItems: Awaited<ReturnType<typeof buildShiftData>>[] = [];
+    const builtItems: BuiltShiftData[] = [];
 
     for (let index = 0; index < normalizedItems.length; index += 1) {
       const item = normalizedItems[index];
