@@ -1,7 +1,11 @@
 import { NextResponse } from "next/server";
 import { z } from "zod";
 import { requireCurrentUser } from "@/lib/api/current-user";
-import { jsonError, parseJsonBody } from "@/lib/api/http";
+import {
+  jsonError,
+  parseJsonBody,
+  verifyMutationRequest,
+} from "@/lib/api/http";
 import { prisma } from "@/lib/prisma";
 
 const colorRegex = /^#[0-9A-Fa-f]{6}$/;
@@ -93,8 +97,13 @@ export async function PUT(request: Request, context: Context) {
   }
 }
 
-export async function DELETE(_: Request, context: Context) {
+export async function DELETE(request: Request, context: Context) {
   try {
+    const csrfError = verifyMutationRequest(request);
+    if (csrfError) {
+      return csrfError;
+    }
+
     const current = await requireCurrentUser();
     if ("response" in current) {
       return current.response;

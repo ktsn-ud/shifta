@@ -1,14 +1,19 @@
 import { NextResponse } from "next/server";
 import { requireCurrentUser } from "@/lib/api/current-user";
-import { jsonError } from "@/lib/api/http";
+import { jsonError, verifyMutationRequest } from "@/lib/api/http";
 import { retryShiftSync } from "@/lib/google-calendar/syncStatus";
 
 type Context = {
   params: Promise<{ id: string }>;
 };
 
-export async function POST(_: Request, context: Context) {
+export async function POST(request: Request, context: Context) {
   try {
+    const csrfError = verifyMutationRequest(request);
+    if (csrfError) {
+      return csrfError;
+    }
+
     const current = await requireCurrentUser();
     if ("response" in current) {
       return current.response;

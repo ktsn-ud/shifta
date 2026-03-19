@@ -1,6 +1,10 @@
 import { NextResponse } from "next/server";
 import { requireCurrentUser } from "@/lib/api/current-user";
-import { jsonError, parseJsonBody } from "@/lib/api/http";
+import {
+  jsonError,
+  parseJsonBody,
+  verifyMutationRequest,
+} from "@/lib/api/http";
 import { requireOwnedWorkplace } from "@/lib/api/workplace";
 import {
   syncShiftAfterUpdate,
@@ -141,8 +145,13 @@ export async function PUT(request: Request, context: Context) {
   }
 }
 
-export async function DELETE(_: Request, context: Context) {
+export async function DELETE(request: Request, context: Context) {
   try {
+    const csrfError = verifyMutationRequest(request);
+    if (csrfError) {
+      return csrfError;
+    }
+
     const current = await requireCurrentUser();
     if ("response" in current) {
       return current.response;

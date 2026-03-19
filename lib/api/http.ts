@@ -1,6 +1,8 @@
 import { NextResponse } from "next/server";
 import { z } from "zod";
 
+const SAFE_METHODS = new Set(["GET", "HEAD", "OPTIONS"]);
+
 export function jsonError(
   message: string,
   status: number,
@@ -15,6 +17,31 @@ export function jsonError(
   );
 }
 
+export function verifyMutationRequest(request: Request): NextResponse | null {
+  const method = request.method.toUpperCase();
+  if (SAFE_METHODS.has(method)) {
+    return null;
+  }
+
+  const expectedOrigin = new URL(request.url).origin;
+  const origin = request.headers.get("origin");
+
+  if (origin) {
+    if (origin === expectedOrigin) {
+      return null;
+    }
+
+    return jsonError("不正なオリジンからのリクエストです", 403);
+  }
+
+  const fetchSite = request.headers.get("sec-fetch-site");
+  if (fetchSite === "same-origin") {
+    return null;
+  }
+
+  return jsonError("CSRF検証に失敗しました", 403);
+}
+
 export async function parseJsonBody<T>(
   request: Request,
   schema: z.ZodType<T>,
@@ -22,6 +49,14 @@ export async function parseJsonBody<T>(
   { success: true; data: T } | { success: false; response: NextResponse }
 > {
   try {
+    const csrfError = verifyMutationRequest(request);
+    if (csrfError) {
+      return {
+        success: false,
+        response: csrfError,
+      };
+    }
+
     const raw = await request.text();
     const parsed = schema.safeParse(
       raw.trim().length === 0 ? {} : JSON.parse(raw),

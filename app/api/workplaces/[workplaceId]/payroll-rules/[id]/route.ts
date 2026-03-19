@@ -7,7 +7,11 @@ import {
   DATE_ONLY_REGEX,
   TIME_ONLY_REGEX,
 } from "@/lib/api/date-time";
-import { jsonError, parseJsonBody } from "@/lib/api/http";
+import {
+  jsonError,
+  parseJsonBody,
+  verifyMutationRequest,
+} from "@/lib/api/http";
 import { requireOwnedWorkplace } from "@/lib/api/workplace";
 import { prisma } from "@/lib/prisma";
 
@@ -267,8 +271,13 @@ export async function PUT(request: Request, context: Context) {
   }
 }
 
-export async function DELETE(_: Request, context: Context) {
+export async function DELETE(request: Request, context: Context) {
   try {
+    const csrfError = verifyMutationRequest(request);
+    if (csrfError) {
+      return csrfError;
+    }
+
     const current = await requireCurrentUser();
     if ("response" in current) {
       return current.response;

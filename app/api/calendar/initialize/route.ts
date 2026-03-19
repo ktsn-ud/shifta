@@ -1,7 +1,7 @@
 import { NextResponse } from "next/server";
 import { auth } from "@/lib/auth";
 import { requireCurrentUser } from "@/lib/api/current-user";
-import { jsonError } from "@/lib/api/http";
+import { jsonError, verifyMutationRequest } from "@/lib/api/http";
 import {
   getGoogleAuthBySession,
   GoogleCalendarAuthError,
@@ -23,8 +23,13 @@ function mapGoogleAuthErrorStatus(error: GoogleCalendarAuthError): number {
   return 400;
 }
 
-export async function POST() {
+export async function POST(request: Request) {
   try {
+    const csrfError = verifyMutationRequest(request);
+    if (csrfError) {
+      return csrfError;
+    }
+
     const session = await auth();
     if (!session) {
       return jsonError("認証が必要です", 401);
