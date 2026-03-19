@@ -15,6 +15,7 @@ import {
   ChartTooltip,
   ChartTooltipContent,
 } from "@/components/ui/chart";
+import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { StatCardsLoadingSkeleton } from "@/components/ui/loading-skeletons";
 import { Skeleton } from "@/components/ui/skeleton";
@@ -88,6 +89,7 @@ export default function SummaryPage() {
   const [summary, setSummary] = useState<SummaryResponse | null>(null);
   const [isLoading, setIsLoading] = useState(true);
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
+  const currentMonthValue = toMonthInputValue(startOfMonth(new Date()));
 
   const targetPeriod = useMemo(() => {
     if (periodMode === "month") {
@@ -111,6 +113,11 @@ export default function SummaryPage() {
 
     return summary.totalWage - summary.previousMonthWage;
   }, [summary]);
+
+  const handleBackToCurrentMonth = () => {
+    setPeriodMode("month");
+    setMonthValue(currentMonthValue);
+  };
 
   useEffect(() => {
     if (!targetPeriod.startDate || !targetPeriod.endDate) {
@@ -214,6 +221,17 @@ export default function SummaryPage() {
           >
             カスタム期間
           </button>
+          <Button
+            type="button"
+            variant="outline"
+            size="sm"
+            onClick={handleBackToCurrentMonth}
+            disabled={
+              periodMode === "month" && monthValue === currentMonthValue
+            }
+          >
+            今月に戻る
+          </Button>
 
           {periodMode === "month" ? (
             <Input

@@ -57,6 +57,10 @@ export default function Page() {
   const [month, setMonth] = useState(() => startOfMonth(new Date()));
   const [selectedDate, setSelectedDate] = useState(() => new Date());
   const [modalOpen, setModalOpen] = useState(false);
+  const now = new Date();
+  const isCurrentMonth =
+    month.getFullYear() === now.getFullYear() &&
+    month.getMonth() === now.getMonth();
 
   const { shifts, isLoading, errorMessage, reload } = useMonthShifts(month);
 
@@ -94,6 +98,14 @@ export default function Page() {
           </p>
         </div>
         <div className="flex gap-2">
+          <Button
+            type="button"
+            variant="outline"
+            onClick={() => setMonth(startOfMonth(new Date()))}
+            disabled={isCurrentMonth}
+          >
+            今月に戻る
+          </Button>
           <Button
             type="button"
             variant="outline"
