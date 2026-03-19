@@ -458,7 +458,11 @@ export function ShiftForm({ mode, shiftId, initialDate }: ShiftFormProps) {
       setTimetables([]);
 
       setForm((current) => {
-        if (current.shiftType !== "LESSON") {
+        if (
+          current.shiftType === "NORMAL" &&
+          !current.startPeriod &&
+          !current.endPeriod
+        ) {
           return current;
         }
 
@@ -828,6 +832,9 @@ export function ShiftForm({ mode, shiftId, initialDate }: ShiftFormProps) {
 
     const breakMinutes = Number(form.breakMinutes);
 
+    const effectiveShiftType: ShiftType =
+      selectedWorkplaceType === "CRAM_SCHOOL" ? form.shiftType : "NORMAL";
+
     const payload: {
       workplaceId: string;
       date: string;
@@ -843,11 +850,11 @@ export function ShiftForm({ mode, shiftId, initialDate }: ShiftFormProps) {
     } = {
       workplaceId: form.workplaceId,
       date: form.date,
-      shiftType: form.shiftType,
+      shiftType: effectiveShiftType,
       breakMinutes: Number.isNaN(breakMinutes) ? 0 : breakMinutes,
     };
 
-    if (form.shiftType === "LESSON") {
+    if (effectiveShiftType === "LESSON") {
       payload.lessonRange = {
         lessonType: form.lessonType,
         startPeriod: Number(form.startPeriod),
@@ -957,7 +964,8 @@ export function ShiftForm({ mode, shiftId, initialDate }: ShiftFormProps) {
     }
   }
 
-  const showLessonFields = form.shiftType === "LESSON";
+  const showShiftTypeSelector = selectedWorkplaceType === "CRAM_SCHOOL";
+  const showLessonFields = showShiftTypeSelector && form.shiftType === "LESSON";
   const disabled =
     isSubmitting ||
     isWorkplaceLoading ||
@@ -1015,7 +1023,7 @@ export function ShiftForm({ mode, shiftId, initialDate }: ShiftFormProps) {
         </p>
       ) : null}
 
-      <Form className="max-w-2xl" onSubmit={handleSubmit}>
+      <Form className="max-w-sm" onSubmit={handleSubmit}>
         <FieldGroup>
           <Field data-invalid={Boolean(errors.workplaceId)}>
             <FieldLabel>勤務先</FieldLabel>
@@ -1027,7 +1035,7 @@ export function ShiftForm({ mode, shiftId, initialDate }: ShiftFormProps) {
                 }
                 disabled={disabled}
               >
-                <SelectTrigger className="w-full">
+                <SelectTrigger className="w-full max-w-50">
                   <SelectValue placeholder="勤務先を選択">
                     {selectedWorkplace?.name}
                   </SelectValue>
@@ -1054,65 +1062,66 @@ export function ShiftForm({ mode, shiftId, initialDate }: ShiftFormProps) {
                 value={form.date}
                 onValueChange={(value) => updateForm("date", value)}
                 disabled={disabled}
+                className="max-w-40"
               />
               <FormErrorMessage message={errors.date} />
             </FieldContent>
           </Field>
 
-          <Field data-invalid={Boolean(errors.shiftType)}>
-            <FieldLabel>シフトタイプ</FieldLabel>
-            <FieldContent>
-              <RadioGroup
-                value={form.shiftType}
-                onValueChange={(value) => {
-                  const nextType = value as ShiftType;
-                  setWarningMessage(null);
-                  setErrors({});
-                  setForm((current) => ({
-                    ...current,
-                    shiftType: nextType,
-                  }));
-                }}
-              >
-                <Field orientation="horizontal">
-                  <FieldLabel htmlFor="shift-type-normal">
-                    {formatShiftType("NORMAL")}
-                  </FieldLabel>
-                  <RadioGroupItem
-                    id="shift-type-normal"
-                    value="NORMAL"
-                    disabled={disabled}
-                  />
-                </Field>
-                <Field orientation="horizontal">
-                  <FieldLabel htmlFor="shift-type-lesson">
-                    {formatShiftType("LESSON")}
-                  </FieldLabel>
-                  <RadioGroupItem
-                    id="shift-type-lesson"
-                    value="LESSON"
-                    disabled={
-                      disabled || selectedWorkplace?.type !== "CRAM_SCHOOL"
-                    }
-                  />
-                </Field>
-                <Field orientation="horizontal">
-                  <FieldLabel htmlFor="shift-type-other">
-                    {formatShiftType("OTHER")}
-                  </FieldLabel>
-                  <RadioGroupItem
-                    id="shift-type-other"
-                    value="OTHER"
-                    disabled={disabled}
-                  />
-                </Field>
-              </RadioGroup>
-              <FieldDescription>
-                授業は塾タイプ勤務先選択時のみ有効です。
-              </FieldDescription>
-              <FormErrorMessage message={errors.shiftType} />
-            </FieldContent>
-          </Field>
+          {showShiftTypeSelector ? (
+            <Field data-invalid={Boolean(errors.shiftType)}>
+              <FieldLabel>シフトタイプ</FieldLabel>
+              <FieldContent>
+                <RadioGroup
+                  value={form.shiftType}
+                  onValueChange={(value) => {
+                    const nextType = value as ShiftType;
+                    setWarningMessage(null);
+                    setErrors({});
+                    setForm((current) => ({
+                      ...current,
+                      shiftType: nextType,
+                    }));
+                  }}
+                >
+                  <Field orientation="horizontal">
+                    <RadioGroupItem
+                      id="shift-type-normal"
+                      value="NORMAL"
+                      disabled={disabled}
+                    />
+                    <FieldLabel htmlFor="shift-type-normal">
+                      {formatShiftType("NORMAL")}
+                    </FieldLabel>
+                  </Field>
+                  <Field orientation="horizontal">
+                    <RadioGroupItem
+                      id="shift-type-lesson"
+                      value="LESSON"
+                      disabled={disabled}
+                    />
+                    <FieldLabel htmlFor="shift-type-lesson">
+                      {formatShiftType("LESSON")}
+                    </FieldLabel>
+                  </Field>
+                  <Field orientation="horizontal">
+                    <RadioGroupItem
+                      id="shift-type-other"
+                      value="OTHER"
+                      disabled={disabled}
+                    />
+                    <FieldLabel htmlFor="shift-type-other">
+                      {formatShiftType("OTHER")}
+                    </FieldLabel>
+                  </Field>
+                </RadioGroup>
+                <FieldDescription>
+                  授業は塾タイプ勤務先選択時のみ有効です。
+                </FieldDescription>
+                <FormErrorMessage message={errors.shiftType} />
+              </FieldContent>
+            </Field>
+          ) : null}
 
           {showLessonFields ? (
             <>
@@ -1128,24 +1137,24 @@ export function ShiftForm({ mode, shiftId, initialDate }: ShiftFormProps) {
                     disabled={disabled || isTimetableLoading}
                   >
                     <Field orientation="horizontal">
-                      <FieldLabel htmlFor="lesson-type-normal">
-                        {formatLessonType("NORMAL")}
-                      </FieldLabel>
                       <RadioGroupItem
                         id="lesson-type-normal"
                         value="NORMAL"
                         disabled={disabled || isTimetableLoading}
                       />
+                      <FieldLabel htmlFor="lesson-type-normal">
+                        {formatLessonType("NORMAL")}
+                      </FieldLabel>
                     </Field>
                     <Field orientation="horizontal">
-                      <FieldLabel htmlFor="lesson-type-intensive">
-                        {formatLessonType("INTENSIVE")}
-                      </FieldLabel>
                       <RadioGroupItem
                         id="lesson-type-intensive"
                         value="INTENSIVE"
                         disabled={disabled || isTimetableLoading}
                       />
+                      <FieldLabel htmlFor="lesson-type-intensive">
+                        {formatLessonType("INTENSIVE")}
+                      </FieldLabel>
                     </Field>
                   </RadioGroup>
                   <FormErrorMessage message={errors.lessonType} />
@@ -1166,8 +1175,10 @@ export function ShiftForm({ mode, shiftId, initialDate }: ShiftFormProps) {
                       lessonPeriods.length === 0
                     }
                   >
-                    <SelectTrigger className="w-full">
-                      <SelectValue placeholder="開始コマを選択" />
+                    <SelectTrigger className="w-full max-w-20">
+                      <SelectValue placeholder="開始コマを選択">
+                        {form.startPeriod ? `${form.startPeriod}限` : null}
+                      </SelectValue>
                     </SelectTrigger>
                     <SelectContent>
                       <SelectGroup>
@@ -1197,8 +1208,10 @@ export function ShiftForm({ mode, shiftId, initialDate }: ShiftFormProps) {
                       lessonPeriods.length === 0
                     }
                   >
-                    <SelectTrigger className="w-full">
-                      <SelectValue placeholder="終了コマを選択" />
+                    <SelectTrigger className="w-full max-w-20">
+                      <SelectValue placeholder="終了コマを選択">
+                        {form.endPeriod ? `${form.endPeriod}限` : null}
+                      </SelectValue>
                     </SelectTrigger>
                     <SelectContent>
                       <SelectGroup>
@@ -1224,6 +1237,7 @@ export function ShiftForm({ mode, shiftId, initialDate }: ShiftFormProps) {
                     value={form.startTime}
                     onValueChange={(value) => updateForm("startTime", value)}
                     disabled={disabled}
+                    className="max-w-24"
                   />
                   <FormErrorMessage message={errors.startTime} />
                 </FieldContent>
@@ -1237,6 +1251,7 @@ export function ShiftForm({ mode, shiftId, initialDate }: ShiftFormProps) {
                     value={form.endTime}
                     onValueChange={(value) => updateForm("endTime", value)}
                     disabled={disabled}
+                    className="max-w-24"
                   />
                   <FormErrorMessage message={errors.endTime} />
                 </FieldContent>
@@ -1245,19 +1260,25 @@ export function ShiftForm({ mode, shiftId, initialDate }: ShiftFormProps) {
           )}
 
           <Field data-invalid={Boolean(errors.breakMinutes)}>
-            <FieldLabel htmlFor="shift-break-minutes">休憩時間 (分)</FieldLabel>
+            <FieldLabel htmlFor="shift-break-minutes">休憩時間</FieldLabel>
             <FieldContent>
-              <Input
-                id="shift-break-minutes"
-                type="number"
-                min={0}
-                max={240}
-                value={form.breakMinutes}
-                onChange={(event) =>
-                  updateForm("breakMinutes", event.currentTarget.value)
-                }
-                disabled={disabled}
-              />
+              <div className="flex items-center gap-2">
+                <Input
+                  id="shift-break-minutes"
+                  type="number"
+                  min={0}
+                  max={240}
+                  value={form.breakMinutes}
+                  onChange={(event) =>
+                    updateForm("breakMinutes", event.currentTarget.value)
+                  }
+                  disabled={disabled}
+                  className="max-w-14"
+                />
+                <span className="shrink-0 text-sm text-muted-foreground">
+                  分
+                </span>
+              </div>
               <FormErrorMessage message={errors.breakMinutes} />
             </FieldContent>
           </Field>

@@ -485,19 +485,19 @@ export function TimetableForm({
                   }}
                 >
                   <Field orientation="horizontal">
+                    <RadioGroupItem id="timetable-type-normal" value="NORMAL" />
                     <FieldLabel htmlFor="timetable-type-normal">
                       {formatLessonType("NORMAL")}
                     </FieldLabel>
-                    <RadioGroupItem id="timetable-type-normal" value="NORMAL" />
                   </Field>
                   <Field orientation="horizontal">
-                    <FieldLabel htmlFor="timetable-type-intensive">
-                      {formatLessonType("INTENSIVE")}
-                    </FieldLabel>
                     <RadioGroupItem
                       id="timetable-type-intensive"
                       value="INTENSIVE"
                     />
+                    <FieldLabel htmlFor="timetable-type-intensive">
+                      {formatLessonType("INTENSIVE")}
+                    </FieldLabel>
                   </Field>
                 </RadioGroup>
               </FieldContent>
@@ -506,20 +506,26 @@ export function TimetableForm({
             <Field data-invalid={Boolean(errors.period)}>
               <FieldLabel htmlFor="period">コマ番号</FieldLabel>
               <FieldContent>
-                <Input
-                  id="period"
-                  type="number"
-                  min="1"
-                  step="1"
-                  value={values.period}
-                  onChange={(event) => {
-                    const nextValue = event.currentTarget.value;
-                    setValues((current) => ({
-                      ...current,
-                      period: nextValue,
-                    }));
-                  }}
-                />
+                <div className="flex items-center gap-2">
+                  <Input
+                    id="period"
+                    type="number"
+                    min="1"
+                    step="1"
+                    value={values.period}
+                    onChange={(event) => {
+                      const nextValue = event.currentTarget.value;
+                      setValues((current) => ({
+                        ...current,
+                        period: nextValue,
+                      }));
+                    }}
+                    className="max-w-20"
+                  />
+                  <span className="shrink-0 text-sm text-muted-foreground">
+                    限
+                  </span>
+                </div>
                 <FieldDescription>
                   コマ種別内で一意の番号を指定してください（例: 通常期1限）。
                 </FieldDescription>
@@ -541,6 +547,7 @@ export function TimetableForm({
                       startTime: nextValue,
                     }));
                   }}
+                  className="max-w-24"
                 />
                 <FormErrorMessage message={errors.startTime} />
               </FieldContent>
@@ -560,6 +567,7 @@ export function TimetableForm({
                       endTime: nextValue,
                     }));
                   }}
+                  className="max-w-24"
                 />
                 <FormErrorMessage message={errors.endTime} />
               </FieldContent>
@@ -612,22 +620,22 @@ export function TimetableForm({
                         }}
                       >
                         <Field orientation="horizontal">
-                          <FieldLabel htmlFor={`row-${index}-type-normal`}>
-                            {formatLessonType("NORMAL")}
-                          </FieldLabel>
                           <RadioGroupItem
                             id={`row-${index}-type-normal`}
                             value="NORMAL"
                           />
+                          <FieldLabel htmlFor={`row-${index}-type-normal`}>
+                            {formatLessonType("NORMAL")}
+                          </FieldLabel>
                         </Field>
                         <Field orientation="horizontal">
-                          <FieldLabel htmlFor={`row-${index}-type-intensive`}>
-                            {formatLessonType("INTENSIVE")}
-                          </FieldLabel>
                           <RadioGroupItem
                             id={`row-${index}-type-intensive`}
                             value="INTENSIVE"
                           />
+                          <FieldLabel htmlFor={`row-${index}-type-intensive`}>
+                            {formatLessonType("INTENSIVE")}
+                          </FieldLabel>
                         </Field>
                       </RadioGroup>
                     </FieldContent>
@@ -638,23 +646,29 @@ export function TimetableForm({
                       コマ番号
                     </FieldLabel>
                     <FieldContent>
-                      <Input
-                        id={`row-${index}-period`}
-                        type="number"
-                        min="1"
-                        step="1"
-                        value={row.period}
-                        onChange={(event) => {
-                          const nextValue = event.currentTarget.value;
-                          setCreateRows((current) =>
-                            current.map((item, rowIndex) =>
-                              rowIndex === index
-                                ? { ...item, period: nextValue }
-                                : item,
-                            ),
-                          );
-                        }}
-                      />
+                      <div className="flex items-center gap-2">
+                        <Input
+                          id={`row-${index}-period`}
+                          type="number"
+                          min="1"
+                          step="1"
+                          value={row.period}
+                          onChange={(event) => {
+                            const nextValue = event.currentTarget.value;
+                            setCreateRows((current) =>
+                              current.map((item, rowIndex) =>
+                                rowIndex === index
+                                  ? { ...item, period: nextValue }
+                                  : item,
+                              ),
+                            );
+                          }}
+                          className="max-w-20"
+                        />
+                        <span className="shrink-0 text-sm text-muted-foreground">
+                          限
+                        </span>
+                      </div>
                       <FormErrorMessage message={error.period} />
                     </FieldContent>
                   </Field>
@@ -678,6 +692,7 @@ export function TimetableForm({
                             ),
                           );
                         }}
+                        className="max-w-24"
                       />
                       <FormErrorMessage message={error.startTime} />
                     </FieldContent>
@@ -702,6 +717,7 @@ export function TimetableForm({
                             ),
                           );
                         }}
+                        className="max-w-24"
                       />
                       <FormErrorMessage message={error.endTime} />
                     </FieldContent>

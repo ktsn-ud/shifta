@@ -556,6 +556,7 @@ export function PayrollRuleForm({
                     startDate: nextValue,
                   }));
                 }}
+                className="max-w-40"
               />
               <FormErrorMessage message={errors.startDate} />
             </FieldContent>
@@ -575,6 +576,7 @@ export function PayrollRuleForm({
                     endDate: nextValue,
                   }));
                 }}
+                className="max-w-40"
               />
               <FieldDescription>
                 空欄の場合は現在有効として扱います。
@@ -601,6 +603,7 @@ export function PayrollRuleForm({
                         perLessonWage: nextValue,
                       }));
                     }}
+                    className="max-w-20"
                   />
                   <span className="shrink-0 text-sm text-muted-foreground">
                     円/コマ
@@ -794,37 +797,37 @@ export function PayrollRuleForm({
                     }}
                   >
                     <Field orientation="horizontal">
+                      <RadioGroupItem id="holiday-type-none" value="NONE" />
                       <FieldLabel htmlFor="holiday-type-none">
                         {formatHolidayType("NONE")}
                       </FieldLabel>
-                      <RadioGroupItem id="holiday-type-none" value="NONE" />
                     </Field>
                     <Field orientation="horizontal">
-                      <FieldLabel htmlFor="holiday-type-weekend">
-                        {formatHolidayType("WEEKEND")}
-                      </FieldLabel>
                       <RadioGroupItem
                         id="holiday-type-weekend"
                         value="WEEKEND"
                       />
+                      <FieldLabel htmlFor="holiday-type-weekend">
+                        {formatHolidayType("WEEKEND")}
+                      </FieldLabel>
                     </Field>
                     <Field orientation="horizontal">
-                      <FieldLabel htmlFor="holiday-type-holiday">
-                        {formatHolidayType("HOLIDAY")}
-                      </FieldLabel>
                       <RadioGroupItem
                         id="holiday-type-holiday"
                         value="HOLIDAY"
                       />
+                      <FieldLabel htmlFor="holiday-type-holiday">
+                        {formatHolidayType("HOLIDAY")}
+                      </FieldLabel>
                     </Field>
                     <Field orientation="horizontal">
-                      <FieldLabel htmlFor="holiday-type-weekend-holiday">
-                        {formatHolidayType("WEEKEND_HOLIDAY")}
-                      </FieldLabel>
                       <RadioGroupItem
                         id="holiday-type-weekend-holiday"
                         value="WEEKEND_HOLIDAY"
                       />
+                      <FieldLabel htmlFor="holiday-type-weekend-holiday">
+                        {formatHolidayType("WEEKEND_HOLIDAY")}
+                      </FieldLabel>
                     </Field>
                   </RadioGroup>
                 </FieldContent>

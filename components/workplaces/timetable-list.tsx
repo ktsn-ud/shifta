@@ -275,7 +275,7 @@ export function TimetableList({ workplaceId }: TimetableListProps) {
               items.map((timetable) => (
                 <TableRow key={timetable.id}>
                   <TableCell className="font-medium">
-                    {timetable.period}
+                    {timetable.period}限
                   </TableCell>
                   <TableCell>{toTimeOnly(timetable.startTime)}</TableCell>
                   <TableCell>{toTimeOnly(timetable.endTime)}</TableCell>

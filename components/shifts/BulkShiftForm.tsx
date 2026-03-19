@@ -913,7 +913,10 @@ export function BulkShiftForm() {
                   }}
                   disabled={workplaces.length === 0}
                 >
-                  <SelectTrigger id="bulk-workplace" className="w-full md:w-72">
+                  <SelectTrigger
+                    id="bulk-workplace"
+                    className="w-full md:w-72 max-w-50"
+                  >
                     <SelectValue placeholder="勤務先を選択">
                       {selectedWorkplace?.name}
                     </SelectValue>
@@ -1094,22 +1097,28 @@ export function BulkShiftForm() {
 
             <Field>
               <FieldLabel htmlFor="default-break">
-                デフォルト休憩時間（分）
+                デフォルト休憩時間
               </FieldLabel>
               <FieldContent>
-                <Input
-                  id="default-break"
-                  type="number"
-                  min={0}
-                  max={MAX_BREAK_MINUTES}
-                  value={defaults.breakMinutes}
-                  onChange={(event) => {
-                    setDefaults((current) => ({
-                      ...current,
-                      breakMinutes: event.currentTarget.value,
-                    }));
-                  }}
-                />
+                <div className="flex items-center gap-2">
+                  <Input
+                    id="default-break"
+                    type="number"
+                    min={0}
+                    max={MAX_BREAK_MINUTES}
+                    value={defaults.breakMinutes}
+                    onChange={(event) => {
+                      setDefaults((current) => ({
+                        ...current,
+                        breakMinutes: event.currentTarget.value,
+                      }));
+                    }}
+                    className="max-w-16"
+                  />
+                  <span className="shrink-0 text-sm text-muted-foreground">
+                    分
+                  </span>
+                </div>
               </FieldContent>
             </Field>
           </FieldGroup>
@@ -1401,18 +1410,24 @@ export function BulkShiftForm() {
                           休憩時間（分）
                         </FieldLabel>
                         <FieldContent>
-                          <Input
-                            id={`${row.date}-break`}
-                            type="number"
-                            min={0}
-                            max={MAX_BREAK_MINUTES}
-                            value={row.breakMinutes}
-                            onChange={(event) => {
-                              updateRow(row.date, {
-                                breakMinutes: event.currentTarget.value,
-                              });
-                            }}
-                          />
+                          <div className="flex items-center gap-2">
+                            <Input
+                              id={`${row.date}-break`}
+                              type="number"
+                              min={0}
+                              max={MAX_BREAK_MINUTES}
+                              className="max-w-16"
+                              value={row.breakMinutes}
+                              onChange={(event) => {
+                                updateRow(row.date, {
+                                  breakMinutes: event.currentTarget.value,
+                                });
+                              }}
+                            />
+                            <span className="shrink-0 text-sm text-muted-foreground">
+                              分
+                            </span>
+                          </div>
                           <FormErrorMessage message={rowErrors.breakMinutes} />
                         </FieldContent>
                       </Field>

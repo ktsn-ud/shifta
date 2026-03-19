@@ -468,7 +468,7 @@ export function WorkplaceForm({ mode, workplaceId }: WorkplaceFormProps) {
         <FormLoadingSkeleton />
       ) : (
         <Form
-          className="max-w-2xl"
+          className="max-w-md"
           onSubmit={(event) => {
             event.preventDefault();
             void handleSubmit();
@@ -485,6 +485,7 @@ export function WorkplaceForm({ mode, workplaceId }: WorkplaceFormProps) {
                   const next = event.currentTarget.value;
                   setValues((current) => ({ ...current, name: next }));
                 }}
+                className="max-w-50"
               />
               <FieldDescription>1〜50文字で入力してください。</FieldDescription>
               <FormErrorMessage message={errors.name} />
@@ -504,19 +505,19 @@ export function WorkplaceForm({ mode, workplaceId }: WorkplaceFormProps) {
                 }}
               >
                 <Field orientation="horizontal">
+                  <RadioGroupItem id="workplace-type-general" value="GENERAL" />
                   <FieldLabel htmlFor="workplace-type-general">
                     {formatWorkplaceType("GENERAL")}
                   </FieldLabel>
-                  <RadioGroupItem id="workplace-type-general" value="GENERAL" />
                 </Field>
                 <Field orientation="horizontal">
-                  <FieldLabel htmlFor="workplace-type-cram">
-                    {formatWorkplaceType("CRAM_SCHOOL")}
-                  </FieldLabel>
                   <RadioGroupItem
                     id="workplace-type-cram"
                     value="CRAM_SCHOOL"
                   />
+                  <FieldLabel htmlFor="workplace-type-cram">
+                    {formatWorkplaceType("CRAM_SCHOOL")}
+                  </FieldLabel>
                 </Field>
               </RadioGroup>
               <FormErrorMessage message={errors.type} />
@@ -543,6 +544,7 @@ export function WorkplaceForm({ mode, workplaceId }: WorkplaceFormProps) {
                     const next = event.currentTarget.value;
                     setValues((current) => ({ ...current, color: next }));
                   }}
+                  className="max-w-50"
                 />
               </div>
               <FieldDescription>HEX形式（例: #3B82F6）</FieldDescription>
@@ -588,6 +590,7 @@ export function WorkplaceForm({ mode, workplaceId }: WorkplaceFormProps) {
                             startDate: nextValue,
                           }));
                         }}
+                        className="max-w-40"
                       />
                       <FormErrorMessage message={errors.startDate} />
                     </FieldContent>
@@ -609,6 +612,7 @@ export function WorkplaceForm({ mode, workplaceId }: WorkplaceFormProps) {
                             endDate: nextValue,
                           }));
                         }}
+                        className="max-w-40"
                       />
                       <FieldDescription>
                         空欄の場合は現在有効として扱います。
@@ -637,6 +641,7 @@ export function WorkplaceForm({ mode, workplaceId }: WorkplaceFormProps) {
                                 perLessonWage: nextValue,
                               }));
                             }}
+                            className="max-w-20"
                           />
                           <span className="shrink-0 text-sm text-muted-foreground">
                             円/コマ
@@ -666,6 +671,7 @@ export function WorkplaceForm({ mode, workplaceId }: WorkplaceFormProps) {
                                   baseHourlyWage: nextValue,
                                 }));
                               }}
+                              className="max-w-20"
                             />
                             <span className="shrink-0 text-sm text-muted-foreground">
                               円/時
@@ -694,6 +700,7 @@ export function WorkplaceForm({ mode, workplaceId }: WorkplaceFormProps) {
                                   holidayHourlyWage: nextValue,
                                 }));
                               }}
+                              className="max-w-20"
                             />
                             <span className="shrink-0 text-sm text-muted-foreground">
                               円/時
@@ -727,6 +734,7 @@ export function WorkplaceForm({ mode, workplaceId }: WorkplaceFormProps) {
                                   nightMultiplier: nextValue,
                                 }));
                               }}
+                              className="max-w-20"
                             />
                             <span className="shrink-0 text-sm text-muted-foreground">
                               倍
@@ -755,6 +763,7 @@ export function WorkplaceForm({ mode, workplaceId }: WorkplaceFormProps) {
                                   overtimeMultiplier: nextValue,
                                 }));
                               }}
+                              className="max-w-20"
                             />
                             <span className="shrink-0 text-sm text-muted-foreground">
                               倍
@@ -773,20 +782,26 @@ export function WorkplaceForm({ mode, workplaceId }: WorkplaceFormProps) {
                           1日所定時間
                         </FieldLabel>
                         <FieldContent>
-                          <Input
-                            id="initial-rule-daily-threshold"
-                            type="number"
-                            min="0"
-                            step="0.01"
-                            value={initialRuleValues.dailyOvertimeThreshold}
-                            onChange={(event) => {
-                              const nextValue = event.currentTarget.value;
-                              setInitialRuleValues((current) => ({
-                                ...current,
-                                dailyOvertimeThreshold: nextValue,
-                              }));
-                            }}
-                          />
+                          <div className="flex items-center gap-2">
+                            <Input
+                              id="initial-rule-daily-threshold"
+                              type="number"
+                              min="0"
+                              step="0.01"
+                              value={initialRuleValues.dailyOvertimeThreshold}
+                              onChange={(event) => {
+                                const nextValue = event.currentTarget.value;
+                                setInitialRuleValues((current) => ({
+                                  ...current,
+                                  dailyOvertimeThreshold: nextValue,
+                                }));
+                              }}
+                              className="max-w-16"
+                            />
+                            <span className="shrink-0 text-sm text-muted-foreground">
+                              時間
+                            </span>
+                          </div>
                           <FormErrorMessage
                             message={errors.dailyOvertimeThreshold}
                           />
@@ -809,6 +824,7 @@ export function WorkplaceForm({ mode, workplaceId }: WorkplaceFormProps) {
                                 nightStart: nextValue,
                               }));
                             }}
+                            className="max-w-24"
                           />
                           <FormErrorMessage message={errors.nightStart} />
                         </FieldContent>
@@ -830,6 +846,7 @@ export function WorkplaceForm({ mode, workplaceId }: WorkplaceFormProps) {
                                 nightEnd: nextValue,
                               }));
                             }}
+                            className="max-w-24"
                           />
                           <FormErrorMessage message={errors.nightEnd} />
                         </FieldContent>
@@ -848,40 +865,40 @@ export function WorkplaceForm({ mode, workplaceId }: WorkplaceFormProps) {
                             }}
                           >
                             <Field orientation="horizontal">
-                              <FieldLabel htmlFor="initial-rule-holiday-type-none">
-                                {formatHolidayType("NONE")}
-                              </FieldLabel>
                               <RadioGroupItem
                                 id="initial-rule-holiday-type-none"
                                 value="NONE"
                               />
+                              <FieldLabel htmlFor="initial-rule-holiday-type-none">
+                                {formatHolidayType("NONE")}
+                              </FieldLabel>
                             </Field>
                             <Field orientation="horizontal">
-                              <FieldLabel htmlFor="initial-rule-holiday-type-weekend">
-                                {formatHolidayType("WEEKEND")}
-                              </FieldLabel>
                               <RadioGroupItem
                                 id="initial-rule-holiday-type-weekend"
                                 value="WEEKEND"
                               />
+                              <FieldLabel htmlFor="initial-rule-holiday-type-weekend">
+                                {formatHolidayType("WEEKEND")}
+                              </FieldLabel>
                             </Field>
                             <Field orientation="horizontal">
-                              <FieldLabel htmlFor="initial-rule-holiday-type-holiday">
-                                {formatHolidayType("HOLIDAY")}
-                              </FieldLabel>
                               <RadioGroupItem
                                 id="initial-rule-holiday-type-holiday"
                                 value="HOLIDAY"
                               />
+                              <FieldLabel htmlFor="initial-rule-holiday-type-holiday">
+                                {formatHolidayType("HOLIDAY")}
+                              </FieldLabel>
                             </Field>
                             <Field orientation="horizontal">
-                              <FieldLabel htmlFor="initial-rule-holiday-type-weekend-holiday">
-                                {formatHolidayType("WEEKEND_HOLIDAY")}
-                              </FieldLabel>
                               <RadioGroupItem
                                 id="initial-rule-holiday-type-weekend-holiday"
                                 value="WEEKEND_HOLIDAY"
                               />
+                              <FieldLabel htmlFor="initial-rule-holiday-type-weekend-holiday">
+                                {formatHolidayType("WEEKEND_HOLIDAY")}
+                              </FieldLabel>
                             </Field>
                           </RadioGroup>
                           <FormErrorMessage message={errors.holidayType} />
