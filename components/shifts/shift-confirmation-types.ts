@@ -20,5 +20,6 @@ export type ConfirmedShiftItem = {
 export type ConfirmedShiftWorkplaceGroup = {
   workplaceId: string;
   workplaceName: string;
+  workplaceColor: string;
   shifts: ConfirmedShiftItem[];
 };

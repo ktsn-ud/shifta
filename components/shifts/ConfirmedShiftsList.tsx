@@ -39,7 +39,14 @@ export function ConfirmedShiftsList({ groups }: ConfirmedShiftsListProps) {
           className="w-full max-w-2xl border ring-0"
         >
           <CardHeader>
-            <CardTitle className="font-bold">{group.workplaceName}</CardTitle>
+            <CardTitle className="flex items-center gap-2 font-bold">
+              <span
+                aria-hidden="true"
+                className="size-2.5 shrink-0 rounded-full border border-border/70"
+                style={{ backgroundColor: group.workplaceColor }}
+              />
+              {group.workplaceName}
+            </CardTitle>
           </CardHeader>
 
           <CardContent>

@@ -42,6 +42,7 @@ type ConfirmedShiftApiResponse = {
     workplace: {
       id: string;
       name: string;
+      color: string;
     };
   }>;
 };
@@ -139,6 +140,7 @@ export default function ShiftConfirmPage() {
         grouped.set(shift.workplace.id, {
           workplaceId: shift.workplace.id,
           workplaceName: shift.workplace.name,
+          workplaceColor: shift.workplace.color,
           shifts: [
             {
               id: shift.id,
