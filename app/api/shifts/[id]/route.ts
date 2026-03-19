@@ -158,26 +158,38 @@ export async function DELETE(request: Request, context: Context) {
     }
 
     const { id } = await context.params;
-    const existing = await findOwnedShift(id, current.user.id);
+    const existing = await prisma.shift.findUnique({
+      where: { id },
+      include: {
+        lessonRange: true,
+        workplace: {
+          select: {
+            userId: true,
+          },
+        },
+      },
+    });
     if (!existing) {
       return jsonError("シフトが見つかりません", 404);
     }
 
-    const deletedLessonRange = Boolean(existing.lessonRange);
+    if (existing.workplace.userId !== current.user.id) {
+      return jsonError("このシフトを削除する権限がありません", 403);
+    }
 
     const syncResult = await syncShiftDeletion(
       id,
       current.user.id,
       existing.googleEventId,
     );
-    await prisma.shift.delete({ where: { id } });
+    await prisma.$transaction(async (tx) => {
+      await tx.shiftLessonRange.deleteMany({ where: { shiftId: id } });
+      await tx.shift.delete({ where: { id } });
+    });
 
     return NextResponse.json({
-      data: {
-        id,
-        deleted: true,
-        deletedLessonRange,
-      },
+      id,
+      message: "Shift deleted successfully",
       sync: syncResult,
     });
   } catch (error) {
