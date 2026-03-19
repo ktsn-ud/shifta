@@ -88,6 +88,7 @@ describe("shift confirm page and card flow", () => {
               endTime: "15:00",
               breakMinutes: 30,
               workDurationHours: 5.5,
+              wage: 6500,
               isConfirmed: true,
               workplace: {
                 id: "workplace-1",
@@ -108,7 +109,9 @@ describe("shift confirm page and card flow", () => {
     });
 
     expect(screen.getByDisplayValue("10:00")).toBeInTheDocument();
+    expect(screen.getByText("2026年3月6日(金)")).toBeInTheDocument();
     expect(screen.getByText("09:00 ～ 15:00（実働5.5h）")).toBeInTheDocument();
+    expect(screen.getByText(/6,500/)).toBeInTheDocument();
   });
 
   it("shows fetch error state when API request fails", async () => {

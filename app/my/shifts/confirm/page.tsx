@@ -33,6 +33,7 @@ type ConfirmedShiftApiResponse = {
     endTime: string;
     breakMinutes: number;
     workDurationHours: number;
+    wage: number | null;
     isConfirmed: boolean;
     workplace: {
       id: string;
@@ -52,15 +53,6 @@ function formatDateWithWeekday(dateOnly: string): string {
     month: "long",
     day: "numeric",
     weekday: "short",
-    timeZone: "UTC",
-  }).format(parseDateOnly(dateOnly));
-}
-
-function formatDate(dateOnly: string): string {
-  return new Intl.DateTimeFormat("ja-JP", {
-    year: "numeric",
-    month: "long",
-    day: "numeric",
     timeZone: "UTC",
   }).format(parseDateOnly(dateOnly));
 }
@@ -130,10 +122,11 @@ export default function ShiftConfirmPage() {
         if (existing) {
           existing.shifts.push({
             id: shift.id,
-            date: formatDate(shift.date),
+            date: formatDateWithWeekday(shift.date),
             startTime: shift.startTime,
             endTime: shift.endTime,
             workDurationHours: shift.workDurationHours,
+            wage: shift.wage,
           });
           continue;
         }
@@ -144,10 +137,11 @@ export default function ShiftConfirmPage() {
           shifts: [
             {
               id: shift.id,
-              date: formatDate(shift.date),
+              date: formatDateWithWeekday(shift.date),
               startTime: shift.startTime,
               endTime: shift.endTime,
               workDurationHours: shift.workDurationHours,
+              wage: shift.wage,
             },
           ],
         });

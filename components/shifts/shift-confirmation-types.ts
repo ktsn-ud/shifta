@@ -13,6 +13,7 @@ export type ConfirmedShiftItem = {
   startTime: string;
   endTime: string;
   workDurationHours: number;
+  wage: number | null;
 };
 
 export type ConfirmedShiftWorkplaceGroup = {

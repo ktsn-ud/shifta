@@ -2,6 +2,11 @@ import { NextResponse } from "next/server";
 import { requireCurrentUser } from "@/lib/api/current-user";
 import { jsonError } from "@/lib/api/http";
 import { calculateWorkedMinutes } from "@/lib/payroll/estimate";
+import {
+  calculateShiftPayrollResultByRule,
+  findApplicablePayrollRule,
+  groupPayrollRulesByWorkplace,
+} from "@/lib/payroll/summarizeByPeriod";
 import { prisma } from "@/lib/prisma";
 
 const DATE_PART_PADDING = 2;
@@ -45,6 +50,7 @@ export async function GET() {
         isConfirmed: true,
       },
       include: {
+        lessonRange: true,
         workplace: {
           select: {
             id: true,
@@ -63,6 +69,22 @@ export async function GET() {
       ],
     });
 
+    const workplaceIds = Array.from(
+      new Set(shifts.map((shift) => shift.workplaceId)),
+    );
+    const payrollRules =
+      workplaceIds.length > 0
+        ? await prisma.payrollRule.findMany({
+            where: {
+              workplaceId: {
+                in: workplaceIds,
+              },
+            },
+            orderBy: [{ workplaceId: "asc" }, { startDate: "desc" }],
+          })
+        : [];
+    const rulesByWorkplace = groupPayrollRulesByWorkplace(payrollRules);
+
     return NextResponse.json({
       shifts: shifts.map((shift) => {
         const workedMinutes = calculateWorkedMinutes({
@@ -71,8 +93,21 @@ export async function GET() {
           endTime: shift.endTime,
           breakMinutes: shift.breakMinutes,
           shiftType: shift.shiftType,
-          lessonRange: null,
+          lessonRange: shift.lessonRange
+            ? {
+                startPeriod: shift.lessonRange.startPeriod,
+                endPeriod: shift.lessonRange.endPeriod,
+              }
+            : null,
         });
+        const selectedRule = findApplicablePayrollRule(
+          rulesByWorkplace,
+          shift.workplaceId,
+          shift.date,
+        );
+        const wage = selectedRule
+          ? calculateShiftPayrollResultByRule(shift, selectedRule).totalWage
+          : null;
 
         return {
           id: shift.id,
@@ -81,6 +116,7 @@ export async function GET() {
           endTime: toTimeOnlyString(shift.endTime),
           breakMinutes: shift.breakMinutes,
           workDurationHours: workedMinutes / 60,
+          wage,
           isConfirmed: shift.isConfirmed,
           workplace: shift.workplace,
         };

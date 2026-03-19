@@ -1,4 +1,3 @@
-import { Badge } from "@/components/ui/badge";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import {
   Table,
@@ -16,6 +15,14 @@ type ConfirmedShiftsListProps = {
 
 function formatDurationHours(hours: number): string {
   return `${hours.toFixed(1)}h`;
+}
+
+function formatCurrency(value: number): string {
+  return new Intl.NumberFormat("ja-JP", {
+    style: "currency",
+    currency: "JPY",
+    maximumFractionDigits: 0,
+  }).format(value);
 }
 
 export function ConfirmedShiftsList({ groups }: ConfirmedShiftsListProps) {
@@ -37,7 +44,7 @@ export function ConfirmedShiftsList({ groups }: ConfirmedShiftsListProps) {
                 <TableRow>
                   <TableHead>日付</TableHead>
                   <TableHead>時間帯</TableHead>
-                  <TableHead>状態</TableHead>
+                  <TableHead>給与</TableHead>
                 </TableRow>
               </TableHeader>
               <TableBody>
@@ -46,7 +53,7 @@ export function ConfirmedShiftsList({ groups }: ConfirmedShiftsListProps) {
                     <TableCell>{shift.date}</TableCell>
                     <TableCell>{`${shift.startTime} ～ ${shift.endTime}（実働${formatDurationHours(shift.workDurationHours)}）`}</TableCell>
                     <TableCell>
-                      <Badge variant="secondary">✓</Badge>
+                      {shift.wage === null ? "-" : formatCurrency(shift.wage)}
                     </TableCell>
                   </TableRow>
                 ))}
