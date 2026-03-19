@@ -1,0 +1,238 @@
+import { fireEvent, render, screen, waitFor } from "@testing-library/react";
+import userEvent from "@testing-library/user-event";
+import ShiftConfirmPage from "@/app/my/shifts/confirm/page";
+import { ConfirmShiftCard } from "@/components/shifts/ConfirmShiftCard";
+import type { UnconfirmedShiftItem } from "@/components/shifts/shift-confirmation-types";
+import { toast } from "sonner";
+
+const pushMock = jest.fn();
+
+jest.mock("next/navigation", () => ({
+  useRouter: () => ({
+    push: pushMock,
+  }),
+}));
+
+jest.mock("sonner", () => ({
+  toast: {
+    success: jest.fn(),
+    error: jest.fn(),
+  },
+}));
+
+function jsonResponse(payload: unknown, status = 200): Response {
+  return {
+    ok: status >= 200 && status < 300,
+    status,
+    json: async () => payload,
+  } as Response;
+}
+
+function createUnconfirmedShift(
+  overrides: Partial<UnconfirmedShiftItem> = {},
+): UnconfirmedShiftItem {
+  return {
+    id: "shift-1",
+    date: "2026年3月5日(木)",
+    workplaceName: "コンビニA",
+    startTime: "10:00",
+    endTime: "18:00",
+    breakMinutes: 60,
+    ...overrides,
+  };
+}
+
+describe("shift confirm page and card flow", () => {
+  beforeEach(() => {
+    pushMock.mockReset();
+    (toast.success as jest.Mock).mockReset();
+    (toast.error as jest.Mock).mockReset();
+
+    Object.defineProperty(window, "confirm", {
+      writable: true,
+      value: jest.fn(() => true),
+    });
+
+    Object.defineProperty(globalThis, "fetch", {
+      writable: true,
+      value: jest.fn(),
+    });
+  });
+
+  it("loads and renders unconfirmed/confirmed shifts", async () => {
+    const fetchMock = globalThis.fetch as jest.Mock;
+
+    fetchMock.mockImplementation(async (input: string) => {
+      if (input === "/api/shifts/unconfirmed") {
+        return jsonResponse({
+          shifts: [
+            {
+              id: "shift-1",
+              date: "2026-03-05",
+              startTime: "10:00",
+              endTime: "18:00",
+              breakMinutes: 60,
+              isConfirmed: false,
+              workplace: {
+                id: "workplace-1",
+                name: "コンビニA",
+                color: "#FF5733",
+              },
+            },
+          ],
+        });
+      }
+
+      if (input === "/api/shifts/confirmed-current-month") {
+        return jsonResponse({
+          shifts: [
+            {
+              id: "shift-2",
+              date: "2026-03-06",
+              startTime: "09:00",
+              endTime: "15:00",
+              breakMinutes: 30,
+              workDurationHours: 5.5,
+              isConfirmed: true,
+              workplace: {
+                id: "workplace-1",
+                name: "コンビニA",
+              },
+            },
+          ],
+        });
+      }
+
+      throw new Error(`Unexpected fetch: ${input}`);
+    });
+
+    render(<ShiftConfirmPage />);
+
+    await waitFor(() => {
+      expect(screen.getAllByText("コンビニA").length).toBeGreaterThan(0);
+    });
+
+    expect(screen.getByDisplayValue("10:00")).toBeInTheDocument();
+    expect(screen.getByText("09:00 ～ 15:00（実働5.5h）")).toBeInTheDocument();
+  });
+
+  it("shows fetch error state when API request fails", async () => {
+    const fetchMock = globalThis.fetch as jest.Mock;
+
+    fetchMock.mockResolvedValueOnce(jsonResponse({ error: "failed" }, 500));
+    fetchMock.mockResolvedValueOnce(jsonResponse({ shifts: [] }));
+
+    render(<ShiftConfirmPage />);
+
+    await waitFor(() => {
+      expect(
+        screen.getByText("シフト確定ページのデータ取得に失敗しました。"),
+      ).toBeInTheDocument();
+    });
+
+    expect(toast.error).toHaveBeenCalled();
+  });
+
+  it("confirms a shift with edited values", async () => {
+    const user = userEvent.setup();
+    const onActionCompleted = jest.fn(async () => undefined);
+    const fetchMock = globalThis.fetch as jest.Mock;
+
+    fetchMock.mockResolvedValueOnce(
+      jsonResponse({
+        id: "shift-1",
+        isConfirmed: true,
+        date: "2026-03-05",
+        startTime: "11:00",
+        endTime: "19:00",
+        breakMinutes: 30,
+        sync: { ok: true, googleEventId: "event-1" },
+      }),
+    );
+
+    render(
+      <ConfirmShiftCard
+        shift={createUnconfirmedShift()}
+        onActionCompleted={onActionCompleted}
+      />,
+    );
+
+    fireEvent.change(screen.getByLabelText("開始時刻"), {
+      target: { value: "11:00" },
+    });
+    fireEvent.change(screen.getByLabelText("終了時刻"), {
+      target: { value: "19:00" },
+    });
+    fireEvent.change(screen.getByLabelText("休憩時間（分）"), {
+      target: { value: "30" },
+    });
+
+    await user.click(screen.getByRole("button", { name: "確定" }));
+
+    await waitFor(() => {
+      expect(onActionCompleted).toHaveBeenCalled();
+    });
+
+    expect(fetchMock).toHaveBeenCalledWith(
+      "/api/shifts/shift-1/confirm",
+      expect.objectContaining({
+        method: "PATCH",
+      }),
+    );
+    expect(toast.success).toHaveBeenCalledWith("シフトを確定しました。");
+  });
+
+  it("deletes a shift after confirmation dialog", async () => {
+    const user = userEvent.setup();
+    const onActionCompleted = jest.fn(async () => undefined);
+    const fetchMock = globalThis.fetch as jest.Mock;
+
+    fetchMock.mockResolvedValueOnce(
+      jsonResponse({
+        id: "shift-1",
+        message: "Shift deleted successfully",
+        sync: { ok: true },
+      }),
+    );
+
+    render(
+      <ConfirmShiftCard
+        shift={createUnconfirmedShift()}
+        onActionCompleted={onActionCompleted}
+      />,
+    );
+
+    await user.click(screen.getByRole("button", { name: "削除" }));
+
+    await waitFor(() => {
+      expect(onActionCompleted).toHaveBeenCalled();
+    });
+
+    expect(window.confirm).toHaveBeenCalled();
+    expect(fetchMock).toHaveBeenCalledWith("/api/shifts/shift-1", {
+      method: "DELETE",
+    });
+    expect(toast.success).toHaveBeenCalledWith("シフトを削除しました。");
+  });
+
+  it("shows validation error when start time is after end time", async () => {
+    const user = userEvent.setup();
+    const fetchMock = globalThis.fetch as jest.Mock;
+
+    render(<ConfirmShiftCard shift={createUnconfirmedShift()} />);
+
+    fireEvent.change(screen.getByLabelText("開始時刻"), {
+      target: { value: "20:00" },
+    });
+    fireEvent.change(screen.getByLabelText("終了時刻"), {
+      target: { value: "18:00" },
+    });
+
+    await user.click(screen.getByRole("button", { name: "確定" }));
+
+    expect(
+      screen.getByText("開始時刻は終了時刻より前にしてください。"),
+    ).toBeInTheDocument();
+    expect(fetchMock).not.toHaveBeenCalled();
+  });
+});
