@@ -1,14 +1,15 @@
 import type {
+  PayrollRule,
   Shift,
   ShiftLessonRange,
   User,
   Workplace,
 } from "@/lib/generated/prisma/client";
 import {
-  estimateShiftPay,
+  calculateShiftPayrollResultByRule,
   findApplicablePayrollRule,
-  type PayrollRuleForEstimate,
-} from "@/lib/payroll/estimate";
+  groupPayrollRulesByWorkplace,
+} from "@/lib/payroll/summarizeByPeriod";
 import { prisma } from "@/lib/prisma";
 import { getCalendarClientByUserId } from "./client";
 import { SHIFTA_CALENDAR_TIMEZONE } from "./constants";
@@ -23,7 +24,7 @@ type CalendarClient = Awaited<ReturnType<typeof getCalendarClientByUserId>>;
 type CreateCalendarEventOptions = {
   calendar?: CalendarClient;
   skipCalendarExistenceCheck?: boolean;
-  payrollRulesByWorkplaceId?: ReadonlyMap<string, PayrollRuleForEstimate[]>;
+  payrollRulesByWorkplaceId?: ReadonlyMap<string, PayrollRule[]>;
 };
 
 type GoogleApiErrorCandidate = Error & {
@@ -216,43 +217,41 @@ function formatCurrency(value: number | null): string {
 
 async function estimateShiftWageForEvent(
   shift: ShiftWithLessonRange,
-  payrollRules?: PayrollRuleForEstimate[],
+  payrollRulesByWorkplaceId?: ReadonlyMap<string, PayrollRule[]>,
 ): Promise<number | null> {
-  const rules =
-    payrollRules ??
-    ((await prisma.payrollRule.findMany({
-      where: {
-        workplaceId: shift.workplaceId,
-      },
-      orderBy: [{ startDate: "desc" }],
-    })) as PayrollRuleForEstimate[]);
+  const rulesByWorkplace =
+    payrollRulesByWorkplaceId ??
+    groupPayrollRulesByWorkplace(
+      await prisma.payrollRule.findMany({
+        where: {
+          workplaceId: shift.workplaceId,
+        },
+        orderBy: [{ startDate: "desc" }],
+      }),
+    );
 
-  const selected = findApplicablePayrollRule(rules, shift.date);
-
-  return estimateShiftPay(
-    {
-      date: shift.date,
-      startTime: shift.startTime,
-      endTime: shift.endTime,
-      breakMinutes: shift.breakMinutes,
-      shiftType: shift.shiftType,
-      lessonRange: shift.lessonRange
-        ? {
-            startPeriod: shift.lessonRange.startPeriod,
-            endPeriod: shift.lessonRange.endPeriod,
-          }
-        : null,
-    },
-    selected,
+  const selectedRule = findApplicablePayrollRule(
+    rulesByWorkplace,
+    shift.workplaceId,
+    shift.date,
   );
+
+  if (!selectedRule) {
+    return null;
+  }
+
+  return calculateShiftPayrollResultByRule(shift, selectedRule).totalWage;
 }
 
 async function buildEventDescription(
   shift: ShiftWithLessonRange,
   workplace: Workplace,
-  payrollRules?: PayrollRuleForEstimate[],
+  payrollRulesByWorkplaceId?: ReadonlyMap<string, PayrollRule[]>,
 ): Promise<string> {
-  const estimatedWage = await estimateShiftWageForEvent(shift, payrollRules);
+  const estimatedWage = await estimateShiftWageForEvent(
+    shift,
+    payrollRulesByWorkplaceId,
+  );
 
   return [
     `勤務先: ${workplace.name}`,
@@ -297,14 +296,11 @@ export async function createCalendarEvent(
     await assertCalendarExists(calendar, user.calendarId);
   }
 
-  const payrollRules = options?.payrollRulesByWorkplaceId?.get(
-    shift.workplaceId,
-  );
   const eventDateTime = buildEventDateTime(shift);
   const description = await buildEventDescription(
     shift,
     workplace,
-    payrollRules,
+    options?.payrollRulesByWorkplaceId,
   );
 
   const response = await calendar.events.insert({

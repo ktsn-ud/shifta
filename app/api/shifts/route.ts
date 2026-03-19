@@ -5,11 +5,12 @@ import { requireCurrentUser } from "@/lib/api/current-user";
 import { DATE_ONLY_REGEX, parseDateOnly } from "@/lib/api/date-time";
 import { jsonError, parseJsonBody } from "@/lib/api/http";
 import { requireOwnedWorkplace } from "@/lib/api/workplace";
+import { calculateWorkedMinutes } from "@/lib/payroll/estimate";
 import {
-  calculateWorkedMinutes,
-  estimateShiftPay,
+  calculateShiftPayrollResultByRule,
   findApplicablePayrollRule,
-} from "@/lib/payroll/estimate";
+  groupPayrollRulesByWorkplace,
+} from "@/lib/payroll/summarizeByPeriod";
 import { prisma } from "@/lib/prisma";
 import { syncShiftAfterCreate } from "@/lib/google-calendar/syncStatus";
 import {
@@ -203,16 +204,9 @@ export async function GET(request: Request) {
       orderBy: [{ workplaceId: "asc" }, { startDate: "desc" }],
     });
 
-    const rulesByWorkplace = new Map<string, typeof payrollRules>();
-    for (const rule of payrollRules) {
-      const existing = rulesByWorkplace.get(rule.workplaceId) ?? [];
-      existing.push(rule);
-      rulesByWorkplace.set(rule.workplaceId, existing);
-    }
+    const rulesByWorkplace = groupPayrollRulesByWorkplace(payrollRules);
 
     const withEstimate = shifts.map((shift) => {
-      const rules = rulesByWorkplace.get(shift.workplaceId) ?? [];
-      const selectedRule = findApplicablePayrollRule(rules, shift.date);
       const workedMinutes = calculateWorkedMinutes({
         date: shift.date,
         startTime: shift.startTime,
@@ -226,22 +220,14 @@ export async function GET(request: Request) {
             }
           : null,
       });
-      const estimatedPay = estimateShiftPay(
-        {
-          date: shift.date,
-          startTime: shift.startTime,
-          endTime: shift.endTime,
-          breakMinutes: shift.breakMinutes,
-          shiftType: shift.shiftType,
-          lessonRange: shift.lessonRange
-            ? {
-                startPeriod: shift.lessonRange.startPeriod,
-                endPeriod: shift.lessonRange.endPeriod,
-              }
-            : null,
-        },
-        selectedRule,
+      const selectedRule = findApplicablePayrollRule(
+        rulesByWorkplace,
+        shift.workplaceId,
+        shift.date,
       );
+      const estimatedPay = selectedRule
+        ? calculateShiftPayrollResultByRule(shift, selectedRule).totalWage
+        : null;
 
       return {
         ...shift,

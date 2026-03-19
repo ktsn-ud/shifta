@@ -1,5 +1,4 @@
-import type { User } from "@/lib/generated/prisma/client";
-import { type PayrollRuleForEstimate } from "@/lib/payroll/estimate";
+import type { PayrollRule, User } from "@/lib/generated/prisma/client";
 import { prisma } from "@/lib/prisma";
 import {
   GoogleCalendarSyncError,
@@ -231,7 +230,7 @@ async function findUserForSync(userId: string): Promise<User | null> {
 
 async function buildPayrollRulesByWorkplace(
   shifts: Awaited<ReturnType<typeof findShiftsForSync>>,
-): Promise<Map<string, PayrollRuleForEstimate[]>> {
+): Promise<Map<string, PayrollRule[]>> {
   const workplaceIds = Array.from(
     new Set(shifts.map((shift) => shift.workplaceId)),
   );
@@ -248,7 +247,7 @@ async function buildPayrollRulesByWorkplace(
     orderBy: [{ workplaceId: "asc" }, { startDate: "desc" }],
   });
 
-  const payrollRulesByWorkplace = new Map<string, PayrollRuleForEstimate[]>();
+  const payrollRulesByWorkplace = new Map<string, PayrollRule[]>();
   for (const rule of payrollRules) {
     const rules = payrollRulesByWorkplace.get(rule.workplaceId) ?? [];
     rules.push(rule);

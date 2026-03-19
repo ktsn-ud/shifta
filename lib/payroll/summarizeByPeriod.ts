@@ -15,6 +15,12 @@ export type ShiftWithSummaryRelations = Shift & {
   workplace: Pick<Workplace, "id" | "name" | "color">;
 };
 
+export type ShiftForPayrollCalculation = Shift & {
+  lessonRange: ShiftLessonRange | null;
+};
+
+export type PayrollRulesByWorkplace = ReadonlyMap<string, PayrollRule[]>;
+
 export type SummaryByWorkplace = {
   workplaceId: string;
   workplaceName: string;
@@ -40,7 +46,7 @@ function isWithin(date: Date, startDate: Date, endDate: Date): boolean {
   return time >= startDate.getTime() && time <= endDate.getTime();
 }
 
-function groupRulesByWorkplace(
+export function groupPayrollRulesByWorkplace(
   payrollRules: PayrollRule[],
 ): Map<string, PayrollRule[]> {
   const grouped = new Map<string, PayrollRule[]>();
@@ -63,8 +69,8 @@ function groupRulesByWorkplace(
   return grouped;
 }
 
-function findApplicableRule(
-  rulesByWorkplace: Map<string, PayrollRule[]>,
+export function findApplicablePayrollRule(
+  rulesByWorkplace: PayrollRulesByWorkplace,
   workplaceId: string,
   shiftDate: Date,
 ): PayrollRule | null {
@@ -83,19 +89,10 @@ function findApplicableRule(
   return null;
 }
 
-function calculateShiftResult(
-  shift: ShiftWithSummaryRelations,
-  rulesByWorkplace: Map<string, PayrollRule[]>,
+export function calculateShiftPayrollResultByRule(
+  shift: ShiftForPayrollCalculation,
+  rule: PayrollRule,
 ): PayrollResult {
-  const rule = findApplicableRule(
-    rulesByWorkplace,
-    shift.workplaceId,
-    shift.date,
-  );
-  if (!rule) {
-    throw new Error(`該当する給与ルールが見つかりません: shiftId=${shift.id}`);
-  }
-
   if (shift.shiftType === "LESSON") {
     if (!shift.lessonRange) {
       throw new Error(
@@ -108,13 +105,29 @@ function calculateShiftResult(
   return calculateOtherShiftWage(shift, rule);
 }
 
+export function calculateShiftPayrollResult(
+  shift: ShiftForPayrollCalculation,
+  rulesByWorkplace: PayrollRulesByWorkplace,
+): PayrollResult {
+  const rule = findApplicablePayrollRule(
+    rulesByWorkplace,
+    shift.workplaceId,
+    shift.date,
+  );
+  if (!rule) {
+    throw new Error(`該当する給与ルールが見つかりません: shiftId=${shift.id}`);
+  }
+
+  return calculateShiftPayrollResultByRule(shift, rule);
+}
+
 export function summarizeByPeriod(
   shifts: ShiftWithSummaryRelations[],
   payrollRules: PayrollRule[],
   startDate: Date,
   endDate: Date,
 ): SummaryResult {
-  const rulesByWorkplace = groupRulesByWorkplace(payrollRules);
+  const rulesByWorkplace = groupPayrollRulesByWorkplace(payrollRules);
   const byWorkplace = new Map<string, SummaryByWorkplace>();
 
   let totalWage = 0;
@@ -127,7 +140,7 @@ export function summarizeByPeriod(
       continue;
     }
 
-    const result = calculateShiftResult(shift, rulesByWorkplace);
+    const result = calculateShiftPayrollResult(shift, rulesByWorkplace);
 
     totalWage += result.totalWage;
     totalWorkHours += result.workHours;
