@@ -155,6 +155,12 @@ export async function buildShiftData(
 ): Promise<BuiltShiftData> {
   validateShiftInput(input);
 
+  if (workplaceType === "CRAM_SCHOOL" && input.shiftType === "OTHER") {
+    throw new ShiftValidationError(
+      "CRAM_SCHOOL勤務先では OTHER シフトを登録できません",
+    );
+  }
+
   const date = parseDateOnly(input.date);
 
   if (input.shiftType === "LESSON") {

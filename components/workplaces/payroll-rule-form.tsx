@@ -188,57 +188,54 @@ function validate(
     } else if (perLessonWage <= 0) {
       errors.perLessonWage = "コマ給は正の数で入力してください。";
     }
-  } else {
-    const baseHourlyWage = Number(values.baseHourlyWage);
-    if (!values.baseHourlyWage || Number.isFinite(baseHourlyWage) === false) {
-      errors.baseHourlyWage = "基本時給は必須です。";
-    } else if (baseHourlyWage <= 0) {
-      errors.baseHourlyWage = "基本時給は正の数で入力してください。";
-    }
+  }
 
-    if (values.holidayHourlyWage) {
-      const holidayHourlyWage = Number(values.holidayHourlyWage);
-      if (
-        Number.isFinite(holidayHourlyWage) === false ||
-        holidayHourlyWage <= 0
-      ) {
-        errors.holidayHourlyWage = "休日時給は正の数で入力してください。";
-      }
-    }
+  const baseHourlyWage = Number(values.baseHourlyWage);
+  if (!values.baseHourlyWage || Number.isFinite(baseHourlyWage) === false) {
+    errors.baseHourlyWage = "基本時給は必須です。";
+  } else if (baseHourlyWage <= 0) {
+    errors.baseHourlyWage = "基本時給は正の数で入力してください。";
+  }
 
-    const nightMultiplier = Number(values.nightMultiplier);
-    if (!values.nightMultiplier || Number.isFinite(nightMultiplier) === false) {
-      errors.nightMultiplier = "深夜割増率は必須です。";
-    } else if (nightMultiplier < 1) {
-      errors.nightMultiplier = "深夜割増率は1.0以上で入力してください。";
-    }
-
-    const overtimeMultiplier = Number(values.overtimeMultiplier);
+  if (values.holidayHourlyWage) {
+    const holidayHourlyWage = Number(values.holidayHourlyWage);
     if (
-      !values.overtimeMultiplier ||
-      Number.isFinite(overtimeMultiplier) === false
+      Number.isFinite(holidayHourlyWage) === false ||
+      holidayHourlyWage <= 0
     ) {
-      errors.overtimeMultiplier = "残業割増率は必須です。";
-    } else if (overtimeMultiplier < 1) {
-      errors.overtimeMultiplier = "残業割増率は1.0以上で入力してください。";
+      errors.holidayHourlyWage = "休日時給は正の数で入力してください。";
     }
+  }
 
-    const threshold = Number(values.dailyOvertimeThreshold);
-    if (
-      !values.dailyOvertimeThreshold ||
-      Number.isFinite(threshold) === false
-    ) {
-      errors.dailyOvertimeThreshold = "1日所定時間は必須です。";
-    } else if (threshold <= 0) {
-      errors.dailyOvertimeThreshold = "1日所定時間は正の数で入力してください。";
-    }
+  const nightMultiplier = Number(values.nightMultiplier);
+  if (!values.nightMultiplier || Number.isFinite(nightMultiplier) === false) {
+    errors.nightMultiplier = "深夜割増率は必須です。";
+  } else if (nightMultiplier < 1) {
+    errors.nightMultiplier = "深夜割増率は1.0以上で入力してください。";
+  }
 
-    if (timeRegex.test(values.nightStart) === false) {
-      errors.nightStart = "深夜開始時刻はHH:MM形式で入力してください。";
-    }
-    if (timeRegex.test(values.nightEnd) === false) {
-      errors.nightEnd = "深夜終了時刻はHH:MM形式で入力してください。";
-    }
+  const overtimeMultiplier = Number(values.overtimeMultiplier);
+  if (
+    !values.overtimeMultiplier ||
+    Number.isFinite(overtimeMultiplier) === false
+  ) {
+    errors.overtimeMultiplier = "残業割増率は必須です。";
+  } else if (overtimeMultiplier < 1) {
+    errors.overtimeMultiplier = "残業割増率は1.0以上で入力してください。";
+  }
+
+  const threshold = Number(values.dailyOvertimeThreshold);
+  if (!values.dailyOvertimeThreshold || Number.isFinite(threshold) === false) {
+    errors.dailyOvertimeThreshold = "1日所定時間は必須です。";
+  } else if (threshold <= 0) {
+    errors.dailyOvertimeThreshold = "1日所定時間は正の数で入力してください。";
+  }
+
+  if (timeRegex.test(values.nightStart) === false) {
+    errors.nightStart = "深夜開始時刻はHH:MM形式で入力してください。";
+  }
+  if (timeRegex.test(values.nightEnd) === false) {
+    errors.nightEnd = "深夜終了時刻はHH:MM形式で入力してください。";
   }
 
   return errors;
@@ -416,28 +413,18 @@ export function PayrollRuleForm({
     const payload = {
       startDate: values.startDate,
       endDate: values.endDate ? values.endDate : null,
-      baseHourlyWage:
-        workplaceType === "CRAM_SCHOOL" ? 1 : Number(values.baseHourlyWage),
+      baseHourlyWage: Number(values.baseHourlyWage),
       perLessonWage:
         workplaceType === "CRAM_SCHOOL" ? Number(values.perLessonWage) : null,
-      holidayHourlyWage:
-        workplaceType === "CRAM_SCHOOL"
-          ? null
-          : values.holidayHourlyWage
-            ? Number(values.holidayHourlyWage)
-            : null,
-      nightMultiplier:
-        workplaceType === "CRAM_SCHOOL" ? 1 : Number(values.nightMultiplier),
-      overtimeMultiplier:
-        workplaceType === "CRAM_SCHOOL" ? 1 : Number(values.overtimeMultiplier),
-      dailyOvertimeThreshold:
-        workplaceType === "CRAM_SCHOOL"
-          ? 8
-          : Number(values.dailyOvertimeThreshold),
-      nightStart: workplaceType === "CRAM_SCHOOL" ? "22:00" : values.nightStart,
-      nightEnd: workplaceType === "CRAM_SCHOOL" ? "05:00" : values.nightEnd,
-      holidayType:
-        workplaceType === "CRAM_SCHOOL" ? "NONE" : values.holidayType,
+      holidayHourlyWage: values.holidayHourlyWage
+        ? Number(values.holidayHourlyWage)
+        : null,
+      nightMultiplier: Number(values.nightMultiplier),
+      overtimeMultiplier: Number(values.overtimeMultiplier),
+      dailyOvertimeThreshold: Number(values.dailyOvertimeThreshold),
+      nightStart: values.nightStart,
+      nightEnd: values.nightEnd,
+      holidayType: values.holidayType,
     } as const;
 
     try {
@@ -612,235 +599,229 @@ export function PayrollRuleForm({
                 <FormErrorMessage message={errors.perLessonWage} />
               </FieldContent>
             </Field>
-          ) : (
-            <>
-              <Field data-invalid={Boolean(errors.baseHourlyWage)}>
-                <FieldLabel htmlFor="base-hourly-wage">基本時給</FieldLabel>
-                <FieldContent>
-                  <div className="flex items-center gap-2">
-                    <Input
-                      id="base-hourly-wage"
-                      type="number"
-                      min="0"
-                      step="10"
-                      value={values.baseHourlyWage}
-                      onChange={(event) => {
-                        const nextValue = event.currentTarget.value;
-                        setValues((current) => ({
-                          ...current,
-                          baseHourlyWage: nextValue,
-                        }));
-                      }}
-                    />
-                    <span className="shrink-0 text-sm text-muted-foreground">
-                      円/時
-                    </span>
-                  </div>
-                  <FormErrorMessage message={errors.baseHourlyWage} />
-                </FieldContent>
-              </Field>
+          ) : null}
 
-              <Field data-invalid={Boolean(errors.holidayHourlyWage)}>
-                <FieldLabel htmlFor="holiday-hourly-wage">休日時給</FieldLabel>
-                <FieldContent>
-                  <div className="flex items-center gap-2">
-                    <Input
-                      id="holiday-hourly-wage"
-                      type="number"
-                      min="0"
-                      step="10"
-                      value={values.holidayHourlyWage}
-                      onChange={(event) => {
-                        const nextValue = event.currentTarget.value;
-                        setValues((current) => ({
-                          ...current,
-                          holidayHourlyWage: nextValue,
-                        }));
-                      }}
-                    />
-                    <span className="shrink-0 text-sm text-muted-foreground">
-                      円/時
-                    </span>
-                  </div>
-                  <FieldDescription>
-                    空欄の場合、基本時給と同等として扱います。
-                  </FieldDescription>
-                  <FormErrorMessage message={errors.holidayHourlyWage} />
-                </FieldContent>
-              </Field>
+          <Field data-invalid={Boolean(errors.baseHourlyWage)}>
+            <FieldLabel htmlFor="base-hourly-wage">
+              {workplace?.type === "CRAM_SCHOOL"
+                ? "基本時給（事務）"
+                : "基本時給"}
+            </FieldLabel>
+            <FieldContent>
+              <div className="flex items-center gap-2">
+                <Input
+                  id="base-hourly-wage"
+                  type="number"
+                  min="0"
+                  step="10"
+                  value={values.baseHourlyWage}
+                  onChange={(event) => {
+                    const nextValue = event.currentTarget.value;
+                    setValues((current) => ({
+                      ...current,
+                      baseHourlyWage: nextValue,
+                    }));
+                  }}
+                />
+                <span className="shrink-0 text-sm text-muted-foreground">
+                  円/時
+                </span>
+              </div>
+              <FormErrorMessage message={errors.baseHourlyWage} />
+            </FieldContent>
+          </Field>
 
-              <Field data-invalid={Boolean(errors.nightMultiplier)}>
-                <FieldLabel htmlFor="night-multiplier">深夜割増率</FieldLabel>
-                <FieldContent>
-                  <div className="flex items-center gap-2">
-                    <Input
-                      id="night-multiplier"
-                      type="number"
-                      min="1"
-                      step="0.01"
-                      value={values.nightMultiplier}
-                      onChange={(event) => {
-                        const nextValue = event.currentTarget.value;
-                        setValues((current) => ({
-                          ...current,
-                          nightMultiplier: nextValue,
-                        }));
-                      }}
-                    />
-                    <span className="shrink-0 text-sm text-muted-foreground">
-                      倍
-                    </span>
-                  </div>
-                  <FormErrorMessage message={errors.nightMultiplier} />
-                </FieldContent>
-              </Field>
+          <Field data-invalid={Boolean(errors.holidayHourlyWage)}>
+            <FieldLabel htmlFor="holiday-hourly-wage">休日時給</FieldLabel>
+            <FieldContent>
+              <div className="flex items-center gap-2">
+                <Input
+                  id="holiday-hourly-wage"
+                  type="number"
+                  min="0"
+                  step="10"
+                  value={values.holidayHourlyWage}
+                  onChange={(event) => {
+                    const nextValue = event.currentTarget.value;
+                    setValues((current) => ({
+                      ...current,
+                      holidayHourlyWage: nextValue,
+                    }));
+                  }}
+                />
+                <span className="shrink-0 text-sm text-muted-foreground">
+                  円/時
+                </span>
+              </div>
+              <FieldDescription>
+                空欄の場合、基本時給と同等として扱います。
+              </FieldDescription>
+              <FormErrorMessage message={errors.holidayHourlyWage} />
+            </FieldContent>
+          </Field>
 
-              <Field data-invalid={Boolean(errors.overtimeMultiplier)}>
-                <FieldLabel htmlFor="overtime-multiplier">
-                  残業割増率
-                </FieldLabel>
-                <FieldContent>
-                  <div className="flex items-center gap-2">
-                    <Input
-                      id="overtime-multiplier"
-                      type="number"
-                      min="1"
-                      step="0.01"
-                      value={values.overtimeMultiplier}
-                      onChange={(event) => {
-                        const nextValue = event.currentTarget.value;
-                        setValues((current) => ({
-                          ...current,
-                          overtimeMultiplier: nextValue,
-                        }));
-                      }}
-                    />
-                    <span className="shrink-0 text-sm text-muted-foreground">
-                      倍
-                    </span>
-                  </div>
-                  <FormErrorMessage message={errors.overtimeMultiplier} />
-                </FieldContent>
-              </Field>
+          <Field data-invalid={Boolean(errors.nightMultiplier)}>
+            <FieldLabel htmlFor="night-multiplier">深夜割増率</FieldLabel>
+            <FieldContent>
+              <div className="flex items-center gap-2">
+                <Input
+                  id="night-multiplier"
+                  type="number"
+                  min="1"
+                  step="0.01"
+                  value={values.nightMultiplier}
+                  onChange={(event) => {
+                    const nextValue = event.currentTarget.value;
+                    setValues((current) => ({
+                      ...current,
+                      nightMultiplier: nextValue,
+                    }));
+                  }}
+                />
+                <span className="shrink-0 text-sm text-muted-foreground">
+                  倍
+                </span>
+              </div>
+              <FormErrorMessage message={errors.nightMultiplier} />
+            </FieldContent>
+          </Field>
 
-              <Field data-invalid={Boolean(errors.dailyOvertimeThreshold)}>
-                <FieldLabel htmlFor="daily-overtime-threshold">
-                  1日所定時間
-                </FieldLabel>
-                <FieldContent>
-                  <Input
-                    id="daily-overtime-threshold"
-                    type="number"
-                    min="0"
-                    step="0.01"
-                    value={values.dailyOvertimeThreshold}
-                    onChange={(event) => {
-                      const nextValue = event.currentTarget.value;
-                      setValues((current) => ({
-                        ...current,
-                        dailyOvertimeThreshold: nextValue,
-                      }));
-                    }}
+          <Field data-invalid={Boolean(errors.overtimeMultiplier)}>
+            <FieldLabel htmlFor="overtime-multiplier">残業割増率</FieldLabel>
+            <FieldContent>
+              <div className="flex items-center gap-2">
+                <Input
+                  id="overtime-multiplier"
+                  type="number"
+                  min="1"
+                  step="0.01"
+                  value={values.overtimeMultiplier}
+                  onChange={(event) => {
+                    const nextValue = event.currentTarget.value;
+                    setValues((current) => ({
+                      ...current,
+                      overtimeMultiplier: nextValue,
+                    }));
+                  }}
+                />
+                <span className="shrink-0 text-sm text-muted-foreground">
+                  倍
+                </span>
+              </div>
+              <FormErrorMessage message={errors.overtimeMultiplier} />
+            </FieldContent>
+          </Field>
+
+          <Field data-invalid={Boolean(errors.dailyOvertimeThreshold)}>
+            <FieldLabel htmlFor="daily-overtime-threshold">
+              1日所定時間
+            </FieldLabel>
+            <FieldContent>
+              <Input
+                id="daily-overtime-threshold"
+                type="number"
+                min="0"
+                step="0.01"
+                value={values.dailyOvertimeThreshold}
+                onChange={(event) => {
+                  const nextValue = event.currentTarget.value;
+                  setValues((current) => ({
+                    ...current,
+                    dailyOvertimeThreshold: nextValue,
+                  }));
+                }}
+              />
+              <FormErrorMessage message={errors.dailyOvertimeThreshold} />
+            </FieldContent>
+          </Field>
+
+          <Field data-invalid={Boolean(errors.nightStart)}>
+            <FieldLabel htmlFor="night-start">深夜開始時刻</FieldLabel>
+            <FieldContent>
+              <Input
+                id="night-start"
+                type="time"
+                value={values.nightStart}
+                onChange={(event) => {
+                  const nextValue = event.currentTarget.value;
+                  setValues((current) => ({
+                    ...current,
+                    nightStart: nextValue,
+                  }));
+                }}
+              />
+              <FormErrorMessage message={errors.nightStart} />
+            </FieldContent>
+          </Field>
+
+          <Field data-invalid={Boolean(errors.nightEnd)}>
+            <FieldLabel htmlFor="night-end">深夜終了時刻</FieldLabel>
+            <FieldContent>
+              <Input
+                id="night-end"
+                type="time"
+                value={values.nightEnd}
+                onChange={(event) => {
+                  const nextValue = event.currentTarget.value;
+                  setValues((current) => ({
+                    ...current,
+                    nightEnd: nextValue,
+                  }));
+                }}
+              />
+              <FormErrorMessage message={errors.nightEnd} />
+            </FieldContent>
+          </Field>
+
+          <Field>
+            <FieldLabel>休日判定</FieldLabel>
+            <FieldContent>
+              <RadioGroup
+                value={values.holidayType}
+                onValueChange={(value) => {
+                  setValues((current) => ({
+                    ...current,
+                    holidayType: value as HolidayType,
+                  }));
+                }}
+              >
+                <Field orientation="horizontal">
+                  <RadioGroupItem id="holiday-type-none" value="NONE" />
+                  <FieldLabel htmlFor="holiday-type-none">
+                    {formatHolidayType("NONE")}
+                  </FieldLabel>
+                </Field>
+                <Field orientation="horizontal">
+                  <RadioGroupItem id="holiday-type-weekend" value="WEEKEND" />
+                  <FieldLabel htmlFor="holiday-type-weekend">
+                    {formatHolidayType("WEEKEND")}
+                  </FieldLabel>
+                </Field>
+                <Field orientation="horizontal">
+                  <RadioGroupItem id="holiday-type-holiday" value="HOLIDAY" />
+                  <FieldLabel htmlFor="holiday-type-holiday">
+                    {formatHolidayType("HOLIDAY")}
+                  </FieldLabel>
+                </Field>
+                <Field orientation="horizontal">
+                  <RadioGroupItem
+                    id="holiday-type-weekend-holiday"
+                    value="WEEKEND_HOLIDAY"
                   />
-                  <FormErrorMessage message={errors.dailyOvertimeThreshold} />
-                </FieldContent>
-              </Field>
-
-              <Field data-invalid={Boolean(errors.nightStart)}>
-                <FieldLabel htmlFor="night-start">深夜開始時刻</FieldLabel>
-                <FieldContent>
-                  <Input
-                    id="night-start"
-                    type="time"
-                    value={values.nightStart}
-                    onChange={(event) => {
-                      const nextValue = event.currentTarget.value;
-                      setValues((current) => ({
-                        ...current,
-                        nightStart: nextValue,
-                      }));
-                    }}
-                  />
-                  <FormErrorMessage message={errors.nightStart} />
-                </FieldContent>
-              </Field>
-
-              <Field data-invalid={Boolean(errors.nightEnd)}>
-                <FieldLabel htmlFor="night-end">深夜終了時刻</FieldLabel>
-                <FieldContent>
-                  <Input
-                    id="night-end"
-                    type="time"
-                    value={values.nightEnd}
-                    onChange={(event) => {
-                      const nextValue = event.currentTarget.value;
-                      setValues((current) => ({
-                        ...current,
-                        nightEnd: nextValue,
-                      }));
-                    }}
-                  />
-                  <FormErrorMessage message={errors.nightEnd} />
-                </FieldContent>
-              </Field>
-
-              <Field>
-                <FieldLabel>休日判定</FieldLabel>
-                <FieldContent>
-                  <RadioGroup
-                    value={values.holidayType}
-                    onValueChange={(value) => {
-                      setValues((current) => ({
-                        ...current,
-                        holidayType: value as HolidayType,
-                      }));
-                    }}
-                  >
-                    <Field orientation="horizontal">
-                      <RadioGroupItem id="holiday-type-none" value="NONE" />
-                      <FieldLabel htmlFor="holiday-type-none">
-                        {formatHolidayType("NONE")}
-                      </FieldLabel>
-                    </Field>
-                    <Field orientation="horizontal">
-                      <RadioGroupItem
-                        id="holiday-type-weekend"
-                        value="WEEKEND"
-                      />
-                      <FieldLabel htmlFor="holiday-type-weekend">
-                        {formatHolidayType("WEEKEND")}
-                      </FieldLabel>
-                    </Field>
-                    <Field orientation="horizontal">
-                      <RadioGroupItem
-                        id="holiday-type-holiday"
-                        value="HOLIDAY"
-                      />
-                      <FieldLabel htmlFor="holiday-type-holiday">
-                        {formatHolidayType("HOLIDAY")}
-                      </FieldLabel>
-                    </Field>
-                    <Field orientation="horizontal">
-                      <RadioGroupItem
-                        id="holiday-type-weekend-holiday"
-                        value="WEEKEND_HOLIDAY"
-                      />
-                      <FieldLabel htmlFor="holiday-type-weekend-holiday">
-                        {formatHolidayType("WEEKEND_HOLIDAY")}
-                      </FieldLabel>
-                    </Field>
-                  </RadioGroup>
-                </FieldContent>
-              </Field>
-            </>
-          )}
+                  <FieldLabel htmlFor="holiday-type-weekend-holiday">
+                    {formatHolidayType("WEEKEND_HOLIDAY")}
+                  </FieldLabel>
+                </Field>
+              </RadioGroup>
+            </FieldContent>
+          </Field>
 
           {workplace?.type === "CRAM_SCHOOL" ? (
             <Field>
               <FieldLabel>補足</FieldLabel>
               <FieldContent>
                 <FieldDescription>
-                  塾タイプはコマ給のみ必須です。一般タイプ向け項目は固定値で保存されます。
+                  塾タイプでは授業シフトにコマ給、事務シフトに時給・割増設定を使用します。
                 </FieldDescription>
               </FieldContent>
             </Field>

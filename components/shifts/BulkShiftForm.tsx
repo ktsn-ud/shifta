@@ -194,6 +194,17 @@ function formatSelectedDate(dateKey: string): string {
   }).format(date);
 }
 
+function formatShiftTypeForWorkplace(
+  shiftType: ShiftType,
+  workplaceType: Workplace["type"] | undefined,
+): string {
+  if (workplaceType === "CRAM_SCHOOL" && shiftType === "NORMAL") {
+    return "事務";
+  }
+
+  return formatShiftType(shiftType);
+}
+
 function hasRowErrors(errors: RowErrors): boolean {
   return Object.keys(errors).length > 0;
 }
@@ -202,6 +213,13 @@ function normalizeDefaultsForWorkplace(
   defaults: BulkDefaults,
   workplaceType: Workplace["type"] | undefined,
 ): BulkDefaults {
+  if (workplaceType === "CRAM_SCHOOL" && defaults.shiftType === "OTHER") {
+    return {
+      ...defaults,
+      shiftType: "NORMAL",
+    };
+  }
+
   if (workplaceType !== "GENERAL") {
     return defaults;
   }
@@ -220,6 +238,13 @@ function normalizeRowForWorkplace(
   row: BulkShiftRow,
   workplaceType: Workplace["type"] | undefined,
 ): BulkShiftRow {
+  if (workplaceType === "CRAM_SCHOOL" && row.shiftType === "OTHER") {
+    return {
+      ...row,
+      shiftType: "NORMAL",
+    };
+  }
+
   if (workplaceType !== "GENERAL") {
     return row;
   }
@@ -653,6 +678,14 @@ export function BulkShiftForm() {
         rowErrors.breakMinutes = "休憩時間は0〜240分で入力してください。";
       }
 
+      if (
+        selectedWorkplace?.type === "CRAM_SCHOOL" &&
+        row.shiftType === "OTHER"
+      ) {
+        rowErrors.shiftType =
+          "塾タイプ勤務先では授業または事務を選択してください。";
+      }
+
       if (row.shiftType === "LESSON") {
         if (selectedWorkplace?.type !== "CRAM_SCHOOL") {
           rowErrors.shiftType =
@@ -1047,10 +1080,15 @@ export function BulkShiftForm() {
                   value={defaults.shiftType}
                   onValueChange={(value) => {
                     const shiftType = value as ShiftType;
+                    const isCramWorkplace =
+                      selectedWorkplace?.type === "CRAM_SCHOOL";
                     if (
                       shiftType === "LESSON" &&
                       selectedWorkplace?.type !== "CRAM_SCHOOL"
                     ) {
+                      return;
+                    }
+                    if (isCramWorkplace && shiftType === "OTHER") {
                       return;
                     }
 
@@ -1069,28 +1107,61 @@ export function BulkShiftForm() {
                     }));
                   }}
                 >
-                  <div className="flex items-center gap-2">
-                    <RadioGroupItem value="NORMAL" id="default-shift-normal" />
-                    <FieldLabel htmlFor="default-shift-normal">
-                      {formatShiftType("NORMAL")}
-                    </FieldLabel>
-                  </div>
-                  <div className="flex items-center gap-2">
-                    <RadioGroupItem
-                      value="LESSON"
-                      id="default-shift-lesson"
-                      disabled={selectedWorkplace?.type !== "CRAM_SCHOOL"}
-                    />
-                    <FieldLabel htmlFor="default-shift-lesson">
-                      {formatShiftType("LESSON")}
-                    </FieldLabel>
-                  </div>
-                  <div className="flex items-center gap-2">
-                    <RadioGroupItem value="OTHER" id="default-shift-other" />
-                    <FieldLabel htmlFor="default-shift-other">
-                      {formatShiftType("OTHER")}
-                    </FieldLabel>
-                  </div>
+                  {selectedWorkplace?.type === "CRAM_SCHOOL" ? (
+                    <>
+                      <div className="flex items-center gap-2">
+                        <RadioGroupItem
+                          value="LESSON"
+                          id="default-shift-lesson"
+                        />
+                        <FieldLabel htmlFor="default-shift-lesson">
+                          {formatShiftTypeForWorkplace(
+                            "LESSON",
+                            selectedWorkplace?.type,
+                          )}
+                        </FieldLabel>
+                      </div>
+                      <div className="flex items-center gap-2">
+                        <RadioGroupItem
+                          value="NORMAL"
+                          id="default-shift-normal"
+                        />
+                        <FieldLabel htmlFor="default-shift-normal">
+                          {formatShiftTypeForWorkplace(
+                            "NORMAL",
+                            selectedWorkplace?.type,
+                          )}
+                        </FieldLabel>
+                      </div>
+                    </>
+                  ) : (
+                    <>
+                      <div className="flex items-center gap-2">
+                        <RadioGroupItem
+                          value="NORMAL"
+                          id="default-shift-normal"
+                        />
+                        <FieldLabel htmlFor="default-shift-normal">
+                          {formatShiftTypeForWorkplace(
+                            "NORMAL",
+                            selectedWorkplace?.type,
+                          )}
+                        </FieldLabel>
+                      </div>
+                      <div className="flex items-center gap-2">
+                        <RadioGroupItem
+                          value="OTHER"
+                          id="default-shift-other"
+                        />
+                        <FieldLabel htmlFor="default-shift-other">
+                          {formatShiftTypeForWorkplace(
+                            "OTHER",
+                            selectedWorkplace?.type,
+                          )}
+                        </FieldLabel>
+                      </div>
+                    </>
+                  )}
                 </RadioGroup>
               </FieldContent>
             </Field>
@@ -1344,10 +1415,15 @@ export function BulkShiftForm() {
                             value={row.shiftType}
                             onValueChange={(value) => {
                               const shiftType = value as ShiftType;
+                              const isCramWorkplace =
+                                selectedWorkplace?.type === "CRAM_SCHOOL";
                               if (
                                 shiftType === "LESSON" &&
                                 selectedWorkplace?.type !== "CRAM_SCHOOL"
                               ) {
+                                return;
+                              }
+                              if (isCramWorkplace && shiftType === "OTHER") {
                                 return;
                               }
 
@@ -1370,36 +1446,69 @@ export function BulkShiftForm() {
                               });
                             }}
                           >
-                            <div className="flex items-center gap-2">
-                              <RadioGroupItem
-                                value="NORMAL"
-                                id={`${row.date}-shift-normal`}
-                              />
-                              <FieldLabel htmlFor={`${row.date}-shift-normal`}>
-                                {formatShiftType("NORMAL")}
-                              </FieldLabel>
-                            </div>
-                            <div className="flex items-center gap-2">
-                              <RadioGroupItem
-                                value="LESSON"
-                                id={`${row.date}-shift-lesson`}
-                                disabled={
-                                  selectedWorkplace?.type !== "CRAM_SCHOOL"
-                                }
-                              />
-                              <FieldLabel htmlFor={`${row.date}-shift-lesson`}>
-                                {formatShiftType("LESSON")}
-                              </FieldLabel>
-                            </div>
-                            <div className="flex items-center gap-2">
-                              <RadioGroupItem
-                                value="OTHER"
-                                id={`${row.date}-shift-other`}
-                              />
-                              <FieldLabel htmlFor={`${row.date}-shift-other`}>
-                                {formatShiftType("OTHER")}
-                              </FieldLabel>
-                            </div>
+                            {selectedWorkplace?.type === "CRAM_SCHOOL" ? (
+                              <>
+                                <div className="flex items-center gap-2">
+                                  <RadioGroupItem
+                                    value="LESSON"
+                                    id={`${row.date}-shift-lesson`}
+                                  />
+                                  <FieldLabel
+                                    htmlFor={`${row.date}-shift-lesson`}
+                                  >
+                                    {formatShiftTypeForWorkplace(
+                                      "LESSON",
+                                      selectedWorkplace?.type,
+                                    )}
+                                  </FieldLabel>
+                                </div>
+                                <div className="flex items-center gap-2">
+                                  <RadioGroupItem
+                                    value="NORMAL"
+                                    id={`${row.date}-shift-normal`}
+                                  />
+                                  <FieldLabel
+                                    htmlFor={`${row.date}-shift-normal`}
+                                  >
+                                    {formatShiftTypeForWorkplace(
+                                      "NORMAL",
+                                      selectedWorkplace?.type,
+                                    )}
+                                  </FieldLabel>
+                                </div>
+                              </>
+                            ) : (
+                              <>
+                                <div className="flex items-center gap-2">
+                                  <RadioGroupItem
+                                    value="NORMAL"
+                                    id={`${row.date}-shift-normal`}
+                                  />
+                                  <FieldLabel
+                                    htmlFor={`${row.date}-shift-normal`}
+                                  >
+                                    {formatShiftTypeForWorkplace(
+                                      "NORMAL",
+                                      selectedWorkplace?.type,
+                                    )}
+                                  </FieldLabel>
+                                </div>
+                                <div className="flex items-center gap-2">
+                                  <RadioGroupItem
+                                    value="OTHER"
+                                    id={`${row.date}-shift-other`}
+                                  />
+                                  <FieldLabel
+                                    htmlFor={`${row.date}-shift-other`}
+                                  >
+                                    {formatShiftTypeForWorkplace(
+                                      "OTHER",
+                                      selectedWorkplace?.type,
+                                    )}
+                                  </FieldLabel>
+                                </div>
+                              </>
+                            )}
                           </RadioGroup>
                           <FormErrorMessage message={rowErrors.shiftType} />
                         </FieldContent>

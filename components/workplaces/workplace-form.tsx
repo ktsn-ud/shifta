@@ -127,8 +127,6 @@ function validate(
     } else if (perLessonWage <= 0) {
       errors.perLessonWage = "コマ給は正の数で入力してください。";
     }
-
-    return errors;
   }
 
   const baseHourlyWage = Number(initialRuleValues.baseHourlyWage);
@@ -346,44 +344,22 @@ export function WorkplaceForm({ mode, workplaceId }: WorkplaceFormProps) {
         payload.initialPayrollRule = {
           startDate: initialRuleValues.startDate,
           endDate: initialRuleValues.endDate ? initialRuleValues.endDate : null,
-          baseHourlyWage:
-            values.type === "CRAM_SCHOOL"
-              ? 1
-              : Number(initialRuleValues.baseHourlyWage),
+          baseHourlyWage: Number(initialRuleValues.baseHourlyWage),
           perLessonWage:
             values.type === "CRAM_SCHOOL"
               ? Number(initialRuleValues.perLessonWage)
               : null,
-          holidayHourlyWage:
-            values.type === "CRAM_SCHOOL"
-              ? null
-              : initialRuleValues.holidayHourlyWage
-                ? Number(initialRuleValues.holidayHourlyWage)
-                : null,
-          nightMultiplier:
-            values.type === "CRAM_SCHOOL"
-              ? 1
-              : Number(initialRuleValues.nightMultiplier),
-          overtimeMultiplier:
-            values.type === "CRAM_SCHOOL"
-              ? 1
-              : Number(initialRuleValues.overtimeMultiplier),
-          nightStart:
-            values.type === "CRAM_SCHOOL"
-              ? "22:00"
-              : initialRuleValues.nightStart,
-          nightEnd:
-            values.type === "CRAM_SCHOOL"
-              ? "05:00"
-              : initialRuleValues.nightEnd,
-          dailyOvertimeThreshold:
-            values.type === "CRAM_SCHOOL"
-              ? 8
-              : Number(initialRuleValues.dailyOvertimeThreshold),
-          holidayType:
-            values.type === "CRAM_SCHOOL"
-              ? "NONE"
-              : initialRuleValues.holidayType,
+          holidayHourlyWage: initialRuleValues.holidayHourlyWage
+            ? Number(initialRuleValues.holidayHourlyWage)
+            : null,
+          nightMultiplier: Number(initialRuleValues.nightMultiplier),
+          overtimeMultiplier: Number(initialRuleValues.overtimeMultiplier),
+          nightStart: initialRuleValues.nightStart,
+          nightEnd: initialRuleValues.nightEnd,
+          dailyOvertimeThreshold: Number(
+            initialRuleValues.dailyOvertimeThreshold,
+          ),
+          holidayType: initialRuleValues.holidayType,
         };
       }
 
@@ -650,262 +626,256 @@ export function WorkplaceForm({ mode, workplaceId }: WorkplaceFormProps) {
                         <FormErrorMessage message={errors.perLessonWage} />
                       </FieldContent>
                     </Field>
-                  ) : (
-                    <>
-                      <Field data-invalid={Boolean(errors.baseHourlyWage)}>
-                        <FieldLabel htmlFor="initial-rule-base-hourly-wage">
-                          基本時給
-                        </FieldLabel>
-                        <FieldContent>
-                          <div className="flex items-center gap-2">
-                            <Input
-                              id="initial-rule-base-hourly-wage"
-                              type="number"
-                              min="0"
-                              step="10"
-                              value={initialRuleValues.baseHourlyWage}
-                              onChange={(event) => {
-                                const nextValue = event.currentTarget.value;
-                                setInitialRuleValues((current) => ({
-                                  ...current,
-                                  baseHourlyWage: nextValue,
-                                }));
-                              }}
-                              className="max-w-20"
-                            />
-                            <span className="shrink-0 text-sm text-muted-foreground">
-                              円/時
-                            </span>
-                          </div>
-                          <FormErrorMessage message={errors.baseHourlyWage} />
-                        </FieldContent>
-                      </Field>
+                  ) : null}
 
-                      <Field data-invalid={Boolean(errors.holidayHourlyWage)}>
-                        <FieldLabel htmlFor="initial-rule-holiday-hourly-wage">
-                          休日時給
-                        </FieldLabel>
-                        <FieldContent>
-                          <div className="flex items-center gap-2">
-                            <Input
-                              id="initial-rule-holiday-hourly-wage"
-                              type="number"
-                              min="0"
-                              step="10"
-                              value={initialRuleValues.holidayHourlyWage}
-                              onChange={(event) => {
-                                const nextValue = event.currentTarget.value;
-                                setInitialRuleValues((current) => ({
-                                  ...current,
-                                  holidayHourlyWage: nextValue,
-                                }));
-                              }}
-                              className="max-w-20"
-                            />
-                            <span className="shrink-0 text-sm text-muted-foreground">
-                              円/時
-                            </span>
-                          </div>
-                          <FieldDescription>
-                            空欄の場合、基本時給と同等として扱います。
-                          </FieldDescription>
-                          <FormErrorMessage
-                            message={errors.holidayHourlyWage}
-                          />
-                        </FieldContent>
-                      </Field>
+                  <Field data-invalid={Boolean(errors.baseHourlyWage)}>
+                    <FieldLabel htmlFor="initial-rule-base-hourly-wage">
+                      {values.type === "CRAM_SCHOOL"
+                        ? "基本時給（事務）"
+                        : "基本時給"}
+                    </FieldLabel>
+                    <FieldContent>
+                      <div className="flex items-center gap-2">
+                        <Input
+                          id="initial-rule-base-hourly-wage"
+                          type="number"
+                          min="0"
+                          step="10"
+                          value={initialRuleValues.baseHourlyWage}
+                          onChange={(event) => {
+                            const nextValue = event.currentTarget.value;
+                            setInitialRuleValues((current) => ({
+                              ...current,
+                              baseHourlyWage: nextValue,
+                            }));
+                          }}
+                          className="max-w-20"
+                        />
+                        <span className="shrink-0 text-sm text-muted-foreground">
+                          円/時
+                        </span>
+                      </div>
+                      <FormErrorMessage message={errors.baseHourlyWage} />
+                    </FieldContent>
+                  </Field>
 
-                      <Field data-invalid={Boolean(errors.nightMultiplier)}>
-                        <FieldLabel htmlFor="initial-rule-night-multiplier">
-                          深夜割増率
-                        </FieldLabel>
-                        <FieldContent>
-                          <div className="flex items-center gap-2">
-                            <Input
-                              id="initial-rule-night-multiplier"
-                              type="number"
-                              min="1"
-                              step="0.01"
-                              value={initialRuleValues.nightMultiplier}
-                              onChange={(event) => {
-                                const nextValue = event.currentTarget.value;
-                                setInitialRuleValues((current) => ({
-                                  ...current,
-                                  nightMultiplier: nextValue,
-                                }));
-                              }}
-                              className="max-w-20"
-                            />
-                            <span className="shrink-0 text-sm text-muted-foreground">
-                              倍
-                            </span>
-                          </div>
-                          <FormErrorMessage message={errors.nightMultiplier} />
-                        </FieldContent>
-                      </Field>
+                  <Field data-invalid={Boolean(errors.holidayHourlyWage)}>
+                    <FieldLabel htmlFor="initial-rule-holiday-hourly-wage">
+                      休日時給
+                    </FieldLabel>
+                    <FieldContent>
+                      <div className="flex items-center gap-2">
+                        <Input
+                          id="initial-rule-holiday-hourly-wage"
+                          type="number"
+                          min="0"
+                          step="10"
+                          value={initialRuleValues.holidayHourlyWage}
+                          onChange={(event) => {
+                            const nextValue = event.currentTarget.value;
+                            setInitialRuleValues((current) => ({
+                              ...current,
+                              holidayHourlyWage: nextValue,
+                            }));
+                          }}
+                          className="max-w-20"
+                        />
+                        <span className="shrink-0 text-sm text-muted-foreground">
+                          円/時
+                        </span>
+                      </div>
+                      <FieldDescription>
+                        空欄の場合、基本時給と同等として扱います。
+                      </FieldDescription>
+                      <FormErrorMessage message={errors.holidayHourlyWage} />
+                    </FieldContent>
+                  </Field>
 
-                      <Field data-invalid={Boolean(errors.overtimeMultiplier)}>
-                        <FieldLabel htmlFor="initial-rule-overtime-multiplier">
-                          残業割増率
-                        </FieldLabel>
-                        <FieldContent>
-                          <div className="flex items-center gap-2">
-                            <Input
-                              id="initial-rule-overtime-multiplier"
-                              type="number"
-                              min="1"
-                              step="0.01"
-                              value={initialRuleValues.overtimeMultiplier}
-                              onChange={(event) => {
-                                const nextValue = event.currentTarget.value;
-                                setInitialRuleValues((current) => ({
-                                  ...current,
-                                  overtimeMultiplier: nextValue,
-                                }));
-                              }}
-                              className="max-w-20"
-                            />
-                            <span className="shrink-0 text-sm text-muted-foreground">
-                              倍
-                            </span>
-                          </div>
-                          <FormErrorMessage
-                            message={errors.overtimeMultiplier}
-                          />
-                        </FieldContent>
-                      </Field>
+                  <Field data-invalid={Boolean(errors.nightMultiplier)}>
+                    <FieldLabel htmlFor="initial-rule-night-multiplier">
+                      深夜割増率
+                    </FieldLabel>
+                    <FieldContent>
+                      <div className="flex items-center gap-2">
+                        <Input
+                          id="initial-rule-night-multiplier"
+                          type="number"
+                          min="1"
+                          step="0.01"
+                          value={initialRuleValues.nightMultiplier}
+                          onChange={(event) => {
+                            const nextValue = event.currentTarget.value;
+                            setInitialRuleValues((current) => ({
+                              ...current,
+                              nightMultiplier: nextValue,
+                            }));
+                          }}
+                          className="max-w-20"
+                        />
+                        <span className="shrink-0 text-sm text-muted-foreground">
+                          倍
+                        </span>
+                      </div>
+                      <FormErrorMessage message={errors.nightMultiplier} />
+                    </FieldContent>
+                  </Field>
 
-                      <Field
-                        data-invalid={Boolean(errors.dailyOvertimeThreshold)}
+                  <Field data-invalid={Boolean(errors.overtimeMultiplier)}>
+                    <FieldLabel htmlFor="initial-rule-overtime-multiplier">
+                      残業割増率
+                    </FieldLabel>
+                    <FieldContent>
+                      <div className="flex items-center gap-2">
+                        <Input
+                          id="initial-rule-overtime-multiplier"
+                          type="number"
+                          min="1"
+                          step="0.01"
+                          value={initialRuleValues.overtimeMultiplier}
+                          onChange={(event) => {
+                            const nextValue = event.currentTarget.value;
+                            setInitialRuleValues((current) => ({
+                              ...current,
+                              overtimeMultiplier: nextValue,
+                            }));
+                          }}
+                          className="max-w-20"
+                        />
+                        <span className="shrink-0 text-sm text-muted-foreground">
+                          倍
+                        </span>
+                      </div>
+                      <FormErrorMessage message={errors.overtimeMultiplier} />
+                    </FieldContent>
+                  </Field>
+
+                  <Field data-invalid={Boolean(errors.dailyOvertimeThreshold)}>
+                    <FieldLabel htmlFor="initial-rule-daily-threshold">
+                      1日所定時間
+                    </FieldLabel>
+                    <FieldContent>
+                      <div className="flex items-center gap-2">
+                        <Input
+                          id="initial-rule-daily-threshold"
+                          type="number"
+                          min="0"
+                          step="0.01"
+                          value={initialRuleValues.dailyOvertimeThreshold}
+                          onChange={(event) => {
+                            const nextValue = event.currentTarget.value;
+                            setInitialRuleValues((current) => ({
+                              ...current,
+                              dailyOvertimeThreshold: nextValue,
+                            }));
+                          }}
+                          className="max-w-16"
+                        />
+                        <span className="shrink-0 text-sm text-muted-foreground">
+                          時間
+                        </span>
+                      </div>
+                      <FormErrorMessage
+                        message={errors.dailyOvertimeThreshold}
+                      />
+                    </FieldContent>
+                  </Field>
+
+                  <Field data-invalid={Boolean(errors.nightStart)}>
+                    <FieldLabel htmlFor="initial-rule-night-start">
+                      深夜開始時刻
+                    </FieldLabel>
+                    <FieldContent>
+                      <Input
+                        id="initial-rule-night-start"
+                        type="time"
+                        value={initialRuleValues.nightStart}
+                        onChange={(event) => {
+                          const nextValue = event.currentTarget.value;
+                          setInitialRuleValues((current) => ({
+                            ...current,
+                            nightStart: nextValue,
+                          }));
+                        }}
+                        className="max-w-24"
+                      />
+                      <FormErrorMessage message={errors.nightStart} />
+                    </FieldContent>
+                  </Field>
+
+                  <Field data-invalid={Boolean(errors.nightEnd)}>
+                    <FieldLabel htmlFor="initial-rule-night-end">
+                      深夜終了時刻
+                    </FieldLabel>
+                    <FieldContent>
+                      <Input
+                        id="initial-rule-night-end"
+                        type="time"
+                        value={initialRuleValues.nightEnd}
+                        onChange={(event) => {
+                          const nextValue = event.currentTarget.value;
+                          setInitialRuleValues((current) => ({
+                            ...current,
+                            nightEnd: nextValue,
+                          }));
+                        }}
+                        className="max-w-24"
+                      />
+                      <FormErrorMessage message={errors.nightEnd} />
+                    </FieldContent>
+                  </Field>
+
+                  <Field data-invalid={Boolean(errors.holidayType)}>
+                    <FieldLabel>休日判定</FieldLabel>
+                    <FieldContent>
+                      <RadioGroup
+                        value={initialRuleValues.holidayType}
+                        onValueChange={(value) => {
+                          setInitialRuleValues((current) => ({
+                            ...current,
+                            holidayType: value as HolidayType,
+                          }));
+                        }}
                       >
-                        <FieldLabel htmlFor="initial-rule-daily-threshold">
-                          1日所定時間
-                        </FieldLabel>
-                        <FieldContent>
-                          <div className="flex items-center gap-2">
-                            <Input
-                              id="initial-rule-daily-threshold"
-                              type="number"
-                              min="0"
-                              step="0.01"
-                              value={initialRuleValues.dailyOvertimeThreshold}
-                              onChange={(event) => {
-                                const nextValue = event.currentTarget.value;
-                                setInitialRuleValues((current) => ({
-                                  ...current,
-                                  dailyOvertimeThreshold: nextValue,
-                                }));
-                              }}
-                              className="max-w-16"
-                            />
-                            <span className="shrink-0 text-sm text-muted-foreground">
-                              時間
-                            </span>
-                          </div>
-                          <FormErrorMessage
-                            message={errors.dailyOvertimeThreshold}
+                        <Field orientation="horizontal">
+                          <RadioGroupItem
+                            id="initial-rule-holiday-type-none"
+                            value="NONE"
                           />
-                        </FieldContent>
-                      </Field>
-
-                      <Field data-invalid={Boolean(errors.nightStart)}>
-                        <FieldLabel htmlFor="initial-rule-night-start">
-                          深夜開始時刻
-                        </FieldLabel>
-                        <FieldContent>
-                          <Input
-                            id="initial-rule-night-start"
-                            type="time"
-                            value={initialRuleValues.nightStart}
-                            onChange={(event) => {
-                              const nextValue = event.currentTarget.value;
-                              setInitialRuleValues((current) => ({
-                                ...current,
-                                nightStart: nextValue,
-                              }));
-                            }}
-                            className="max-w-24"
+                          <FieldLabel htmlFor="initial-rule-holiday-type-none">
+                            {formatHolidayType("NONE")}
+                          </FieldLabel>
+                        </Field>
+                        <Field orientation="horizontal">
+                          <RadioGroupItem
+                            id="initial-rule-holiday-type-weekend"
+                            value="WEEKEND"
                           />
-                          <FormErrorMessage message={errors.nightStart} />
-                        </FieldContent>
-                      </Field>
-
-                      <Field data-invalid={Boolean(errors.nightEnd)}>
-                        <FieldLabel htmlFor="initial-rule-night-end">
-                          深夜終了時刻
-                        </FieldLabel>
-                        <FieldContent>
-                          <Input
-                            id="initial-rule-night-end"
-                            type="time"
-                            value={initialRuleValues.nightEnd}
-                            onChange={(event) => {
-                              const nextValue = event.currentTarget.value;
-                              setInitialRuleValues((current) => ({
-                                ...current,
-                                nightEnd: nextValue,
-                              }));
-                            }}
-                            className="max-w-24"
+                          <FieldLabel htmlFor="initial-rule-holiday-type-weekend">
+                            {formatHolidayType("WEEKEND")}
+                          </FieldLabel>
+                        </Field>
+                        <Field orientation="horizontal">
+                          <RadioGroupItem
+                            id="initial-rule-holiday-type-holiday"
+                            value="HOLIDAY"
                           />
-                          <FormErrorMessage message={errors.nightEnd} />
-                        </FieldContent>
-                      </Field>
-
-                      <Field data-invalid={Boolean(errors.holidayType)}>
-                        <FieldLabel>休日判定</FieldLabel>
-                        <FieldContent>
-                          <RadioGroup
-                            value={initialRuleValues.holidayType}
-                            onValueChange={(value) => {
-                              setInitialRuleValues((current) => ({
-                                ...current,
-                                holidayType: value as HolidayType,
-                              }));
-                            }}
-                          >
-                            <Field orientation="horizontal">
-                              <RadioGroupItem
-                                id="initial-rule-holiday-type-none"
-                                value="NONE"
-                              />
-                              <FieldLabel htmlFor="initial-rule-holiday-type-none">
-                                {formatHolidayType("NONE")}
-                              </FieldLabel>
-                            </Field>
-                            <Field orientation="horizontal">
-                              <RadioGroupItem
-                                id="initial-rule-holiday-type-weekend"
-                                value="WEEKEND"
-                              />
-                              <FieldLabel htmlFor="initial-rule-holiday-type-weekend">
-                                {formatHolidayType("WEEKEND")}
-                              </FieldLabel>
-                            </Field>
-                            <Field orientation="horizontal">
-                              <RadioGroupItem
-                                id="initial-rule-holiday-type-holiday"
-                                value="HOLIDAY"
-                              />
-                              <FieldLabel htmlFor="initial-rule-holiday-type-holiday">
-                                {formatHolidayType("HOLIDAY")}
-                              </FieldLabel>
-                            </Field>
-                            <Field orientation="horizontal">
-                              <RadioGroupItem
-                                id="initial-rule-holiday-type-weekend-holiday"
-                                value="WEEKEND_HOLIDAY"
-                              />
-                              <FieldLabel htmlFor="initial-rule-holiday-type-weekend-holiday">
-                                {formatHolidayType("WEEKEND_HOLIDAY")}
-                              </FieldLabel>
-                            </Field>
-                          </RadioGroup>
-                          <FormErrorMessage message={errors.holidayType} />
-                        </FieldContent>
-                      </Field>
-                    </>
-                  )}
+                          <FieldLabel htmlFor="initial-rule-holiday-type-holiday">
+                            {formatHolidayType("HOLIDAY")}
+                          </FieldLabel>
+                        </Field>
+                        <Field orientation="horizontal">
+                          <RadioGroupItem
+                            id="initial-rule-holiday-type-weekend-holiday"
+                            value="WEEKEND_HOLIDAY"
+                          />
+                          <FieldLabel htmlFor="initial-rule-holiday-type-weekend-holiday">
+                            {formatHolidayType("WEEKEND_HOLIDAY")}
+                          </FieldLabel>
+                        </Field>
+                      </RadioGroup>
+                      <FormErrorMessage message={errors.holidayType} />
+                    </FieldContent>
+                  </Field>
                 </>
               ) : null}
             </>

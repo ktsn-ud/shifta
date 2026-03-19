@@ -132,6 +132,14 @@ type ShiftFormProps = {
   initialDate?: string;
 };
 
+function formatCramShiftType(type: "NORMAL" | "LESSON"): string {
+  if (type === "NORMAL") {
+    return "事務";
+  }
+
+  return formatShiftType(type);
+}
+
 function isValidDateKey(value?: string | null): value is string {
   if (!value || DATE_ONLY_REGEX.test(value) === false) {
     return false;
@@ -525,6 +533,17 @@ export function ShiftForm({ mode, shiftId, initialDate }: ShiftFormProps) {
   }, [selectedWorkplaceId, selectedWorkplaceType]);
 
   useEffect(() => {
+    if (selectedWorkplaceType !== "CRAM_SCHOOL" || form.shiftType !== "OTHER") {
+      return;
+    }
+
+    setForm((current) => ({
+      ...current,
+      shiftType: "NORMAL",
+    }));
+  }, [form.shiftType, selectedWorkplaceType]);
+
+  useEffect(() => {
     if (
       mode !== "edit" ||
       form.shiftType !== "LESSON" ||
@@ -833,7 +852,9 @@ export function ShiftForm({ mode, shiftId, initialDate }: ShiftFormProps) {
     const breakMinutes = Number(form.breakMinutes);
 
     const effectiveShiftType: ShiftType =
-      selectedWorkplaceType === "CRAM_SCHOOL" ? form.shiftType : "NORMAL";
+      selectedWorkplaceType === "CRAM_SCHOOL" && form.shiftType === "LESSON"
+        ? "LESSON"
+        : "NORMAL";
 
     const payload: {
       workplaceId: string;
@@ -1086,37 +1107,27 @@ export function ShiftForm({ mode, shiftId, initialDate }: ShiftFormProps) {
                 >
                   <Field orientation="horizontal">
                     <RadioGroupItem
-                      id="shift-type-normal"
-                      value="NORMAL"
-                      disabled={disabled}
-                    />
-                    <FieldLabel htmlFor="shift-type-normal">
-                      {formatShiftType("NORMAL")}
-                    </FieldLabel>
-                  </Field>
-                  <Field orientation="horizontal">
-                    <RadioGroupItem
                       id="shift-type-lesson"
                       value="LESSON"
                       disabled={disabled}
                     />
                     <FieldLabel htmlFor="shift-type-lesson">
-                      {formatShiftType("LESSON")}
+                      {formatCramShiftType("LESSON")}
                     </FieldLabel>
                   </Field>
                   <Field orientation="horizontal">
                     <RadioGroupItem
-                      id="shift-type-other"
-                      value="OTHER"
+                      id="shift-type-normal"
+                      value="NORMAL"
                       disabled={disabled}
                     />
-                    <FieldLabel htmlFor="shift-type-other">
-                      {formatShiftType("OTHER")}
+                    <FieldLabel htmlFor="shift-type-normal">
+                      {formatCramShiftType("NORMAL")}
                     </FieldLabel>
                   </Field>
                 </RadioGroup>
                 <FieldDescription>
-                  授業は塾タイプ勤務先選択時のみ有効です。
+                  塾タイプ勤務先では授業または事務を選択します。
                 </FieldDescription>
                 <FormErrorMessage message={errors.shiftType} />
               </FieldContent>
