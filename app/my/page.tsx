@@ -39,6 +39,19 @@ function formatCurrency(value: number): string {
   }).format(value);
 }
 
+function formatSummaryPeriodLabel(month: Date): string {
+  const now = new Date();
+  const isSameYear = month.getFullYear() === now.getFullYear();
+  const isCurrentMonth = isSameYear && month.getMonth() === now.getMonth();
+
+  if (isCurrentMonth) {
+    return "今月";
+  }
+
+  const monthLabel = `${month.getMonth() + 1}月`;
+  return isSameYear ? monthLabel : `${month.getFullYear()}年${monthLabel}`;
+}
+
 export default function Page() {
   const router = useRouter();
   const [month, setMonth] = useState(() => startOfMonth(new Date()));
@@ -59,6 +72,10 @@ export default function Page() {
   }, [shifts]);
 
   const summary = useMemo(() => summarizeShifts(shifts), [shifts]);
+  const summaryPeriodLabel = useMemo(
+    () => formatSummaryPeriodLabel(month),
+    [month],
+  );
   const selectedDateKey = toDateKey(selectedDate);
   const selectedDateShifts = shiftsByDate.get(selectedDateKey) ?? [];
 
@@ -96,7 +113,7 @@ export default function Page() {
         <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
           <Card size="sm">
             <CardHeader>
-              <CardTitle>今月の概算給与</CardTitle>
+              <CardTitle>{summaryPeriodLabel}の概算給与</CardTitle>
               <CardDescription>シフト一覧から算出した暫定値</CardDescription>
             </CardHeader>
             <CardContent className="text-2xl font-semibold">
@@ -106,7 +123,7 @@ export default function Page() {
 
           <Card size="sm">
             <CardHeader>
-              <CardTitle>今月の勤務時間</CardTitle>
+              <CardTitle>{summaryPeriodLabel}の勤務時間</CardTitle>
               <CardDescription>休憩控除後の合計時間</CardDescription>
             </CardHeader>
             <CardContent className="text-2xl font-semibold">
@@ -116,7 +133,7 @@ export default function Page() {
 
           <Card size="sm">
             <CardHeader>
-              <CardTitle>今月のシフト件数</CardTitle>
+              <CardTitle>{summaryPeriodLabel}のシフト件数</CardTitle>
               <CardDescription>登録済み件数</CardDescription>
             </CardHeader>
             <CardContent className="text-2xl font-semibold">
