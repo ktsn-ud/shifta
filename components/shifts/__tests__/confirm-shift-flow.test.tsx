@@ -48,11 +48,6 @@ describe("shift confirm page and card flow", () => {
     (toast.success as jest.Mock).mockReset();
     (toast.error as jest.Mock).mockReset();
 
-    Object.defineProperty(window, "confirm", {
-      writable: true,
-      value: jest.fn(() => true),
-    });
-
     Object.defineProperty(globalThis, "fetch", {
       writable: true,
       value: jest.fn(),
@@ -180,39 +175,6 @@ describe("shift confirm page and card flow", () => {
       }),
     );
     expect(toast.success).toHaveBeenCalledWith("シフトを確定しました。");
-  });
-
-  it("deletes a shift after confirmation dialog", async () => {
-    const user = userEvent.setup();
-    const onActionCompleted = jest.fn(async () => undefined);
-    const fetchMock = globalThis.fetch as jest.Mock;
-
-    fetchMock.mockResolvedValueOnce(
-      jsonResponse({
-        id: "shift-1",
-        message: "Shift deleted successfully",
-        sync: { ok: true },
-      }),
-    );
-
-    render(
-      <ConfirmShiftCard
-        shift={createUnconfirmedShift()}
-        onActionCompleted={onActionCompleted}
-      />,
-    );
-
-    await user.click(screen.getByRole("button", { name: "削除" }));
-
-    await waitFor(() => {
-      expect(onActionCompleted).toHaveBeenCalled();
-    });
-
-    expect(window.confirm).toHaveBeenCalled();
-    expect(fetchMock).toHaveBeenCalledWith("/api/shifts/shift-1", {
-      method: "DELETE",
-    });
-    expect(toast.success).toHaveBeenCalledWith("シフトを削除しました。");
   });
 
   it("shows validation error when start time is after end time", async () => {

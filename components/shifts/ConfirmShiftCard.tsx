@@ -88,7 +88,6 @@ export function ConfirmShiftCard({
   const [endTime, setEndTime] = useState(shift.endTime);
   const [breakMinutes, setBreakMinutes] = useState(String(shift.breakMinutes));
   const [isConfirming, setIsConfirming] = useState(false);
-  const [isDeleting, setIsDeleting] = useState(false);
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
 
   useEffect(() => {
@@ -98,7 +97,7 @@ export function ConfirmShiftCard({
     setErrorMessage(null);
   }, [shift.breakMinutes, shift.endTime, shift.id, shift.startTime]);
 
-  const isMutating = isConfirming || isDeleting;
+  const isMutating = isConfirming;
 
   const handleConfirm = async () => {
     setErrorMessage(null);
@@ -159,65 +158,8 @@ export function ConfirmShiftCard({
     }
   };
 
-  const handleDelete = async () => {
-    setErrorMessage(null);
-
-    const confirmed = window.confirm(
-      `${shift.date} ${shift.workplaceName} のシフトを削除しますか？`,
-    );
-    if (!confirmed) {
-      return;
-    }
-
-    setIsDeleting(true);
-    try {
-      const response = await fetch(`/api/shifts/${shift.id}`, {
-        method: "DELETE",
-      });
-
-      if (response.ok === false) {
-        const apiError = await readGoogleSyncFailureFromErrorResponse(
-          response,
-          messages.error.shiftDeleteFailed,
-        );
-        throw new Error(apiError.message);
-      }
-
-      const payload = (await response.json()) as unknown;
-      const syncFailure = parseGoogleSyncFailureFromPayload(
-        payload,
-        messages.error.calendarSyncFailed,
-      );
-
-      await onActionCompleted?.();
-
-      if (syncFailure) {
-        toast.error(messages.error.calendarSyncFailed, {
-          description: syncFailure.requiresCalendarSetup
-            ? syncFailure.message
-            : `${syncFailure.message} シフトは削除済みです。`,
-          duration: 6000,
-        });
-
-        if (syncFailure.requiresCalendarSetup) {
-          queueMicrotask(() => {
-            router.push(CALENDAR_SETUP_PATH);
-          });
-        }
-        return;
-      }
-
-      toast.success(messages.success.shiftDeleted);
-    } catch (error) {
-      console.error("failed to delete shift", error);
-      setErrorMessage(toErrorMessage(error, messages.error.shiftDeleteFailed));
-    } finally {
-      setIsDeleting(false);
-    }
-  };
-
   return (
-    <Card size="sm">
+    <Card size="sm" className="shadow-none">
       <CardHeader>
         <CardTitle>{shift.date}</CardTitle>
         <p className="text-sm text-muted-foreground">{shift.workplaceName}</p>
@@ -265,14 +207,6 @@ export function ConfirmShiftCard({
         ) : null}
 
         <div className="flex flex-wrap justify-end gap-2">
-          <Button
-            type="button"
-            variant="outline"
-            disabled={isMutating}
-            onClick={handleDelete}
-          >
-            {isDeleting ? "削除中..." : "削除"}
-          </Button>
           <Button type="button" disabled={isMutating} onClick={handleConfirm}>
             {isConfirming ? "確定中..." : "確定"}
           </Button>

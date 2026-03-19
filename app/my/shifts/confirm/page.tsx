@@ -8,7 +8,6 @@ import {
   type ConfirmedShiftWorkplaceGroup,
   type UnconfirmedShiftItem,
 } from "@/components/shifts/shift-confirmation-types";
-import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 
 type UnconfirmedShiftApiResponse = {
   shifts: Array<{
@@ -175,7 +174,7 @@ export default function ShiftConfirmPage() {
       <header>
         <h2 className="text-xl font-semibold">シフト確定</h2>
         <p className="mt-1 text-sm text-muted-foreground">
-          未確定シフトの時刻調整と確定・削除を行えます。
+          未確定シフトの時刻調整と確定を行えます。
         </p>
       </header>
 
@@ -185,32 +184,28 @@ export default function ShiftConfirmPage() {
         </p>
       ) : null}
 
-      <Card>
-        <CardHeader>
-          <CardTitle>未確定シフト</CardTitle>
-        </CardHeader>
-        <CardContent>
-          {isLoading ? (
-            <p className="text-sm text-muted-foreground">読み込み中...</p>
-          ) : unconfirmedShifts.length === 0 ? (
-            <p className="text-sm text-muted-foreground">
-              未確定シフトはありません
-            </p>
-          ) : (
-            <div className="max-h-[28rem] overflow-y-auto pr-1">
-              <div className="flex flex-col gap-3">
-                {unconfirmedShifts.map((shift) => (
-                  <ConfirmShiftCard
-                    key={shift.id}
-                    shift={shift}
-                    onActionCompleted={loadShiftConfirmationData}
-                  />
-                ))}
-              </div>
+      <section className="space-y-3">
+        <h3 className="text-lg font-semibold">未確定シフト</h3>
+        {isLoading ? (
+          <p className="text-sm text-muted-foreground">読み込み中...</p>
+        ) : unconfirmedShifts.length === 0 ? (
+          <p className="text-sm text-muted-foreground">
+            未確定シフトはありません
+          </p>
+        ) : (
+          <div className="max-h-[28rem] overflow-y-auto p-1">
+            <div className="flex flex-col gap-3">
+              {unconfirmedShifts.map((shift) => (
+                <ConfirmShiftCard
+                  key={shift.id}
+                  shift={shift}
+                  onActionCompleted={loadShiftConfirmationData}
+                />
+              ))}
             </div>
-          )}
-        </CardContent>
-      </Card>
+          </div>
+        )}
+      </section>
 
       {confirmedShiftGroups.length > 0 ? (
         <section className="space-y-3">
