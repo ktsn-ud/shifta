@@ -33,7 +33,11 @@ export function ConfirmedShiftsList({ groups }: ConfirmedShiftsListProps) {
   return (
     <div className="flex flex-col gap-4">
       {groups.map((group) => (
-        <Card key={group.workplaceId} size="sm" className="max-w-2xl">
+        <Card
+          key={group.workplaceId}
+          size="sm"
+          className="w-full max-w-2xl border ring-0"
+        >
           <CardHeader>
             <CardTitle className="font-bold">{group.workplaceName}</CardTitle>
           </CardHeader>
