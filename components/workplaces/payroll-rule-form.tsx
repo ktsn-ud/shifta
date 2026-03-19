@@ -587,20 +587,25 @@ export function PayrollRuleForm({
             <Field data-invalid={Boolean(errors.perLessonWage)}>
               <FieldLabel htmlFor="per-lesson-wage">コマ給</FieldLabel>
               <FieldContent>
-                <Input
-                  id="per-lesson-wage"
-                  type="number"
-                  min="0"
-                  step="0.01"
-                  value={values.perLessonWage}
-                  onChange={(event) => {
-                    const nextValue = event.currentTarget.value;
-                    setValues((current) => ({
-                      ...current,
-                      perLessonWage: nextValue,
-                    }));
-                  }}
-                />
+                <div className="flex items-center gap-2">
+                  <Input
+                    id="per-lesson-wage"
+                    type="number"
+                    min="0"
+                    step="0.01"
+                    value={values.perLessonWage}
+                    onChange={(event) => {
+                      const nextValue = event.currentTarget.value;
+                      setValues((current) => ({
+                        ...current,
+                        perLessonWage: nextValue,
+                      }));
+                    }}
+                  />
+                  <span className="shrink-0 text-sm text-muted-foreground">
+                    円/コマ
+                  </span>
+                </div>
                 <FormErrorMessage message={errors.perLessonWage} />
               </FieldContent>
             </Field>
@@ -609,20 +614,25 @@ export function PayrollRuleForm({
               <Field data-invalid={Boolean(errors.baseHourlyWage)}>
                 <FieldLabel htmlFor="base-hourly-wage">基本時給</FieldLabel>
                 <FieldContent>
-                  <Input
-                    id="base-hourly-wage"
-                    type="number"
-                    min="0"
-                    step="0.01"
-                    value={values.baseHourlyWage}
-                    onChange={(event) => {
-                      const nextValue = event.currentTarget.value;
-                      setValues((current) => ({
-                        ...current,
-                        baseHourlyWage: nextValue,
-                      }));
-                    }}
-                  />
+                  <div className="flex items-center gap-2">
+                    <Input
+                      id="base-hourly-wage"
+                      type="number"
+                      min="0"
+                      step="10"
+                      value={values.baseHourlyWage}
+                      onChange={(event) => {
+                        const nextValue = event.currentTarget.value;
+                        setValues((current) => ({
+                          ...current,
+                          baseHourlyWage: nextValue,
+                        }));
+                      }}
+                    />
+                    <span className="shrink-0 text-sm text-muted-foreground">
+                      円/時
+                    </span>
+                  </div>
                   <FormErrorMessage message={errors.baseHourlyWage} />
                 </FieldContent>
               </Field>
@@ -630,20 +640,25 @@ export function PayrollRuleForm({
               <Field data-invalid={Boolean(errors.holidayHourlyWage)}>
                 <FieldLabel htmlFor="holiday-hourly-wage">休日時給</FieldLabel>
                 <FieldContent>
-                  <Input
-                    id="holiday-hourly-wage"
-                    type="number"
-                    min="0"
-                    step="0.01"
-                    value={values.holidayHourlyWage}
-                    onChange={(event) => {
-                      const nextValue = event.currentTarget.value;
-                      setValues((current) => ({
-                        ...current,
-                        holidayHourlyWage: nextValue,
-                      }));
-                    }}
-                  />
+                  <div className="flex items-center gap-2">
+                    <Input
+                      id="holiday-hourly-wage"
+                      type="number"
+                      min="0"
+                      step="10"
+                      value={values.holidayHourlyWage}
+                      onChange={(event) => {
+                        const nextValue = event.currentTarget.value;
+                        setValues((current) => ({
+                          ...current,
+                          holidayHourlyWage: nextValue,
+                        }));
+                      }}
+                    />
+                    <span className="shrink-0 text-sm text-muted-foreground">
+                      円/時
+                    </span>
+                  </div>
                   <FieldDescription>
                     空欄の場合、基本時給と同等として扱います。
                   </FieldDescription>
@@ -654,20 +669,25 @@ export function PayrollRuleForm({
               <Field data-invalid={Boolean(errors.nightMultiplier)}>
                 <FieldLabel htmlFor="night-multiplier">深夜割増率</FieldLabel>
                 <FieldContent>
-                  <Input
-                    id="night-multiplier"
-                    type="number"
-                    min="1"
-                    step="0.01"
-                    value={values.nightMultiplier}
-                    onChange={(event) => {
-                      const nextValue = event.currentTarget.value;
-                      setValues((current) => ({
-                        ...current,
-                        nightMultiplier: nextValue,
-                      }));
-                    }}
-                  />
+                  <div className="flex items-center gap-2">
+                    <Input
+                      id="night-multiplier"
+                      type="number"
+                      min="1"
+                      step="0.01"
+                      value={values.nightMultiplier}
+                      onChange={(event) => {
+                        const nextValue = event.currentTarget.value;
+                        setValues((current) => ({
+                          ...current,
+                          nightMultiplier: nextValue,
+                        }));
+                      }}
+                    />
+                    <span className="shrink-0 text-sm text-muted-foreground">
+                      倍
+                    </span>
+                  </div>
                   <FormErrorMessage message={errors.nightMultiplier} />
                 </FieldContent>
               </Field>
@@ -677,20 +697,25 @@ export function PayrollRuleForm({
                   残業割増率
                 </FieldLabel>
                 <FieldContent>
-                  <Input
-                    id="overtime-multiplier"
-                    type="number"
-                    min="1"
-                    step="0.01"
-                    value={values.overtimeMultiplier}
-                    onChange={(event) => {
-                      const nextValue = event.currentTarget.value;
-                      setValues((current) => ({
-                        ...current,
-                        overtimeMultiplier: nextValue,
-                      }));
-                    }}
-                  />
+                  <div className="flex items-center gap-2">
+                    <Input
+                      id="overtime-multiplier"
+                      type="number"
+                      min="1"
+                      step="0.01"
+                      value={values.overtimeMultiplier}
+                      onChange={(event) => {
+                        const nextValue = event.currentTarget.value;
+                        setValues((current) => ({
+                          ...current,
+                          overtimeMultiplier: nextValue,
+                        }));
+                      }}
+                    />
+                    <span className="shrink-0 text-sm text-muted-foreground">
+                      倍
+                    </span>
+                  </div>
                   <FormErrorMessage message={errors.overtimeMultiplier} />
                 </FieldContent>
               </Field>

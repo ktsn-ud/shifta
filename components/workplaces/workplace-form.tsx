@@ -16,13 +16,6 @@ import {
 import { Input } from "@/components/ui/input";
 import { FormLoadingSkeleton } from "@/components/ui/loading-skeletons";
 import { RadioGroup, RadioGroupItem } from "@/components/ui/radio-group";
-import {
-  Select,
-  SelectContent,
-  SelectItem,
-  SelectTrigger,
-  SelectValue,
-} from "@/components/ui/select";
 import { toDateOnlyString } from "@/lib/calendar/date";
 import { formatHolidayType, formatWorkplaceType } from "@/lib/enum-labels";
 import { messages, toErrorMessage } from "@/lib/messages";
@@ -630,20 +623,25 @@ export function WorkplaceForm({ mode, workplaceId }: WorkplaceFormProps) {
                         コマ給
                       </FieldLabel>
                       <FieldContent>
-                        <Input
-                          id="initial-rule-per-lesson-wage"
-                          type="number"
-                          min="0"
-                          step="0.01"
-                          value={initialRuleValues.perLessonWage}
-                          onChange={(event) => {
-                            const nextValue = event.currentTarget.value;
-                            setInitialRuleValues((current) => ({
-                              ...current,
-                              perLessonWage: nextValue,
-                            }));
-                          }}
-                        />
+                        <div className="flex items-center gap-2">
+                          <Input
+                            id="initial-rule-per-lesson-wage"
+                            type="number"
+                            min="0"
+                            step="0.01"
+                            value={initialRuleValues.perLessonWage}
+                            onChange={(event) => {
+                              const nextValue = event.currentTarget.value;
+                              setInitialRuleValues((current) => ({
+                                ...current,
+                                perLessonWage: nextValue,
+                              }));
+                            }}
+                          />
+                          <span className="shrink-0 text-sm text-muted-foreground">
+                            円/コマ
+                          </span>
+                        </div>
                         <FormErrorMessage message={errors.perLessonWage} />
                       </FieldContent>
                     </Field>
@@ -654,20 +652,25 @@ export function WorkplaceForm({ mode, workplaceId }: WorkplaceFormProps) {
                           基本時給
                         </FieldLabel>
                         <FieldContent>
-                          <Input
-                            id="initial-rule-base-hourly-wage"
-                            type="number"
-                            min="0"
-                            step="0.01"
-                            value={initialRuleValues.baseHourlyWage}
-                            onChange={(event) => {
-                              const nextValue = event.currentTarget.value;
-                              setInitialRuleValues((current) => ({
-                                ...current,
-                                baseHourlyWage: nextValue,
-                              }));
-                            }}
-                          />
+                          <div className="flex items-center gap-2">
+                            <Input
+                              id="initial-rule-base-hourly-wage"
+                              type="number"
+                              min="0"
+                              step="10"
+                              value={initialRuleValues.baseHourlyWage}
+                              onChange={(event) => {
+                                const nextValue = event.currentTarget.value;
+                                setInitialRuleValues((current) => ({
+                                  ...current,
+                                  baseHourlyWage: nextValue,
+                                }));
+                              }}
+                            />
+                            <span className="shrink-0 text-sm text-muted-foreground">
+                              円/時
+                            </span>
+                          </div>
                           <FormErrorMessage message={errors.baseHourlyWage} />
                         </FieldContent>
                       </Field>
@@ -677,20 +680,25 @@ export function WorkplaceForm({ mode, workplaceId }: WorkplaceFormProps) {
                           休日時給
                         </FieldLabel>
                         <FieldContent>
-                          <Input
-                            id="initial-rule-holiday-hourly-wage"
-                            type="number"
-                            min="0"
-                            step="0.01"
-                            value={initialRuleValues.holidayHourlyWage}
-                            onChange={(event) => {
-                              const nextValue = event.currentTarget.value;
-                              setInitialRuleValues((current) => ({
-                                ...current,
-                                holidayHourlyWage: nextValue,
-                              }));
-                            }}
-                          />
+                          <div className="flex items-center gap-2">
+                            <Input
+                              id="initial-rule-holiday-hourly-wage"
+                              type="number"
+                              min="0"
+                              step="10"
+                              value={initialRuleValues.holidayHourlyWage}
+                              onChange={(event) => {
+                                const nextValue = event.currentTarget.value;
+                                setInitialRuleValues((current) => ({
+                                  ...current,
+                                  holidayHourlyWage: nextValue,
+                                }));
+                              }}
+                            />
+                            <span className="shrink-0 text-sm text-muted-foreground">
+                              円/時
+                            </span>
+                          </div>
                           <FieldDescription>
                             空欄の場合、基本時給と同等として扱います。
                           </FieldDescription>
@@ -705,20 +713,25 @@ export function WorkplaceForm({ mode, workplaceId }: WorkplaceFormProps) {
                           深夜割増率
                         </FieldLabel>
                         <FieldContent>
-                          <Input
-                            id="initial-rule-night-multiplier"
-                            type="number"
-                            min="1"
-                            step="0.01"
-                            value={initialRuleValues.nightMultiplier}
-                            onChange={(event) => {
-                              const nextValue = event.currentTarget.value;
-                              setInitialRuleValues((current) => ({
-                                ...current,
-                                nightMultiplier: nextValue,
-                              }));
-                            }}
-                          />
+                          <div className="flex items-center gap-2">
+                            <Input
+                              id="initial-rule-night-multiplier"
+                              type="number"
+                              min="1"
+                              step="0.01"
+                              value={initialRuleValues.nightMultiplier}
+                              onChange={(event) => {
+                                const nextValue = event.currentTarget.value;
+                                setInitialRuleValues((current) => ({
+                                  ...current,
+                                  nightMultiplier: nextValue,
+                                }));
+                              }}
+                            />
+                            <span className="shrink-0 text-sm text-muted-foreground">
+                              倍
+                            </span>
+                          </div>
                           <FormErrorMessage message={errors.nightMultiplier} />
                         </FieldContent>
                       </Field>
@@ -728,20 +741,25 @@ export function WorkplaceForm({ mode, workplaceId }: WorkplaceFormProps) {
                           残業割増率
                         </FieldLabel>
                         <FieldContent>
-                          <Input
-                            id="initial-rule-overtime-multiplier"
-                            type="number"
-                            min="1"
-                            step="0.01"
-                            value={initialRuleValues.overtimeMultiplier}
-                            onChange={(event) => {
-                              const nextValue = event.currentTarget.value;
-                              setInitialRuleValues((current) => ({
-                                ...current,
-                                overtimeMultiplier: nextValue,
-                              }));
-                            }}
-                          />
+                          <div className="flex items-center gap-2">
+                            <Input
+                              id="initial-rule-overtime-multiplier"
+                              type="number"
+                              min="1"
+                              step="0.01"
+                              value={initialRuleValues.overtimeMultiplier}
+                              onChange={(event) => {
+                                const nextValue = event.currentTarget.value;
+                                setInitialRuleValues((current) => ({
+                                  ...current,
+                                  overtimeMultiplier: nextValue,
+                                }));
+                              }}
+                            />
+                            <span className="shrink-0 text-sm text-muted-foreground">
+                              倍
+                            </span>
+                          </div>
                           <FormErrorMessage
                             message={errors.overtimeMultiplier}
                           />
@@ -817,10 +835,10 @@ export function WorkplaceForm({ mode, workplaceId }: WorkplaceFormProps) {
                         </FieldContent>
                       </Field>
 
-                      <Field>
+                      <Field data-invalid={Boolean(errors.holidayType)}>
                         <FieldLabel>休日判定</FieldLabel>
                         <FieldContent>
-                          <Select
+                          <RadioGroup
                             value={initialRuleValues.holidayType}
                             onValueChange={(value) => {
                               setInitialRuleValues((current) => ({
@@ -829,24 +847,44 @@ export function WorkplaceForm({ mode, workplaceId }: WorkplaceFormProps) {
                               }));
                             }}
                           >
-                            <SelectTrigger>
-                              <SelectValue />
-                            </SelectTrigger>
-                            <SelectContent>
-                              <SelectItem value="NONE">
+                            <Field orientation="horizontal">
+                              <FieldLabel htmlFor="initial-rule-holiday-type-none">
                                 {formatHolidayType("NONE")}
-                              </SelectItem>
-                              <SelectItem value="WEEKEND">
+                              </FieldLabel>
+                              <RadioGroupItem
+                                id="initial-rule-holiday-type-none"
+                                value="NONE"
+                              />
+                            </Field>
+                            <Field orientation="horizontal">
+                              <FieldLabel htmlFor="initial-rule-holiday-type-weekend">
                                 {formatHolidayType("WEEKEND")}
-                              </SelectItem>
-                              <SelectItem value="HOLIDAY">
+                              </FieldLabel>
+                              <RadioGroupItem
+                                id="initial-rule-holiday-type-weekend"
+                                value="WEEKEND"
+                              />
+                            </Field>
+                            <Field orientation="horizontal">
+                              <FieldLabel htmlFor="initial-rule-holiday-type-holiday">
                                 {formatHolidayType("HOLIDAY")}
-                              </SelectItem>
-                              <SelectItem value="WEEKEND_HOLIDAY">
+                              </FieldLabel>
+                              <RadioGroupItem
+                                id="initial-rule-holiday-type-holiday"
+                                value="HOLIDAY"
+                              />
+                            </Field>
+                            <Field orientation="horizontal">
+                              <FieldLabel htmlFor="initial-rule-holiday-type-weekend-holiday">
                                 {formatHolidayType("WEEKEND_HOLIDAY")}
-                              </SelectItem>
-                            </SelectContent>
-                          </Select>
+                              </FieldLabel>
+                              <RadioGroupItem
+                                id="initial-rule-holiday-type-weekend-holiday"
+                                value="WEEKEND_HOLIDAY"
+                              />
+                            </Field>
+                          </RadioGroup>
+                          <FormErrorMessage message={errors.holidayType} />
                         </FieldContent>
                       </Field>
                     </>
