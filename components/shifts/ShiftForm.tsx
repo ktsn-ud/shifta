@@ -245,6 +245,24 @@ function inferLessonType(
   return "NORMAL";
 }
 
+function findTimetableByTypeAndPeriod(
+  timetables: Timetable[],
+  lessonType: LessonType,
+  periodValue: string,
+): Timetable | null {
+  const period = Number(periodValue);
+  if (Number.isFinite(period) === false) {
+    return null;
+  }
+
+  return (
+    timetables.find(
+      (timetable) =>
+        timetable.type === lessonType && timetable.period === period,
+    ) ?? null
+  );
+}
+
 export function ShiftForm({ mode, shiftId, initialDate }: ShiftFormProps) {
   const router = useRouter();
 
@@ -289,6 +307,21 @@ export function ShiftForm({ mode, shiftId, initialDate }: ShiftFormProps) {
       .map((timetable) => timetable.period)
       .sort((left, right) => left - right);
   }, [form.lessonType, timetables]);
+
+  const selectedStartPeriodTimetable = useMemo(
+    () =>
+      findTimetableByTypeAndPeriod(
+        timetables,
+        form.lessonType,
+        form.startPeriod,
+      ),
+    [form.lessonType, form.startPeriod, timetables],
+  );
+  const selectedEndPeriodTimetable = useMemo(
+    () =>
+      findTimetableByTypeAndPeriod(timetables, form.lessonType, form.endPeriod),
+    [form.endPeriod, form.lessonType, timetables],
+  );
 
   useEffect(() => {
     const abortController = new AbortController();
@@ -542,6 +575,27 @@ export function ShiftForm({ mode, shiftId, initialDate }: ShiftFormProps) {
       shiftType: "NORMAL",
     }));
   }, [form.shiftType, selectedWorkplaceType]);
+
+  useEffect(() => {
+    if (
+      mode !== "create" ||
+      selectedWorkplaceType !== "CRAM_SCHOOL" ||
+      !selectedWorkplaceId
+    ) {
+      return;
+    }
+
+    setForm((current) => {
+      if (current.shiftType === "LESSON") {
+        return current;
+      }
+
+      return {
+        ...current,
+        shiftType: "LESSON",
+      };
+    });
+  }, [mode, selectedWorkplaceId, selectedWorkplaceType]);
 
   useEffect(() => {
     if (
@@ -1175,32 +1229,39 @@ export function ShiftForm({ mode, shiftId, initialDate }: ShiftFormProps) {
               <Field data-invalid={Boolean(errors.startPeriod)}>
                 <FieldLabel>開始コマ</FieldLabel>
                 <FieldContent>
-                  <Select
-                    value={form.startPeriod}
-                    onValueChange={(value) =>
-                      updateForm("startPeriod", value ?? "")
-                    }
-                    disabled={
-                      disabled ||
-                      isTimetableLoading ||
-                      lessonPeriods.length === 0
-                    }
-                  >
-                    <SelectTrigger className="w-full max-w-20">
-                      <SelectValue placeholder="開始コマを選択">
-                        {form.startPeriod ? `${form.startPeriod}限` : null}
-                      </SelectValue>
-                    </SelectTrigger>
-                    <SelectContent>
-                      <SelectGroup>
-                        {lessonPeriods.map((period) => (
-                          <SelectItem key={period} value={String(period)}>
-                            {period}限
-                          </SelectItem>
-                        ))}
-                      </SelectGroup>
-                    </SelectContent>
-                  </Select>
+                  <div className="flex items-center gap-2">
+                    <Select
+                      value={form.startPeriod}
+                      onValueChange={(value) =>
+                        updateForm("startPeriod", value ?? "")
+                      }
+                      disabled={
+                        disabled ||
+                        isTimetableLoading ||
+                        lessonPeriods.length === 0
+                      }
+                    >
+                      <SelectTrigger className="w-full max-w-20">
+                        <SelectValue placeholder="開始コマを選択">
+                          {form.startPeriod ? `${form.startPeriod}限` : null}
+                        </SelectValue>
+                      </SelectTrigger>
+                      <SelectContent>
+                        <SelectGroup>
+                          {lessonPeriods.map((period) => (
+                            <SelectItem key={period} value={String(period)}>
+                              {period}限
+                            </SelectItem>
+                          ))}
+                        </SelectGroup>
+                      </SelectContent>
+                    </Select>
+                    {selectedStartPeriodTimetable ? (
+                      <span className="text-sm text-muted-foreground">
+                        {toTimeOnly(selectedStartPeriodTimetable.startTime)}〜
+                      </span>
+                    ) : null}
+                  </div>
                   <FormErrorMessage message={errors.startPeriod} />
                 </FieldContent>
               </Field>
@@ -1208,32 +1269,39 @@ export function ShiftForm({ mode, shiftId, initialDate }: ShiftFormProps) {
               <Field data-invalid={Boolean(errors.endPeriod)}>
                 <FieldLabel>終了コマ</FieldLabel>
                 <FieldContent>
-                  <Select
-                    value={form.endPeriod}
-                    onValueChange={(value) =>
-                      updateForm("endPeriod", value ?? "")
-                    }
-                    disabled={
-                      disabled ||
-                      isTimetableLoading ||
-                      lessonPeriods.length === 0
-                    }
-                  >
-                    <SelectTrigger className="w-full max-w-20">
-                      <SelectValue placeholder="終了コマを選択">
-                        {form.endPeriod ? `${form.endPeriod}限` : null}
-                      </SelectValue>
-                    </SelectTrigger>
-                    <SelectContent>
-                      <SelectGroup>
-                        {lessonPeriods.map((period) => (
-                          <SelectItem key={period} value={String(period)}>
-                            {period}限
-                          </SelectItem>
-                        ))}
-                      </SelectGroup>
-                    </SelectContent>
-                  </Select>
+                  <div className="flex items-center gap-2">
+                    <Select
+                      value={form.endPeriod}
+                      onValueChange={(value) =>
+                        updateForm("endPeriod", value ?? "")
+                      }
+                      disabled={
+                        disabled ||
+                        isTimetableLoading ||
+                        lessonPeriods.length === 0
+                      }
+                    >
+                      <SelectTrigger className="w-full max-w-20">
+                        <SelectValue placeholder="終了コマを選択">
+                          {form.endPeriod ? `${form.endPeriod}限` : null}
+                        </SelectValue>
+                      </SelectTrigger>
+                      <SelectContent>
+                        <SelectGroup>
+                          {lessonPeriods.map((period) => (
+                            <SelectItem key={period} value={String(period)}>
+                              {period}限
+                            </SelectItem>
+                          ))}
+                        </SelectGroup>
+                      </SelectContent>
+                    </Select>
+                    {selectedEndPeriodTimetable ? (
+                      <span className="text-sm text-muted-foreground">
+                        〜{toTimeOnly(selectedEndPeriodTimetable.endTime)}
+                      </span>
+                    ) : null}
+                  </div>
                   <FormErrorMessage message={errors.endPeriod} />
                 </FieldContent>
               </Field>
