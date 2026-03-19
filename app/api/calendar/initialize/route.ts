@@ -8,6 +8,7 @@ import {
 } from "@/lib/google-calendar/auth";
 import { createShiftaCalendar } from "@/lib/google-calendar/client";
 import { CALENDAR_SETUP_SKIP_COOKIE } from "@/lib/google-calendar/constants";
+import { syncShiftsAfterBulkCreate } from "@/lib/google-calendar/syncStatus";
 import { prisma } from "@/lib/prisma";
 
 function mapGoogleAuthErrorStatus(error: GoogleCalendarAuthError): number {
@@ -61,9 +62,33 @@ export async function POST() {
       },
     });
 
+    const ownedShiftIds = await prisma.shift.findMany({
+      where: {
+        workplace: {
+          userId: current.user.id,
+        },
+      },
+      select: {
+        id: true,
+      },
+      orderBy: [{ date: "asc" }, { createdAt: "asc" }],
+    });
+
+    const syncResults = await syncShiftsAfterBulkCreate(
+      ownedShiftIds.map((shift) => shift.id),
+      current.user.id,
+    );
+    const successCount = syncResults.filter((result) => result.ok).length;
+    const failedCount = syncResults.length - successCount;
+
     const response = NextResponse.json({
       success: true,
       calendarId,
+      sync: {
+        total: syncResults.length,
+        success: successCount,
+        failed: failedCount,
+      },
     });
 
     response.cookies.set(CALENDAR_SETUP_SKIP_COOKIE, "", {
