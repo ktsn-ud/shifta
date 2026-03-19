@@ -24,9 +24,14 @@ export async function POST(_: Request, context: Context) {
       });
     }
 
-    return jsonError("Google Calendar の再同期に失敗しました", 502, {
-      code: "GOOGLE_SYNC_FAILED",
-    });
+    return jsonError(
+      result.errorMessage,
+      result.requiresCalendarSetup ? 409 : 502,
+      {
+        code: result.errorCode ?? "GOOGLE_SYNC_FAILED",
+        requiresCalendarSetup: result.requiresCalendarSetup,
+      },
+    );
   } catch (error) {
     console.error("POST /api/shifts/:id/retry-sync failed", error);
     return jsonError("Google Calendar の再同期に失敗しました", 500);

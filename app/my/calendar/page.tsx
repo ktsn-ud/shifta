@@ -16,6 +16,11 @@ import {
   toDateKey,
   toMonthInputValue,
 } from "@/lib/calendar/date";
+import {
+  parseGoogleSyncFailureFromPayload,
+  readGoogleSyncFailureFromErrorResponse,
+} from "@/lib/google-calendar/clientSync";
+import { CALENDAR_SETUP_PATH } from "@/lib/google-calendar/constants";
 import { useMonthShifts } from "@/hooks/use-month-shifts";
 import { messages } from "@/lib/messages";
 
@@ -118,10 +123,37 @@ export default function CalendarPage() {
           });
 
           if (response.ok === false) {
-            throw new Error("SHIFT_DELETE_FAILED");
+            const apiError = await readGoogleSyncFailureFromErrorResponse(
+              response,
+              "シフトの削除に失敗しました",
+            );
+            throw new Error(apiError.message);
           }
 
+          const payload = (await response.json()) as unknown;
+          const syncFailure = parseGoogleSyncFailureFromPayload(
+            payload,
+            messages.error.calendarSyncFailed,
+          );
+
           await reload();
+
+          if (syncFailure) {
+            toast.error(messages.error.calendarSyncFailed, {
+              description: syncFailure.requiresCalendarSetup
+                ? syncFailure.message
+                : `${syncFailure.message} シフトは削除済みです。`,
+              duration: 6000,
+            });
+
+            if (syncFailure.requiresCalendarSetup) {
+              queueMicrotask(() => {
+                router.push(CALENDAR_SETUP_PATH);
+              });
+            }
+            return;
+          }
+
           toast.success(messages.success.shiftDeleted);
         }}
         onRetrySync={async (shiftId) => {
@@ -130,12 +162,16 @@ export default function CalendarPage() {
           });
 
           if (response.ok === false) {
-            const payload = (await response.json()) as {
-              error?: string;
-            };
-            throw new Error(
-              payload.error ?? "Google Calendar への再同期に失敗しました",
+            const apiError = await readGoogleSyncFailureFromErrorResponse(
+              response,
+              "Google Calendar への再同期に失敗しました",
             );
+
+            if (apiError.requiresCalendarSetup) {
+              router.push(CALENDAR_SETUP_PATH);
+            }
+
+            throw new Error(apiError.message);
           }
 
           await reload();

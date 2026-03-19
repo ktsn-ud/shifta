@@ -33,6 +33,11 @@ import {
   toDateKey,
 } from "@/lib/calendar/date";
 import { formatLessonType, formatShiftType } from "@/lib/enum-labels";
+import {
+  parseGoogleSyncFailureFromPayload,
+  readGoogleSyncFailureFromErrorResponse,
+} from "@/lib/google-calendar/clientSync";
+import { CALENDAR_SETUP_PATH } from "@/lib/google-calendar/constants";
 import { messages, toErrorMessage } from "@/lib/messages";
 
 const LAST_WORKPLACE_ID_KEY = "shifta:last-workplace-id";
@@ -881,11 +886,50 @@ export function ShiftForm({ mode, shiftId, initialDate }: ShiftFormProps) {
       });
 
       if (response.ok === false) {
-        const errorPayload = (await response.json()) as { error?: string };
-        throw new Error(errorPayload.error ?? "シフトの保存に失敗しました");
+        const apiError = await readGoogleSyncFailureFromErrorResponse(
+          response,
+          "シフトの保存に失敗しました",
+        );
+
+        if (apiError.requiresCalendarSetup) {
+          toast.error(messages.error.calendarSyncFailed, {
+            id: loadingToastId,
+            description: apiError.message,
+            duration: 6000,
+          });
+          router.push(CALENDAR_SETUP_PATH);
+          return;
+        }
+
+        throw new Error(apiError.message);
       }
 
+      const responsePayload = (await response.json()) as unknown;
+      const syncFailure = parseGoogleSyncFailureFromPayload(
+        responsePayload,
+        messages.error.calendarSyncFailed,
+      );
+
       window.localStorage.setItem(LAST_WORKPLACE_ID_KEY, form.workplaceId);
+
+      if (syncFailure) {
+        toast.error(messages.error.calendarSyncFailed, {
+          id: loadingToastId,
+          description: syncFailure.requiresCalendarSetup
+            ? syncFailure.message
+            : `${syncFailure.message} シフトは保存済みです。`,
+          duration: 6000,
+        });
+
+        if (syncFailure.requiresCalendarSetup) {
+          router.push(CALENDAR_SETUP_PATH);
+          return;
+        }
+
+        router.push("/my/calendar");
+        return;
+      }
+
       toast.success(
         mode === "create"
           ? messages.success.shiftCreated

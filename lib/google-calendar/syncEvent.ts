@@ -12,10 +12,102 @@ import {
 import { prisma } from "@/lib/prisma";
 import { getCalendarClientByUserId } from "./client";
 import { SHIFTA_CALENDAR_TIMEZONE } from "./constants";
+import { GoogleCalendarSyncError, GOOGLE_SYNC_ERROR_CODES } from "./syncErrors";
 
 type ShiftWithLessonRange = Shift & {
   lessonRange: ShiftLessonRange | null;
 };
+
+type GoogleApiErrorCandidate = Error & {
+  code?: number | string;
+  status?: number;
+  response?: {
+    status?: number;
+    data?: {
+      error?: {
+        message?: string;
+        errors?: Array<{
+          reason?: string;
+        }>;
+      };
+    };
+  };
+};
+
+function extractGoogleErrorStatus(error: unknown): number | null {
+  if (!(error instanceof Error)) {
+    return null;
+  }
+
+  const candidate = error as GoogleApiErrorCandidate;
+  const status =
+    candidate.status ?? candidate.response?.status ?? Number(candidate.code);
+
+  return Number.isFinite(status) ? status : null;
+}
+
+function extractGoogleErrorReason(error: unknown): string | null {
+  if (!(error instanceof Error)) {
+    return null;
+  }
+
+  const candidate = error as GoogleApiErrorCandidate;
+  const reason = candidate.response?.data?.error?.errors?.[0]?.reason;
+  return typeof reason === "string" && reason.length > 0 ? reason : null;
+}
+
+function extractGoogleErrorMessage(error: unknown): string | null {
+  if (!(error instanceof Error)) {
+    return null;
+  }
+
+  const candidate = error as GoogleApiErrorCandidate;
+  const apiMessage = candidate.response?.data?.error?.message;
+  if (typeof apiMessage === "string" && apiMessage.length > 0) {
+    return apiMessage;
+  }
+
+  if (error.message.length > 0) {
+    return error.message;
+  }
+
+  return null;
+}
+
+function isCalendarNotFoundError(error: unknown): boolean {
+  const status = extractGoogleErrorStatus(error);
+  if (status === 404) {
+    return true;
+  }
+
+  const reason = extractGoogleErrorReason(error)?.toLowerCase();
+  if (reason === "notfound") {
+    return true;
+  }
+
+  const message = extractGoogleErrorMessage(error)?.toLowerCase();
+  return message?.includes("not found") === true;
+}
+
+async function assertCalendarExists(
+  calendar: Awaited<ReturnType<typeof getCalendarClientByUserId>>,
+  calendarId: string,
+): Promise<void> {
+  try {
+    await calendar.calendars.get({
+      calendarId,
+    });
+  } catch (error) {
+    if (isCalendarNotFoundError(error)) {
+      throw new GoogleCalendarSyncError(
+        GOOGLE_SYNC_ERROR_CODES.CALENDAR_NOT_FOUND,
+        "同期先のGoogle Calendarが見つかりません。カレンダーを再設定してください",
+      );
+    }
+
+    throw error;
+  }
+}
 
 function pad(value: number): string {
   return String(value).padStart(2, "0");
@@ -178,6 +270,7 @@ export async function createCalendarEvent(
   }
 
   const calendar = await getCalendarClientByUserId(user.id);
+  await assertCalendarExists(calendar, user.calendarId);
   const eventDateTime = buildEventDateTime(shift);
   const description = await buildEventDescription(shift, workplace);
 
@@ -230,6 +323,7 @@ export async function updateCalendarEvent(
   }
 
   const calendar = await getCalendarClientByUserId(user.id);
+  await assertCalendarExists(calendar, user.calendarId);
   const eventDateTime = buildEventDateTime(shift);
   const description = await buildEventDescription(shift, workplace);
 
@@ -279,6 +373,7 @@ export async function deleteCalendarEvent(
   }
 
   const calendar = await getCalendarClientByUserId(user.id);
+  await assertCalendarExists(calendar, user.calendarId);
   await assertLinkedGoogleEvent(
     calendar,
     user.calendarId,

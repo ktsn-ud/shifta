@@ -190,4 +190,66 @@ describe("bulk shift flow integration", () => {
       },
     ]);
   });
+
+  it("redirects to calendar setup when bulk sync reports missing calendar", async () => {
+    const user = userEvent.setup({
+      advanceTimers: jest.advanceTimersByTime,
+    });
+    const fetchMock = globalThis.fetch as jest.Mock;
+
+    fetchMock.mockImplementation(
+      async (input: string, init?: { method?: string }) => {
+        if (input === "/api/workplaces") {
+          return jsonResponse({
+            data: [
+              {
+                id: "workplace-1",
+                name: "勤務先A",
+                color: "#3366FF",
+                type: "GENERAL",
+              },
+            ],
+          });
+        }
+
+        if (input === "/api/shifts/bulk" && init?.method === "POST") {
+          return jsonResponse(
+            {
+              data: [],
+              summary: {
+                total: 1,
+                synced: 0,
+                failed: 1,
+              },
+              sync: {
+                ok: false,
+                errorMessage:
+                  "同期先のGoogle Calendarが見つかりません。カレンダーを再設定してください",
+                errorCode: "CALENDAR_NOT_FOUND",
+                requiresCalendarSetup: true,
+              },
+            },
+            201,
+          );
+        }
+
+        throw new Error(`Unexpected fetch: ${input}`);
+      },
+    );
+
+    render(<BulkShiftForm />);
+
+    await waitFor(() => {
+      expect(
+        screen.getByRole("combobox", { name: "勤務先" }),
+      ).toHaveTextContent("勤務先A");
+    });
+
+    await user.click(findEnabledDayButton(20));
+    await user.click(screen.getByRole("button", { name: "確定" }));
+
+    await waitFor(() => {
+      expect(pushMock).toHaveBeenCalledWith("/my/calendar-setup");
+    });
+  });
 });

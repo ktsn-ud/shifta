@@ -1,6 +1,11 @@
 import type { User } from "@/lib/generated/prisma/client";
 import { prisma } from "@/lib/prisma";
 import {
+  GoogleCalendarSyncError,
+  type GoogleSyncErrorCode,
+  requiresCalendarSetupBySyncErrorCode,
+} from "./syncErrors";
+import {
   createCalendarEvent,
   deleteCalendarEvent,
   updateCalendarEvent,
@@ -10,15 +15,21 @@ type ShiftSyncStatus = "PENDING" | "SUCCESS" | "FAILED";
 
 type SyncAction = "create" | "update" | "retry" | "delete";
 
-type SyncResult =
+type SyncFailureResult = {
+  ok: false;
+  errorMessage: string;
+  errorCode: GoogleSyncErrorCode | null;
+  requiresCalendarSetup: boolean;
+};
+
+export type SyncResult =
   | {
       ok: true;
       googleEventId: string | null;
     }
-  | {
-      ok: false;
-      errorMessage: string;
-    };
+  | SyncFailureResult;
+
+export type DeletionSyncResult = { ok: true } | SyncFailureResult;
 
 type SyncLog = {
   userId: string;
@@ -28,6 +39,13 @@ type SyncLog = {
   durationMs: number;
   googleEventId?: string | null;
   error?: string;
+  errorCode?: GoogleSyncErrorCode | null;
+};
+
+type ResolvedSyncError = {
+  message: string;
+  code: GoogleSyncErrorCode | null;
+  requiresCalendarSetup: boolean;
 };
 
 function extractGoogleErrorStatus(error: unknown): number | null {
@@ -49,22 +67,50 @@ function extractGoogleErrorStatus(error: unknown): number | null {
   return Number.isFinite(status) ? status : null;
 }
 
-function formatGoogleSyncError(error: unknown): string {
+function resolveGoogleSyncError(error: unknown): ResolvedSyncError {
+  if (error instanceof GoogleCalendarSyncError) {
+    return {
+      message: error.message,
+      code: error.code,
+      requiresCalendarSetup: requiresCalendarSetupBySyncErrorCode(error.code),
+    };
+  }
+
   const status = extractGoogleErrorStatus(error);
   if (status === 401) {
-    return "Google認証に失敗しました。再ログインしてください";
+    return {
+      message: "Google認証に失敗しました。再ログインしてください",
+      code: null,
+      requiresCalendarSetup: false,
+    };
   }
   if (status === 403) {
-    return "Google Calendar へのアクセス権限が不足しています";
+    return {
+      message: "Google Calendar へのアクセス権限が不足しています",
+      code: null,
+      requiresCalendarSetup: false,
+    };
   }
   if (status === 404) {
-    return "同期先のGoogle Calendarイベントが見つかりません";
+    return {
+      message: "同期先のGoogle Calendarイベントが見つかりません",
+      code: null,
+      requiresCalendarSetup: false,
+    };
   }
   if (status === 409) {
-    return "Google Calendar 上で競合が発生しました。再試行してください";
+    return {
+      message: "Google Calendar 上で競合が発生しました。再試行してください",
+      code: null,
+      requiresCalendarSetup: false,
+    };
   }
   if (typeof status === "number" && status >= 500) {
-    return "Google Calendar 側で一時的なエラーが発生しました";
+    return {
+      message: "Google Calendar 側で一時的なエラーが発生しました",
+      code: null,
+      requiresCalendarSetup: false,
+    };
   }
 
   if (error instanceof Error) {
@@ -75,11 +121,19 @@ function formatGoogleSyncError(error: unknown): string {
       error.message.toLowerCase().includes("timeout") ||
       code.includes("ETIMEDOUT")
     ) {
-      return "Google Calendar との通信がタイムアウトしました";
+      return {
+        message: "Google Calendar との通信がタイムアウトしました",
+        code: null,
+        requiresCalendarSetup: false,
+      };
     }
   }
 
-  return "Google Calendar との同期に失敗しました";
+  return {
+    message: "Google Calendar との同期に失敗しました",
+    code: null,
+    requiresCalendarSetup: false,
+  };
 }
 
 function logSyncEvent(entry: SyncLog): void {
@@ -92,9 +146,26 @@ function logSyncEvent(entry: SyncLog): void {
       status: entry.status,
       googleEventId: entry.googleEventId ?? null,
       error: entry.error ?? null,
+      error_code: entry.errorCode ?? null,
       duration_ms: entry.durationMs,
     }),
   );
+}
+
+async function clearCalendarIdForReinitialize(userId: string): Promise<void> {
+  try {
+    await prisma.user.update({
+      where: { id: userId },
+      data: {
+        calendarId: null,
+      },
+    });
+  } catch (error) {
+    console.error("Failed to clear stale calendarId", {
+      userId,
+      error,
+    });
+  }
 }
 
 async function updateSyncStatus(
@@ -213,10 +284,13 @@ async function runShiftSync(
       error,
     });
 
-    const errorMessage = formatGoogleSyncError(error);
+    const syncError = resolveGoogleSyncError(error);
+    if (syncError.requiresCalendarSetup) {
+      await clearCalendarIdForReinitialize(userId);
+    }
 
     await updateSyncStatus(shiftId, "FAILED", {
-      error: errorMessage,
+      error: syncError.message,
     });
 
     logSyncEvent({
@@ -224,13 +298,16 @@ async function runShiftSync(
       shiftId,
       action,
       status: "FAILED",
-      error: errorMessage,
+      error: syncError.message,
+      errorCode: syncError.code,
       durationMs: Date.now() - startedAt,
     });
 
     return {
       ok: false,
-      errorMessage,
+      errorMessage: syncError.message,
+      errorCode: syncError.code,
+      requiresCalendarSetup: syncError.requiresCalendarSetup,
     };
   }
 }
@@ -285,6 +362,8 @@ export async function syncShiftsAfterBulkCreate(
           shiftId,
           ok: false as const,
           errorMessage,
+          errorCode: null,
+          requiresCalendarSetup: false,
         };
       }
 
@@ -322,10 +401,13 @@ export async function syncShiftsAfterBulkCreate(
           error,
         });
 
-        const errorMessage = formatGoogleSyncError(error);
+        const syncError = resolveGoogleSyncError(error);
+        if (syncError.requiresCalendarSetup) {
+          await clearCalendarIdForReinitialize(userId);
+        }
 
         await updateSyncStatus(shiftId, "FAILED", {
-          error: errorMessage,
+          error: syncError.message,
         });
 
         logSyncEvent({
@@ -333,14 +415,17 @@ export async function syncShiftsAfterBulkCreate(
           shiftId,
           action: "create",
           status: "FAILED",
-          error: errorMessage,
+          error: syncError.message,
+          errorCode: syncError.code,
           durationMs: Date.now() - startedAt,
         });
 
         return {
           shiftId,
           ok: false as const,
-          errorMessage,
+          errorMessage: syncError.message,
+          errorCode: syncError.code,
+          requiresCalendarSetup: syncError.requiresCalendarSetup,
         };
       }
     }),
@@ -365,9 +450,9 @@ export async function syncShiftDeletion(
   shiftId: string,
   userId: string,
   googleEventId: string | null,
-): Promise<void> {
+): Promise<DeletionSyncResult> {
   if (!googleEventId) {
-    return;
+    return { ok: true };
   }
 
   const startedAt = Date.now();
@@ -388,6 +473,7 @@ export async function syncShiftDeletion(
       googleEventId,
       durationMs: Date.now() - startedAt,
     });
+    return { ok: true };
   } catch (error) {
     console.error("Google Calendar shift deletion sync failed", {
       action: "delete",
@@ -397,7 +483,10 @@ export async function syncShiftDeletion(
       error,
     });
 
-    const errorMessage = formatGoogleSyncError(error);
+    const syncError = resolveGoogleSyncError(error);
+    if (syncError.requiresCalendarSetup) {
+      await clearCalendarIdForReinitialize(userId);
+    }
 
     logSyncEvent({
       userId,
@@ -405,9 +494,17 @@ export async function syncShiftDeletion(
       action: "delete",
       status: "FAILED",
       googleEventId,
-      error: errorMessage,
+      error: syncError.message,
+      errorCode: syncError.code,
       durationMs: Date.now() - startedAt,
     });
+
+    return {
+      ok: false,
+      errorMessage: syncError.message,
+      errorCode: syncError.code,
+      requiresCalendarSetup: syncError.requiresCalendarSetup,
+    };
   }
 }
 

@@ -184,6 +184,10 @@ export async function POST(request: Request) {
         : [];
 
     const syncedCount = syncResults.filter((result) => result.ok).length;
+    const firstFailedSync = syncResults.find((result) => result.ok === false);
+    const requiresCalendarSetup = syncResults.some(
+      (result) => result.ok === false && result.requiresCalendarSetup,
+    );
 
     return NextResponse.json(
       {
@@ -192,6 +196,18 @@ export async function POST(request: Request) {
           total: createdShiftIds.length,
           synced: syncedCount,
           failed: createdShiftIds.length - syncedCount,
+        },
+        sync: {
+          ok: syncedCount === createdShiftIds.length,
+          errorMessage:
+            firstFailedSync && firstFailedSync.ok === false
+              ? firstFailedSync.errorMessage
+              : null,
+          errorCode:
+            firstFailedSync && firstFailedSync.ok === false
+              ? firstFailedSync.errorCode
+              : null,
+          requiresCalendarSetup,
         },
       },
       { status: 201 },

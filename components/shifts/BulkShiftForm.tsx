@@ -34,6 +34,11 @@ import {
   toDateKey,
 } from "@/lib/calendar/date";
 import { formatLessonType, formatShiftType } from "@/lib/enum-labels";
+import {
+  parseGoogleSyncFailureFromPayload,
+  readGoogleSyncFailureFromErrorResponse,
+} from "@/lib/google-calendar/clientSync";
+import { CALENDAR_SETUP_PATH } from "@/lib/google-calendar/constants";
 import { messages, toErrorMessage } from "@/lib/messages";
 import { cn } from "@/lib/utils";
 
@@ -191,32 +196,6 @@ function formatSelectedDate(dateKey: string): string {
 
 function hasRowErrors(errors: RowErrors): boolean {
   return Object.keys(errors).length > 0;
-}
-
-async function readApiErrorMessage(
-  response: Response,
-  fallback: string,
-): Promise<string> {
-  try {
-    const payload = (await response.json()) as {
-      error?: unknown;
-      details?: {
-        detail?: unknown;
-      };
-    };
-
-    if (typeof payload.details?.detail === "string") {
-      return payload.details.detail;
-    }
-
-    if (typeof payload.error === "string") {
-      return payload.error;
-    }
-  } catch {
-    return fallback;
-  }
-
-  return fallback;
 }
 
 function normalizeDefaultsForWorkplace(
@@ -814,17 +793,61 @@ export function BulkShiftForm() {
       });
 
       if (response.ok === false) {
-        throw new Error(
-          await readApiErrorMessage(response, "シフト一括登録に失敗しました。"),
+        const apiError = await readGoogleSyncFailureFromErrorResponse(
+          response,
+          "シフト一括登録に失敗しました。",
         );
+
+        if (apiError.requiresCalendarSetup) {
+          toast.error(messages.error.calendarSyncFailed, {
+            id: loadingToastId,
+            description: apiError.message,
+            duration: 6000,
+          });
+          router.push(CALENDAR_SETUP_PATH);
+          return;
+        }
+
+        throw new Error(apiError.message);
       }
 
       const payload = (await response.json()) as {
         summary?: {
           total?: number;
+          failed?: number;
         };
       };
       const createdCount = payload.summary?.total ?? validated.payload.length;
+
+      const syncFailure = parseGoogleSyncFailureFromPayload(
+        payload,
+        messages.error.calendarSyncFailed,
+      );
+
+      if (syncFailure) {
+        const failedCount = payload.summary?.failed ?? 0;
+        const failedCountLabel =
+          failedCount > 0
+            ? `${failedCount}件のGoogle同期に失敗しました。`
+            : "Google同期に失敗しました。";
+        toast.error(messages.error.calendarSyncFailed, {
+          id: loadingToastId,
+          description: syncFailure.requiresCalendarSetup
+            ? syncFailure.message
+            : `${failedCountLabel} シフトは保存済みです。`,
+          duration: 6000,
+        });
+
+        if (syncFailure.requiresCalendarSetup) {
+          router.push(CALENDAR_SETUP_PATH);
+          return;
+        }
+
+        router.push("/my/calendar");
+        router.refresh();
+        return;
+      }
+
       toast.success(messages.success.shiftsBulkCreated(createdCount), {
         id: loadingToastId,
       });

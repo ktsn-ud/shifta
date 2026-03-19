@@ -120,9 +120,9 @@ export async function PUT(request: Request, context: Context) {
       });
     });
 
-    if (updated) {
-      await syncShiftAfterUpdate(updated.id, current.user.id);
-    }
+    const syncResult = updated
+      ? await syncShiftAfterUpdate(updated.id, current.user.id)
+      : null;
 
     const latest = updated
       ? await prisma.shift.findUnique({
@@ -134,7 +134,7 @@ export async function PUT(request: Request, context: Context) {
         })
       : null;
 
-    return NextResponse.json({ data: latest });
+    return NextResponse.json({ data: latest, sync: syncResult });
   } catch (error) {
     console.error("PUT /api/shifts/:id failed", error);
     return jsonError("シフト更新に失敗しました", 500);
@@ -156,7 +156,11 @@ export async function DELETE(_: Request, context: Context) {
 
     const deletedLessonRange = Boolean(existing.lessonRange);
 
-    await syncShiftDeletion(id, current.user.id, existing.googleEventId);
+    const syncResult = await syncShiftDeletion(
+      id,
+      current.user.id,
+      existing.googleEventId,
+    );
     await prisma.shift.delete({ where: { id } });
 
     return NextResponse.json({
@@ -165,6 +169,7 @@ export async function DELETE(_: Request, context: Context) {
         deleted: true,
         deletedLessonRange,
       },
+      sync: syncResult,
     });
   } catch (error) {
     console.error("DELETE /api/shifts/:id failed", error);

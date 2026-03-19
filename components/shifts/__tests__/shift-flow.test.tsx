@@ -110,6 +110,68 @@ describe("shift flow integration", () => {
     });
   });
 
+  it("redirects to calendar setup when sync detects missing calendar", async () => {
+    const fetchMock = globalThis.fetch as jest.Mock;
+
+    fetchMock.mockImplementation(
+      async (input: string, init?: { method?: string }) => {
+        if (input === "/api/workplaces") {
+          return jsonResponse({
+            data: [
+              {
+                id: "workplace-1",
+                name: "勤務先A",
+                color: "#3366FF",
+                type: "GENERAL",
+              },
+            ],
+          });
+        }
+
+        if (input.startsWith("/api/shifts?")) {
+          return jsonResponse({ data: [] });
+        }
+
+        if (input === "/api/shifts" && init?.method === "POST") {
+          return jsonResponse(
+            {
+              data: { id: "shift-1" },
+              sync: {
+                ok: false,
+                errorMessage:
+                  "同期先のGoogle Calendarが見つかりません。カレンダーを再設定してください",
+                errorCode: "CALENDAR_NOT_FOUND",
+                requiresCalendarSetup: true,
+              },
+            },
+            201,
+          );
+        }
+
+        throw new Error(`Unexpected fetch: ${input}`);
+      },
+    );
+
+    render(<ShiftForm mode="create" initialDate="2026-03-18" />);
+
+    await waitFor(() => {
+      expect(screen.getByRole("button", { name: "登録" })).toBeEnabled();
+    });
+
+    fireEvent.change(screen.getByLabelText("開始時刻"), {
+      target: { value: "09:00" },
+    });
+    fireEvent.change(screen.getByLabelText("終了時刻"), {
+      target: { value: "17:00" },
+    });
+
+    await userEvent.click(screen.getByRole("button", { name: "登録" }));
+
+    await waitFor(() => {
+      expect(pushMock).toHaveBeenCalledWith("/my/calendar-setup");
+    });
+  });
+
   it("edits an existing shift", async () => {
     const fetchMock = globalThis.fetch as jest.Mock;
 

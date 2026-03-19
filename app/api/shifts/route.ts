@@ -96,9 +96,9 @@ export async function POST(request: Request) {
       });
     });
 
-    if (created) {
-      await syncShiftAfterCreate(created.id, current.user.id);
-    }
+    const syncResult = created
+      ? await syncShiftAfterCreate(created.id, current.user.id)
+      : null;
 
     const latest = created
       ? await prisma.shift.findUnique({
@@ -110,7 +110,10 @@ export async function POST(request: Request) {
         })
       : null;
 
-    return NextResponse.json({ data: latest }, { status: 201 });
+    return NextResponse.json(
+      { data: latest, sync: syncResult },
+      { status: 201 },
+    );
   } catch (error) {
     console.error("POST /api/shifts failed", error);
     return jsonError("シフトの作成に失敗しました", 500);
