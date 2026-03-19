@@ -3,6 +3,10 @@
 import { useCallback, useEffect, useState } from "react";
 import { toast } from "sonner";
 import { ConfirmShiftCard } from "@/components/shifts/ConfirmShiftCard";
+import {
+  ConfirmedShiftTableSkeleton,
+  UnconfirmedShiftCardsSkeleton,
+} from "@/components/shifts/ShiftConfirmLoadingSkeleton";
 import { ConfirmedShiftsList } from "@/components/shifts/ConfirmedShiftsList";
 import {
   type ConfirmedShiftWorkplaceGroup,
@@ -181,7 +185,7 @@ export default function ShiftConfirmPage() {
       <section className="space-y-3">
         <h3 className="text-lg font-semibold">未確定シフト</h3>
         {isLoading ? (
-          <p className="text-sm text-muted-foreground">読み込み中...</p>
+          <UnconfirmedShiftCardsSkeleton />
         ) : unconfirmedShifts.length === 0 ? (
           <p className="text-sm text-muted-foreground">
             未確定シフトはありません
@@ -201,7 +205,12 @@ export default function ShiftConfirmPage() {
         )}
       </section>
 
-      {confirmedShiftGroups.length > 0 ? (
+      {isLoading ? (
+        <section className="space-y-3">
+          <h3 className="text-lg font-semibold">今月の確定済みシフト</h3>
+          <ConfirmedShiftTableSkeleton />
+        </section>
+      ) : confirmedShiftGroups.length > 0 ? (
         <section className="space-y-3">
           <h3 className="text-lg font-semibold">今月の確定済みシフト</h3>
           <ConfirmedShiftsList groups={confirmedShiftGroups} />
