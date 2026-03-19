@@ -35,6 +35,7 @@ function createUnconfirmedShift(
     id: "shift-1",
     date: "2026年3月5日(木)",
     workplaceName: "コンビニA",
+    workplaceColor: "#FF5733",
     startTime: "10:00",
     endTime: "18:00",
     breakMinutes: 60,

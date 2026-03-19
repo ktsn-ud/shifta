@@ -2,6 +2,7 @@ export type UnconfirmedShiftItem = {
   id: string;
   date: string;
   workplaceName: string;
+  workplaceColor: string;
   startTime: string;
   endTime: string;
   breakMinutes: number;

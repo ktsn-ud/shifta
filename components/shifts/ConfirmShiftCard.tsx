@@ -164,7 +164,14 @@ export function ConfirmShiftCard({
       <CardHeader>
         <div className="flex items-center gap-3">
           <CardTitle className="font-bold">{shift.date}</CardTitle>
-          <p className="text-sm text-muted-foreground">{shift.workplaceName}</p>
+          <div className="flex items-center gap-1.5 text-sm text-muted-foreground">
+            <span
+              aria-hidden="true"
+              className="size-2.5 shrink-0 rounded-full border border-border/70"
+              style={{ backgroundColor: shift.workplaceColor }}
+            />
+            <p>{shift.workplaceName}</p>
+          </div>
         </div>
       </CardHeader>
 

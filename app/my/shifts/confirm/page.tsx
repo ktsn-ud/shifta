@@ -113,6 +113,7 @@ export default function ShiftConfirmPage() {
           id: shift.id,
           date: formatDateWithWeekday(shift.date),
           workplaceName: shift.workplace.name,
+          workplaceColor: shift.workplace.color,
           startTime: shift.startTime,
           endTime: shift.endTime,
           breakMinutes: shift.breakMinutes,
