@@ -159,14 +159,14 @@ export function ConfirmShiftCard({
   };
 
   return (
-    <Card size="sm" className="shadow-none">
+    <Card size="sm" className="w-full shadow-none md:max-w-4xl">
       <CardHeader>
         <CardTitle>{shift.date}</CardTitle>
         <p className="text-sm text-muted-foreground">{shift.workplaceName}</p>
       </CardHeader>
 
       <CardContent className="flex flex-col gap-4">
-        <div className="grid gap-3 sm:grid-cols-3">
+        <div className="grid grid-cols-2 gap-3 lg:grid-cols-4">
           <label className="flex flex-col gap-1 text-sm">
             開始時刻
             <Input
@@ -198,6 +198,17 @@ export function ConfirmShiftCard({
               onChange={(event) => setBreakMinutes(event.currentTarget.value)}
             />
           </label>
+
+          <div className="flex items-end">
+            <Button
+              type="button"
+              className="w-full lg:w-auto"
+              disabled={isMutating}
+              onClick={handleConfirm}
+            >
+              {isConfirming ? "確定中..." : "確定"}
+            </Button>
+          </div>
         </div>
 
         {errorMessage ? (
@@ -205,12 +216,6 @@ export function ConfirmShiftCard({
             {errorMessage}
           </p>
         ) : null}
-
-        <div className="flex flex-wrap justify-end gap-2">
-          <Button type="button" disabled={isMutating} onClick={handleConfirm}>
-            {isConfirming ? "確定中..." : "確定"}
-          </Button>
-        </div>
       </CardContent>
     </Card>
   );
