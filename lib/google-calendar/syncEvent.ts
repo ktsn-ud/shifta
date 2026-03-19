@@ -169,40 +169,6 @@ function buildEventDateTime(shift: Shift): { start: string; end: string } {
   };
 }
 
-function mapWorkplaceColorToGoogleColorId(color: string): string {
-  const normalized = color.toUpperCase();
-
-  const mapping: Record<string, string> = {
-    "#A4BDFC": "1",
-    "#7AE7BF": "2",
-    "#DBADFF": "3",
-    "#FF887C": "4",
-    "#FBD75B": "5",
-    "#FFB878": "6",
-    "#46D6DB": "7",
-    "#E1E1E1": "8",
-    "#5484ED": "9",
-    "#51B749": "10",
-    "#DC2127": "11",
-  };
-
-  if (mapping[normalized]) {
-    return mapping[normalized];
-  }
-
-  if (normalized === "#FF0000") {
-    return "11";
-  }
-  if (normalized === "#4285F4") {
-    return "9";
-  }
-  if (normalized === "#EA4335") {
-    return "4";
-  }
-
-  return "1";
-}
-
 function formatCurrency(value: number | null): string {
   if (value === null) {
     return "--";
@@ -315,7 +281,6 @@ export async function createCalendarEvent(
         dateTime: eventDateTime.end,
         timeZone: SHIFTA_CALENDAR_TIMEZONE,
       },
-      colorId: mapWorkplaceColorToGoogleColorId(workplace.color),
       description,
       visibility: "private",
       transparency: "opaque",
@@ -376,7 +341,6 @@ export async function updateCalendarEvent(
         dateTime: eventDateTime.end,
         timeZone: SHIFTA_CALENDAR_TIMEZONE,
       },
-      colorId: mapWorkplaceColorToGoogleColorId(workplace.color),
       description,
       visibility: "private",
       transparency: "opaque",

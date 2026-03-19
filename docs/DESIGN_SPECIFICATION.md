@@ -530,12 +530,12 @@ Google Calendar 側で シフトのイベントを編集しても、アプリに
 
 ## 7.3 イベント属性のマッピング
 
-| Shift 属性               | Google Calendar イベント属性             | 説明                                   |
-| ------------------------ | ---------------------------------------- | -------------------------------------- |
-| date, startTime, endTime | start, end                               | ISO 8601 形式で保存                    |
-| workplaceId              | カスタムプロパティ（extendedProperties） | JSONで勤務先ID等を保存（検索用）       |
-| shiftType                | title に接頭辞                           | "[LESSON]" など                        |
-| color（勤務先）          | colorId（Google Calendar の色ID）        | 勤務先の色を Calendar イベント色に反映 |
+| Shift 属性               | Google Calendar イベント属性             | 説明                                                 |
+| ------------------------ | ---------------------------------------- | ---------------------------------------------------- |
+| date, startTime, endTime | start, end                               | ISO 8601 形式で保存                                  |
+| workplaceId              | カスタムプロパティ（extendedProperties） | JSONで勤務先ID等を保存（検索用）                     |
+| shiftType                | title に接頭辞                           | "[LESSON]" など                                      |
+| color（勤務先）          | （指定しない）                           | colorId は送信せず、Google Calendar 側の既定色を使用 |
 
 ---
 
@@ -1126,7 +1126,7 @@ H_day = 0 時間
 | シフト操作 | 同期アクション | イベント属性                                           | 注記                 |
 | ---------- | -------------- | ------------------------------------------------------ | -------------------- |
 | **作成**   | イベント作成   | title: "[NORMAL] 勤務先名" or "[LESSON] 勤務先名" etc. | googleEventId を保存 |
-| **編集**   | イベント更新   | 時間・タイトル・色を更新                               | googleEventId で識別 |
+| **編集**   | イベント更新   | 時間・タイトルを更新（色は Google Calendar 既定色）    | googleEventId で識別 |
 | **削除**   | イベント削除   | googleEventId にて削除                                 | DB削除と同期         |
 
 **同期失敗時の処理**
