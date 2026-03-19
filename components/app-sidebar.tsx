@@ -15,7 +15,6 @@ import {
   SidebarMenu,
   SidebarMenuButton,
   SidebarMenuItem,
-  SidebarSeparator,
 } from "@/components/ui/sidebar";
 import {
   CalendarDaysIcon,
@@ -55,14 +54,6 @@ const mainNavItems: NavItem[] = [
     title: "勤務先管理",
     href: "/my/workplaces",
     icon: <LandmarkIcon />,
-  },
-];
-
-const secondaryNavItems: NavItem[] = [
-  {
-    title: "一括登録",
-    href: "/my/shifts/bulk",
-    icon: <CalendarDaysIcon />,
   },
 ];
 
@@ -106,27 +97,6 @@ export function AppSidebar({
           <SidebarGroupContent>
             <SidebarMenu>
               {mainNavItems.map((item) => (
-                <SidebarMenuItem key={item.href}>
-                  <SidebarMenuButton
-                    tooltip={item.title}
-                    isActive={isActivePath(pathname, item.href)}
-                    render={<Link href={item.href} prefetch={false} />}
-                  >
-                    {item.icon}
-                    <span>{item.title}</span>
-                  </SidebarMenuButton>
-                </SidebarMenuItem>
-              ))}
-            </SidebarMenu>
-          </SidebarGroupContent>
-        </SidebarGroup>
-
-        <SidebarSeparator />
-
-        <SidebarGroup>
-          <SidebarGroupContent>
-            <SidebarMenu>
-              {secondaryNavItems.map((item) => (
                 <SidebarMenuItem key={item.href}>
                   <SidebarMenuButton
                     tooltip={item.title}
