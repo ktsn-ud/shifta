@@ -622,6 +622,7 @@ export function PayrollRuleForm({
                       baseHourlyWage: nextValue,
                     }));
                   }}
+                  className="max-w-24"
                 />
                 <span className="shrink-0 text-sm text-muted-foreground">
                   円/時
@@ -648,6 +649,7 @@ export function PayrollRuleForm({
                       holidayHourlyWage: nextValue,
                     }));
                   }}
+                  className="max-w-24"
                 />
                 <span className="shrink-0 text-sm text-muted-foreground">
                   円/時
@@ -677,6 +679,7 @@ export function PayrollRuleForm({
                       nightMultiplier: nextValue,
                     }));
                   }}
+                  className="max-w-20"
                 />
                 <span className="shrink-0 text-sm text-muted-foreground">
                   倍
@@ -703,6 +706,7 @@ export function PayrollRuleForm({
                       overtimeMultiplier: nextValue,
                     }));
                   }}
+                  className="max-w-20"
                 />
                 <span className="shrink-0 text-sm text-muted-foreground">
                   倍
@@ -717,20 +721,26 @@ export function PayrollRuleForm({
               1日所定時間
             </FieldLabel>
             <FieldContent>
-              <Input
-                id="daily-overtime-threshold"
-                type="number"
-                min="0"
-                step="0.01"
-                value={values.dailyOvertimeThreshold}
-                onChange={(event) => {
-                  const nextValue = event.currentTarget.value;
-                  setValues((current) => ({
-                    ...current,
-                    dailyOvertimeThreshold: nextValue,
-                  }));
-                }}
-              />
+              <div className="flex items-center gap-2">
+                <Input
+                  id="daily-overtime-threshold"
+                  type="number"
+                  min="0"
+                  step="0.01"
+                  value={values.dailyOvertimeThreshold}
+                  onChange={(event) => {
+                    const nextValue = event.currentTarget.value;
+                    setValues((current) => ({
+                      ...current,
+                      dailyOvertimeThreshold: nextValue,
+                    }));
+                  }}
+                  className="max-w-20"
+                />
+                <span className="shrink-0 text-sm text-muted-foreground">
+                  時間
+                </span>
+              </div>
               <FormErrorMessage message={errors.dailyOvertimeThreshold} />
             </FieldContent>
           </Field>
@@ -749,6 +759,7 @@ export function PayrollRuleForm({
                     nightStart: nextValue,
                   }));
                 }}
+                className="max-w-24"
               />
               <FormErrorMessage message={errors.nightStart} />
             </FieldContent>
@@ -768,6 +779,7 @@ export function PayrollRuleForm({
                     nightEnd: nextValue,
                   }));
                 }}
+                className="max-w-24"
               />
               <FormErrorMessage message={errors.nightEnd} />
             </FieldContent>
