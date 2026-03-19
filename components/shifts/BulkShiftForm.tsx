@@ -1179,9 +1179,10 @@ export function BulkShiftForm() {
                     max={MAX_BREAK_MINUTES}
                     value={defaults.breakMinutes}
                     onChange={(event) => {
+                      const breakMinutes = event.currentTarget.value;
                       setDefaults((current) => ({
                         ...current,
-                        breakMinutes: event.currentTarget.value,
+                        breakMinutes,
                       }));
                     }}
                     className="max-w-16"
@@ -1322,9 +1323,10 @@ export function BulkShiftForm() {
                     type="time"
                     value={defaults.startTime}
                     onChange={(event) => {
+                      const startTime = event.currentTarget.value;
                       setDefaults((current) => ({
                         ...current,
-                        startTime: event.currentTarget.value,
+                        startTime,
                       }));
                     }}
                   />
@@ -1341,9 +1343,10 @@ export function BulkShiftForm() {
                     type="time"
                     value={defaults.endTime}
                     onChange={(event) => {
+                      const endTime = event.currentTarget.value;
                       setDefaults((current) => ({
                         ...current,
-                        endTime: event.currentTarget.value,
+                        endTime,
                       }));
                     }}
                   />
@@ -1528,8 +1531,9 @@ export function BulkShiftForm() {
                               className="max-w-16"
                               value={row.breakMinutes}
                               onChange={(event) => {
+                                const breakMinutes = event.currentTarget.value;
                                 updateRow(row.date, {
-                                  breakMinutes: event.currentTarget.value,
+                                  breakMinutes,
                                 });
                               }}
                             />
@@ -1672,8 +1676,9 @@ export function BulkShiftForm() {
                               type="time"
                               value={row.startTime}
                               onChange={(event) => {
+                                const startTime = event.currentTarget.value;
                                 updateRow(row.date, {
-                                  startTime: event.currentTarget.value,
+                                  startTime,
                                 });
                               }}
                             />
@@ -1691,8 +1696,9 @@ export function BulkShiftForm() {
                               type="time"
                               value={row.endTime}
                               onChange={(event) => {
+                                const endTime = event.currentTarget.value;
                                 updateRow(row.date, {
-                                  endTime: event.currentTarget.value,
+                                  endTime,
                                 });
                               }}
                             />
