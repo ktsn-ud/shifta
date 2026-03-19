@@ -2,6 +2,7 @@
 
 import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
+import { CheckIcon } from "lucide-react";
 import { toast } from "sonner";
 import { TIME_ONLY_REGEX, toMinutes } from "@/lib/api/date-time";
 import {
@@ -159,14 +160,16 @@ export function ConfirmShiftCard({
   };
 
   return (
-    <Card size="sm" className="w-full shadow-none md:max-w-4xl">
+    <Card size="sm" className="w-full shadow-none md:max-w-2xl">
       <CardHeader>
-        <CardTitle>{shift.date}</CardTitle>
-        <p className="text-sm text-muted-foreground">{shift.workplaceName}</p>
+        <div className="flex items-center gap-3">
+          <CardTitle className="font-bold">{shift.date}</CardTitle>
+          <p className="text-sm text-muted-foreground">{shift.workplaceName}</p>
+        </div>
       </CardHeader>
 
       <CardContent className="flex flex-col gap-4">
-        <div className="grid grid-cols-2 gap-3 lg:grid-cols-4">
+        <div className="grid grid-cols-2 gap-3 lg:grid-cols-[minmax(0,1fr)_minmax(0,1fr)_minmax(0,1fr)_auto]">
           <label className="flex flex-col gap-1 text-sm">
             開始時刻
             <Input
@@ -199,13 +202,14 @@ export function ConfirmShiftCard({
             />
           </label>
 
-          <div className="flex items-end">
+          <div className="flex items-end lg:justify-end">
             <Button
               type="button"
               className="w-full lg:w-auto"
               disabled={isMutating}
               onClick={handleConfirm}
             >
+              <CheckIcon data-icon="inline-start" />
               {isConfirming ? "確定中..." : "確定"}
             </Button>
           </div>

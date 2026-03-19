@@ -187,7 +187,7 @@ export default function ShiftConfirmPage() {
             未確定シフトはありません
           </p>
         ) : (
-          <div className="max-h-[28rem] overflow-y-auto p-1">
+          <div className="p-1">
             <div className="flex flex-col gap-3">
               {unconfirmedShifts.map((shift) => (
                 <ConfirmShiftCard
