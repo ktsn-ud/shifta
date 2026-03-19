@@ -18,6 +18,14 @@ type ShiftWithLessonRange = Shift & {
   lessonRange: ShiftLessonRange | null;
 };
 
+type CalendarClient = Awaited<ReturnType<typeof getCalendarClientByUserId>>;
+
+type CreateCalendarEventOptions = {
+  calendar?: CalendarClient;
+  skipCalendarExistenceCheck?: boolean;
+  payrollRulesByWorkplaceId?: ReadonlyMap<string, PayrollRuleForEstimate[]>;
+};
+
 type GoogleApiErrorCandidate = Error & {
   code?: number | string;
   status?: number;
@@ -90,7 +98,7 @@ function isCalendarNotFoundError(error: unknown): boolean {
 }
 
 async function assertCalendarExists(
-  calendar: Awaited<ReturnType<typeof getCalendarClientByUserId>>,
+  calendar: CalendarClient,
   calendarId: string,
 ): Promise<void> {
   try {
@@ -107,6 +115,18 @@ async function assertCalendarExists(
 
     throw error;
   }
+}
+
+export async function getVerifiedCalendarClient(
+  user: Pick<User, "id" | "calendarId">,
+): Promise<CalendarClient> {
+  if (!user.calendarId) {
+    throw new Error("Calendar not initialized");
+  }
+
+  const calendar = await getCalendarClientByUserId(user.id);
+  await assertCalendarExists(calendar, user.calendarId);
+  return calendar;
 }
 
 function pad(value: number): string {
@@ -196,18 +216,18 @@ function formatCurrency(value: number | null): string {
 
 async function estimateShiftWageForEvent(
   shift: ShiftWithLessonRange,
+  payrollRules?: PayrollRuleForEstimate[],
 ): Promise<number | null> {
-  const rules = await prisma.payrollRule.findMany({
-    where: {
-      workplaceId: shift.workplaceId,
-    },
-    orderBy: [{ startDate: "desc" }],
-  });
+  const rules =
+    payrollRules ??
+    ((await prisma.payrollRule.findMany({
+      where: {
+        workplaceId: shift.workplaceId,
+      },
+      orderBy: [{ startDate: "desc" }],
+    })) as PayrollRuleForEstimate[]);
 
-  const selected = findApplicablePayrollRule(
-    rules as PayrollRuleForEstimate[],
-    shift.date,
-  );
+  const selected = findApplicablePayrollRule(rules, shift.date);
 
   return estimateShiftPay(
     {
@@ -230,8 +250,9 @@ async function estimateShiftWageForEvent(
 async function buildEventDescription(
   shift: ShiftWithLessonRange,
   workplace: Workplace,
+  payrollRules?: PayrollRuleForEstimate[],
 ): Promise<string> {
-  const estimatedWage = await estimateShiftWageForEvent(shift);
+  const estimatedWage = await estimateShiftWageForEvent(shift, payrollRules);
 
   return [
     `勤務先: ${workplace.name}`,
@@ -242,7 +263,7 @@ async function buildEventDescription(
 }
 
 async function assertLinkedGoogleEvent(
-  calendar: Awaited<ReturnType<typeof getCalendarClientByUserId>>,
+  calendar: CalendarClient,
   calendarId: string,
   googleEventId: string,
   shiftId: string,
@@ -264,15 +285,27 @@ export async function createCalendarEvent(
   shift: ShiftWithLessonRange,
   workplace: Workplace,
   user: User,
+  options?: CreateCalendarEventOptions,
 ): Promise<string> {
   if (!user.calendarId) {
     throw new Error("Calendar not initialized");
   }
 
-  const calendar = await getCalendarClientByUserId(user.id);
-  await assertCalendarExists(calendar, user.calendarId);
+  const calendar =
+    options?.calendar ?? (await getCalendarClientByUserId(user.id));
+  if (!options?.skipCalendarExistenceCheck) {
+    await assertCalendarExists(calendar, user.calendarId);
+  }
+
+  const payrollRules = options?.payrollRulesByWorkplaceId?.get(
+    shift.workplaceId,
+  );
   const eventDateTime = buildEventDateTime(shift);
-  const description = await buildEventDescription(shift, workplace);
+  const description = await buildEventDescription(
+    shift,
+    workplace,
+    payrollRules,
+  );
 
   const response = await calendar.events.insert({
     calendarId: user.calendarId,

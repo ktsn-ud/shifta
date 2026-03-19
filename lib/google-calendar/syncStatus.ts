@@ -1,4 +1,5 @@
 import type { User } from "@/lib/generated/prisma/client";
+import { type PayrollRuleForEstimate } from "@/lib/payroll/estimate";
 import { prisma } from "@/lib/prisma";
 import {
   GoogleCalendarSyncError,
@@ -8,6 +9,7 @@ import {
 import {
   createCalendarEvent,
   deleteCalendarEvent,
+  getVerifiedCalendarClient,
   updateCalendarEvent,
 } from "./syncEvent";
 
@@ -227,6 +229,35 @@ async function findUserForSync(userId: string): Promise<User | null> {
   });
 }
 
+async function buildPayrollRulesByWorkplace(
+  shifts: Awaited<ReturnType<typeof findShiftsForSync>>,
+): Promise<Map<string, PayrollRuleForEstimate[]>> {
+  const workplaceIds = Array.from(
+    new Set(shifts.map((shift) => shift.workplaceId)),
+  );
+  if (workplaceIds.length === 0) {
+    return new Map();
+  }
+
+  const payrollRules = await prisma.payrollRule.findMany({
+    where: {
+      workplaceId: {
+        in: workplaceIds,
+      },
+    },
+    orderBy: [{ workplaceId: "asc" }, { startDate: "desc" }],
+  });
+
+  const payrollRulesByWorkplace = new Map<string, PayrollRuleForEstimate[]>();
+  for (const rule of payrollRules) {
+    const rules = payrollRulesByWorkplace.get(rule.workplaceId) ?? [];
+    rules.push(rule);
+    payrollRulesByWorkplace.set(rule.workplaceId, rules);
+  }
+
+  return payrollRulesByWorkplace;
+}
+
 async function runShiftSync(
   shiftId: string,
   userId: string,
@@ -333,6 +364,80 @@ export async function syncShiftsAfterBulkCreate(
   ]);
 
   const shiftsById = new Map(shifts.map((shift) => [shift.id, shift]));
+  const payrollRulesByWorkplace = await buildPayrollRulesByWorkplace(shifts);
+
+  let sharedCalendar: Awaited<
+    ReturnType<typeof getVerifiedCalendarClient>
+  > | null = null;
+
+  if (user?.calendarId) {
+    try {
+      sharedCalendar = await getVerifiedCalendarClient(user);
+    } catch (error) {
+      const syncError = resolveGoogleSyncError(error);
+      if (syncError.requiresCalendarSetup) {
+        await clearCalendarIdForReinitialize(userId);
+      }
+
+      return Promise.all(
+        shiftIds.map(async (shiftId) => {
+          const startedAt = Date.now();
+          const shift = shiftsById.get(shiftId);
+
+          await updateSyncStatus(shiftId, "PENDING", {
+            error: null,
+          });
+
+          if (!shift || !user) {
+            const errorMessage =
+              "同期対象のシフトまたはユーザーが見つかりません";
+            await updateSyncStatus(shiftId, "FAILED", {
+              error: errorMessage,
+            });
+
+            logSyncEvent({
+              userId,
+              shiftId,
+              action: "create",
+              status: "FAILED",
+              error: errorMessage,
+              durationMs: Date.now() - startedAt,
+            });
+
+            return {
+              shiftId,
+              ok: false as const,
+              errorMessage,
+              errorCode: null,
+              requiresCalendarSetup: false,
+            };
+          }
+
+          await updateSyncStatus(shiftId, "FAILED", {
+            error: syncError.message,
+          });
+
+          logSyncEvent({
+            userId,
+            shiftId,
+            action: "create",
+            status: "FAILED",
+            error: syncError.message,
+            errorCode: syncError.code,
+            durationMs: Date.now() - startedAt,
+          });
+
+          return {
+            shiftId,
+            ok: false as const,
+            errorMessage: syncError.message,
+            errorCode: syncError.code,
+            requiresCalendarSetup: syncError.requiresCalendarSetup,
+          };
+        }),
+      );
+    }
+  }
 
   return Promise.all(
     shiftIds.map(async (shiftId) => {
@@ -372,6 +477,11 @@ export async function syncShiftsAfterBulkCreate(
           shift,
           shift.workplace,
           user,
+          {
+            calendar: sharedCalendar ?? undefined,
+            skipCalendarExistenceCheck: sharedCalendar !== null,
+            payrollRulesByWorkplaceId: payrollRulesByWorkplace,
+          },
         );
 
         await updateSyncStatus(shiftId, "SUCCESS", {
