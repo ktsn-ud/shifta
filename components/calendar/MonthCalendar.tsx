@@ -18,12 +18,14 @@ import { cn } from "@/lib/utils";
 
 const WEEKDAY_LABELS = ["日", "月", "火", "水", "木", "金", "土"] as const;
 const DAY_CELL_COUNT = 42;
-const SHIFT_DOT_LIMIT = 5;
-const SHIFT_DOT_VISIBLE_WHEN_OVERFLOW = 3;
+const SHIFT_LIST_LIMIT = 5;
+const SHIFT_LIST_VISIBLE_WHEN_OVERFLOW = 3;
 
 type MonthCalendarShift = {
   id: string;
   date: string;
+  startTime: string;
+  endTime: string;
   workplace: {
     id: string;
     name: string;
@@ -69,14 +71,25 @@ function getVisibleShifts(dayShifts: MonthCalendarShift[]): {
   visible: MonthCalendarShift[];
   hiddenCount: number;
 } {
-  if (dayShifts.length <= SHIFT_DOT_LIMIT) {
+  if (dayShifts.length <= SHIFT_LIST_LIMIT) {
     return { visible: dayShifts, hiddenCount: 0 };
   }
 
   return {
-    visible: dayShifts.slice(0, SHIFT_DOT_VISIBLE_WHEN_OVERFLOW),
-    hiddenCount: dayShifts.length - SHIFT_DOT_VISIBLE_WHEN_OVERFLOW,
+    visible: dayShifts.slice(0, SHIFT_LIST_VISIBLE_WHEN_OVERFLOW),
+    hiddenCount: dayShifts.length - SHIFT_LIST_VISIBLE_WHEN_OVERFLOW,
   };
+}
+
+function formatTime(value: string): string {
+  const date = new Date(value);
+  const hour = String(date.getUTCHours()).padStart(2, "0");
+  const minute = String(date.getUTCMinutes()).padStart(2, "0");
+  return `${hour}:${minute}`;
+}
+
+function formatShiftTime(shift: MonthCalendarShift): string {
+  return `${formatTime(shift.startTime)}-${formatTime(shift.endTime)}`;
 }
 
 export function MonthCalendar({
@@ -96,6 +109,16 @@ export function MonthCalendar({
       list.push(shift);
       grouped.set(key, list);
     }
+
+    for (const [key, dayShifts] of grouped.entries()) {
+      grouped.set(
+        key,
+        [...dayShifts].sort((left, right) =>
+          left.startTime.localeCompare(right.startTime),
+        ),
+      );
+    }
+
     return grouped;
   }, [shifts]);
 
@@ -159,7 +182,7 @@ export function MonthCalendar({
                 }}
                 disabled={!cell.isCurrentMonth}
                 className={cn(
-                  "group relative flex min-h-24 flex-col items-center border-b border-r px-1 py-2 text-left transition-colors last:border-r-0 hover:bg-muted/40 focus-visible:ring-2 focus-visible:ring-ring focus-visible:outline-hidden md:min-h-28",
+                  "group relative flex min-h-24 flex-col border-b border-r px-1 py-2 text-left transition-colors last:border-r-0 hover:bg-muted/40 focus-visible:ring-2 focus-visible:ring-ring focus-visible:outline-hidden md:min-h-28",
                   cell.isCurrentMonth && "cursor-pointer",
                   !cell.isCurrentMonth &&
                     "cursor-not-allowed bg-muted/20 text-muted-foreground/70 hover:bg-muted/20",
@@ -174,33 +197,42 @@ export function MonthCalendar({
 
                 <span
                   className={cn(
-                    "relative z-10 text-sm font-medium",
+                    "relative z-10 self-center text-sm font-medium",
                     !cell.isCurrentMonth && "text-muted-foreground",
                   )}
                 >
                   {cell.date.getDate()}
                 </span>
 
-                <div className="mt-2 flex min-h-6 flex-wrap items-center justify-center gap-1">
+                <ul className="mt-2 w-full space-y-1 px-1">
                   {visible.map((shift) => (
-                    <Tooltip key={shift.id}>
-                      <TooltipTrigger
-                        render={
-                          <span
-                            className="size-2 rounded-full"
-                            style={{ backgroundColor: shift.workplace.color }}
-                          />
-                        }
-                      />
-                      <TooltipContent>{shift.workplace.name}</TooltipContent>
-                    </Tooltip>
+                    <li key={shift.id}>
+                      <Tooltip>
+                        <TooltipTrigger
+                          render={
+                            <span className="flex items-center gap-1 text-[10px] leading-none text-muted-foreground">
+                              <span
+                                className="size-2 shrink-0 rounded-full"
+                                style={{
+                                  backgroundColor: shift.workplace.color,
+                                }}
+                              />
+                              <span className="truncate font-medium text-foreground">
+                                {formatShiftTime(shift)}
+                              </span>
+                            </span>
+                          }
+                        />
+                        <TooltipContent>{shift.workplace.name}</TooltipContent>
+                      </Tooltip>
+                    </li>
                   ))}
                   {hiddenCount > 0 ? (
-                    <span className="text-[10px] font-medium text-muted-foreground">
+                    <li className="text-[10px] font-medium text-muted-foreground">
                       +{hiddenCount}
-                    </span>
+                    </li>
                   ) : null}
-                </div>
+                </ul>
               </button>
             );
           })}
