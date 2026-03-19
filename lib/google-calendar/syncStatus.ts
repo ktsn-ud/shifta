@@ -49,6 +49,8 @@ type ResolvedSyncError = {
   requiresCalendarSetup: boolean;
 };
 
+const BULK_SYNC_CONCURRENCY = 5;
+
 function extractGoogleErrorStatus(error: unknown): number | null {
   if (!(error instanceof Error)) {
     return null;
@@ -257,6 +259,35 @@ async function buildPayrollRulesByWorkplace(
   return payrollRulesByWorkplace;
 }
 
+async function mapWithConcurrency<T, R>(
+  items: readonly T[],
+  limit: number,
+  mapper: (item: T, index: number) => Promise<R>,
+): Promise<R[]> {
+  if (items.length === 0) {
+    return [];
+  }
+
+  const safeLimit = Math.max(1, Math.floor(limit));
+  const results = new Array<R>(items.length);
+  let cursor = 0;
+
+  async function worker(): Promise<void> {
+    while (cursor < items.length) {
+      const index = cursor;
+      cursor += 1;
+
+      results[index] = await mapper(items[index], index);
+    }
+  }
+
+  await Promise.all(
+    Array.from({ length: Math.min(safeLimit, items.length) }, () => worker()),
+  );
+
+  return results;
+}
+
 async function runShiftSync(
   shiftId: string,
   userId: string,
@@ -364,6 +395,31 @@ export async function syncShiftsAfterBulkCreate(
 
   const shiftsById = new Map(shifts.map((shift) => [shift.id, shift]));
   const payrollRulesByWorkplace = await buildPayrollRulesByWorkplace(shifts);
+  const existingShiftIds = Array.from(shiftsById.keys());
+
+  if (existingShiftIds.length > 0) {
+    await prisma.shift.updateMany({
+      where: {
+        id: {
+          in: existingShiftIds,
+        },
+      },
+      data: {
+        googleSyncStatus: "PENDING",
+        googleSyncError: null,
+        googleSyncedAt: new Date(),
+      },
+    });
+  }
+
+  let clearCalendarIdPromise: Promise<void> | null = null;
+  const clearCalendarIdOnce = async () => {
+    if (!clearCalendarIdPromise) {
+      clearCalendarIdPromise = clearCalendarIdForReinitialize(userId);
+    }
+
+    await clearCalendarIdPromise;
+  };
 
   let sharedCalendar: Awaited<
     ReturnType<typeof getVerifiedCalendarClient>
@@ -375,17 +431,30 @@ export async function syncShiftsAfterBulkCreate(
     } catch (error) {
       const syncError = resolveGoogleSyncError(error);
       if (syncError.requiresCalendarSetup) {
-        await clearCalendarIdForReinitialize(userId);
+        await clearCalendarIdOnce();
       }
 
-      return Promise.all(
-        shiftIds.map(async (shiftId) => {
+      if (existingShiftIds.length > 0) {
+        await prisma.shift.updateMany({
+          where: {
+            id: {
+              in: existingShiftIds,
+            },
+          },
+          data: {
+            googleSyncStatus: "FAILED",
+            googleSyncError: syncError.message,
+            googleSyncedAt: new Date(),
+          },
+        });
+      }
+
+      return mapWithConcurrency(
+        shiftIds,
+        BULK_SYNC_CONCURRENCY,
+        async (shiftId) => {
           const startedAt = Date.now();
           const shift = shiftsById.get(shiftId);
-
-          await updateSyncStatus(shiftId, "PENDING", {
-            error: null,
-          });
 
           if (!shift || !user) {
             const errorMessage =
@@ -412,10 +481,6 @@ export async function syncShiftsAfterBulkCreate(
             };
           }
 
-          await updateSyncStatus(shiftId, "FAILED", {
-            error: syncError.message,
-          });
-
           logSyncEvent({
             userId,
             shiftId,
@@ -433,19 +498,17 @@ export async function syncShiftsAfterBulkCreate(
             errorCode: syncError.code,
             requiresCalendarSetup: syncError.requiresCalendarSetup,
           };
-        }),
+        },
       );
     }
   }
 
-  return Promise.all(
-    shiftIds.map(async (shiftId) => {
+  return mapWithConcurrency(
+    shiftIds,
+    BULK_SYNC_CONCURRENCY,
+    async (shiftId) => {
       const startedAt = Date.now();
       const shift = shiftsById.get(shiftId);
-
-      await updateSyncStatus(shiftId, "PENDING", {
-        error: null,
-      });
 
       if (!shift || !user) {
         const errorMessage = "同期対象のシフトまたはユーザーが見つかりません";
@@ -512,7 +575,7 @@ export async function syncShiftsAfterBulkCreate(
 
         const syncError = resolveGoogleSyncError(error);
         if (syncError.requiresCalendarSetup) {
-          await clearCalendarIdForReinitialize(userId);
+          await clearCalendarIdOnce();
         }
 
         await updateSyncStatus(shiftId, "FAILED", {
@@ -537,7 +600,7 @@ export async function syncShiftsAfterBulkCreate(
           requiresCalendarSetup: syncError.requiresCalendarSetup,
         };
       }
-    }),
+    },
   );
 }
 
