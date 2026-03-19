@@ -1,9 +1,21 @@
 import type { HolidayType } from "@/lib/generated/prisma/enums";
+import holidayJp from "@holiday-jp/holiday_jp";
 
 const MINUTES_IN_DAY = 24 * 60;
 
 function toMinutes(time: Date): number {
   return time.getUTCHours() * 60 + time.getUTCMinutes();
+}
+
+function toDateKey(date: Date): string {
+  const year = String(date.getUTCFullYear());
+  const month = String(date.getUTCMonth() + 1).padStart(2, "0");
+  const day = String(date.getUTCDate()).padStart(2, "0");
+  return `${year}-${month}-${day}`;
+}
+
+function isJapaneseHoliday(date: Date): boolean {
+  return holidayJp.isHoliday(toDateKey(date));
 }
 
 function overlapMinutes(
@@ -67,12 +79,18 @@ export function isHolidayDate(date: Date, holidayType: HolidayType): boolean {
   }
 
   if (holidayType === "HOLIDAY") {
-    return false;
+    return isJapaneseHoliday(date);
   }
 
   if (holidayType === "WEEKEND" || holidayType === "WEEKEND_HOLIDAY") {
     const day = date.getUTCDay();
-    return day === 0 || day === 6;
+    const isWeekend = day === 0 || day === 6;
+
+    if (holidayType === "WEEKEND_HOLIDAY") {
+      return isWeekend || isJapaneseHoliday(date);
+    }
+
+    return isWeekend;
   }
 
   return false;

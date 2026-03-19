@@ -106,6 +106,22 @@ describe("calculateOtherShiftWage", () => {
     expect(result.overtimeHours).toBe(2);
   });
 
+  it("HOLIDAY の場合は平日祝日でも休日時給を適用する", () => {
+    const shift = createShift({
+      date: date("2026-02-11"),
+    });
+    const rule = createRule({
+      holidayType: "HOLIDAY",
+    });
+
+    const result = calculateOtherShiftWage(shift, rule);
+
+    expect(result.totalWage).toBe(8400);
+    expect(result.dayWage).toBe(8400);
+    expect(result.overtimeWage).toBe(0);
+    expect(result.nightWage).toBe(0);
+  });
+
   it("LESSON型シフトではエラーを返す", () => {
     const shift = createShift({ shiftType: "LESSON" });
     const rule = createRule();

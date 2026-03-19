@@ -71,7 +71,12 @@ describe("isHolidayDate", () => {
     expect(isHolidayDate(date("2026-03-22"), "WEEKEND_HOLIDAY")).toBe(true);
   });
 
-  it("HOLIDAY は将来拡張として現時点ではfalseを返す", () => {
-    expect(isHolidayDate(date("2026-03-20"), "HOLIDAY")).toBe(false);
+  it("HOLIDAY は祝日を休日扱いにする", () => {
+    expect(isHolidayDate(date("2026-03-20"), "HOLIDAY")).toBe(true);
+    expect(isHolidayDate(date("2026-03-19"), "HOLIDAY")).toBe(false);
+  });
+
+  it("WEEKEND_HOLIDAY は平日祝日も休日扱いにする", () => {
+    expect(isHolidayDate(date("2026-02-11"), "WEEKEND_HOLIDAY")).toBe(true);
   });
 });
