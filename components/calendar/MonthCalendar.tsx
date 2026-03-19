@@ -2,6 +2,7 @@
 
 import { useMemo } from "react";
 import { ChevronLeftIcon, ChevronRightIcon } from "lucide-react";
+import holidayJp from "@holiday-jp/holiday_jp";
 import { Button } from "@/components/ui/button";
 import {
   Tooltip,
@@ -169,6 +170,11 @@ export function MonthCalendar({
           {cells.map((cell) => {
             const { visible, hiddenCount } = getVisibleShifts(cell.shifts);
             const isToday = cell.key === todayKey;
+            const dayOfWeek = cell.date.getDay();
+            const isHoliday = holidayJp.isHoliday(cell.key);
+            const isSunday = dayOfWeek === 0;
+            const isSaturday = dayOfWeek === 6;
+            const isRedDate = isSunday || isHoliday;
 
             return (
               <button
@@ -198,6 +204,11 @@ export function MonthCalendar({
                 <span
                   className={cn(
                     "relative z-10 self-center text-sm font-medium",
+                    cell.isCurrentMonth && isRedDate && "text-red-600",
+                    cell.isCurrentMonth &&
+                      !isRedDate &&
+                      isSaturday &&
+                      "text-blue-600",
                     !cell.isCurrentMonth && "text-muted-foreground",
                   )}
                 >
