@@ -63,7 +63,6 @@ pnpm test                 # Jest テスト
 
 - `/login` ログイン
 - `/my` ダッシュボード
-- `/my/calendar` カレンダー
 - `/my/shifts/new` シフト入力
 - `/my/shifts/bulk` シフト一括入力
 - `/my/summary` 給与集計

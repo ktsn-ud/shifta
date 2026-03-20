@@ -1008,7 +1008,7 @@ export function ShiftForm({ mode, shiftId, initialDate }: ShiftFormProps) {
           return;
         }
 
-        router.push("/my/calendar");
+        router.push("/my");
         return;
       }
 
@@ -1021,7 +1021,7 @@ export function ShiftForm({ mode, shiftId, initialDate }: ShiftFormProps) {
           description: `${form.date} ${validation.candidateTimes.startTime} - ${validation.candidateTimes.endTime}`,
         },
       );
-      router.push("/my/calendar");
+      router.push("/my");
     } catch (error) {
       console.error("failed to save shift", error);
       const message = toErrorMessage(error, messages.error.shiftSaveFailed);
@@ -1376,7 +1376,7 @@ export function ShiftForm({ mode, shiftId, initialDate }: ShiftFormProps) {
           <Button
             type="button"
             variant="outline"
-            onClick={() => router.push("/my/calendar")}
+            onClick={() => router.push("/my")}
             disabled={isSubmitting}
           >
             キャンセル

@@ -13,7 +13,7 @@ const pushMock = jest.fn();
 
 jest.mock("next/navigation", () => ({
   useRouter: () => ({ push: pushMock }),
-  usePathname: () => "/my/calendar",
+  usePathname: () => "/my",
 }));
 
 function jsonResponse(payload: unknown, status = 200): Response {
@@ -79,7 +79,7 @@ describe("shift flow integration", () => {
     await userEvent.click(screen.getByRole("button", { name: "登録" }));
 
     await waitFor(() => {
-      expect(pushMock).toHaveBeenCalledWith("/my/calendar");
+      expect(pushMock).toHaveBeenCalledWith("/my");
     });
 
     const postCall = fetchMock.mock.calls.find(
@@ -238,7 +238,7 @@ describe("shift flow integration", () => {
     await userEvent.click(screen.getByRole("button", { name: "更新" }));
 
     await waitFor(() => {
-      expect(pushMock).toHaveBeenCalledWith("/my/calendar");
+      expect(pushMock).toHaveBeenCalledWith("/my");
     });
 
     const putCall = fetchMock.mock.calls.find(

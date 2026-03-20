@@ -77,8 +77,8 @@ export function DeleteConfirmDialog({
                 await onDelete();
                 onOpenChange(false);
 
-                if (pathname !== "/my/calendar") {
-                  router.push("/my/calendar");
+                if (pathname !== "/my") {
+                  router.push("/my");
                 }
               } catch (error) {
                 console.error("failed to delete shift", error);

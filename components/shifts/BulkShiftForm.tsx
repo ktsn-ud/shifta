@@ -880,7 +880,7 @@ export function BulkShiftForm() {
           return;
         }
 
-        router.push("/my/calendar");
+        router.push("/my");
         router.refresh();
         return;
       }
@@ -891,7 +891,7 @@ export function BulkShiftForm() {
           ? "Google Calendar 同期はバックグラウンドで実行中です。"
           : undefined,
       });
-      router.push("/my/calendar");
+      router.push("/my");
       router.refresh();
     } catch (error) {
       console.error("failed to submit bulk shifts", error);
@@ -1732,7 +1732,7 @@ export function BulkShiftForm() {
             type="button"
             variant="outline"
             onClick={() => {
-              router.push("/my/calendar");
+              router.push("/my");
             }}
             disabled={isSubmitting}
           >

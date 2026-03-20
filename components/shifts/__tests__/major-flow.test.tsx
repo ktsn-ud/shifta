@@ -12,7 +12,7 @@ jest.mock("next/navigation", () => ({
     push: pushMock,
     refresh: refreshMock,
   }),
-  usePathname: () => "/my/calendar",
+  usePathname: () => "/my",
 }));
 
 function jsonResponse(payload: unknown, status = 200): Response {
@@ -172,7 +172,7 @@ describe("major flow integration", () => {
     await user.click(screen.getByRole("button", { name: "登録" }));
 
     await waitFor(() => {
-      expect(pushMock).toHaveBeenCalledWith("/my/calendar");
+      expect(pushMock).toHaveBeenCalledWith("/my");
     });
 
     const postCall = fetchMock.mock.calls.find(

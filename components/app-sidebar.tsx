@@ -17,7 +17,6 @@ import {
   SidebarMenuItem,
 } from "@/components/ui/sidebar";
 import {
-  CalendarDaysIcon,
   CheckCheckIcon,
   CommandIcon,
   LandmarkIcon,
@@ -39,7 +38,6 @@ type NavItem = {
 
 const mainNavItems: NavItem[] = [
   { title: "ダッシュボード", href: "/my", icon: <LayoutDashboardIcon /> },
-  { title: "カレンダー", href: "/my/calendar", icon: <CalendarDaysIcon /> },
   {
     title: "シフト確定",
     href: "/my/shifts/confirm",
