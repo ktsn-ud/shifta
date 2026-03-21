@@ -1,4 +1,4 @@
-import { NextResponse } from "next/server";
+import { after, NextResponse } from "next/server";
 import { requireCurrentUser } from "@/lib/api/current-user";
 import {
   jsonError,
@@ -124,9 +124,19 @@ export async function PUT(request: Request, context: Context) {
       });
     });
 
-    const syncResult = updated
-      ? await syncShiftAfterUpdate(updated.id, current.user.id)
-      : null;
+    if (updated) {
+      after(async () => {
+        try {
+          await syncShiftAfterUpdate(updated.id, current.user.id);
+        } catch (error) {
+          console.error("PUT /api/shifts/:id background sync failed", {
+            userId: current.user.id,
+            shiftId: updated.id,
+            error,
+          });
+        }
+      });
+    }
 
     const latest = updated
       ? await prisma.shift.findUnique({
@@ -138,7 +148,10 @@ export async function PUT(request: Request, context: Context) {
         })
       : null;
 
-    return NextResponse.json({ data: latest, sync: syncResult });
+    return NextResponse.json({
+      data: latest,
+      syncStatus: latest ? "pending" : null,
+    });
   } catch (error) {
     console.error("PUT /api/shifts/:id failed", error);
     return jsonError("シフト更新に失敗しました", 500);
