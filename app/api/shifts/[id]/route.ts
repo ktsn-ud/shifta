@@ -190,20 +190,28 @@ export async function DELETE(request: Request, context: Context) {
       return jsonError("このシフトを削除する権限がありません", 403);
     }
 
-    const syncResult = await syncShiftDeletion(
-      id,
-      current.user.id,
-      existing.googleEventId,
-    );
     await prisma.$transaction(async (tx) => {
       await tx.shiftLessonRange.deleteMany({ where: { shiftId: id } });
       await tx.shift.delete({ where: { id } });
     });
 
+    after(async () => {
+      try {
+        await syncShiftDeletion(id, current.user.id, existing.googleEventId);
+      } catch (error) {
+        console.error("DELETE /api/shifts/:id background sync failed", {
+          userId: current.user.id,
+          shiftId: id,
+          googleEventId: existing.googleEventId,
+          error,
+        });
+      }
+    });
+
     return NextResponse.json({
       id,
       message: "Shift deleted successfully",
-      sync: syncResult,
+      syncStatus: "pending",
     });
   } catch (error) {
     console.error("DELETE /api/shifts/:id failed", error);
