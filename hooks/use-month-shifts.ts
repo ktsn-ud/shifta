@@ -44,6 +44,12 @@ type ShiftListResponse = {
   data: MonthShift[];
 };
 
+type UseMonthShiftsOptions = {
+  initialShifts?: MonthShift[];
+  initialStartDate?: string;
+  initialEndDate?: string;
+};
+
 function isShiftListResponse(value: unknown): value is ShiftListResponse {
   if (typeof value === "object" && value !== null) {
     return "data" in value;
@@ -70,9 +76,18 @@ export function summarizeShifts(shifts: MonthShift[]): ShiftSummary {
   );
 }
 
-export function useMonthShifts(month: Date) {
-  const [shifts, setShifts] = useState<MonthShift[]>([]);
-  const [isLoading, setIsLoading] = useState(true);
+export function useMonthShifts(
+  month: Date,
+  options: UseMonthShiftsOptions = {},
+) {
+  const { initialShifts, initialStartDate, initialEndDate } = options;
+  const hasInitialData =
+    Array.isArray(initialShifts) &&
+    typeof initialStartDate === "string" &&
+    typeof initialEndDate === "string";
+
+  const [shifts, setShifts] = useState<MonthShift[]>(() => initialShifts ?? []);
+  const [isLoading, setIsLoading] = useState(() => !hasInitialData);
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
   const [reloadCount, setReloadCount] = useState(0);
 
@@ -87,6 +102,19 @@ export function useMonthShifts(month: Date) {
   }, []);
 
   useEffect(() => {
+    const canUseInitialData =
+      reloadCount === 0 &&
+      hasInitialData &&
+      initialStartDate === startDate &&
+      initialEndDate === endDate;
+
+    if (canUseInitialData) {
+      setErrorMessage(null);
+      setShifts(initialShifts ?? []);
+      setIsLoading(false);
+      return;
+    }
+
     const abortController = new AbortController();
 
     async function fetchMonthShifts() {
@@ -138,7 +166,15 @@ export function useMonthShifts(month: Date) {
     return () => {
       abortController.abort();
     };
-  }, [endDate, reloadCount, startDate]);
+  }, [
+    endDate,
+    hasInitialData,
+    initialEndDate,
+    initialShifts,
+    initialStartDate,
+    reloadCount,
+    startDate,
+  ]);
 
   return {
     shifts,
