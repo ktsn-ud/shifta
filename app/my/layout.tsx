@@ -1,9 +1,10 @@
 import type { Metadata } from "next";
+import { redirect } from "next/navigation";
 import { TooltipProvider } from "@/components/ui/tooltip";
 import { SidebarInset, SidebarProvider } from "@/components/ui/sidebar";
 import { AppSidebar } from "@/components/app-sidebar";
 import { SiteHeader } from "@/components/site-header";
-import { auth } from "@/lib/auth";
+import { requireCurrentUser } from "@/lib/api/current-user";
 
 export const metadata: Metadata = {
   title: { absolute: "ホーム｜Shifta" },
@@ -14,11 +15,15 @@ export default async function Layout({
 }: {
   children: React.ReactNode;
 }) {
-  const session = await auth();
+  const current = await requireCurrentUser();
+  if ("response" in current) {
+    redirect("/login");
+  }
+
   const user = {
-    name: session?.user?.name ?? "ユーザー",
-    email: session?.user?.email ?? "unknown@example.com",
-    avatar: session?.user?.image,
+    name: current.user.name ?? "ユーザー",
+    email: current.user.email,
+    avatar: current.user.image,
   };
 
   return (
