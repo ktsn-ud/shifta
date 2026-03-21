@@ -39,6 +39,7 @@ import { type PayrollSummaryResult } from "@/lib/payroll/summary";
 type PeriodMode = "month" | "custom";
 
 type SummaryPageClientProps = {
+  currentUserId: string;
   initialSummary: PayrollSummaryResult;
   initialStartDate: string;
   initialEndDate: string;
@@ -72,8 +73,12 @@ function formatHours(value: number): string {
   return `${value.toFixed(2)} 時間`;
 }
 
-function toSummaryCacheKey(startDate: string, endDate: string): string {
-  return `${startDate}:${endDate}`;
+function toSummaryCacheKey(
+  userKey: string,
+  startDate: string,
+  endDate: string,
+): string {
+  return `${userKey}:${startDate}:${endDate}`;
 }
 
 function readSummaryCache(cacheKey: string): PayrollSummaryResult | null {
@@ -159,6 +164,7 @@ export function SummaryPageLoadingSkeleton() {
 }
 
 export function SummaryPageClient({
+  currentUserId,
   initialSummary,
   initialStartDate,
   initialEndDate,
@@ -227,7 +233,7 @@ export function SummaryPageClient({
 
     if (matchesInitialPeriod) {
       writeSummaryCache(
-        toSummaryCacheKey(initialStartDate, initialEndDate),
+        toSummaryCacheKey(currentUserId, initialStartDate, initialEndDate),
         initialSummary,
       );
       setErrorMessage(null);
@@ -237,6 +243,7 @@ export function SummaryPageClient({
     }
 
     const cacheKey = toSummaryCacheKey(
+      currentUserId,
       targetPeriod.startDate,
       targetPeriod.endDate,
     );
@@ -305,6 +312,7 @@ export function SummaryPageClient({
       abortController.abort();
     };
   }, [
+    currentUserId,
     initialEndDate,
     initialStartDate,
     initialSummary,

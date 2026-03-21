@@ -35,6 +35,7 @@ async function SummaryPageContent() {
 
   return (
     <SummaryPageClient
+      currentUserId={current.user.id}
       initialSummary={initialSummary}
       initialStartDate={initialStartDate}
       initialEndDate={initialEndDate}

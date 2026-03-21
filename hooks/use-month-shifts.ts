@@ -54,6 +54,7 @@ type ShiftListResponse = {
 };
 
 type UseMonthShiftsOptions = {
+  cacheUserKey: string;
   initialShifts?: MonthShift[];
   initialStartDate?: string;
   initialEndDate?: string;
@@ -67,8 +68,12 @@ function isShiftListResponse(value: unknown): value is ShiftListResponse {
   return false;
 }
 
-function toMonthShiftsCacheKey(startDate: string, endDate: string): string {
-  return `${startDate}:${endDate}`;
+function toMonthShiftsCacheKey(
+  userKey: string,
+  startDate: string,
+  endDate: string,
+): string {
+  return `${userKey}:${startDate}:${endDate}`;
 }
 
 function readMonthShiftsCache(
@@ -113,11 +118,9 @@ export function summarizeShifts(shifts: MonthShift[]): ShiftSummary {
   );
 }
 
-export function useMonthShifts(
-  month: Date,
-  options: UseMonthShiftsOptions = {},
-) {
-  const { initialShifts, initialStartDate, initialEndDate } = options;
+export function useMonthShifts(month: Date, options: UseMonthShiftsOptions) {
+  const { cacheUserKey, initialShifts, initialStartDate, initialEndDate } =
+    options;
   const hasInitialData =
     Array.isArray(initialShifts) &&
     typeof initialStartDate === "string" &&
@@ -134,8 +137,8 @@ export function useMonthShifts(
   );
   const endDate = useMemo(() => toDateOnlyString(endOfMonth(month)), [month]);
   const cacheKey = useMemo(
-    () => toMonthShiftsCacheKey(startDate, endDate),
-    [endDate, startDate],
+    () => toMonthShiftsCacheKey(cacheUserKey, startDate, endDate),
+    [cacheUserKey, endDate, startDate],
   );
 
   const reload = useCallback(() => {

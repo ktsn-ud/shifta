@@ -38,6 +38,7 @@ import {
 } from "@/hooks/use-month-shifts";
 
 type DashboardPageClientProps = {
+  currentUserId: string;
   initialMonthShifts: MonthShift[];
   initialMonthStartDate: string;
   initialMonthEndDate: string;
@@ -85,6 +86,7 @@ export function DashboardPageLoadingSkeleton() {
 }
 
 export function DashboardPageClient({
+  currentUserId,
   initialMonthShifts,
   initialMonthStartDate,
   initialMonthEndDate,
@@ -102,6 +104,7 @@ export function DashboardPageClient({
     month.getMonth() === now.getMonth();
 
   const { shifts, isLoading, errorMessage, reload } = useMonthShifts(month, {
+    cacheUserKey: currentUserId,
     initialShifts: initialMonthShifts,
     initialStartDate: initialMonthStartDate,
     initialEndDate: initialMonthEndDate,
