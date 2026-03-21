@@ -3,8 +3,7 @@ import { z } from "zod";
 import { requireCurrentUser } from "@/lib/api/current-user";
 import { DATE_ONLY_REGEX, parseDateOnly } from "@/lib/api/date-time";
 import { jsonError } from "@/lib/api/http";
-import { summarizeByPeriod } from "@/lib/payroll/summarizeByPeriod";
-import { prisma } from "@/lib/prisma";
+import { getPayrollSummaryForUser } from "@/lib/payroll/summary";
 
 const summaryQuerySchema = z
   .object({
@@ -22,33 +21,6 @@ const summaryQuerySchema = z
       path: ["startDate"],
     },
   );
-
-function shiftMonthClamped(date: Date, monthOffset: number): Date {
-  const year = date.getUTCFullYear();
-  const month = date.getUTCMonth() + monthOffset;
-  const day = date.getUTCDate();
-
-  const firstDateInTargetMonth = new Date(Date.UTC(year, month, 1));
-  const lastDay = new Date(
-    Date.UTC(
-      firstDateInTargetMonth.getUTCFullYear(),
-      firstDateInTargetMonth.getUTCMonth() + 1,
-      0,
-    ),
-  ).getUTCDate();
-
-  return new Date(
-    Date.UTC(
-      firstDateInTargetMonth.getUTCFullYear(),
-      firstDateInTargetMonth.getUTCMonth(),
-      Math.min(day, lastDay),
-    ),
-  );
-}
-
-function startOfYear(date: Date): Date {
-  return new Date(Date.UTC(date.getUTCFullYear(), 0, 1));
-}
 
 export async function GET(request: Request) {
   try {
@@ -73,76 +45,13 @@ export async function GET(request: Request) {
 
     const startDate = parseDateOnly(query.data.startDate);
     const endDate = parseDateOnly(query.data.endDate);
-    const previousStartDate = shiftMonthClamped(startDate, -1);
-    const previousEndDate = shiftMonthClamped(endDate, -1);
-    const cumulativeStartDate = startOfYear(endDate);
-
-    const fetchStartDate =
-      previousStartDate < cumulativeStartDate
-        ? previousStartDate
-        : cumulativeStartDate;
-
-    const shifts = await prisma.shift.findMany({
-      where: {
-        workplace: { userId: current.user.id },
-        date: {
-          gte: fetchStartDate,
-          lte: endDate,
-        },
-      },
-      include: {
-        lessonRange: true,
-        workplace: {
-          select: {
-            id: true,
-            name: true,
-            color: true,
-          },
-        },
-      },
-      orderBy: [{ date: "asc" }, { startTime: "asc" }],
-    });
-
-    const workplaceIds = Array.from(
-      new Set(shifts.map((shift) => shift.workplaceId)),
-    );
-
-    const payrollRules = workplaceIds.length
-      ? await prisma.payrollRule.findMany({
-          where: {
-            workplaceId: {
-              in: workplaceIds,
-            },
-          },
-          orderBy: [{ workplaceId: "asc" }, { startDate: "asc" }],
-        })
-      : [];
-
-    const currentSummary = summarizeByPeriod(
-      shifts,
-      payrollRules,
+    const summary = await getPayrollSummaryForUser(
+      current.user.id,
       startDate,
       endDate,
     );
-    const previousSummary = summarizeByPeriod(
-      shifts,
-      payrollRules,
-      previousStartDate,
-      previousEndDate,
-    );
-    const cumulativeSummary = summarizeByPeriod(
-      shifts,
-      payrollRules,
-      cumulativeStartDate,
-      endDate,
-    );
 
-    return NextResponse.json({
-      ...currentSummary,
-      previousMonthWage: previousSummary.totalWage,
-      currentMonthCumulative: cumulativeSummary.totalWage,
-      yearlyTotal: cumulativeSummary.totalWage,
-    });
+    return NextResponse.json(summary);
   } catch (error) {
     console.error("GET /api/payroll/summary failed", error);
     return jsonError("給与集計の取得に失敗しました", 500);
