@@ -629,7 +629,7 @@ Background Worker がジョブを非同期処理。
 
 ### T3-2: ShiftForm / BulkShiftForm の next/dynamic 遅延ロード
 
-**Status**: TODO  
+**Status**: COMPLETED  
 **Size**: S  
 **Type**: refactor  
 **Priority**: P2-2

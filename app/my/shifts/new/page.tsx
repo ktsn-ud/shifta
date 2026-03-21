@@ -1,7 +1,15 @@
 "use client";
 
+import dynamic from "next/dynamic";
 import { useSearchParams } from "next/navigation";
-import { ShiftForm } from "@/components/shifts/ShiftForm";
+import { NewShiftFormLoadingSkeleton } from "@/components/shifts/ShiftFormLoadingSkeleton";
+
+const ShiftForm = dynamic(
+  () => import("@/components/shifts/ShiftForm").then((mod) => mod.ShiftForm),
+  {
+    loading: () => <NewShiftFormLoadingSkeleton />,
+  },
+);
 
 export default function NewShiftPage() {
   const searchParams = useSearchParams();
