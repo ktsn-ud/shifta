@@ -1,0 +1,240 @@
+"use client";
+
+import { useCallback, useState } from "react";
+import { toast } from "sonner";
+import { ConfirmShiftCard } from "@/components/shifts/ConfirmShiftCard";
+import {
+  ConfirmedShiftTableSkeleton,
+  UnconfirmedShiftCardsSkeleton,
+} from "@/components/shifts/ShiftConfirmLoadingSkeleton";
+import { ConfirmedShiftsList } from "@/components/shifts/ConfirmedShiftsList";
+import {
+  type ConfirmedShiftWorkplaceGroup,
+  type UnconfirmedShiftItem,
+} from "@/components/shifts/shift-confirmation-types";
+
+type UnconfirmedShiftApiResponse = {
+  shifts: Array<{
+    id: string;
+    date: string;
+    startTime: string;
+    endTime: string;
+    breakMinutes: number;
+    isConfirmed: boolean;
+    workplace: {
+      id: string;
+      name: string;
+      color: string;
+    };
+  }>;
+};
+
+type ConfirmedShiftApiResponse = {
+  shifts: Array<{
+    id: string;
+    date: string;
+    startTime: string;
+    endTime: string;
+    breakMinutes: number;
+    workDurationHours: number;
+    wage: number | null;
+    isConfirmed: boolean;
+    workplace: {
+      id: string;
+      name: string;
+      color: string;
+    };
+  }>;
+};
+
+type ShiftConfirmPageClientProps = {
+  initialUnconfirmedShifts: UnconfirmedShiftItem[];
+  initialConfirmedShiftGroups: ConfirmedShiftWorkplaceGroup[];
+};
+
+function parseDateOnly(value: string): Date {
+  const [year, month, day] = value.split("-").map((part) => Number(part));
+  return new Date(Date.UTC(year, month - 1, day));
+}
+
+function formatDateWithWeekday(dateOnly: string): string {
+  return new Intl.DateTimeFormat("ja-JP", {
+    year: "numeric",
+    month: "long",
+    day: "numeric",
+    weekday: "short",
+    timeZone: "UTC",
+  }).format(parseDateOnly(dateOnly));
+}
+
+export function ShiftConfirmPageClient({
+  initialUnconfirmedShifts,
+  initialConfirmedShiftGroups,
+}: ShiftConfirmPageClientProps) {
+  const [unconfirmedShifts, setUnconfirmedShifts] = useState<
+    UnconfirmedShiftItem[]
+  >(initialUnconfirmedShifts);
+  const [confirmedShiftGroups, setConfirmedShiftGroups] = useState<
+    ConfirmedShiftWorkplaceGroup[]
+  >(initialConfirmedShiftGroups);
+  const [isLoading, setIsLoading] = useState(false);
+  const [errorMessage, setErrorMessage] = useState<string | null>(null);
+
+  const loadShiftConfirmationData = useCallback(async () => {
+    setIsLoading(true);
+    setErrorMessage(null);
+
+    try {
+      const [unconfirmedResponse, confirmedResponse] = await Promise.all([
+        fetch("/api/shifts/unconfirmed", {
+          cache: "no-store",
+        }),
+        fetch("/api/shifts/confirmed-current-month", {
+          cache: "no-store",
+        }),
+      ]);
+
+      if (unconfirmedResponse.ok === false) {
+        throw new Error("UNCONFIRMED_SHIFTS_FETCH_FAILED");
+      }
+
+      if (confirmedResponse.ok === false) {
+        throw new Error("CONFIRMED_SHIFTS_FETCH_FAILED");
+      }
+
+      const unconfirmedPayload = (await unconfirmedResponse.json()) as
+        | UnconfirmedShiftApiResponse
+        | undefined;
+      const confirmedPayload = (await confirmedResponse.json()) as
+        | ConfirmedShiftApiResponse
+        | undefined;
+
+      if (!unconfirmedPayload || !Array.isArray(unconfirmedPayload.shifts)) {
+        throw new Error("UNCONFIRMED_SHIFTS_RESPONSE_INVALID");
+      }
+
+      if (!confirmedPayload || !Array.isArray(confirmedPayload.shifts)) {
+        throw new Error("CONFIRMED_SHIFTS_RESPONSE_INVALID");
+      }
+
+      setUnconfirmedShifts(
+        unconfirmedPayload.shifts.map((shift) => ({
+          id: shift.id,
+          date: formatDateWithWeekday(shift.date),
+          workplaceName: shift.workplace.name,
+          workplaceColor: shift.workplace.color,
+          startTime: shift.startTime,
+          endTime: shift.endTime,
+          breakMinutes: shift.breakMinutes,
+        })),
+      );
+
+      const grouped = new Map<string, ConfirmedShiftWorkplaceGroup>();
+
+      for (const shift of confirmedPayload.shifts) {
+        const existing = grouped.get(shift.workplace.id);
+        if (existing) {
+          existing.shifts.push({
+            id: shift.id,
+            date: formatDateWithWeekday(shift.date),
+            startTime: shift.startTime,
+            endTime: shift.endTime,
+            workDurationHours: shift.workDurationHours,
+            wage: shift.wage,
+          });
+          continue;
+        }
+
+        grouped.set(shift.workplace.id, {
+          workplaceId: shift.workplace.id,
+          workplaceName: shift.workplace.name,
+          workplaceColor: shift.workplace.color,
+          shifts: [
+            {
+              id: shift.id,
+              date: formatDateWithWeekday(shift.date),
+              startTime: shift.startTime,
+              endTime: shift.endTime,
+              workDurationHours: shift.workDurationHours,
+              wage: shift.wage,
+            },
+          ],
+        });
+      }
+
+      setConfirmedShiftGroups(Array.from(grouped.values()));
+    } catch (error) {
+      console.error("failed to fetch shift confirmation data", error);
+      setUnconfirmedShifts([]);
+      setConfirmedShiftGroups([]);
+      setErrorMessage("シフト確定ページのデータ取得に失敗しました。");
+      toast.error("シフト確定ページのデータ取得に失敗しました。");
+    } finally {
+      setIsLoading(false);
+    }
+  }, []);
+
+  return (
+    <section className="flex flex-col gap-6 p-4 md:h-[calc(100svh-var(--header-height))] md:overflow-hidden md:p-6">
+      <header>
+        <h2 className="text-xl font-semibold">シフト確定</h2>
+        <p className="mt-1 text-sm text-muted-foreground">
+          未確定シフトの時刻調整と確定を行えます。
+        </p>
+      </header>
+
+      {errorMessage ? (
+        <p className="rounded-md border border-destructive/40 bg-destructive/5 px-3 py-2 text-sm text-destructive">
+          {errorMessage}
+        </p>
+      ) : null}
+
+      <div className="flex flex-col gap-6 md:min-h-0 md:flex-1 md:grid md:grid-cols-[minmax(0,1fr)_1px_minmax(0,1fr)] md:gap-6">
+        <section className="space-y-3 md:flex md:min-h-0 md:flex-col">
+          <h3 className="text-lg font-semibold">未確定シフト</h3>
+          <div className="md:min-h-0 md:overflow-y-auto md:pr-2">
+            {isLoading ? (
+              <UnconfirmedShiftCardsSkeleton />
+            ) : unconfirmedShifts.length === 0 ? (
+              <p className="text-sm text-muted-foreground">
+                未確定シフトはまだありません
+              </p>
+            ) : (
+              <div className="p-1">
+                <div className="flex flex-col gap-3">
+                  {unconfirmedShifts.map((shift) => (
+                    <ConfirmShiftCard
+                      key={shift.id}
+                      shift={shift}
+                      onActionCompleted={loadShiftConfirmationData}
+                    />
+                  ))}
+                </div>
+              </div>
+            )}
+          </div>
+        </section>
+
+        <div
+          aria-hidden="true"
+          className="hidden w-px self-stretch bg-border md:mb-[15px] md:block"
+        />
+
+        <section className="space-y-3 md:flex md:min-h-0 md:flex-col">
+          <h3 className="text-lg font-semibold">今月の確定済みシフト</h3>
+          <div className="md:min-h-0 md:overflow-y-auto md:pr-2">
+            {isLoading ? (
+              <ConfirmedShiftTableSkeleton />
+            ) : confirmedShiftGroups.length > 0 ? (
+              <ConfirmedShiftsList groups={confirmedShiftGroups} />
+            ) : (
+              <p className="text-sm text-muted-foreground">
+                今月の確定済みシフトはまだありません
+              </p>
+            )}
+          </div>
+        </section>
+      </div>
+    </section>
+  );
+}
