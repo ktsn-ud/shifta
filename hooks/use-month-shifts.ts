@@ -7,6 +7,15 @@ import {
   toDateOnlyString,
 } from "@/lib/calendar/date";
 
+const MONTH_SHIFTS_CACHE_TTL_MS = 5 * 60 * 1000;
+
+type MonthShiftsCacheEntry = {
+  expiresAt: number;
+  shifts: MonthShift[];
+};
+
+const monthShiftsCache = new Map<string, MonthShiftsCacheEntry>();
+
 type MonthShift = {
   id: string;
   workplaceId: string;
@@ -58,6 +67,34 @@ function isShiftListResponse(value: unknown): value is ShiftListResponse {
   return false;
 }
 
+function toMonthShiftsCacheKey(startDate: string, endDate: string): string {
+  return `${startDate}:${endDate}`;
+}
+
+function readMonthShiftsCache(
+  cacheKey: string,
+  now: number = Date.now(),
+): MonthShift[] | null {
+  const cached = monthShiftsCache.get(cacheKey);
+  if (!cached) {
+    return null;
+  }
+
+  if (cached.expiresAt <= now) {
+    monthShiftsCache.delete(cacheKey);
+    return null;
+  }
+
+  return cached.shifts;
+}
+
+function writeMonthShiftsCache(cacheKey: string, shifts: MonthShift[]): void {
+  monthShiftsCache.set(cacheKey, {
+    shifts,
+    expiresAt: Date.now() + MONTH_SHIFTS_CACHE_TTL_MS,
+  });
+}
+
 export function summarizeShifts(shifts: MonthShift[]): ShiftSummary {
   return shifts.reduce<ShiftSummary>(
     (summary, shift) => {
@@ -96,10 +133,15 @@ export function useMonthShifts(
     [month],
   );
   const endDate = useMemo(() => toDateOnlyString(endOfMonth(month)), [month]);
+  const cacheKey = useMemo(
+    () => toMonthShiftsCacheKey(startDate, endDate),
+    [endDate, startDate],
+  );
 
   const reload = useCallback(() => {
+    monthShiftsCache.delete(cacheKey);
     setReloadCount((current) => current + 1);
-  }, []);
+  }, [cacheKey]);
 
   useEffect(() => {
     const canUseInitialData =
@@ -109,10 +151,21 @@ export function useMonthShifts(
       initialEndDate === endDate;
 
     if (canUseInitialData) {
+      writeMonthShiftsCache(cacheKey, initialShifts ?? []);
       setErrorMessage(null);
       setShifts(initialShifts ?? []);
       setIsLoading(false);
       return;
+    }
+
+    if (reloadCount === 0) {
+      const cachedShifts = readMonthShiftsCache(cacheKey);
+      if (cachedShifts) {
+        setErrorMessage(null);
+        setShifts(cachedShifts);
+        setIsLoading(false);
+        return;
+      }
     }
 
     const abortController = new AbortController();
@@ -130,7 +183,6 @@ export function useMonthShifts(
 
         const response = await fetch(`/api/shifts?${params.toString()}`, {
           signal: abortController.signal,
-          cache: "no-store",
         });
 
         if (response.ok === false) {
@@ -146,6 +198,7 @@ export function useMonthShifts(
         }
 
         setShifts(payload.data);
+        writeMonthShiftsCache(cacheKey, payload.data);
       } catch (error) {
         if (abortController.signal.aborted) {
           return;
@@ -169,6 +222,7 @@ export function useMonthShifts(
   }, [
     endDate,
     hasInitialData,
+    cacheKey,
     initialEndDate,
     initialShifts,
     initialStartDate,

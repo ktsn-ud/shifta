@@ -44,6 +44,15 @@ type SummaryPageClientProps = {
   initialEndDate: string;
 };
 
+const SUMMARY_CACHE_TTL_MS = 5 * 60 * 1000;
+
+type SummaryCacheEntry = {
+  expiresAt: number;
+  summary: PayrollSummaryResult;
+};
+
+const summaryCache = new Map<string, SummaryCacheEntry>();
+
 const chartConfig = {
   wage: {
     label: "給与",
@@ -61,6 +70,34 @@ function formatCurrency(value: number): string {
 
 function formatHours(value: number): string {
   return `${value.toFixed(2)} 時間`;
+}
+
+function toSummaryCacheKey(startDate: string, endDate: string): string {
+  return `${startDate}:${endDate}`;
+}
+
+function readSummaryCache(cacheKey: string): PayrollSummaryResult | null {
+  const cached = summaryCache.get(cacheKey);
+  if (!cached) {
+    return null;
+  }
+
+  if (cached.expiresAt <= Date.now()) {
+    summaryCache.delete(cacheKey);
+    return null;
+  }
+
+  return cached.summary;
+}
+
+function writeSummaryCache(
+  cacheKey: string,
+  summary: PayrollSummaryResult,
+): void {
+  summaryCache.set(cacheKey, {
+    summary,
+    expiresAt: Date.now() + SUMMARY_CACHE_TTL_MS,
+  });
 }
 
 export function SummaryPageClient({
@@ -131,8 +168,24 @@ export function SummaryPageClient({
       targetPeriod.endDate === initialEndDate;
 
     if (matchesInitialPeriod) {
+      writeSummaryCache(
+        toSummaryCacheKey(initialStartDate, initialEndDate),
+        initialSummary,
+      );
       setErrorMessage(null);
       setSummary(initialSummary);
+      setIsLoading(false);
+      return;
+    }
+
+    const cacheKey = toSummaryCacheKey(
+      targetPeriod.startDate,
+      targetPeriod.endDate,
+    );
+    const cachedSummary = readSummaryCache(cacheKey);
+    if (cachedSummary) {
+      setErrorMessage(null);
+      setSummary(cachedSummary);
       setIsLoading(false);
       return;
     }
@@ -153,7 +206,6 @@ export function SummaryPageClient({
           `/api/payroll/summary?${params.toString()}`,
           {
             signal: abortController.signal,
-            cache: "no-store",
           },
         );
 
@@ -171,7 +223,9 @@ export function SummaryPageClient({
           throw new Error("PAYROLL_SUMMARY_RESPONSE_INVALID");
         }
 
-        setSummary(payload as PayrollSummaryResult);
+        const parsedSummary = payload as PayrollSummaryResult;
+        writeSummaryCache(cacheKey, parsedSummary);
+        setSummary(parsedSummary);
       } catch (error) {
         if (abortController.signal.aborted) {
           return;
