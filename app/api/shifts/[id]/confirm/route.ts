@@ -1,4 +1,4 @@
-import { NextResponse } from "next/server";
+import { after, NextResponse } from "next/server";
 import { z } from "zod";
 import { requireCurrentUser } from "@/lib/api/current-user";
 import { TIME_ONLY_REGEX, toMinutes } from "@/lib/api/date-time";
@@ -94,7 +94,17 @@ export async function PATCH(request: Request, context: Context) {
       },
     });
 
-    const syncResult = await syncShiftAfterUpdate(updated.id, current.user.id);
+    after(async () => {
+      try {
+        await syncShiftAfterUpdate(updated.id, current.user.id);
+      } catch (error) {
+        console.error("PATCH /api/shifts/:id/confirm background sync failed", {
+          userId: current.user.id,
+          shiftId: updated.id,
+          error,
+        });
+      }
+    });
     const responsePayload = {
       id: updated.id,
       isConfirmed: updated.isConfirmed,
@@ -106,7 +116,7 @@ export async function PATCH(request: Request, context: Context) {
 
     return NextResponse.json({
       ...responsePayload,
-      sync: syncResult,
+      syncStatus: "pending",
     });
   } catch (error) {
     console.error("PATCH /api/shifts/:id/confirm failed", error);
