@@ -62,6 +62,9 @@ const workplaceDeleteResponseSchema = z.object({
 });
 
 type Workplace = z.infer<typeof workplaceSchema>;
+type WorkplaceListProps = {
+  initialWorkplaces?: Workplace[];
+};
 
 async function readApiErrorMessage(
   response: Response,
@@ -79,9 +82,12 @@ async function readApiErrorMessage(
   return fallback;
 }
 
-export function WorkplaceList() {
-  const [workplaces, setWorkplaces] = useState<Workplace[]>([]);
-  const [isLoading, setIsLoading] = useState(true);
+export function WorkplaceList({ initialWorkplaces }: WorkplaceListProps) {
+  const hasInitialData = initialWorkplaces !== undefined;
+  const [workplaces, setWorkplaces] = useState<Workplace[]>(
+    () => initialWorkplaces ?? [],
+  );
+  const [isLoading, setIsLoading] = useState(() => !hasInitialData);
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
   const [infoMessage, setInfoMessage] = useState<string | null>(null);
   const [deletingId, setDeletingId] = useState<string | null>(null);
@@ -94,6 +100,12 @@ export function WorkplaceList() {
   );
 
   useEffect(() => {
+    if (hasInitialData) {
+      setErrorMessage(null);
+      setIsLoading(false);
+      return;
+    }
+
     const abortController = new AbortController();
 
     async function fetchWorkplaces() {
@@ -147,7 +159,7 @@ export function WorkplaceList() {
     return () => {
       abortController.abort();
     };
-  }, []);
+  }, [hasInitialData]);
 
   const confirmDelete = async () => {
     if (!deletingTarget) {
