@@ -17,6 +17,7 @@ import {
   CalendarLoadingSkeleton,
   StatCardsLoadingSkeleton,
 } from "@/components/ui/loading-skeletons";
+import { Skeleton } from "@/components/ui/skeleton";
 import {
   addMonths,
   dateFromDateKey,
@@ -61,6 +62,26 @@ function formatSummaryPeriodLabel(month: Date): string {
 
   const monthLabel = `${month.getMonth() + 1}月`;
   return isSameYear ? monthLabel : `${month.getFullYear()}年${monthLabel}`;
+}
+
+export function DashboardPageLoadingSkeleton() {
+  return (
+    <section className="space-y-6 p-4 md:p-6">
+      <header className="flex flex-wrap items-center justify-between gap-3">
+        <div className="space-y-2">
+          <Skeleton className="h-7 w-36" />
+          <Skeleton className="h-4 w-72" />
+        </div>
+        <div className="flex gap-2">
+          <Skeleton className="h-9 w-24" />
+          <Skeleton className="h-9 w-28" />
+          <Skeleton className="h-9 w-20" />
+        </div>
+      </header>
+      <StatCardsLoadingSkeleton />
+      <CalendarLoadingSkeleton />
+    </section>
+  );
 }
 
 export function DashboardPageClient({

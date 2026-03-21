@@ -81,21 +81,32 @@ function ConfirmedShiftTableSkeleton({
 
 export function ShiftConfirmPageLoadingSkeleton() {
   return (
-    <section className="space-y-6 p-4 md:p-6">
+    <section className="flex flex-col gap-6 p-4 md:h-[calc(100svh-var(--header-height))] md:overflow-hidden md:p-6">
       <header>
         <Skeleton className="h-7 w-28" />
         <Skeleton className="mt-2 h-4 w-72" />
       </header>
 
-      <section className="space-y-3">
-        <Skeleton className="h-6 w-32" />
-        <UnconfirmedShiftCardsSkeleton />
-      </section>
+      <div className="flex flex-col gap-6 md:min-h-0 md:flex-1 md:grid md:grid-cols-[minmax(0,1fr)_1px_minmax(0,1fr)] md:gap-6">
+        <section className="space-y-3 md:flex md:min-h-0 md:flex-col">
+          <Skeleton className="h-6 w-32" />
+          <div className="md:min-h-0 md:overflow-y-auto md:pr-2">
+            <UnconfirmedShiftCardsSkeleton />
+          </div>
+        </section>
 
-      <section className="space-y-3">
-        <Skeleton className="h-6 w-44" />
-        <ConfirmedShiftTableSkeleton />
-      </section>
+        <div
+          aria-hidden="true"
+          className="hidden w-px self-stretch bg-border md:mb-[15px] md:block"
+        />
+
+        <section className="space-y-3 md:flex md:min-h-0 md:flex-col">
+          <Skeleton className="h-6 w-44" />
+          <div className="md:min-h-0 md:overflow-y-auto md:pr-2">
+            <ConfirmedShiftTableSkeleton />
+          </div>
+        </section>
+      </div>
     </section>
   );
 }

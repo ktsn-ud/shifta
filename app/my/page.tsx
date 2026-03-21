@@ -1,10 +1,9 @@
 import { Suspense } from "react";
 import { redirect } from "next/navigation";
-import { DashboardPageClient } from "@/components/dashboard/dashboard-page-client";
 import {
-  CalendarLoadingSkeleton,
-  StatCardsLoadingSkeleton,
-} from "@/components/ui/loading-skeletons";
+  DashboardPageClient,
+  DashboardPageLoadingSkeleton,
+} from "@/components/dashboard/dashboard-page-client";
 import { requireCurrentUser } from "@/lib/api/current-user";
 import { parseDateOnly } from "@/lib/api/date-time";
 import {
@@ -30,12 +29,7 @@ type ShiftWithRelations = Prisma.ShiftGetPayload<{
 }>;
 
 function DashboardPageFallback() {
-  return (
-    <section className="space-y-6 p-4 md:p-6">
-      <StatCardsLoadingSkeleton />
-      <CalendarLoadingSkeleton />
-    </section>
-  );
+  return <DashboardPageLoadingSkeleton />;
 }
 
 async function getMonthShiftsWithEstimate(

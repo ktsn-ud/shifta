@@ -100,6 +100,64 @@ function writeSummaryCache(
   });
 }
 
+export function SummaryPageLoadingSkeleton() {
+  return (
+    <section className="space-y-6 p-4 md:p-6">
+      <header className="space-y-3">
+        <div className="space-y-2">
+          <Skeleton className="h-7 w-36" />
+          <Skeleton className="h-4 w-72" />
+        </div>
+        <div className="flex flex-wrap items-center gap-2">
+          <Skeleton className="h-8 w-16" />
+          <Skeleton className="h-8 w-24" />
+          <Skeleton className="h-8 w-20" />
+          <Skeleton className="h-10 w-44" />
+        </div>
+      </header>
+
+      <StatCardsLoadingSkeleton count={4} className="lg:grid-cols-4" />
+      <div className="grid gap-4 lg:grid-cols-3">
+        {Array.from({ length: 3 }).map((_, index) => (
+          <Card size="sm" key={`summary-sub-card-${index}`}>
+            <CardHeader>
+              <Skeleton className="h-5 w-28" />
+              <Skeleton className="h-4 w-40" />
+            </CardHeader>
+            <CardContent className="flex flex-col gap-2">
+              <Skeleton className="h-8 w-32" />
+              <Skeleton className="h-4 w-24" />
+            </CardContent>
+          </Card>
+        ))}
+      </div>
+      <div className="grid gap-4 xl:grid-cols-2">
+        <Card>
+          <CardHeader>
+            <Skeleton className="h-5 w-32" />
+            <Skeleton className="h-4 w-40" />
+          </CardHeader>
+          <CardContent>
+            <Skeleton className="h-[280px] w-full" />
+          </CardContent>
+        </Card>
+        <Card>
+          <CardHeader>
+            <Skeleton className="h-5 w-32" />
+            <Skeleton className="h-4 w-40" />
+          </CardHeader>
+          <CardContent className="flex flex-col gap-3">
+            <Skeleton className="h-10 w-full" />
+            <Skeleton className="h-9 w-full" />
+            <Skeleton className="h-9 w-full" />
+            <Skeleton className="h-9 w-full" />
+          </CardContent>
+        </Card>
+      </div>
+    </section>
+  );
+}
+
 export function SummaryPageClient({
   initialSummary,
   initialStartDate,
@@ -254,6 +312,10 @@ export function SummaryPageClient({
     targetPeriod.startDate,
   ]);
 
+  if (isLoading) {
+    return <SummaryPageLoadingSkeleton />;
+  }
+
   return (
     <section className="space-y-6 p-4 md:p-6">
       <header className="space-y-3">
@@ -336,48 +398,7 @@ export function SummaryPageClient({
         </p>
       ) : null}
 
-      {isLoading ? (
-        <>
-          <StatCardsLoadingSkeleton count={4} className="lg:grid-cols-4" />
-          <div className="grid gap-4 lg:grid-cols-3">
-            {Array.from({ length: 3 }).map((_, index) => (
-              <Card size="sm" key={`summary-sub-card-${index}`}>
-                <CardHeader>
-                  <Skeleton className="h-5 w-28" />
-                  <Skeleton className="h-4 w-40" />
-                </CardHeader>
-                <CardContent className="flex flex-col gap-2">
-                  <Skeleton className="h-8 w-32" />
-                  <Skeleton className="h-4 w-24" />
-                </CardContent>
-              </Card>
-            ))}
-          </div>
-          <div className="grid gap-4 xl:grid-cols-2">
-            <Card>
-              <CardHeader>
-                <Skeleton className="h-5 w-32" />
-                <Skeleton className="h-4 w-40" />
-              </CardHeader>
-              <CardContent>
-                <Skeleton className="h-[280px] w-full" />
-              </CardContent>
-            </Card>
-            <Card>
-              <CardHeader>
-                <Skeleton className="h-5 w-32" />
-                <Skeleton className="h-4 w-40" />
-              </CardHeader>
-              <CardContent className="flex flex-col gap-3">
-                <Skeleton className="h-10 w-full" />
-                <Skeleton className="h-9 w-full" />
-                <Skeleton className="h-9 w-full" />
-                <Skeleton className="h-9 w-full" />
-              </CardContent>
-            </Card>
-          </div>
-        </>
-      ) : summary ? (
+      {summary ? (
         <>
           <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
             <Card size="sm">

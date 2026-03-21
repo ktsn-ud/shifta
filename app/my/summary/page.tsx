@@ -1,7 +1,9 @@
 import { Suspense } from "react";
 import { redirect } from "next/navigation";
-import { SummaryPageClient } from "@/components/summary/summary-page-client";
-import { StatCardsLoadingSkeleton } from "@/components/ui/loading-skeletons";
+import {
+  SummaryPageClient,
+  SummaryPageLoadingSkeleton,
+} from "@/components/summary/summary-page-client";
 import { requireCurrentUser } from "@/lib/api/current-user";
 import { parseDateOnly } from "@/lib/api/date-time";
 import {
@@ -12,11 +14,7 @@ import {
 import { getPayrollSummaryForUser } from "@/lib/payroll/summary";
 
 function SummaryPageFallback() {
-  return (
-    <section className="space-y-6 p-4 md:p-6">
-      <StatCardsLoadingSkeleton count={4} className="lg:grid-cols-4" />
-    </section>
-  );
+  return <SummaryPageLoadingSkeleton />;
 }
 
 async function SummaryPageContent() {

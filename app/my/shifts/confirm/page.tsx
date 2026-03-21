@@ -1,9 +1,6 @@
 import { Suspense } from "react";
 import { redirect } from "next/navigation";
-import {
-  ConfirmedShiftTableSkeleton,
-  UnconfirmedShiftCardsSkeleton,
-} from "@/components/shifts/ShiftConfirmLoadingSkeleton";
+import { ShiftConfirmPageLoadingSkeleton } from "@/components/shifts/ShiftConfirmLoadingSkeleton";
 import { ShiftConfirmPageClient } from "@/components/shifts/shift-confirm-page-client";
 import {
   type ConfirmedShiftWorkplaceGroup,
@@ -202,20 +199,7 @@ async function getShiftConfirmationInitialData(userId: string): Promise<{
 }
 
 function ShiftConfirmPageFallback() {
-  return (
-    <section className="flex flex-col gap-6 p-4 md:h-[calc(100svh-var(--header-height))] md:overflow-hidden md:p-6">
-      <div className="flex flex-col gap-6 md:min-h-0 md:flex-1 md:grid md:grid-cols-[minmax(0,1fr)_1px_minmax(0,1fr)] md:gap-6">
-        <section className="space-y-3 md:flex md:min-h-0 md:flex-col">
-          <h3 className="text-lg font-semibold">未確定シフト</h3>
-          <UnconfirmedShiftCardsSkeleton />
-        </section>
-        <section className="space-y-3 md:flex md:min-h-0 md:flex-col">
-          <h3 className="text-lg font-semibold">今月の確定済みシフト</h3>
-          <ConfirmedShiftTableSkeleton />
-        </section>
-      </div>
-    </section>
-  );
+  return <ShiftConfirmPageLoadingSkeleton />;
 }
 
 async function ShiftConfirmPageContent() {
