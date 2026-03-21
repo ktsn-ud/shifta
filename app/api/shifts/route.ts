@@ -1,5 +1,5 @@
 import { type Prisma } from "@/lib/generated/prisma/client";
-import { NextResponse } from "next/server";
+import { after, NextResponse } from "next/server";
 import { z } from "zod";
 import { requireCurrentUser } from "@/lib/api/current-user";
 import { DATE_ONLY_REGEX, parseDateOnly } from "@/lib/api/date-time";
@@ -97,9 +97,19 @@ export async function POST(request: Request) {
       });
     });
 
-    const syncResult = created
-      ? await syncShiftAfterCreate(created.id, current.user.id)
-      : null;
+    if (created) {
+      after(async () => {
+        try {
+          await syncShiftAfterCreate(created.id, current.user.id);
+        } catch (error) {
+          console.error("POST /api/shifts background sync failed", {
+            userId: current.user.id,
+            shiftId: created.id,
+            error,
+          });
+        }
+      });
+    }
 
     const latest = created
       ? await prisma.shift.findUnique({
@@ -112,7 +122,10 @@ export async function POST(request: Request) {
       : null;
 
     return NextResponse.json(
-      { data: latest, sync: syncResult },
+      {
+        data: latest,
+        syncStatus: latest ? "pending" : null,
+      },
       { status: 201 },
     );
   } catch (error) {
