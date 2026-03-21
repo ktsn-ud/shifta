@@ -183,9 +183,7 @@ export function SiteHeader() {
                     {isLast || item.href === undefined ? (
                       <BreadcrumbPage>{item.title}</BreadcrumbPage>
                     ) : (
-                      <BreadcrumbLink
-                        render={<Link href={item.href} prefetch={false} />}
-                      >
+                      <BreadcrumbLink render={<Link href={item.href} />}>
                         {item.title}
                       </BreadcrumbLink>
                     )}

@@ -79,7 +79,7 @@ export function AppSidebar({
             <SidebarMenuButton
               size="lg"
               className="data-[slot=sidebar-menu-button]:p-1.5!"
-              render={<Link href="/my" prefetch={false} />}
+              render={<Link href="/my" />}
               isActive={pathname === "/my"}
             >
               <CommandIcon className="size-5" />
@@ -99,7 +99,7 @@ export function AppSidebar({
                   <SidebarMenuButton
                     tooltip={item.title}
                     isActive={isActivePath(pathname, item.href)}
-                    render={<Link href={item.href} prefetch={false} />}
+                    render={<Link href={item.href} />}
                   >
                     {item.icon}
                     <span>{item.title}</span>
