@@ -7,7 +7,9 @@ personality = "pragmatic"
 [mcp_servers.next-devtools]
 command = "npx"
 args = ["-y", "next-devtools-mcp@latest"]
+startup_timeout_sec = 30
 
 [mcp_servers.shadcn]
 command = "npx"
 args = ["shadcn@latest", "mcp"]
+startup_timeout_sec = 30
