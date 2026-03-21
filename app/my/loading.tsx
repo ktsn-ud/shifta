@@ -21,13 +21,31 @@ export default function Loading() {
         ))}
       </div>
 
+      <div className="grid gap-4 lg:grid-cols-2">
+        {Array.from({ length: 2 }).map((_, blockIndex) => (
+          <div
+            key={`my-loading-panel-${blockIndex}`}
+            className="rounded-xl border p-4"
+          >
+            <Skeleton className="h-6 w-36" />
+            <div className="mt-4 space-y-3">
+              {Array.from({ length: 4 }).map((__, rowIndex) => (
+                <Skeleton
+                  key={`my-loading-panel-${blockIndex}-row-${rowIndex}`}
+                  className="h-4 w-full"
+                />
+              ))}
+            </div>
+          </div>
+        ))}
+      </div>
+
       <div className="rounded-xl border p-4">
-        <Skeleton className="h-10 w-full" />
-        <div className="mt-4 grid grid-cols-7 gap-2">
-          {Array.from({ length: 35 }).map((_, index) => (
+        <div className="grid gap-3 sm:grid-cols-2">
+          {Array.from({ length: 4 }).map((_, index) => (
             <Skeleton
-              key={`my-loading-grid-${index}`}
-              className="h-20 w-full"
+              key={`my-loading-list-${index}`}
+              className="h-14 w-full"
             />
           ))}
         </div>
