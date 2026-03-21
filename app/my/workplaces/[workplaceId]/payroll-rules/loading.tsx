@@ -1,4 +1,4 @@
-import { TableLoadingSkeleton } from "@/components/ui/loading-skeletons";
+import { Card, CardContent, CardHeader } from "@/components/ui/card";
 import { Skeleton } from "@/components/ui/skeleton";
 
 export default function Loading() {
@@ -15,7 +15,21 @@ export default function Loading() {
         </div>
       </header>
 
-      <TableLoadingSkeleton rows={5} columns={5} />
+      <Card>
+        <CardHeader>
+          <Skeleton className="h-6 w-36" />
+          <Skeleton className="mt-2 h-4 w-80" />
+        </CardHeader>
+        <CardContent className="space-y-3">
+          <Skeleton className="h-10 w-full" />
+          {Array.from({ length: 5 }).map((_, index) => (
+            <Skeleton
+              key={`payroll-rules-loading-row-${index}`}
+              className="h-8 w-full"
+            />
+          ))}
+        </CardContent>
+      </Card>
     </section>
   );
 }

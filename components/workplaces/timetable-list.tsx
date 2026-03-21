@@ -355,7 +355,7 @@ export function TimetableList({ workplaceId }: TimetableListProps) {
       ) : null}
 
       {isLoading ? (
-        <TableLoadingSkeleton rows={5} columns={3} />
+        <TableLoadingSkeleton rows={5} columns={4} />
       ) : workplace?.type !== "CRAM_SCHOOL" ? (
         <Card>
           <CardHeader>

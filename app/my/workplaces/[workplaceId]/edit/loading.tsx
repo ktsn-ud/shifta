@@ -2,9 +2,14 @@ import { FormLoadingSkeleton } from "@/components/ui/loading-skeletons";
 
 export default function Loading() {
   return (
-    <div className="space-y-4">
-      <h1 className="text-2xl font-bold">勤務先編集</h1>
+    <section className="space-y-6 p-4 md:p-6">
+      <header className="space-y-1">
+        <h2 className="text-xl font-semibold">勤務先編集</h2>
+        <p className="text-sm text-muted-foreground">
+          勤務先名・タイプ・表示色を設定します。
+        </p>
+      </header>
       <FormLoadingSkeleton />
-    </div>
+    </section>
   );
 }
