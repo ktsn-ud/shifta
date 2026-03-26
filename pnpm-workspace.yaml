@@ -3,4 +3,4 @@ ignoredBuiltDependencies:
   - unrs-resolver
 
 overrides:
-  effect@<3.20.0: '>=3.20.0'
+  effect@<3.20.0: ">=3.20.0"
