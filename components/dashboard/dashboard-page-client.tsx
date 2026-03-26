@@ -169,7 +169,7 @@ export function DashboardPageClient({
 
       {initialUnconfirmedShiftCount > 0 ? (
         <Card className="border-amber-300/70 bg-amber-50/70">
-          <CardHeader className="gap-3 sm:flex-row sm:items-center sm:justify-between">
+          <CardHeader className="gap-3 md:flex sm:flex-row sm:items-center sm:justify-between">
             <div className="space-y-1">
               <CardTitle>シフト確定待ちがあります</CardTitle>
               <CardDescription>
