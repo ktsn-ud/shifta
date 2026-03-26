@@ -28,6 +28,12 @@ type ShiftWithRelations = Prisma.ShiftGetPayload<{
   };
 }>;
 
+function startOfUtcDay(value: Date): Date {
+  return new Date(
+    Date.UTC(value.getUTCFullYear(), value.getUTCMonth(), value.getUTCDate()),
+  );
+}
+
 function DashboardPageFallback() {
   return <DashboardPageLoadingSkeleton />;
 }
@@ -129,6 +135,20 @@ async function getMonthShiftsWithEstimate(
   });
 }
 
+async function getUnconfirmedShiftCount(userId: string): Promise<number> {
+  return prisma.shift.count({
+    where: {
+      workplace: {
+        userId,
+      },
+      date: {
+        lte: startOfUtcDay(new Date()),
+      },
+      isConfirmed: false,
+    },
+  });
+}
+
 async function DashboardPageContent() {
   const current = await requireCurrentUser();
   if ("response" in current) {
@@ -138,11 +158,10 @@ async function DashboardPageContent() {
   const currentMonth = startOfMonth(new Date());
   const startDate = toDateOnlyString(currentMonth);
   const endDate = toDateOnlyString(endOfMonth(currentMonth));
-  const initialMonthShifts = await getMonthShiftsWithEstimate(
-    current.user.id,
-    startDate,
-    endDate,
-  );
+  const [initialMonthShifts, initialUnconfirmedShiftCount] = await Promise.all([
+    getMonthShiftsWithEstimate(current.user.id, startDate, endDate),
+    getUnconfirmedShiftCount(current.user.id),
+  ]);
 
   return (
     <DashboardPageClient
@@ -150,6 +169,7 @@ async function DashboardPageContent() {
       initialMonthShifts={initialMonthShifts}
       initialMonthStartDate={startDate}
       initialMonthEndDate={endDate}
+      initialUnconfirmedShiftCount={initialUnconfirmedShiftCount}
     />
   );
 }

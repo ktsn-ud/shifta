@@ -42,6 +42,7 @@ type DashboardPageClientProps = {
   initialMonthShifts: MonthShift[];
   initialMonthStartDate: string;
   initialMonthEndDate: string;
+  initialUnconfirmedShiftCount: number;
 };
 
 function formatCurrency(value: number): string {
@@ -90,6 +91,7 @@ export function DashboardPageClient({
   initialMonthShifts,
   initialMonthStartDate,
   initialMonthEndDate,
+  initialUnconfirmedShiftCount,
 }: DashboardPageClientProps) {
   const router = useRouter();
   const [month, setMonth] = useState(() => {
@@ -164,6 +166,27 @@ export function DashboardPageClient({
           </Button>
         </div>
       </header>
+
+      {initialUnconfirmedShiftCount > 0 ? (
+        <Card className="border-amber-300/70 bg-amber-50/70">
+          <CardHeader className="gap-3 sm:flex-row sm:items-center sm:justify-between">
+            <div className="space-y-1">
+              <CardTitle>シフト確定待ちがあります</CardTitle>
+              <CardDescription>
+                本日以前の未確定シフトが {initialUnconfirmedShiftCount}{" "}
+                件あります。 シフト確定ページで確認してください。
+              </CardDescription>
+            </div>
+            <Button
+              type="button"
+              className="w-full sm:w-auto"
+              onClick={() => router.push("/my/shifts/confirm")}
+            >
+              シフト確定ページへ
+            </Button>
+          </CardHeader>
+        </Card>
+      ) : null}
 
       {isLoading ? (
         <StatCardsLoadingSkeleton />
