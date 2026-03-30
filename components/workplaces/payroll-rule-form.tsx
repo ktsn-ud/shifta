@@ -104,6 +104,23 @@ function toTimeOnly(value: string): string {
   return `${hour}:${minute}`;
 }
 
+function shiftDateKeyByDays(value: string, days: number): string {
+  const [year, month, day] = value.split("-").map((part) => Number(part));
+  if (
+    Number.isInteger(year) === false ||
+    Number.isInteger(month) === false ||
+    Number.isInteger(day) === false
+  ) {
+    return value;
+  }
+
+  const shifted = new Date(Date.UTC(year, month - 1, day + days));
+  const shiftedYear = shifted.getUTCFullYear();
+  const shiftedMonth = String(shifted.getUTCMonth() + 1).padStart(2, "0");
+  const shiftedDay = String(shifted.getUTCDate()).padStart(2, "0");
+  return `${shiftedYear}-${shiftedMonth}-${shiftedDay}`;
+}
+
 type ParsedApiError = {
   message: string;
   fieldErrors: Record<string, string>;
@@ -173,12 +190,8 @@ function validate(
     errors.startDate = "開始日は必須です。";
   }
 
-  if (
-    values.endDate &&
-    values.startDate &&
-    values.endDate <= values.startDate
-  ) {
-    errors.endDate = "終了日は開始日より後の日付を指定してください。";
+  if (values.endDate && values.startDate && values.endDate < values.startDate) {
+    errors.endDate = "終了日は開始日以降の日付を指定してください。";
   }
 
   if (workplaceType === "CRAM_SCHOOL") {
@@ -352,7 +365,9 @@ export function PayrollRuleForm({
           const rule = parsedRule.data.data;
           setValues({
             startDate: dateKeyFromApiDate(rule.startDate),
-            endDate: rule.endDate ? dateKeyFromApiDate(rule.endDate) : "",
+            endDate: rule.endDate
+              ? shiftDateKeyByDays(dateKeyFromApiDate(rule.endDate), -1)
+              : "",
             baseHourlyWage: toNumberString(rule.baseHourlyWage),
             perLessonWage: toNumberString(rule.perLessonWage),
             holidayHourlyWage: toNumberString(rule.holidayHourlyWage),
@@ -412,7 +427,7 @@ export function PayrollRuleForm({
 
     const payload = {
       startDate: values.startDate,
-      endDate: values.endDate ? values.endDate : null,
+      endDate: values.endDate ? shiftDateKeyByDays(values.endDate, 1) : null,
       baseHourlyWage: Number(values.baseHourlyWage),
       perLessonWage:
         workplaceType === "CRAM_SCHOOL" ? Number(values.perLessonWage) : null,
