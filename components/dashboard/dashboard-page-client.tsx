@@ -2,6 +2,7 @@
 
 import { useMemo, useState } from "react";
 import { useRouter } from "next/navigation";
+import { AlertTriangleIcon, CheckCircle2Icon, RefreshCwIcon } from "lucide-react";
 import { toast } from "sonner";
 import { MonthCalendar } from "@/components/calendar/MonthCalendar";
 import { ShiftListModal } from "@/components/calendar/ShiftListModal";
@@ -130,10 +131,98 @@ export function DashboardPageClient({
   );
   const selectedDateKey = toDateKey(selectedDate);
   const selectedDateShifts = shiftsByDate.get(selectedDateKey) ?? [];
+  const failedShiftIds = useMemo(() => {
+    return shifts
+      .filter((shift) => shift.googleSyncStatus === "FAILED")
+      .map((shift) => shift.id);
+  }, [shifts]);
+  const failedShiftCount = failedShiftIds.length;
+  const [isBulkRetrying, setIsBulkRetrying] = useState(false);
 
   const handleCreateShift = (date: Date) => {
     const dateString = toDateKey(date);
     router.push(`/my/shifts/new?date=${dateString}`);
+  };
+
+  const handleBulkRetrySync = async () => {
+    if (failedShiftIds.length === 0 || isBulkRetrying) {
+      return;
+    }
+
+    setIsBulkRetrying(true);
+    try {
+      const results = await Promise.allSettled(
+        failedShiftIds.map(async (shiftId) => {
+          const response = await fetch(`/api/shifts/${shiftId}/retry-sync`, {
+            method: "POST",
+          });
+
+          if (response.ok) {
+            return {
+              ok: true as const,
+              requiresCalendarSetup: false,
+            };
+          }
+
+          const apiError = await readGoogleSyncFailureFromErrorResponse(
+            response,
+            "Google Calendar への再同期に失敗しました",
+          );
+
+          return {
+            ok: false as const,
+            requiresCalendarSetup: apiError.requiresCalendarSetup,
+          };
+        }),
+      );
+
+      const summary = results.reduce(
+        (acc, result) => {
+          if (result.status === "fulfilled" && result.value.ok) {
+            return {
+              ...acc,
+              successCount: acc.successCount + 1,
+            };
+          }
+
+          const requiresSetup =
+            result.status === "fulfilled"
+              ? result.value.requiresCalendarSetup
+              : false;
+
+          return {
+            ...acc,
+            failureCount: acc.failureCount + 1,
+            requiresCalendarSetup: acc.requiresCalendarSetup || requiresSetup,
+          };
+        },
+        {
+          successCount: 0,
+          failureCount: 0,
+          requiresCalendarSetup: false,
+        },
+      );
+
+      await reload();
+
+      if (summary.failureCount === 0) {
+        toast.success("Google Calendar の一括再同期が完了しました", {
+          description: `${summary.successCount}件成功`,
+        });
+        return;
+      }
+
+      toast.error("Google Calendar の一括再同期で一部失敗しました", {
+        description: `${summary.successCount}件成功 / ${summary.failureCount}件失敗`,
+        duration: 6000,
+      });
+
+      if (summary.requiresCalendarSetup) {
+        router.push(CALENDAR_SETUP_PATH);
+      }
+    } finally {
+      setIsBulkRetrying(false);
+    }
   };
 
   return (
@@ -187,6 +276,44 @@ export function DashboardPageClient({
           </CardHeader>
         </Card>
       ) : null}
+
+      <Card
+        className={
+          failedShiftCount > 0
+            ? "border-amber-300/70 bg-amber-50/70"
+            : "border-emerald-300/70 bg-emerald-50/70"
+        }
+      >
+        <CardContent className="flex min-h-12 items-center justify-between gap-3 py-3">
+          <div className="flex items-center gap-2 text-sm">
+            {failedShiftCount > 0 ? (
+              <AlertTriangleIcon className="size-4 text-amber-700" />
+            ) : (
+              <CheckCircle2Icon className="size-4 text-emerald-700" />
+            )}
+            <p>
+              {failedShiftCount > 0
+                ? `${failedShiftCount}件のシフトが Google Calendar に同期できていません`
+                : "すべてのシフトが Google Calendar に正常に同期されています"}
+            </p>
+          </div>
+          {failedShiftCount > 0 ? (
+            <Button
+              type="button"
+              variant="outline"
+              onClick={() => {
+                void handleBulkRetrySync();
+              }}
+              disabled={isBulkRetrying}
+            >
+              <RefreshCwIcon
+                className={`size-4 ${isBulkRetrying ? "animate-spin" : ""}`}
+              />
+              {isBulkRetrying ? "再同期中..." : "一括して再同期"}
+            </Button>
+          ) : null}
+        </CardContent>
+      </Card>
 
       {isLoading ? (
         <StatCardsLoadingSkeleton />
