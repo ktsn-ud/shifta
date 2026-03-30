@@ -678,11 +678,11 @@ export function ShiftForm({
       return;
     }
 
-    if (lessonPeriods.length === 0) {
-      if (mode === "edit" && isLessonTypeInferred === false) {
-        return;
-      }
+    if (mode === "edit" && isLessonTypeInferred === false) {
+      return;
+    }
 
+    if (lessonPeriods.length === 0) {
       if (!form.startPeriod && !form.endPeriod) {
         return;
       }

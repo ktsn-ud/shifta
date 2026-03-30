@@ -679,6 +679,156 @@ describe("shift flow integration", () => {
     });
   });
 
+  it("keeps intensive-only periods on edit before lesson type inference finishes", async () => {
+    const user = userEvent.setup();
+    const fetchMock = globalThis.fetch as jest.Mock;
+    const workplacesDeferred = createDeferred<Response>();
+
+    fetchMock.mockImplementation(
+      async (input: string, init?: { method?: string }) => {
+        if (input === "/api/workplaces") {
+          return workplacesDeferred.promise;
+        }
+
+        if (input === "/api/shifts/shift-lesson-3" && (!init || !init.method)) {
+          return jsonResponse({
+            data: {
+              id: "shift-lesson-3",
+              workplaceId: "workplace-1",
+              date: "2026-03-19T00:00:00.000Z",
+              startTime: "1970-01-01T15:30:00.000Z",
+              endTime: "1970-01-01T16:20:00.000Z",
+              breakMinutes: 0,
+              shiftType: "LESSON",
+              lessonRange: {
+                startPeriod: 5,
+                endPeriod: 5,
+              },
+            },
+          });
+        }
+
+        if (input === "/api/workplaces/workplace-1/timetables") {
+          return jsonResponse({
+            data: [
+              {
+                id: "tt-normal-1",
+                workplaceId: "workplace-1",
+                type: "NORMAL",
+                period: 1,
+                startTime: "1970-01-01T10:00:00.000Z",
+                endTime: "1970-01-01T11:00:00.000Z",
+              },
+              {
+                id: "tt-normal-2",
+                workplaceId: "workplace-1",
+                type: "NORMAL",
+                period: 2,
+                startTime: "1970-01-01T11:10:00.000Z",
+                endTime: "1970-01-01T12:10:00.000Z",
+              },
+              {
+                id: "tt-normal-3",
+                workplaceId: "workplace-1",
+                type: "NORMAL",
+                period: 3,
+                startTime: "1970-01-01T12:20:00.000Z",
+                endTime: "1970-01-01T13:20:00.000Z",
+              },
+              {
+                id: "tt-intensive-4",
+                workplaceId: "workplace-1",
+                type: "INTENSIVE",
+                period: 4,
+                startTime: "1970-01-01T14:30:00.000Z",
+                endTime: "1970-01-01T15:20:00.000Z",
+              },
+              {
+                id: "tt-intensive-5",
+                workplaceId: "workplace-1",
+                type: "INTENSIVE",
+                period: 5,
+                startTime: "1970-01-01T15:30:00.000Z",
+                endTime: "1970-01-01T16:20:00.000Z",
+              },
+            ],
+          });
+        }
+
+        if (input.startsWith("/api/shifts?")) {
+          return jsonResponse({
+            data: [
+              {
+                id: "shift-lesson-3",
+                startTime: "1970-01-01T15:30:00.000Z",
+                endTime: "1970-01-01T16:20:00.000Z",
+              },
+            ],
+          });
+        }
+
+        if (input === "/api/shifts/shift-lesson-3" && init?.method === "PUT") {
+          return jsonResponse({ data: { id: "shift-lesson-3" } });
+        }
+
+        throw new Error(`Unexpected fetch: ${input}`);
+      },
+    );
+
+    render(<ShiftForm mode="edit" shiftId="shift-lesson-3" />);
+
+    workplacesDeferred.resolve(
+      jsonResponse({
+        data: [
+          {
+            id: "workplace-1",
+            name: "英語塾A",
+            color: "#3366FF",
+            type: "CRAM_SCHOOL",
+          },
+        ],
+      }),
+    );
+
+    await waitFor(() => {
+      expect(screen.getByRole("button", { name: "更新" })).toBeEnabled();
+    });
+
+    await user.click(screen.getByRole("button", { name: "更新" }));
+
+    await waitFor(() => {
+      expect(pushMock).toHaveBeenCalledWith("/my");
+    });
+
+    const putCall = fetchMock.mock.calls.find(
+      ([url, options]) =>
+        url === "/api/shifts/shift-lesson-3" &&
+        (options as { method?: string } | undefined)?.method === "PUT",
+    );
+
+    expect(putCall).toBeTruthy();
+
+    const body = JSON.parse(
+      ((putCall?.[1] as { body?: string } | undefined)?.body ?? "{}") as string,
+    ) as {
+      shiftType: string;
+      lessonRange?: {
+        lessonType: string;
+        startPeriod: number;
+        endPeriod: number;
+      };
+    };
+
+    expect(body).toMatchObject({
+      shiftType: "LESSON",
+      lessonRange: {
+        lessonType: "INTENSIVE",
+        startPeriod: 5,
+        endPeriod: 5,
+      },
+    });
+  });
+
   it("deletes a shift from shift list modal", async () => {
     const onDeleteShift = jest.fn(async () => undefined);
 
