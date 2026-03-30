@@ -118,7 +118,21 @@ function formatDate(value: string | null): string {
     return "現在";
   }
 
-  return dateKeyFromApiDate(value);
+  const key = dateKeyFromApiDate(value);
+  const [year, month, day] = key.split("-").map((part) => Number(part));
+  if (
+    Number.isInteger(year) === false ||
+    Number.isInteger(month) === false ||
+    Number.isInteger(day) === false
+  ) {
+    return key;
+  }
+
+  const shifted = new Date(Date.UTC(year, month - 1, day - 1));
+  const shiftedYear = shifted.getUTCFullYear();
+  const shiftedMonth = String(shifted.getUTCMonth() + 1).padStart(2, "0");
+  const shiftedDay = String(shifted.getUTCDate()).padStart(2, "0");
+  return `${shiftedYear}-${shiftedMonth}-${shiftedDay}`;
 }
 
 function formatMultiplier(value: string | number): string {
