@@ -74,10 +74,7 @@ function formatShiftLabel(shift: ShiftListModalShift): string {
 }
 
 function formatWorkplaceLabel(shift: ShiftListModalShift): string {
-  if (
-    shift.workplace.type === "CRAM_SCHOOL" &&
-    shift.shiftType === "NORMAL"
-  ) {
+  if (shift.workplace.type === "CRAM_SCHOOL" && shift.shiftType === "NORMAL") {
     return `${shift.workplace.name}（事務）`;
   }
 
@@ -169,7 +166,8 @@ export function ShiftListModal({
                       時刻
                     </p>
                     <p className="font-medium">
-                      {formatTime(shift.startTime)} - {formatTime(shift.endTime)}
+                      {formatTime(shift.startTime)} -{" "}
+                      {formatTime(shift.endTime)}
                     </p>
                   </div>
 
@@ -179,19 +177,27 @@ export function ShiftListModal({
                       className="size-2 rounded-full"
                       style={{ backgroundColor: shift.workplace.color }}
                     />
-                    <span className="text-sm">{formatWorkplaceLabel(shift)}</span>
+                    <span className="text-sm">
+                      {formatWorkplaceLabel(shift)}
+                    </span>
                   </div>
 
                   <div className="mt-3 md:mt-0">
                     <p className="text-xs text-muted-foreground md:hidden">
                       給与予想
                     </p>
-                    <p className="text-sm">{formatEstimatedPay(shift.estimatedPay)}</p>
+                    <p className="text-sm">
+                      {formatEstimatedPay(shift.estimatedPay)}
+                    </p>
                   </div>
 
                   <div className="mt-3 space-y-1 md:mt-0">
-                    <p className="text-xs text-muted-foreground md:hidden">同期</p>
-                    <Badge variant={formatSyncStatus(shift.googleSyncStatus).variant}>
+                    <p className="text-xs text-muted-foreground md:hidden">
+                      同期
+                    </p>
+                    <Badge
+                      variant={formatSyncStatus(shift.googleSyncStatus).variant}
+                    >
                       {formatSyncStatus(shift.googleSyncStatus).label}
                     </Badge>
                     {shift.googleSyncStatus === "FAILED" ? (
@@ -229,7 +235,9 @@ export function ShiftListModal({
                         }}
                         disabled={retryingShiftId === shift.id}
                       >
-                        {retryingShiftId === shift.id ? "再試行中..." : "再試行"}
+                        {retryingShiftId === shift.id
+                          ? "再試行中..."
+                          : "再試行"}
                       </Button>
                     ) : null}
                     <Button
