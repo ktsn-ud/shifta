@@ -1213,8 +1213,6 @@ export function BulkShiftForm() {
                 const isSelected = selectedDateKeys.includes(cell.key);
                 const isToday = cell.key === todayKey;
                 const googleEventDay = googleEventsByDate[cell.key];
-                const googleEventCount = googleEventDay?.count ?? 0;
-                const hasGoogleEvents = googleEventCount > 0;
                 const { visible: visibleGoogleEvents, hiddenCount } =
                   getVisibleGoogleEvents(googleEventDay);
 
@@ -1234,10 +1232,7 @@ export function BulkShiftForm() {
                         ? "cursor-pointer hover:bg-muted/50"
                         : "cursor-not-allowed bg-muted/20 text-muted-foreground/60",
                       isSelected &&
-                        "bg-primary/15 font-semibold text-primary ring-1 ring-primary/40",
-                      hasGoogleEvents &&
-                        cell.isCurrentMonth &&
-                        "bg-sky-50/70 dark:bg-sky-950/20",
+                        "bg-zinc-200 font-semibold hover:bg-zinc-200 ring-2 ring-inset ring-zinc-400 dark:bg-zinc-800/50 dark:hover:bg-zinc-800/50 dark:ring-zinc-600",
                     )}
                     disabled={cell.isCurrentMonth === false}
                     aria-label={String(cell.date.getDate())}
@@ -1284,16 +1279,11 @@ export function BulkShiftForm() {
           </div>
 
           <div className="space-y-2">
-            <div className="flex flex-wrap items-center gap-3 text-xs text-muted-foreground">
-              <span className="inline-flex items-center gap-1">
-                <span className="size-2 rounded-full bg-sky-500" />
-                Google予定あり
-              </span>
-              <span>セル内に直接表示</span>
-              {isGoogleEventsLoading ? (
-                <span>Google予定を読み込み中...</span>
-              ) : null}
-            </div>
+            {isGoogleEventsLoading ? (
+              <p className="text-xs text-muted-foreground">
+                Google予定を読み込み中...
+              </p>
+            ) : null}
 
             {googleEventsError ? (
               <p className="text-xs text-amber-600">{googleEventsError}</p>
