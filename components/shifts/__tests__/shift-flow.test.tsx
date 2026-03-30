@@ -24,6 +24,15 @@ function jsonResponse(payload: unknown, status = 200): Response {
   } as Response;
 }
 
+function createDeferred<T>() {
+  let resolve: (value: T) => void = () => undefined;
+  const promise = new Promise<T>((res) => {
+    resolve = res;
+  });
+
+  return { promise, resolve };
+}
+
 describe("shift flow integration", () => {
   beforeEach(() => {
     pushMock.mockReset();
@@ -263,6 +272,284 @@ describe("shift flow integration", () => {
       startTime: "09:00",
       endTime: "18:00",
       breakMinutes: 45,
+    });
+  });
+
+  it("keeps LESSON prefilled values on edit even if workplaces load later", async () => {
+    const user = userEvent.setup();
+    const fetchMock = globalThis.fetch as jest.Mock;
+    const workplacesDeferred = createDeferred<Response>();
+
+    fetchMock.mockImplementation(
+      async (input: string, init?: { method?: string }) => {
+        if (input === "/api/workplaces") {
+          return workplacesDeferred.promise;
+        }
+
+        if (input === "/api/shifts/shift-lesson-1" && (!init || !init.method)) {
+          return jsonResponse({
+            data: {
+              id: "shift-lesson-1",
+              workplaceId: "workplace-1",
+              date: "2026-03-18T00:00:00.000Z",
+              startTime: "1970-01-01T16:30:00.000Z",
+              endTime: "1970-01-01T18:40:00.000Z",
+              breakMinutes: 0,
+              shiftType: "LESSON",
+              lessonRange: {
+                startPeriod: 1,
+                endPeriod: 2,
+              },
+            },
+          });
+        }
+
+        if (input === "/api/workplaces/workplace-1/timetables") {
+          return jsonResponse({
+            data: [
+              {
+                id: "tt-1",
+                workplaceId: "workplace-1",
+                type: "NORMAL",
+                period: 1,
+                startTime: "1970-01-01T16:30:00.000Z",
+                endTime: "1970-01-01T17:30:00.000Z",
+              },
+              {
+                id: "tt-2",
+                workplaceId: "workplace-1",
+                type: "NORMAL",
+                period: 2,
+                startTime: "1970-01-01T17:40:00.000Z",
+                endTime: "1970-01-01T18:40:00.000Z",
+              },
+            ],
+          });
+        }
+
+        if (input.startsWith("/api/shifts?")) {
+          return jsonResponse({
+            data: [
+              {
+                id: "shift-lesson-1",
+                startTime: "1970-01-01T16:30:00.000Z",
+                endTime: "1970-01-01T18:40:00.000Z",
+              },
+            ],
+          });
+        }
+
+        if (input === "/api/shifts/shift-lesson-1" && init?.method === "PUT") {
+          return jsonResponse({ data: { id: "shift-lesson-1" } });
+        }
+
+        throw new Error(`Unexpected fetch: ${input}`);
+      },
+    );
+
+    render(<ShiftForm mode="edit" shiftId="shift-lesson-1" />);
+
+    workplacesDeferred.resolve(
+      jsonResponse({
+        data: [
+          {
+            id: "workplace-1",
+            name: "英語塾A",
+            color: "#3366FF",
+            type: "CRAM_SCHOOL",
+          },
+        ],
+      }),
+    );
+
+    await waitFor(() => {
+      expect(screen.getByRole("button", { name: "更新" })).toBeEnabled();
+    });
+
+    expect(screen.queryByLabelText("開始時刻")).not.toBeInTheDocument();
+
+    await user.click(screen.getByRole("button", { name: "更新" }));
+
+    await waitFor(() => {
+      expect(pushMock).toHaveBeenCalledWith("/my");
+    });
+
+    const putCall = fetchMock.mock.calls.find(
+      ([url, options]) =>
+        url === "/api/shifts/shift-lesson-1" &&
+        (options as { method?: string } | undefined)?.method === "PUT",
+    );
+
+    expect(putCall).toBeTruthy();
+
+    const body = JSON.parse(
+      ((putCall?.[1] as { body?: string } | undefined)?.body ?? "{}") as string,
+    ) as {
+      shiftType: string;
+      lessonRange?: {
+        lessonType: string;
+        startPeriod: number;
+        endPeriod: number;
+      };
+    };
+
+    expect(body).toMatchObject({
+      shiftType: "LESSON",
+      lessonRange: {
+        lessonType: "NORMAL",
+        startPeriod: 1,
+        endPeriod: 2,
+      },
+    });
+  });
+
+  it("keeps LESSON type and period defaults for delayed CRAM data on edit", async () => {
+    const user = userEvent.setup();
+    const fetchMock = globalThis.fetch as jest.Mock;
+    const workplacesDeferred = createDeferred<Response>();
+
+    fetchMock.mockImplementation(
+      async (input: string, init?: { method?: string }) => {
+        if (input === "/api/workplaces") {
+          return workplacesDeferred.promise;
+        }
+
+        if (input === "/api/shifts/shift-lesson-2" && (!init || !init.method)) {
+          return jsonResponse({
+            data: {
+              id: "shift-lesson-2",
+              workplaceId: "workplace-1",
+              date: "2026-03-18T00:00:00.000Z",
+              startTime: "1970-01-01T13:00:00.000Z",
+              endTime: "1970-01-01T14:10:00.000Z",
+              breakMinutes: 0,
+              shiftType: "LESSON",
+              lessonRange: {
+                startPeriod: 2,
+                endPeriod: 2,
+              },
+            },
+          });
+        }
+
+        if (input === "/api/workplaces/workplace-1/timetables") {
+          return jsonResponse({
+            data: [
+              {
+                id: "tt-normal-1",
+                workplaceId: "workplace-1",
+                type: "NORMAL",
+                period: 1,
+                startTime: "1970-01-01T10:00:00.000Z",
+                endTime: "1970-01-01T11:00:00.000Z",
+              },
+              {
+                id: "tt-normal-2",
+                workplaceId: "workplace-1",
+                type: "NORMAL",
+                period: 2,
+                startTime: "1970-01-01T11:10:00.000Z",
+                endTime: "1970-01-01T12:10:00.000Z",
+              },
+              {
+                id: "tt-intensive-1",
+                workplaceId: "workplace-1",
+                type: "INTENSIVE",
+                period: 1,
+                startTime: "1970-01-01T12:00:00.000Z",
+                endTime: "1970-01-01T12:50:00.000Z",
+              },
+              {
+                id: "tt-intensive-2",
+                workplaceId: "workplace-1",
+                type: "INTENSIVE",
+                period: 2,
+                startTime: "1970-01-01T13:00:00.000Z",
+                endTime: "1970-01-01T14:10:00.000Z",
+              },
+              {
+                id: "tt-intensive-3",
+                workplaceId: "workplace-1",
+                type: "INTENSIVE",
+                period: 3,
+                startTime: "1970-01-01T14:20:00.000Z",
+                endTime: "1970-01-01T15:20:00.000Z",
+              },
+            ],
+          });
+        }
+
+        if (input.startsWith("/api/shifts?")) {
+          return jsonResponse({
+            data: [
+              {
+                id: "shift-lesson-2",
+                startTime: "1970-01-01T13:00:00.000Z",
+                endTime: "1970-01-01T14:10:00.000Z",
+              },
+            ],
+          });
+        }
+
+        if (input === "/api/shifts/shift-lesson-2" && init?.method === "PUT") {
+          return jsonResponse({ data: { id: "shift-lesson-2" } });
+        }
+
+        throw new Error(`Unexpected fetch: ${input}`);
+      },
+    );
+
+    render(<ShiftForm mode="edit" shiftId="shift-lesson-2" />);
+
+    workplacesDeferred.resolve(
+      jsonResponse({
+        data: [
+          {
+            id: "workplace-1",
+            name: "英語塾A",
+            color: "#3366FF",
+            type: "CRAM_SCHOOL",
+          },
+        ],
+      }),
+    );
+
+    await waitFor(() => {
+      expect(screen.getByRole("button", { name: "更新" })).toBeEnabled();
+    });
+
+    await user.click(screen.getByRole("button", { name: "更新" }));
+
+    await waitFor(() => {
+      expect(pushMock).toHaveBeenCalledWith("/my");
+    });
+
+    const putCall = fetchMock.mock.calls.find(
+      ([url, options]) =>
+        url === "/api/shifts/shift-lesson-2" &&
+        (options as { method?: string } | undefined)?.method === "PUT",
+    );
+
+    expect(putCall).toBeTruthy();
+
+    const body = JSON.parse(
+      ((putCall?.[1] as { body?: string } | undefined)?.body ?? "{}") as string,
+    ) as {
+      shiftType: string;
+      lessonRange?: {
+        lessonType: string;
+        startPeriod: number;
+        endPeriod: number;
+      };
+    };
+
+    expect(body).toMatchObject({
+      shiftType: "LESSON",
+      lessonRange: {
+        lessonType: "INTENSIVE",
+        startPeriod: 2,
+        endPeriod: 2,
+      },
     });
   });
 

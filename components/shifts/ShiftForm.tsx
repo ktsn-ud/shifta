@@ -298,7 +298,7 @@ export function ShiftForm({ mode, shiftId, initialDate }: ShiftFormProps) {
   const selectedWorkplace = useMemo(() => {
     return workplaces.find((workplace) => workplace.id === form.workplaceId);
   }, [form.workplaceId, workplaces]);
-  const selectedWorkplaceId = selectedWorkplace?.id;
+  const selectedWorkplaceId = form.workplaceId;
   const selectedWorkplaceType = selectedWorkplace?.type;
 
   const lessonPeriods = useMemo(() => {
@@ -495,7 +495,17 @@ export function ShiftForm({ mode, shiftId, initialDate }: ShiftFormProps) {
   }, [form.workplaceId, mode, workplaces]);
 
   useEffect(() => {
-    if (!selectedWorkplaceId || selectedWorkplaceType !== "CRAM_SCHOOL") {
+    if (!selectedWorkplaceId) {
+      setTimetables([]);
+      return;
+    }
+
+    if (!selectedWorkplaceType) {
+      setTimetables([]);
+      return;
+    }
+
+    if (selectedWorkplaceType !== "CRAM_SCHOOL") {
       setTimetables([]);
 
       setForm((current) => {
@@ -607,6 +617,10 @@ export function ShiftForm({ mode, shiftId, initialDate }: ShiftFormProps) {
       return;
     }
 
+    if (timetables.length === 0) {
+      return;
+    }
+
     const startPeriod = Number(form.startPeriod);
     const endPeriod = Number(form.endPeriod);
     if (
@@ -645,6 +659,10 @@ export function ShiftForm({ mode, shiftId, initialDate }: ShiftFormProps) {
     }
 
     if (lessonPeriods.length === 0) {
+      if (mode === "edit" && isLessonTypeInferred === false) {
+        return;
+      }
+
       if (!form.startPeriod && !form.endPeriod) {
         return;
       }
@@ -676,7 +694,14 @@ export function ShiftForm({ mode, shiftId, initialDate }: ShiftFormProps) {
         endPeriod: nextEnd,
       };
     });
-  }, [form.endPeriod, form.shiftType, form.startPeriod, lessonPeriods]);
+  }, [
+    form.endPeriod,
+    form.shiftType,
+    form.startPeriod,
+    isLessonTypeInferred,
+    lessonPeriods,
+    mode,
+  ]);
 
   function updateForm<K extends keyof FormState>(key: K, value: FormState[K]) {
     setForm((current) => ({
