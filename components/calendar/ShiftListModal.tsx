@@ -119,7 +119,7 @@ export function ShiftListModal({
   return (
     <>
       <Dialog open={open} onOpenChange={onOpenChange}>
-        <DialogContent className="max-h-[85vh] max-w-[min(96vw,1100px)] overflow-y-auto">
+        <DialogContent className="max-h-[85vh] max-w-[min(96vw,1100px)] sm:max-w-[min(96vw,600px)] overflow-y-auto">
           <DialogHeader>
             <DialogTitle>{formatDate(targetDate)} のシフト</DialogTitle>
             <DialogDescription>
@@ -140,7 +140,7 @@ export function ShiftListModal({
             </div>
           ) : (
             <div className="space-y-3">
-              <div className="hidden border-b px-4 pb-2 text-xs text-muted-foreground md:grid md:grid-cols-[1.1fr_1.1fr_0.9fr_0.9fr_1.4fr] md:gap-4">
+              <div className="hidden border-b px-4 pb-2 text-xs text-muted-foreground md:grid md:grid-cols-[1.1fr_1.1fr_0.9fr_0.6fr_0.6fr] md:gap-4">
                 <span>時刻</span>
                 <span>勤務先</span>
                 <span>給与予想</span>
@@ -159,7 +159,7 @@ export function ShiftListModal({
                       onEditShift(shift.id);
                     }
                   }}
-                  className="rounded-lg border bg-card p-4 shadow-sm transition-colors hover:bg-muted/40 md:grid md:grid-cols-[1.1fr_1.1fr_0.9fr_0.9fr_1.4fr] md:items-center md:gap-4 md:p-3"
+                  className="rounded-lg border bg-card p-4 shadow-sm transition-colors hover:bg-muted/40 md:grid md:grid-cols-[1.1fr_1.1fr_0.9fr_0.6fr_0.6fr] md:items-center md:gap-4 md:p-3"
                 >
                   <div className="space-y-1 md:space-y-0">
                     <p className="text-xs text-muted-foreground md:hidden">
