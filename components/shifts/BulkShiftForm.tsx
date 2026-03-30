@@ -26,11 +26,16 @@ import {
   SelectValue,
 } from "@/components/ui/select";
 import { Skeleton } from "@/components/ui/skeleton";
-import { TIME_ONLY_REGEX, toMinutes } from "@/lib/api/date-time";
+import {
+  DATE_ONLY_REGEX,
+  TIME_ONLY_REGEX,
+  toMinutes,
+} from "@/lib/api/date-time";
 import {
   addMonths,
   dateFromDateKey,
   formatMonthLabel,
+  toMonthInputValue,
   toDateKey,
 } from "@/lib/calendar/date";
 import { formatLessonType, formatShiftType } from "@/lib/enum-labels";
@@ -46,6 +51,8 @@ const LAST_WORKPLACE_ID_KEY = "shifta:last-workplace-id";
 const WEEKDAY_LABELS = ["日", "月", "火", "水", "木", "金", "土"] as const;
 const DAY_CELL_COUNT = 42;
 const MAX_BREAK_MINUTES = 240;
+const GOOGLE_EVENT_LIST_LIMIT = 5;
+const GOOGLE_EVENT_LIST_VISIBLE_WHEN_OVERFLOW = 3;
 
 const workplaceListResponseSchema = z.object({
   data: z.array(
@@ -70,11 +77,38 @@ const timetableListResponseSchema = z.object({
   ),
 });
 
+const googleCalendarEventsResponseSchema = z.object({
+  data: z.object({
+    month: z.string().regex(/^\d{4}-\d{2}$/),
+    dates: z.array(
+      z.object({
+        date: z.string().regex(DATE_ONLY_REGEX),
+        count: z.number().int().min(0),
+        items: z.array(
+          z.object({
+            title: z.string(),
+            start: z.string(),
+            end: z.string(),
+            allDay: z.boolean(),
+            calendarId: z.string(),
+            calendarSummary: z.string(),
+            calendarColor: z.string().nullable().optional(),
+          }),
+        ),
+      }),
+    ),
+  }),
+});
+
 type ShiftType = "NORMAL" | "LESSON" | "OTHER";
 type LessonType = "NORMAL" | "INTENSIVE";
 
 type Workplace = z.infer<typeof workplaceListResponseSchema>["data"][number];
 type Timetable = z.infer<typeof timetableListResponseSchema>["data"][number];
+type GoogleCalendarDay = z.infer<
+  typeof googleCalendarEventsResponseSchema
+>["data"]["dates"][number];
+type GoogleCalendarEventItem = GoogleCalendarDay["items"][number];
 
 type BulkShiftRow = {
   date: string;
@@ -180,6 +214,55 @@ function sortDateKeys(dateKeys: string[]): string[] {
   return [...dateKeys].sort((left, right) => left.localeCompare(right));
 }
 
+function getVisibleGoogleEvents(day: GoogleCalendarDay | undefined): {
+  visible: GoogleCalendarEventItem[];
+  hiddenCount: number;
+} {
+  if (!day || day.count <= 0) {
+    return {
+      visible: [],
+      hiddenCount: 0,
+    };
+  }
+
+  const items = day.items;
+  if (items.length <= GOOGLE_EVENT_LIST_LIMIT) {
+    return {
+      visible: items,
+      hiddenCount: Math.max(day.count - items.length, 0),
+    };
+  }
+
+  return {
+    visible: items.slice(0, GOOGLE_EVENT_LIST_VISIBLE_WHEN_OVERFLOW),
+    hiddenCount: Math.max(
+      day.count - GOOGLE_EVENT_LIST_VISIBLE_WHEN_OVERFLOW,
+      0,
+    ),
+  };
+}
+
+function getGoogleEventBadgeColor(color: string | null | undefined): string {
+  if (typeof color !== "string") {
+    return "#0ea5e9";
+  }
+
+  const normalized = color.trim();
+  if (/^#[0-9A-Fa-f]{6}$/.test(normalized)) {
+    return normalized;
+  }
+
+  return "#0ea5e9";
+}
+
+function formatGoogleEventLabel(event: GoogleCalendarEventItem): string {
+  if (event.allDay) {
+    return event.title;
+  }
+
+  return `${event.start}-${event.end} ${event.title}`;
+}
+
 function formatSelectedDate(dateKey: string): string {
   const date = dateFromDateKey(dateKey);
   if (!date) {
@@ -275,6 +358,13 @@ export function BulkShiftForm() {
   const [selectedDateKeys, setSelectedDateKeys] = useState<string[]>([]);
   const [rowsByDate, setRowsByDate] = useState<Record<string, BulkShiftRow>>(
     {},
+  );
+  const [googleEventsByDate, setGoogleEventsByDate] = useState<
+    Record<string, GoogleCalendarDay>
+  >({});
+  const [isGoogleEventsLoading, setIsGoogleEventsLoading] = useState(false);
+  const [googleEventsError, setGoogleEventsError] = useState<string | null>(
+    null,
   );
   const [defaults, setDefaults] = useState<BulkDefaults>(DEFAULT_BULK_VALUES);
   const [errors, setErrors] = useState<FormErrors>({});
@@ -383,6 +473,77 @@ export function BulkShiftForm() {
       abortController.abort();
     };
   }, []);
+
+  useEffect(() => {
+    const abortController = new AbortController();
+    const monthParam = toMonthInputValue(month);
+
+    async function fetchGoogleCalendarEvents() {
+      setIsGoogleEventsLoading(true);
+      setGoogleEventsError(null);
+
+      try {
+        const response = await fetch(
+          `/api/calendar/events?month=${monthParam}`,
+          {
+            signal: abortController.signal,
+            cache: "no-store",
+          },
+        );
+
+        if (response.ok === false) {
+          const payload = (await response.json().catch(() => null)) as {
+            error?: string;
+            details?: {
+              code?: string;
+            };
+          } | null;
+
+          if (payload?.details?.code === "READ_SCOPE_MISSING") {
+            throw new Error(
+              "Google予定を表示するには、再ログインして権限を再同意してください。",
+            );
+          }
+
+          throw new Error(payload?.error ?? "Google予定の取得に失敗しました。");
+        }
+
+        const payload = googleCalendarEventsResponseSchema.safeParse(
+          (await response.json()) as unknown,
+        );
+        if (payload.success === false) {
+          throw new Error("Google予定レスポンスの形式が不正です。");
+        }
+
+        const nextByDate: Record<string, GoogleCalendarDay> = {};
+        for (const day of payload.data.data.dates) {
+          nextByDate[day.date] = day;
+        }
+
+        setGoogleEventsByDate(nextByDate);
+      } catch (error) {
+        if (abortController.signal.aborted) {
+          return;
+        }
+
+        console.error("failed to fetch google calendar events", error);
+        setGoogleEventsByDate({});
+        setGoogleEventsError(
+          toErrorMessage(error, "Google予定の取得に失敗しました。"),
+        );
+      } finally {
+        if (abortController.signal.aborted === false) {
+          setIsGoogleEventsLoading(false);
+        }
+      }
+    }
+
+    void fetchGoogleCalendarEvents();
+
+    return () => {
+      abortController.abort();
+    };
+  }, [month]);
 
   useEffect(() => {
     if (!selectedWorkplaceId) {
@@ -1059,6 +1220,9 @@ export function BulkShiftForm() {
               {calendarCells.map((cell) => {
                 const isSelected = selectedDateKeys.includes(cell.key);
                 const isToday = cell.key === todayKey;
+                const googleEventDay = googleEventsByDate[cell.key];
+                const { visible: visibleGoogleEvents, hiddenCount } =
+                  getVisibleGoogleEvents(googleEventDay);
 
                 return (
                   <button
@@ -1071,23 +1235,65 @@ export function BulkShiftForm() {
                       toggleDateSelection(cell.key);
                     }}
                     className={cn(
-                      "relative min-h-16 border-b border-r p-1 text-sm last:border-r-0 md:min-h-20",
+                      "relative flex min-h-24 flex-col border-b border-r px-1 py-2 text-left text-sm last:border-r-0 md:min-h-28",
                       cell.isCurrentMonth
                         ? "cursor-pointer hover:bg-muted/50"
                         : "cursor-not-allowed bg-muted/20 text-muted-foreground/60",
                       isSelected &&
-                        "bg-primary/15 font-semibold text-primary ring-1 ring-primary/40",
+                        "bg-zinc-200 font-semibold hover:bg-zinc-200 ring-2 ring-inset ring-zinc-400 dark:bg-zinc-800/50 dark:hover:bg-zinc-800/50 dark:ring-zinc-600",
                     )}
                     disabled={cell.isCurrentMonth === false}
+                    aria-label={String(cell.date.getDate())}
                   >
                     {isToday ? (
-                      <span className="pointer-events-none absolute top-1 right-1 size-2 rounded-full bg-primary" />
+                      <span className="pointer-events-none absolute top-0.5 left-1/2 size-8 -translate-x-1/2 rounded-full bg-primary/20" />
                     ) : null}
-                    {cell.date.getDate()}
+
+                    <span className="relative z-10 self-center text-sm font-medium">
+                      {cell.date.getDate()}
+                    </span>
+
+                    <ul className="mt-2 w-full space-y-1 px-1">
+                      {visibleGoogleEvents.map((item, index) => (
+                        <li
+                          key={`${cell.key}:${item.calendarId}:${item.title}:${index}`}
+                          className="flex items-center gap-1 text-[10px] leading-none"
+                        >
+                          <span
+                            className="size-2 shrink-0 rounded-full"
+                            style={{
+                              backgroundColor: getGoogleEventBadgeColor(
+                                item.calendarColor,
+                              ),
+                            }}
+                          />
+                          <span className="truncate text-foreground">
+                            {formatGoogleEventLabel(item)}
+                          </span>
+                        </li>
+                      ))}
+                      {hiddenCount > 0 ? (
+                        <li className="text-[10px] font-medium text-muted-foreground">
+                          +{hiddenCount}
+                        </li>
+                      ) : null}
+                    </ul>
                   </button>
                 );
               })}
             </div>
+          </div>
+
+          <div className="space-y-2">
+            {isGoogleEventsLoading ? (
+              <p className="text-xs text-muted-foreground">
+                Google予定を読み込み中...
+              </p>
+            ) : null}
+
+            {googleEventsError ? (
+              <p className="text-xs text-amber-600">{googleEventsError}</p>
+            ) : null}
           </div>
 
           <FormErrorMessage message={errors.selectedDates} />
@@ -1418,6 +1624,11 @@ export function BulkShiftForm() {
               {selectedRows.map((row) => {
                 const rowErrors = errors.rows?.[row.date] ?? {};
                 const lessonPeriods = lessonPeriodsByType[row.lessonType];
+                const googleEventDay = googleEventsByDate[row.date];
+                const {
+                  visible: visibleGoogleEvents,
+                  hiddenCount: hiddenGoogleEventCount,
+                } = getVisibleGoogleEvents(googleEventDay);
 
                 return (
                   <section key={row.date} className="rounded-lg border p-3">
@@ -1435,6 +1646,40 @@ export function BulkShiftForm() {
                         <Trash2Icon className="size-4" />
                       </Button>
                     </div>
+
+                    {visibleGoogleEvents.length > 0 ||
+                    hiddenGoogleEventCount > 0 ? (
+                      <div className="mt-2 rounded-md bg-muted/40 px-2 py-2">
+                        <p className="text-xs text-muted-foreground">
+                          Google予定
+                        </p>
+                        <ul className="mt-1 space-y-1">
+                          {visibleGoogleEvents.map((item, index) => (
+                            <li
+                              key={`${row.date}:${item.calendarId}:${item.title}:${index}`}
+                              className="flex items-center gap-1 text-xs leading-tight"
+                            >
+                              <span
+                                className="size-2 shrink-0 rounded-full"
+                                style={{
+                                  backgroundColor: getGoogleEventBadgeColor(
+                                    item.calendarColor,
+                                  ),
+                                }}
+                              />
+                              <span className="truncate text-foreground">
+                                {formatGoogleEventLabel(item)}
+                              </span>
+                            </li>
+                          ))}
+                          {hiddenGoogleEventCount > 0 ? (
+                            <li className="text-xs font-medium text-muted-foreground">
+                              +{hiddenGoogleEventCount}
+                            </li>
+                          ) : null}
+                        </ul>
+                      </div>
+                    ) : null}
 
                     <FieldGroup className="mt-3 grid gap-4 md:grid-cols-2">
                       <Field>
