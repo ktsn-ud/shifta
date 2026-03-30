@@ -15,6 +15,7 @@ import {
   SidebarMenu,
   SidebarMenuButton,
   SidebarMenuItem,
+  useSidebar,
 } from "@/components/ui/sidebar";
 import {
   CheckCheckIcon,
@@ -70,6 +71,12 @@ export function AppSidebar({
   user: SidebarUser;
 }) {
   const pathname = usePathname();
+  const { isMobile, setOpenMobile } = useSidebar();
+  const handleMenuItemClick = () => {
+    if (isMobile) {
+      setOpenMobile(false);
+    }
+  };
 
   return (
     <Sidebar collapsible="offcanvas" {...props}>
@@ -81,6 +88,7 @@ export function AppSidebar({
               className="data-[slot=sidebar-menu-button]:p-1.5!"
               render={<Link href="/my" />}
               isActive={pathname === "/my"}
+              onClick={handleMenuItemClick}
             >
               <CommandIcon className="size-5" />
               <span className="text-base font-semibold">Shifta</span>
@@ -100,6 +108,7 @@ export function AppSidebar({
                     tooltip={item.title}
                     isActive={isActivePath(pathname, item.href)}
                     render={<Link href={item.href} />}
+                    onClick={handleMenuItemClick}
                   >
                     {item.icon}
                     <span>{item.title}</span>
