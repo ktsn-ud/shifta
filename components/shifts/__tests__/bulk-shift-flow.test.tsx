@@ -329,11 +329,14 @@ describe("bulk shift flow integration", () => {
 
     await user.click(findEnabledDayButton(20));
 
+    let eventLabels: HTMLElement[] = [];
     await waitFor(() => {
-      expect(screen.getByText("10:00-11:00 研究室MTG")).toBeInTheDocument();
+      eventLabels = screen.getAllByText("10:00-11:00 研究室MTG");
+      expect(eventLabels.length).toBeGreaterThanOrEqual(1);
+      expect(screen.getByText("Google予定")).toBeInTheDocument();
     });
 
-    const eventRow = screen.getByText("10:00-11:00 研究室MTG").closest("li");
+    const eventRow = eventLabels[0]?.closest("li");
     if (!eventRow) {
       throw new Error("event row not found");
     }

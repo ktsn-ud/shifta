@@ -255,6 +255,14 @@ function getGoogleEventBadgeColor(color: string | null | undefined): string {
   return "#0ea5e9";
 }
 
+function formatGoogleEventLabel(event: GoogleCalendarEventItem): string {
+  if (event.allDay) {
+    return event.title;
+  }
+
+  return `${event.start}-${event.end} ${event.title}`;
+}
+
 function formatSelectedDate(dateKey: string): string {
   const date = dateFromDateKey(dateKey);
   if (!date) {
@@ -1260,9 +1268,7 @@ export function BulkShiftForm() {
                             }}
                           />
                           <span className="truncate text-foreground">
-                            {item.allDay
-                              ? item.title
-                              : `${item.start}-${item.end} ${item.title}`}
+                            {formatGoogleEventLabel(item)}
                           </span>
                         </li>
                       ))}
@@ -1618,6 +1624,11 @@ export function BulkShiftForm() {
               {selectedRows.map((row) => {
                 const rowErrors = errors.rows?.[row.date] ?? {};
                 const lessonPeriods = lessonPeriodsByType[row.lessonType];
+                const googleEventDay = googleEventsByDate[row.date];
+                const {
+                  visible: visibleGoogleEvents,
+                  hiddenCount: hiddenGoogleEventCount,
+                } = getVisibleGoogleEvents(googleEventDay);
 
                 return (
                   <section key={row.date} className="rounded-lg border p-3">
@@ -1635,6 +1646,40 @@ export function BulkShiftForm() {
                         <Trash2Icon className="size-4" />
                       </Button>
                     </div>
+
+                    {visibleGoogleEvents.length > 0 ||
+                    hiddenGoogleEventCount > 0 ? (
+                      <div className="mt-2 rounded-md bg-muted/40 px-2 py-2">
+                        <p className="text-xs text-muted-foreground">
+                          Google予定
+                        </p>
+                        <ul className="mt-1 space-y-1">
+                          {visibleGoogleEvents.map((item, index) => (
+                            <li
+                              key={`${row.date}:${item.calendarId}:${item.title}:${index}`}
+                              className="flex items-center gap-1 text-xs leading-tight"
+                            >
+                              <span
+                                className="size-2 shrink-0 rounded-full"
+                                style={{
+                                  backgroundColor: getGoogleEventBadgeColor(
+                                    item.calendarColor,
+                                  ),
+                                }}
+                              />
+                              <span className="truncate text-foreground">
+                                {formatGoogleEventLabel(item)}
+                              </span>
+                            </li>
+                          ))}
+                          {hiddenGoogleEventCount > 0 ? (
+                            <li className="text-xs font-medium text-muted-foreground">
+                              +{hiddenGoogleEventCount}
+                            </li>
+                          ) : null}
+                        </ul>
+                      </div>
+                    ) : null}
 
                     <FieldGroup className="mt-3 grid gap-4 md:grid-cols-2">
                       <Field>
