@@ -1,7 +1,7 @@
 "use client";
 
 import { useMemo, useState } from "react";
-import { EditIcon, PlusIcon, Trash2Icon } from "lucide-react";
+import { PlusIcon, Trash2Icon } from "lucide-react";
 import { toast } from "sonner";
 import { DeleteConfirmDialog } from "@/components/shifts/DeleteConfirmDialog";
 import { Badge } from "@/components/ui/badge";
@@ -240,18 +240,6 @@ export function ShiftListModal({
                           : "再試行"}
                       </Button>
                     ) : null}
-                    <Button
-                      type="button"
-                      variant="outline"
-                      size="sm"
-                      onClick={(event) => {
-                        event.stopPropagation();
-                        onEditShift(shift.id);
-                      }}
-                    >
-                      <EditIcon className="size-4" />
-                      編集
-                    </Button>
                     <Button
                       type="button"
                       variant="destructive"
