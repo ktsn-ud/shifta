@@ -190,11 +190,7 @@ function validate(
     errors.startDate = "開始日は必須です。";
   }
 
-  if (
-    values.endDate &&
-    values.startDate &&
-    values.endDate < values.startDate
-  ) {
+  if (values.endDate && values.startDate && values.endDate < values.startDate) {
     errors.endDate = "終了日は開始日以降の日付を指定してください。";
   }
 
@@ -431,9 +427,7 @@ export function PayrollRuleForm({
 
     const payload = {
       startDate: values.startDate,
-      endDate: values.endDate
-        ? shiftDateKeyByDays(values.endDate, 1)
-        : null,
+      endDate: values.endDate ? shiftDateKeyByDays(values.endDate, 1) : null,
       baseHourlyWage: Number(values.baseHourlyWage),
       perLessonWage:
         workplaceType === "CRAM_SCHOOL" ? Number(values.perLessonWage) : null,
