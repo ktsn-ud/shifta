@@ -477,6 +477,23 @@ export function BulkShiftForm() {
     }
 
     setDefaults((current) => {
+      if (current.shiftType !== "NORMAL") {
+        return current;
+      }
+
+      return {
+        ...current,
+        shiftType: "LESSON",
+      };
+    });
+  }, [selectedWorkplace?.type]);
+
+  useEffect(() => {
+    if (selectedWorkplace?.type !== "CRAM_SCHOOL") {
+      return;
+    }
+
+    setDefaults((current) => {
       if (current.shiftType !== "LESSON") {
         return current;
       }
