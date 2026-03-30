@@ -64,7 +64,7 @@ export function calculateLessonShiftWage(
 
   return {
     totalWage,
-    dayWage: 0,
+    dayWage: totalWage,
     overtimeWage: 0,
     nightWage: 0,
     workHours,

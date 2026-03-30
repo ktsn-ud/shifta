@@ -74,7 +74,7 @@ describe("calculateLessonShiftWage", () => {
 
     expect(result).toEqual({
       totalWage: 6000,
-      dayWage: 0,
+      dayWage: 6000,
       overtimeWage: 0,
       nightWage: 0,
       workHours: 3.33,
