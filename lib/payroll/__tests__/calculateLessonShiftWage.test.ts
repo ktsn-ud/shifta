@@ -77,7 +77,7 @@ describe("calculateLessonShiftWage", () => {
       dayWage: 0,
       overtimeWage: 0,
       nightWage: 0,
-      workHours: 0,
+      workHours: 3.33,
       overtimeHours: 0,
       nightHours: 0,
       lessonCount: 3,
