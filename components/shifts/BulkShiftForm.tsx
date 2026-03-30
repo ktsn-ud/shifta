@@ -26,11 +26,16 @@ import {
   SelectValue,
 } from "@/components/ui/select";
 import { Skeleton } from "@/components/ui/skeleton";
-import { TIME_ONLY_REGEX, toMinutes } from "@/lib/api/date-time";
+import {
+  DATE_ONLY_REGEX,
+  TIME_ONLY_REGEX,
+  toMinutes,
+} from "@/lib/api/date-time";
 import {
   addMonths,
   dateFromDateKey,
   formatMonthLabel,
+  toMonthInputValue,
   toDateKey,
 } from "@/lib/calendar/date";
 import { formatLessonType, formatShiftType } from "@/lib/enum-labels";
@@ -70,11 +75,36 @@ const timetableListResponseSchema = z.object({
   ),
 });
 
+const googleCalendarEventsResponseSchema = z.object({
+  data: z.object({
+    month: z.string().regex(/^\d{4}-\d{2}$/),
+    dates: z.array(
+      z.object({
+        date: z.string().regex(DATE_ONLY_REGEX),
+        count: z.number().int().min(0),
+        items: z.array(
+          z.object({
+            title: z.string(),
+            start: z.string(),
+            end: z.string(),
+            allDay: z.boolean(),
+            calendarId: z.string(),
+            calendarSummary: z.string(),
+          }),
+        ),
+      }),
+    ),
+  }),
+});
+
 type ShiftType = "NORMAL" | "LESSON" | "OTHER";
 type LessonType = "NORMAL" | "INTENSIVE";
 
 type Workplace = z.infer<typeof workplaceListResponseSchema>["data"][number];
 type Timetable = z.infer<typeof timetableListResponseSchema>["data"][number];
+type GoogleCalendarDay = z.infer<
+  typeof googleCalendarEventsResponseSchema
+>["data"]["dates"][number];
 
 type BulkShiftRow = {
   date: string;
@@ -276,6 +306,16 @@ export function BulkShiftForm() {
   const [rowsByDate, setRowsByDate] = useState<Record<string, BulkShiftRow>>(
     {},
   );
+  const [googleEventsByDate, setGoogleEventsByDate] = useState<
+    Record<string, GoogleCalendarDay>
+  >({});
+  const [isGoogleEventsLoading, setIsGoogleEventsLoading] = useState(false);
+  const [googleEventsError, setGoogleEventsError] = useState<string | null>(
+    null,
+  );
+  const [activeCalendarDateKey, setActiveCalendarDateKey] = useState<
+    string | null
+  >(null);
   const [defaults, setDefaults] = useState<BulkDefaults>(DEFAULT_BULK_VALUES);
   const [errors, setErrors] = useState<FormErrors>({});
   const [isWorkplaceLoading, setIsWorkplaceLoading] = useState(true);
@@ -313,6 +353,23 @@ export function BulkShiftForm() {
       .map((dateKey) => rowsByDate[dateKey])
       .filter((row): row is BulkShiftRow => Boolean(row));
   }, [rowsByDate, selectedDateKeys]);
+
+  const activeGoogleCalendarDay = useMemo(() => {
+    const targetDateKey = activeCalendarDateKey ?? selectedDateKeys[0] ?? null;
+    if (!targetDateKey) {
+      return null;
+    }
+
+    const day = googleEventsByDate[targetDateKey];
+    if (!day) {
+      return null;
+    }
+
+    return {
+      dateKey: targetDateKey,
+      day,
+    };
+  }, [activeCalendarDateKey, googleEventsByDate, selectedDateKeys]);
 
   useEffect(() => {
     const abortController = new AbortController();
@@ -383,6 +440,77 @@ export function BulkShiftForm() {
       abortController.abort();
     };
   }, []);
+
+  useEffect(() => {
+    const abortController = new AbortController();
+    const monthParam = toMonthInputValue(month);
+
+    async function fetchGoogleCalendarEvents() {
+      setIsGoogleEventsLoading(true);
+      setGoogleEventsError(null);
+
+      try {
+        const response = await fetch(
+          `/api/calendar/events?month=${monthParam}`,
+          {
+            signal: abortController.signal,
+            cache: "no-store",
+          },
+        );
+
+        if (response.ok === false) {
+          const payload = (await response.json().catch(() => null)) as {
+            error?: string;
+            details?: {
+              code?: string;
+            };
+          } | null;
+
+          if (payload?.details?.code === "READ_SCOPE_MISSING") {
+            throw new Error(
+              "Google予定を表示するには、再ログインして権限を再同意してください。",
+            );
+          }
+
+          throw new Error(payload?.error ?? "Google予定の取得に失敗しました。");
+        }
+
+        const payload = googleCalendarEventsResponseSchema.safeParse(
+          (await response.json()) as unknown,
+        );
+        if (payload.success === false) {
+          throw new Error("Google予定レスポンスの形式が不正です。");
+        }
+
+        const nextByDate: Record<string, GoogleCalendarDay> = {};
+        for (const day of payload.data.data.dates) {
+          nextByDate[day.date] = day;
+        }
+
+        setGoogleEventsByDate(nextByDate);
+      } catch (error) {
+        if (abortController.signal.aborted) {
+          return;
+        }
+
+        console.error("failed to fetch google calendar events", error);
+        setGoogleEventsByDate({});
+        setGoogleEventsError(
+          toErrorMessage(error, "Google予定の取得に失敗しました。"),
+        );
+      } finally {
+        if (abortController.signal.aborted === false) {
+          setIsGoogleEventsLoading(false);
+        }
+      }
+    }
+
+    void fetchGoogleCalendarEvents();
+
+    return () => {
+      abortController.abort();
+    };
+  }, [month]);
 
   useEffect(() => {
     if (!selectedWorkplaceId) {
@@ -570,6 +698,7 @@ export function BulkShiftForm() {
   };
 
   const toggleDateSelection = (dateKey: string) => {
+    setActiveCalendarDateKey(dateKey);
     setErrors((current) => ({
       ...current,
       selectedDates: undefined,
@@ -1011,6 +1140,7 @@ export function BulkShiftForm() {
                 onClick={() => {
                   setSelectedDateKeys([]);
                   setRowsByDate({});
+                  setActiveCalendarDateKey(null);
                   setErrors((current) => ({
                     ...current,
                     selectedDates: undefined,
@@ -1059,6 +1189,9 @@ export function BulkShiftForm() {
               {calendarCells.map((cell) => {
                 const isSelected = selectedDateKeys.includes(cell.key);
                 const isToday = cell.key === todayKey;
+                const googleEventDay = googleEventsByDate[cell.key];
+                const hasGoogleEvents = Boolean(googleEventDay);
+                const googleEventCount = googleEventDay?.count ?? 0;
 
                 return (
                   <button
@@ -1070,6 +1203,18 @@ export function BulkShiftForm() {
                       }
                       toggleDateSelection(cell.key);
                     }}
+                    onMouseEnter={() => {
+                      if (!cell.isCurrentMonth) {
+                        return;
+                      }
+                      setActiveCalendarDateKey(cell.key);
+                    }}
+                    onFocus={() => {
+                      if (!cell.isCurrentMonth) {
+                        return;
+                      }
+                      setActiveCalendarDateKey(cell.key);
+                    }}
                     className={cn(
                       "relative min-h-16 border-b border-r p-1 text-sm last:border-r-0 md:min-h-20",
                       cell.isCurrentMonth
@@ -1077,17 +1222,79 @@ export function BulkShiftForm() {
                         : "cursor-not-allowed bg-muted/20 text-muted-foreground/60",
                       isSelected &&
                         "bg-primary/15 font-semibold text-primary ring-1 ring-primary/40",
+                      hasGoogleEvents &&
+                        cell.isCurrentMonth &&
+                        "bg-sky-50/70 dark:bg-sky-950/20",
                     )}
                     disabled={cell.isCurrentMonth === false}
+                    aria-label={String(cell.date.getDate())}
                   >
                     {isToday ? (
                       <span className="pointer-events-none absolute top-1 right-1 size-2 rounded-full bg-primary" />
                     ) : null}
-                    {cell.date.getDate()}
+                    <span>{cell.date.getDate()}</span>
+                    {hasGoogleEvents ? (
+                      <span
+                        className="pointer-events-none absolute right-1 bottom-1 rounded-sm bg-sky-500/90 px-1 text-[10px] font-medium text-white"
+                        aria-hidden="true"
+                      >
+                        {googleEventCount}
+                      </span>
+                    ) : null}
                   </button>
                 );
               })}
             </div>
+          </div>
+
+          <div className="space-y-2">
+            <div className="flex flex-wrap items-center gap-3 text-xs text-muted-foreground">
+              <span className="inline-flex items-center gap-1">
+                <span className="size-2 rounded-full bg-sky-500" />
+                Google予定あり
+              </span>
+              {isGoogleEventsLoading ? (
+                <span>Google予定を読み込み中...</span>
+              ) : null}
+            </div>
+
+            {googleEventsError ? (
+              <p className="text-xs text-amber-600">{googleEventsError}</p>
+            ) : null}
+
+            {activeGoogleCalendarDay ? (
+              <div className="space-y-2 rounded-md border bg-muted/20 p-3">
+                <p className="text-xs font-medium text-muted-foreground">
+                  {formatSelectedDate(activeGoogleCalendarDay.dateKey)} の
+                  Google 予定（{activeGoogleCalendarDay.day.count}件）
+                </p>
+                <div className="space-y-1">
+                  {activeGoogleCalendarDay.day.items.map((item, index) => (
+                    <p
+                      key={`${item.calendarId}:${item.title}:${index}`}
+                      className="text-xs"
+                    >
+                      <span className="font-medium">
+                        {item.allDay ? "終日" : `${item.start} - ${item.end}`}
+                      </span>{" "}
+                      {item.title}{" "}
+                      <span className="text-muted-foreground">
+                        ({item.calendarSummary})
+                      </span>
+                    </p>
+                  ))}
+                </div>
+                {activeGoogleCalendarDay.day.count >
+                activeGoogleCalendarDay.day.items.length ? (
+                  <p className="text-xs text-muted-foreground">
+                    ほか{" "}
+                    {activeGoogleCalendarDay.day.count -
+                      activeGoogleCalendarDay.day.items.length}
+                    件
+                  </p>
+                ) : null}
+              </div>
+            ) : null}
           </div>
 
           <FormErrorMessage message={errors.selectedDates} />

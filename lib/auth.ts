@@ -4,7 +4,7 @@ import { PrismaAdapter } from "@auth/prisma-adapter";
 import {
   CALENDAR_SETUP_PATH,
   CALENDAR_SETUP_SKIP_COOKIE,
-  GOOGLE_CALENDAR_SCOPE,
+  GOOGLE_CALENDAR_OAUTH_SCOPES,
 } from "@/lib/google-calendar/constants";
 import { prisma } from "@/lib/prisma";
 import { encryptOAuthToken } from "@/lib/security/oauth-token-crypto";
@@ -49,7 +49,7 @@ export const { handlers, auth, signIn, signOut } = NextAuth({
       clientSecret: process.env.AUTH_GOOGLE_SECRET!,
       authorization: {
         params: {
-          scope: `openid email profile ${GOOGLE_CALENDAR_SCOPE}`,
+          scope: `openid email profile ${GOOGLE_CALENDAR_OAUTH_SCOPES.join(" ")}`,
           access_type: "offline",
           prompt: "consent",
         },
