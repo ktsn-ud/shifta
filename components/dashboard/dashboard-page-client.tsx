@@ -288,7 +288,7 @@ export function DashboardPageClient({
             : "border-emerald-300/70 bg-emerald-50/70"
         }
       >
-        <CardContent className="flex min-h-12 items-center justify-between gap-3 py-3">
+        <CardContent className="flex items-center justify-between gap-3 py-1">
           <div className="flex items-center gap-2 text-sm">
             {failedShiftCount > 0 ? (
               <AlertTriangleIcon className="size-4 text-amber-700" />
