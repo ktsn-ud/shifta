@@ -35,6 +35,7 @@ type ShiftListModalShift = {
     id: string;
     name: string;
     color: string;
+    type?: "GENERAL" | "CRAM_SCHOOL";
   };
 };
 
@@ -65,16 +66,6 @@ function formatTime(value: string): string {
   return `${hour}:${minute}`;
 }
 
-function formatShiftType(value: ShiftListModalShift["shiftType"]): string {
-  if (value === "NORMAL") {
-    return "通常";
-  }
-  if (value === "LESSON") {
-    return "授業";
-  }
-  return "その他";
-}
-
 function formatEstimatedPay(value: number | null): string {
   if (value === null) {
     return "--";
@@ -87,7 +78,18 @@ function formatEstimatedPay(value: number | null): string {
 }
 
 function formatShiftLabel(shift: ShiftListModalShift): string {
-  return `${formatTime(shift.startTime)} - ${formatTime(shift.endTime)} ${shift.workplace.name}`;
+  return `${formatTime(shift.startTime)} - ${formatTime(shift.endTime)} ${formatWorkplaceLabel(shift)}`;
+}
+
+function formatWorkplaceLabel(shift: ShiftListModalShift): string {
+  if (
+    shift.workplace.type === "CRAM_SCHOOL" &&
+    shift.shiftType === "NORMAL"
+  ) {
+    return `${shift.workplace.name}（事務）`;
+  }
+
+  return shift.workplace.name;
 }
 
 function formatSyncStatus(status: ShiftListModalShift["googleSyncStatus"]): {
@@ -148,7 +150,6 @@ export function ShiftListModal({
               <TableRow>
                 <TableHead>時刻</TableHead>
                 <TableHead>勤務先</TableHead>
-                <TableHead>種別</TableHead>
                 <TableHead>給与予想</TableHead>
                 <TableHead>同期</TableHead>
                 <TableHead className="w-32 text-right">操作</TableHead>
@@ -157,7 +158,7 @@ export function ShiftListModal({
             <TableBody>
               {sortedShifts.length === 0 ? (
                 <TableRow>
-                  <TableCell colSpan={6} className="py-6 text-center">
+                  <TableCell colSpan={5} className="py-6 text-center">
                     この日のシフトは未登録です。
                   </TableCell>
                 </TableRow>
@@ -187,13 +188,8 @@ export function ShiftListModal({
                           className="size-2 rounded-full"
                           style={{ backgroundColor: shift.workplace.color }}
                         />
-                        <span>{shift.workplace.name}</span>
+                        <span>{formatWorkplaceLabel(shift)}</span>
                       </div>
-                    </TableCell>
-                    <TableCell>
-                      <Badge variant="secondary">
-                        {formatShiftType(shift.shiftType)}
-                      </Badge>
                     </TableCell>
                     <TableCell>
                       {formatEstimatedPay(shift.estimatedPay)}
