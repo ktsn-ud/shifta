@@ -178,6 +178,31 @@ export async function POST(request: Request, context: Context) {
       return jsonError(typeValidationError, 400);
     }
 
+    const currentOverlappedRule = await prisma.payrollRule.findFirst({
+      where: {
+        workplaceId,
+        endDate: null,
+        startDate: {
+          lt: normalized.startDate,
+        },
+      },
+      orderBy: [{ startDate: "desc" }],
+      select: {
+        id: true,
+      },
+    });
+
+    if (currentOverlappedRule) {
+      await prisma.payrollRule.update({
+        where: {
+          id: currentOverlappedRule.id,
+        },
+        data: {
+          endDate: normalized.startDate,
+        },
+      });
+    }
+
     const overlaps = await findOverlappingRules(workplaceId, normalized);
 
     const payrollRule = await prisma.payrollRule.create({
