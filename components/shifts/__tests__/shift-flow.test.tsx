@@ -119,6 +119,62 @@ describe("shift flow integration", () => {
     });
   });
 
+  it("returns to requested dashboard month after creating a shift", async () => {
+    const fetchMock = globalThis.fetch as jest.Mock;
+
+    fetchMock.mockImplementation(
+      async (input: string, init?: { method?: string }) => {
+        if (input === "/api/workplaces") {
+          return jsonResponse({
+            data: [
+              {
+                id: "workplace-1",
+                name: "勤務先A",
+                color: "#3366FF",
+                type: "GENERAL",
+              },
+            ],
+          });
+        }
+
+        if (input.startsWith("/api/shifts?")) {
+          return jsonResponse({ data: [] });
+        }
+
+        if (input === "/api/shifts" && init?.method === "POST") {
+          return jsonResponse({ data: { id: "shift-1" } }, 201);
+        }
+
+        throw new Error(`Unexpected fetch: ${input}`);
+      },
+    );
+
+    render(
+      <ShiftForm
+        mode="create"
+        initialDate="2026-03-18"
+        returnMonth="2026-01"
+      />,
+    );
+
+    await waitFor(() => {
+      expect(screen.getByRole("button", { name: "登録" })).toBeEnabled();
+    });
+
+    fireEvent.change(screen.getByLabelText("開始時刻"), {
+      target: { value: "09:00" },
+    });
+    fireEvent.change(screen.getByLabelText("終了時刻"), {
+      target: { value: "17:00" },
+    });
+
+    await userEvent.click(screen.getByRole("button", { name: "登録" }));
+
+    await waitFor(() => {
+      expect(pushMock).toHaveBeenCalledWith("/my?month=2026-01");
+    });
+  });
+
   it("redirects to calendar setup when sync detects missing calendar", async () => {
     const fetchMock = globalThis.fetch as jest.Mock;
 
@@ -272,6 +328,76 @@ describe("shift flow integration", () => {
       startTime: "09:00",
       endTime: "18:00",
       breakMinutes: 45,
+    });
+  });
+
+  it("returns to requested dashboard month after editing a shift", async () => {
+    const fetchMock = globalThis.fetch as jest.Mock;
+
+    fetchMock.mockImplementation(
+      async (input: string, init?: { method?: string }) => {
+        if (input === "/api/workplaces") {
+          return jsonResponse({
+            data: [
+              {
+                id: "workplace-1",
+                name: "勤務先A",
+                color: "#3366FF",
+                type: "GENERAL",
+              },
+            ],
+          });
+        }
+
+        if (input === "/api/shifts/shift-1" && (!init || !init.method)) {
+          return jsonResponse({
+            data: {
+              id: "shift-1",
+              workplaceId: "workplace-1",
+              date: "2026-03-18T00:00:00.000Z",
+              startTime: "1970-01-01T09:00:00.000Z",
+              endTime: "1970-01-01T17:00:00.000Z",
+              breakMinutes: 45,
+              shiftType: "NORMAL",
+              lessonRange: null,
+            },
+          });
+        }
+
+        if (input.startsWith("/api/shifts?")) {
+          return jsonResponse({
+            data: [
+              {
+                id: "shift-1",
+                startTime: "1970-01-01T09:00:00.000Z",
+                endTime: "1970-01-01T17:00:00.000Z",
+              },
+            ],
+          });
+        }
+
+        if (input === "/api/shifts/shift-1" && init?.method === "PUT") {
+          return jsonResponse({ data: { id: "shift-1" } });
+        }
+
+        throw new Error(`Unexpected fetch: ${input}`);
+      },
+    );
+
+    render(<ShiftForm mode="edit" shiftId="shift-1" returnMonth="2026-01" />);
+
+    await waitFor(() => {
+      expect(screen.getByLabelText("開始時刻")).toHaveValue("09:00");
+    });
+
+    fireEvent.change(screen.getByLabelText("終了時刻"), {
+      target: { value: "18:00" },
+    });
+
+    await userEvent.click(screen.getByRole("button", { name: "更新" }));
+
+    await waitFor(() => {
+      expect(pushMock).toHaveBeenCalledWith("/my?month=2026-01");
     });
   });
 

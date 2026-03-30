@@ -30,7 +30,9 @@ import { TimePicker } from "@/components/ui/time-picker";
 import {
   dateFromDateKey,
   dateKeyFromApiDate,
+  fromMonthInputValue,
   toDateKey,
+  toMonthInputValue,
 } from "@/lib/calendar/date";
 import { formatLessonType, formatShiftType } from "@/lib/enum-labels";
 import {
@@ -130,6 +132,7 @@ type ShiftFormProps = {
   mode: ShiftFormMode;
   shiftId?: string;
   initialDate?: string;
+  returnMonth?: string;
 };
 
 function formatCramShiftType(type: "NORMAL" | "LESSON"): string {
@@ -263,7 +266,12 @@ function findTimetableByTypeAndPeriod(
   );
 }
 
-export function ShiftForm({ mode, shiftId, initialDate }: ShiftFormProps) {
+export function ShiftForm({
+  mode,
+  shiftId,
+  initialDate,
+  returnMonth,
+}: ShiftFormProps) {
   const router = useRouter();
 
   const defaultDate = isValidDateKey(initialDate)
@@ -294,6 +302,18 @@ export function ShiftForm({ mode, shiftId, initialDate }: ShiftFormProps) {
     endTime: string;
   } | null>(null);
   const [isLessonTypeInferred, setIsLessonTypeInferred] = useState(false);
+  const returnPath = useMemo(() => {
+    if (!returnMonth) {
+      return "/my";
+    }
+
+    const parsed = fromMonthInputValue(returnMonth);
+    if (!parsed) {
+      return "/my";
+    }
+
+    return `/my?month=${toMonthInputValue(parsed)}`;
+  }, [returnMonth]);
 
   const selectedWorkplace = useMemo(() => {
     return workplaces.find((workplace) => workplace.id === form.workplaceId);
@@ -1038,7 +1058,7 @@ export function ShiftForm({ mode, shiftId, initialDate }: ShiftFormProps) {
           return;
         }
 
-        router.push("/my");
+        router.push(returnPath);
         return;
       }
 
@@ -1051,7 +1071,7 @@ export function ShiftForm({ mode, shiftId, initialDate }: ShiftFormProps) {
           description: `${form.date} ${validation.candidateTimes.startTime} - ${validation.candidateTimes.endTime}`,
         },
       );
-      router.push("/my");
+      router.push(returnPath);
     } catch (error) {
       console.error("failed to save shift", error);
       const message = toErrorMessage(error, messages.error.shiftSaveFailed);
@@ -1408,7 +1428,7 @@ export function ShiftForm({ mode, shiftId, initialDate }: ShiftFormProps) {
           <Button
             type="button"
             variant="outline"
-            onClick={() => router.push("/my")}
+            onClick={() => router.push(returnPath)}
             disabled={isSubmitting}
           >
             キャンセル

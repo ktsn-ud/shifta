@@ -8,6 +8,7 @@ import { requireCurrentUser } from "@/lib/api/current-user";
 import { parseDateOnly } from "@/lib/api/date-time";
 import {
   endOfMonth,
+  fromMonthInputValue,
   startOfMonth,
   toDateOnlyString,
 } from "@/lib/calendar/date";
@@ -36,6 +37,15 @@ function startOfUtcDay(value: Date): Date {
 
 function DashboardPageFallback() {
   return <DashboardPageLoadingSkeleton />;
+}
+
+function resolveInitialMonth(monthParam: string | string[] | undefined): Date {
+  if (typeof monthParam !== "string") {
+    return startOfMonth(new Date());
+  }
+
+  const parsedMonth = fromMonthInputValue(monthParam);
+  return startOfMonth(parsedMonth ?? new Date());
 }
 
 async function getMonthShiftsWithEstimate(
@@ -149,15 +159,14 @@ async function getUnconfirmedShiftCount(userId: string): Promise<number> {
   });
 }
 
-async function DashboardPageContent() {
+async function DashboardPageContent({ month }: { month: Date }) {
   const current = await requireCurrentUser();
   if ("response" in current) {
     redirect("/login");
   }
 
-  const currentMonth = startOfMonth(new Date());
-  const startDate = toDateOnlyString(currentMonth);
-  const endDate = toDateOnlyString(endOfMonth(currentMonth));
+  const startDate = toDateOnlyString(startOfMonth(month));
+  const endDate = toDateOnlyString(endOfMonth(month));
   const [initialMonthShifts, initialUnconfirmedShiftCount] = await Promise.all([
     getMonthShiftsWithEstimate(current.user.id, startDate, endDate),
     getUnconfirmedShiftCount(current.user.id),
@@ -174,10 +183,23 @@ async function DashboardPageContent() {
   );
 }
 
-export default function Page() {
+type DashboardPageSearchParams = {
+  month?: string | string[];
+};
+
+type DashboardPageProps = {
+  searchParams?: DashboardPageSearchParams | Promise<DashboardPageSearchParams>;
+};
+
+export default async function Page({ searchParams }: DashboardPageProps) {
+  const resolvedSearchParams = searchParams
+    ? await searchParams
+    : ({} as DashboardPageSearchParams);
+  const month = resolveInitialMonth(resolvedSearchParams.month);
+
   return (
     <Suspense fallback={<DashboardPageFallback />}>
-      <DashboardPageContent />
+      <DashboardPageContent month={month} />
     </Suspense>
   );
 }
