@@ -15,6 +15,10 @@ export class ShiftValidationError extends Error {
   }
 }
 
+function timeToMinutes(value: Date): number {
+  return value.getUTCHours() * 60 + value.getUTCMinutes();
+}
+
 export const lessonRangeSchema = z
   .object({
     startPeriod: z.coerce.number().int().positive(),
@@ -143,9 +147,36 @@ async function resolveLessonTimeRange(
     throw new ShiftValidationError("コマ範囲から算出された時刻が不正です");
   }
 
+  let breakMinutes = 0;
+  let previousEndAbsoluteMinutes: number | null = null;
+
+  for (const timetable of timetables) {
+    let startAbsoluteMinutes = timeToMinutes(timetable.startTime);
+    let endAbsoluteMinutes = timeToMinutes(timetable.endTime);
+
+    if (endAbsoluteMinutes <= startAbsoluteMinutes) {
+      endAbsoluteMinutes += 24 * 60;
+    }
+
+    if (previousEndAbsoluteMinutes !== null) {
+      while (startAbsoluteMinutes < previousEndAbsoluteMinutes) {
+        startAbsoluteMinutes += 24 * 60;
+        endAbsoluteMinutes += 24 * 60;
+      }
+
+      breakMinutes += Math.max(
+        0,
+        startAbsoluteMinutes - previousEndAbsoluteMinutes,
+      );
+    }
+
+    previousEndAbsoluteMinutes = endAbsoluteMinutes;
+  }
+
   return {
     startTime: first.startTime,
     endTime: last.endTime,
+    breakMinutes,
   };
 }
 
@@ -186,7 +217,7 @@ export async function buildShiftData(
         date,
         startTime: lessonTimes.startTime,
         endTime: lessonTimes.endTime,
-        breakMinutes: input.breakMinutes,
+        breakMinutes: lessonTimes.breakMinutes,
         shiftType: input.shiftType,
       },
       lessonRange: {
