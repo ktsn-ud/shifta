@@ -113,7 +113,7 @@ function formatCurrency(value: string | number | null): string {
   }).format(numeric);
 }
 
-function formatDate(value: string | null): string {
+function formatDate(value: string | null, shiftDays = 0): string {
   if (!value) {
     return "現在";
   }
@@ -128,7 +128,7 @@ function formatDate(value: string | null): string {
     return key;
   }
 
-  const shifted = new Date(Date.UTC(year, month - 1, day - 1));
+  const shifted = new Date(Date.UTC(year, month - 1, day + shiftDays));
   const shiftedYear = shifted.getUTCFullYear();
   const shiftedMonth = String(shifted.getUTCMonth() + 1).padStart(2, "0");
   const shiftedDay = String(shifted.getUTCDate()).padStart(2, "0");
@@ -382,7 +382,7 @@ export function PayrollRuleList({ workplaceId }: PayrollRuleListProps) {
                     <TableRow key={rule.id}>
                       <TableCell className="font-medium">
                         {formatDate(rule.startDate)} 〜{" "}
-                        {formatDate(rule.endDate)}
+                        {formatDate(rule.endDate, -1)}
                       </TableCell>
                       <TableCell>
                         {workplace?.type === "CRAM_SCHOOL"
