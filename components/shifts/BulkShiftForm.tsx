@@ -51,6 +51,8 @@ const LAST_WORKPLACE_ID_KEY = "shifta:last-workplace-id";
 const WEEKDAY_LABELS = ["日", "月", "火", "水", "木", "金", "土"] as const;
 const DAY_CELL_COUNT = 42;
 const MAX_BREAK_MINUTES = 240;
+const GOOGLE_EVENT_LIST_LIMIT = 5;
+const GOOGLE_EVENT_LIST_VISIBLE_WHEN_OVERFLOW = 3;
 
 const workplaceListResponseSchema = z.object({
   data: z.array(
@@ -90,6 +92,7 @@ const googleCalendarEventsResponseSchema = z.object({
             allDay: z.boolean(),
             calendarId: z.string(),
             calendarSummary: z.string(),
+            calendarColor: z.string().nullable().optional(),
           }),
         ),
       }),
@@ -105,6 +108,7 @@ type Timetable = z.infer<typeof timetableListResponseSchema>["data"][number];
 type GoogleCalendarDay = z.infer<
   typeof googleCalendarEventsResponseSchema
 >["data"]["dates"][number];
+type GoogleCalendarEventItem = GoogleCalendarDay["items"][number];
 
 type BulkShiftRow = {
   date: string;
@@ -210,6 +214,47 @@ function sortDateKeys(dateKeys: string[]): string[] {
   return [...dateKeys].sort((left, right) => left.localeCompare(right));
 }
 
+function getVisibleGoogleEvents(day: GoogleCalendarDay | undefined): {
+  visible: GoogleCalendarEventItem[];
+  hiddenCount: number;
+} {
+  if (!day || day.count <= 0) {
+    return {
+      visible: [],
+      hiddenCount: 0,
+    };
+  }
+
+  const items = day.items;
+  if (items.length <= GOOGLE_EVENT_LIST_LIMIT) {
+    return {
+      visible: items,
+      hiddenCount: Math.max(day.count - items.length, 0),
+    };
+  }
+
+  return {
+    visible: items.slice(0, GOOGLE_EVENT_LIST_VISIBLE_WHEN_OVERFLOW),
+    hiddenCount: Math.max(
+      day.count - GOOGLE_EVENT_LIST_VISIBLE_WHEN_OVERFLOW,
+      0,
+    ),
+  };
+}
+
+function getGoogleEventBadgeColor(color: string | null | undefined): string {
+  if (typeof color !== "string") {
+    return "#0ea5e9";
+  }
+
+  const normalized = color.trim();
+  if (/^#[0-9A-Fa-f]{6}$/.test(normalized)) {
+    return normalized;
+  }
+
+  return "#0ea5e9";
+}
+
 function formatSelectedDate(dateKey: string): string {
   const date = dateFromDateKey(dateKey);
   if (!date) {
@@ -313,9 +358,6 @@ export function BulkShiftForm() {
   const [googleEventsError, setGoogleEventsError] = useState<string | null>(
     null,
   );
-  const [activeCalendarDateKey, setActiveCalendarDateKey] = useState<
-    string | null
-  >(null);
   const [defaults, setDefaults] = useState<BulkDefaults>(DEFAULT_BULK_VALUES);
   const [errors, setErrors] = useState<FormErrors>({});
   const [isWorkplaceLoading, setIsWorkplaceLoading] = useState(true);
@@ -353,23 +395,6 @@ export function BulkShiftForm() {
       .map((dateKey) => rowsByDate[dateKey])
       .filter((row): row is BulkShiftRow => Boolean(row));
   }, [rowsByDate, selectedDateKeys]);
-
-  const activeGoogleCalendarDay = useMemo(() => {
-    const targetDateKey = activeCalendarDateKey ?? selectedDateKeys[0] ?? null;
-    if (!targetDateKey) {
-      return null;
-    }
-
-    const day = googleEventsByDate[targetDateKey];
-    if (!day) {
-      return null;
-    }
-
-    return {
-      dateKey: targetDateKey,
-      day,
-    };
-  }, [activeCalendarDateKey, googleEventsByDate, selectedDateKeys]);
 
   useEffect(() => {
     const abortController = new AbortController();
@@ -698,7 +723,6 @@ export function BulkShiftForm() {
   };
 
   const toggleDateSelection = (dateKey: string) => {
-    setActiveCalendarDateKey(dateKey);
     setErrors((current) => ({
       ...current,
       selectedDates: undefined,
@@ -1140,7 +1164,6 @@ export function BulkShiftForm() {
                 onClick={() => {
                   setSelectedDateKeys([]);
                   setRowsByDate({});
-                  setActiveCalendarDateKey(null);
                   setErrors((current) => ({
                     ...current,
                     selectedDates: undefined,
@@ -1190,8 +1213,10 @@ export function BulkShiftForm() {
                 const isSelected = selectedDateKeys.includes(cell.key);
                 const isToday = cell.key === todayKey;
                 const googleEventDay = googleEventsByDate[cell.key];
-                const hasGoogleEvents = Boolean(googleEventDay);
                 const googleEventCount = googleEventDay?.count ?? 0;
+                const hasGoogleEvents = googleEventCount > 0;
+                const { visible: visibleGoogleEvents, hiddenCount } =
+                  getVisibleGoogleEvents(googleEventDay);
 
                 return (
                   <button
@@ -1203,20 +1228,8 @@ export function BulkShiftForm() {
                       }
                       toggleDateSelection(cell.key);
                     }}
-                    onMouseEnter={() => {
-                      if (!cell.isCurrentMonth) {
-                        return;
-                      }
-                      setActiveCalendarDateKey(cell.key);
-                    }}
-                    onFocus={() => {
-                      if (!cell.isCurrentMonth) {
-                        return;
-                      }
-                      setActiveCalendarDateKey(cell.key);
-                    }}
                     className={cn(
-                      "relative min-h-16 border-b border-r p-1 text-sm last:border-r-0 md:min-h-20",
+                      "relative flex min-h-24 flex-col border-b border-r px-1 py-2 text-left text-sm last:border-r-0 md:min-h-28",
                       cell.isCurrentMonth
                         ? "cursor-pointer hover:bg-muted/50"
                         : "cursor-not-allowed bg-muted/20 text-muted-foreground/60",
@@ -1230,17 +1243,40 @@ export function BulkShiftForm() {
                     aria-label={String(cell.date.getDate())}
                   >
                     {isToday ? (
-                      <span className="pointer-events-none absolute top-1 right-1 size-2 rounded-full bg-primary" />
+                      <span className="pointer-events-none absolute top-0.5 left-1/2 size-8 -translate-x-1/2 rounded-full bg-primary/20" />
                     ) : null}
-                    <span>{cell.date.getDate()}</span>
-                    {hasGoogleEvents ? (
-                      <span
-                        className="pointer-events-none absolute right-1 bottom-1 rounded-sm bg-sky-500/90 px-1 text-[10px] font-medium text-white"
-                        aria-hidden="true"
-                      >
-                        {googleEventCount}
-                      </span>
-                    ) : null}
+
+                    <span className="relative z-10 self-center text-sm font-medium">
+                      {cell.date.getDate()}
+                    </span>
+
+                    <ul className="mt-2 w-full space-y-1 px-1">
+                      {visibleGoogleEvents.map((item, index) => (
+                        <li
+                          key={`${cell.key}:${item.calendarId}:${item.title}:${index}`}
+                          className="flex items-center gap-1 text-[10px] leading-none"
+                        >
+                          <span
+                            className="size-2 shrink-0 rounded-full"
+                            style={{
+                              backgroundColor: getGoogleEventBadgeColor(
+                                item.calendarColor,
+                              ),
+                            }}
+                          />
+                          <span className="truncate text-foreground">
+                            {item.allDay
+                              ? item.title
+                              : `${item.start}-${item.end} ${item.title}`}
+                          </span>
+                        </li>
+                      ))}
+                      {hiddenCount > 0 ? (
+                        <li className="text-[10px] font-medium text-muted-foreground">
+                          +{hiddenCount}
+                        </li>
+                      ) : null}
+                    </ul>
                   </button>
                 );
               })}
@@ -1253,6 +1289,7 @@ export function BulkShiftForm() {
                 <span className="size-2 rounded-full bg-sky-500" />
                 Google予定あり
               </span>
+              <span>セル内に直接表示</span>
               {isGoogleEventsLoading ? (
                 <span>Google予定を読み込み中...</span>
               ) : null}
@@ -1260,40 +1297,6 @@ export function BulkShiftForm() {
 
             {googleEventsError ? (
               <p className="text-xs text-amber-600">{googleEventsError}</p>
-            ) : null}
-
-            {activeGoogleCalendarDay ? (
-              <div className="space-y-2 rounded-md border bg-muted/20 p-3">
-                <p className="text-xs font-medium text-muted-foreground">
-                  {formatSelectedDate(activeGoogleCalendarDay.dateKey)} の
-                  Google 予定（{activeGoogleCalendarDay.day.count}件）
-                </p>
-                <div className="space-y-1">
-                  {activeGoogleCalendarDay.day.items.map((item, index) => (
-                    <p
-                      key={`${item.calendarId}:${item.title}:${index}`}
-                      className="text-xs"
-                    >
-                      <span className="font-medium">
-                        {item.allDay ? "終日" : `${item.start} - ${item.end}`}
-                      </span>{" "}
-                      {item.title}{" "}
-                      <span className="text-muted-foreground">
-                        ({item.calendarSummary})
-                      </span>
-                    </p>
-                  ))}
-                </div>
-                {activeGoogleCalendarDay.day.count >
-                activeGoogleCalendarDay.day.items.length ? (
-                  <p className="text-xs text-muted-foreground">
-                    ほか{" "}
-                    {activeGoogleCalendarDay.day.count -
-                      activeGoogleCalendarDay.day.items.length}
-                    件
-                  </p>
-                ) : null}
-              </div>
             ) : null}
           </div>
 

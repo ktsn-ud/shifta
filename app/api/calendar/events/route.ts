@@ -15,6 +15,7 @@ const MAX_ITEMS_PER_DAY = 20;
 type CalendarDescriptor = {
   id: string;
   summary: string;
+  color: string | null;
 };
 
 type MonthRange = {
@@ -32,6 +33,7 @@ type AggregatedEventItem = {
   allDay: boolean;
   calendarId: string;
   calendarSummary: string;
+  calendarColor: string | null;
 };
 
 type AggregatedDay = {
@@ -193,6 +195,29 @@ async function listCalendars(
   calendar: Awaited<ReturnType<typeof getReadCalendarClientByUserId>>,
 ): Promise<CalendarDescriptor[]> {
   const calendars: CalendarDescriptor[] = [];
+  const calendarColorPalette = await (async () => {
+    try {
+      const response = await calendar.colors.get();
+      const palette = new Map<string, string>();
+
+      for (const [colorId, definition] of Object.entries(
+        response.data.calendar ?? {},
+      )) {
+        if (
+          definition &&
+          typeof definition === "object" &&
+          typeof definition.background === "string"
+        ) {
+          palette.set(colorId, definition.background);
+        }
+      }
+
+      return palette;
+    } catch (error) {
+      console.warn("Failed to fetch google calendar colors", error);
+      return new Map<string, string>();
+    }
+  })();
   let pageToken: string | undefined;
 
   do {
@@ -209,9 +234,19 @@ async function listCalendars(
         continue;
       }
 
+      const backgroundColor =
+        typeof entry.backgroundColor === "string"
+          ? entry.backgroundColor
+          : null;
+      const colorFromPalette =
+        typeof entry.colorId === "string"
+          ? (calendarColorPalette.get(entry.colorId) ?? null)
+          : null;
+
       calendars.push({
         id: entry.id,
         summary: entry.summary ?? "(タイトルなし)",
+        color: backgroundColor ?? colorFromPalette,
       });
     }
 
@@ -300,6 +335,7 @@ function aggregateEvent(
       allDay: true,
       calendarId: calendarInfo.id,
       calendarSummary: calendarInfo.summary,
+      calendarColor: calendarInfo.color,
     };
 
     let cursor = allDayStart;
@@ -338,6 +374,7 @@ function aggregateEvent(
     allDay: false,
     calendarId: calendarInfo.id,
     calendarSummary: calendarInfo.summary,
+    calendarColor: calendarInfo.color,
   };
 
   pushAggregatedEvent(dayMap, dateKey, item);

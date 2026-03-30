@@ -294,6 +294,7 @@ describe("bulk shift flow integration", () => {
                     allDay: false,
                     calendarId: "cal-1",
                     calendarSummary: "個人",
+                    calendarColor: "#3366FF",
                   },
                 ],
               },
@@ -329,7 +330,18 @@ describe("bulk shift flow integration", () => {
     await user.click(findEnabledDayButton(20));
 
     await waitFor(() => {
-      expect(screen.getByText("研究室MTG")).toBeInTheDocument();
+      expect(screen.getByText("10:00-11:00 研究室MTG")).toBeInTheDocument();
     });
+
+    const eventRow = screen.getByText("10:00-11:00 研究室MTG").closest("li");
+    if (!eventRow) {
+      throw new Error("event row not found");
+    }
+
+    const colorDot = eventRow.querySelector("span");
+    if (!colorDot) {
+      throw new Error("event color dot not found");
+    }
+    expect(colorDot).toHaveStyle({ backgroundColor: "#3366FF" });
   });
 });
