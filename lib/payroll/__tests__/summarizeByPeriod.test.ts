@@ -121,7 +121,7 @@ describe("summarizeByPeriod", () => {
 
     expect(result).toEqual({
       totalWage: 23450,
-      totalWorkHours: 13.5,
+      totalWorkHours: 16.83,
       totalNightHours: 6.5,
       totalOvertimeHours: 0,
       byWorkplace: [
@@ -137,7 +137,7 @@ describe("summarizeByPeriod", () => {
           workplaceName: "勤務先B",
           workplaceColor: "#3366FF",
           wage: 6000,
-          workHours: 0,
+          workHours: 3.33,
         },
       ],
     });

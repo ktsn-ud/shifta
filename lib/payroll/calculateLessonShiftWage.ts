@@ -23,6 +23,22 @@ function decimalToNumber(
   return numeric;
 }
 
+function toMinutes(time: Date): number {
+  return time.getUTCHours() * 60 + time.getUTCMinutes();
+}
+
+function roundHours(value: number): number {
+  return Math.round(value * 100) / 100;
+}
+
+function calculateLessonWorkHours(shift: Shift): number {
+  const start = toMinutes(shift.startTime);
+  const end = toMinutes(shift.endTime);
+  const adjustedEnd = end <= start ? end + 24 * 60 : end;
+  const workedMinutes = Math.max(0, adjustedEnd - start - shift.breakMinutes);
+  return roundHours(workedMinutes / 60);
+}
+
 export function calculateLessonShiftWage(
   shift: Shift,
   shiftLessonRange: ShiftLessonRange,
@@ -44,13 +60,14 @@ export function calculateLessonShiftWage(
   }
 
   const totalWage = Math.round(lessonCount * perLessonWage);
+  const workHours = calculateLessonWorkHours(shift);
 
   return {
     totalWage,
-    dayWage: 0,
+    dayWage: totalWage,
     overtimeWage: 0,
     nightWage: 0,
-    workHours: 0,
+    workHours,
     overtimeHours: 0,
     nightHours: 0,
     lessonCount,

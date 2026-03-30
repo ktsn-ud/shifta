@@ -47,13 +47,35 @@ function startOfYear(date: Date): Date {
   return new Date(Date.UTC(date.getUTCFullYear(), 0, 1));
 }
 
+function startOfMonth(date: Date): Date {
+  return new Date(Date.UTC(date.getUTCFullYear(), date.getUTCMonth(), 1));
+}
+
+function endOfMonth(date: Date): Date {
+  return new Date(Date.UTC(date.getUTCFullYear(), date.getUTCMonth() + 1, 0));
+}
+
+function isFullMonthRange(startDate: Date, endDate: Date): boolean {
+  return (
+    startDate.getUTCDate() === 1 &&
+    startDate.getUTCFullYear() === endDate.getUTCFullYear() &&
+    startDate.getUTCMonth() === endDate.getUTCMonth() &&
+    endDate.getUTCDate() === endOfMonth(startDate).getUTCDate()
+  );
+}
+
 export async function getPayrollSummaryForUser(
   userId: string,
   startDate: Date,
   endDate: Date,
 ): Promise<PayrollSummaryResult> {
-  const previousStartDate = shiftMonthClamped(startDate, -1);
-  const previousEndDate = shiftMonthClamped(endDate, -1);
+  const previousMonthTarget = shiftMonthClamped(startDate, -1);
+  const previousStartDate = isFullMonthRange(startDate, endDate)
+    ? startOfMonth(previousMonthTarget)
+    : shiftMonthClamped(startDate, -1);
+  const previousEndDate = isFullMonthRange(startDate, endDate)
+    ? endOfMonth(previousMonthTarget)
+    : shiftMonthClamped(endDate, -1);
   const cumulativeStartDate = startOfYear(endDate);
 
   const fetchStartDate =
