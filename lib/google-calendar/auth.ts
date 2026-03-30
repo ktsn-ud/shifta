@@ -6,7 +6,10 @@ import {
   OAuthTokenCryptoError,
 } from "@/lib/security/oauth-token-crypto";
 import { readOAuthTokenFromStorage } from "@/lib/security/oauth-token-storage";
-import { GOOGLE_CALENDAR_SCOPE } from "@/lib/google-calendar/constants";
+import {
+  GOOGLE_CALENDAR_READ_SCOPES,
+  GOOGLE_CALENDAR_SYNC_SCOPES,
+} from "@/lib/google-calendar/constants";
 
 type GoogleAccountRecord = {
   userId: string;
@@ -28,7 +31,14 @@ type GoogleCalendarAuthErrorCode =
   | "GOOGLE_ACCOUNT_NOT_FOUND"
   | "TOKEN_EXPIRED"
   | "SCOPE_MISSING"
+  | "READ_SCOPE_MISSING"
   | "GOOGLE_ENV_MISSING";
+
+type GoogleAuthScopeOptions = {
+  requiredScopes: readonly string[];
+  missingScopeCode: "SCOPE_MISSING" | "READ_SCOPE_MISSING";
+  missingScopeMessage: string;
+};
 
 export class GoogleCalendarAuthError extends Error {
   constructor(
@@ -54,12 +64,28 @@ function requireGoogleEnv(): { clientId: string; clientSecret: string } {
   return { clientId, clientSecret };
 }
 
-function hasCalendarScope(scope: string | null): boolean {
+function parseScopes(scope: string | null): Set<string> {
   if (!scope) {
-    return false;
+    return new Set();
   }
 
-  return scope.split(" ").includes(GOOGLE_CALENDAR_SCOPE);
+  return new Set(scope.split(" ").filter((value) => value.length > 0));
+}
+
+function hasScopes(
+  scope: string | null,
+  requiredScopes: readonly string[],
+): boolean {
+  const scopeSet = parseScopes(scope);
+  return requiredScopes.every((requiredScope) => scopeSet.has(requiredScope));
+}
+
+function findMissingScopes(
+  scope: string | null,
+  requiredScopes: readonly string[],
+): string[] {
+  const scopeSet = parseScopes(scope);
+  return requiredScopes.filter((requiredScope) => !scopeSet.has(requiredScope));
 }
 
 function isTokenExpired(expiresAt: number | null): boolean {
@@ -218,9 +244,10 @@ async function syncAccountScopeFromTokenInfo(
   userId: string,
   account: GoogleAccountRecord,
   oauth2Client: InstanceType<typeof google.auth.OAuth2>,
+  requiredScopes: readonly string[],
 ): Promise<string | null> {
   const currentScope = account.scope;
-  if (hasCalendarScope(currentScope)) {
+  if (hasScopes(currentScope, requiredScopes)) {
     return currentScope;
   }
 
@@ -257,7 +284,16 @@ async function syncAccountScopeFromTokenInfo(
 
 export async function getGoogleAuthByUserId(
   userId: string,
+  options?: Partial<GoogleAuthScopeOptions>,
 ): Promise<GoogleAuthResult> {
+  const scopeOptions: GoogleAuthScopeOptions = {
+    requiredScopes: options?.requiredScopes ?? GOOGLE_CALENDAR_SYNC_SCOPES,
+    missingScopeCode: options?.missingScopeCode ?? "SCOPE_MISSING",
+    missingScopeMessage:
+      options?.missingScopeMessage ??
+      "Google Calendar の権限が不足しています。再ログインして再同意してください",
+  };
+
   const user = await prisma.user.findUnique({
     where: { id: userId },
     select: {
@@ -290,11 +326,16 @@ export async function getGoogleAuthByUserId(
     userId,
     account,
     oauth2Client,
+    scopeOptions.requiredScopes,
   );
-  if (hasCalendarScope(effectiveScope) === false) {
+  const missingScopes = findMissingScopes(
+    effectiveScope,
+    scopeOptions.requiredScopes,
+  );
+  if (missingScopes.length > 0) {
     throw new GoogleCalendarAuthError(
-      "SCOPE_MISSING",
-      "Google Calendar の権限が不足しています",
+      scopeOptions.missingScopeCode,
+      scopeOptions.missingScopeMessage,
     );
   }
 
@@ -317,6 +358,7 @@ export async function getGoogleAuthByUserId(
 
 export async function getGoogleAuthBySession(
   session: Session,
+  options?: Partial<GoogleAuthScopeOptions>,
 ): Promise<GoogleAuthResult> {
   const email = session.user?.email;
   if (!email) {
@@ -338,5 +380,27 @@ export async function getGoogleAuthBySession(
     );
   }
 
-  return getGoogleAuthByUserId(user.id);
+  return getGoogleAuthByUserId(user.id, options);
+}
+
+export async function getGoogleReadAuthByUserId(
+  userId: string,
+): Promise<GoogleAuthResult> {
+  return getGoogleAuthByUserId(userId, {
+    requiredScopes: GOOGLE_CALENDAR_READ_SCOPES,
+    missingScopeCode: "READ_SCOPE_MISSING",
+    missingScopeMessage:
+      "全カレンダー予定表示に必要なGoogle権限が不足しています。再ログインして再同意してください",
+  });
+}
+
+export async function getGoogleReadAuthBySession(
+  session: Session,
+): Promise<GoogleAuthResult> {
+  return getGoogleAuthBySession(session, {
+    requiredScopes: GOOGLE_CALENDAR_READ_SCOPES,
+    missingScopeCode: "READ_SCOPE_MISSING",
+    missingScopeMessage:
+      "全カレンダー予定表示に必要なGoogle権限が不足しています。再ログインして再同意してください",
+  });
 }

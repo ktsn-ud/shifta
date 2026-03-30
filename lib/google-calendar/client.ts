@@ -1,6 +1,10 @@
 import type { Session } from "next-auth";
 import { calendar_v3, google } from "googleapis";
-import { getGoogleAuthBySession, getGoogleAuthByUserId } from "./auth";
+import {
+  getGoogleAuthBySession,
+  getGoogleAuthByUserId,
+  getGoogleReadAuthByUserId,
+} from "./auth";
 import {
   SHIFTA_CALENDAR_DESCRIPTION,
   SHIFTA_CALENDAR_NAME,
@@ -23,6 +27,16 @@ export async function getCalendarClientByUserId(
   userId: string,
 ): Promise<calendar_v3.Calendar> {
   const { oauth2Client } = await getGoogleAuthByUserId(userId);
+  return google.calendar({
+    version: "v3",
+    auth: oauth2Client,
+  });
+}
+
+export async function getReadCalendarClientByUserId(
+  userId: string,
+): Promise<calendar_v3.Calendar> {
+  const { oauth2Client } = await getGoogleReadAuthByUserId(userId);
   return google.calendar({
     version: "v3",
     auth: oauth2Client,

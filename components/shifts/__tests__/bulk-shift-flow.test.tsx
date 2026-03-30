@@ -69,6 +69,15 @@ describe("bulk shift flow integration", () => {
 
     fetchMock.mockImplementation(
       async (input: string, init?: { method?: string }) => {
+        if (input.startsWith("/api/calendar/events?month=")) {
+          return jsonResponse({
+            data: {
+              month: "2026-03",
+              dates: [],
+            },
+          });
+        }
+
         if (input === "/api/workplaces") {
           return jsonResponse({
             data: [
@@ -199,6 +208,15 @@ describe("bulk shift flow integration", () => {
 
     fetchMock.mockImplementation(
       async (input: string, init?: { method?: string }) => {
+        if (input.startsWith("/api/calendar/events?month=")) {
+          return jsonResponse({
+            data: {
+              month: "2026-03",
+              dates: [],
+            },
+          });
+        }
+
         if (input === "/api/workplaces") {
           return jsonResponse({
             data: [
@@ -251,5 +269,82 @@ describe("bulk shift flow integration", () => {
     await waitFor(() => {
       expect(pushMock).toHaveBeenCalledWith("/my/calendar-setup");
     });
+  });
+
+  it("shows google events for selected day on bulk calendar", async () => {
+    const user = userEvent.setup({
+      advanceTimers: jest.advanceTimersByTime,
+    });
+    const fetchMock = globalThis.fetch as jest.Mock;
+
+    fetchMock.mockImplementation(async (input: string) => {
+      if (input.startsWith("/api/calendar/events?month=")) {
+        return jsonResponse({
+          data: {
+            month: "2026-03",
+            dates: [
+              {
+                date: "2026-03-20",
+                count: 1,
+                items: [
+                  {
+                    title: "研究室MTG",
+                    start: "10:00",
+                    end: "11:00",
+                    allDay: false,
+                    calendarId: "cal-1",
+                    calendarSummary: "個人",
+                    calendarColor: "#3366FF",
+                  },
+                ],
+              },
+            ],
+          },
+        });
+      }
+
+      if (input === "/api/workplaces") {
+        return jsonResponse({
+          data: [
+            {
+              id: "workplace-1",
+              name: "勤務先A",
+              color: "#3366FF",
+              type: "GENERAL",
+            },
+          ],
+        });
+      }
+
+      throw new Error(`Unexpected fetch: ${input}`);
+    });
+
+    render(<BulkShiftForm />);
+
+    await waitFor(() => {
+      expect(
+        screen.getByRole("combobox", { name: "勤務先" }),
+      ).toHaveTextContent("勤務先A");
+    });
+
+    await user.click(findEnabledDayButton(20));
+
+    let eventLabels: HTMLElement[] = [];
+    await waitFor(() => {
+      eventLabels = screen.getAllByText("10:00-11:00 研究室MTG");
+      expect(eventLabels.length).toBeGreaterThanOrEqual(1);
+      expect(screen.getByText("Google予定")).toBeInTheDocument();
+    });
+
+    const eventRow = eventLabels[0]?.closest("li");
+    if (!eventRow) {
+      throw new Error("event row not found");
+    }
+
+    const colorDot = eventRow.querySelector("span");
+    if (!colorDot) {
+      throw new Error("event color dot not found");
+    }
+    expect(colorDot).toHaveStyle({ backgroundColor: "#3366FF" });
   });
 });
