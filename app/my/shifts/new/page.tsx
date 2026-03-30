@@ -18,6 +18,7 @@ export default function NewShiftPage() {
     <ShiftForm
       mode="create"
       initialDate={searchParams.get("date") ?? undefined}
+      returnMonth={searchParams.get("month") ?? undefined}
     />
   );
 }

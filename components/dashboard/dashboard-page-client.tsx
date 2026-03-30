@@ -1,7 +1,7 @@
 "use client";
 
-import { useMemo, useState } from "react";
-import { useRouter } from "next/navigation";
+import { useEffect, useMemo, useState } from "react";
+import { useRouter, useSearchParams } from "next/navigation";
 import {
   AlertTriangleIcon,
   CheckCircle2Icon,
@@ -27,7 +27,9 @@ import {
   addMonths,
   dateFromDateKey,
   dateKeyFromApiDate,
+  fromMonthInputValue,
   startOfMonth,
+  toMonthInputValue,
   toDateKey,
 } from "@/lib/calendar/date";
 import {
@@ -99,6 +101,7 @@ export function DashboardPageClient({
   initialUnconfirmedShiftCount,
 }: DashboardPageClientProps) {
   const router = useRouter();
+  const searchParams = useSearchParams();
   const [month, setMonth] = useState(() => {
     const initialMonthDate = dateFromDateKey(initialMonthStartDate);
     return startOfMonth(initialMonthDate ?? new Date());
@@ -142,10 +145,51 @@ export function DashboardPageClient({
   }, [shifts]);
   const failedShiftCount = failedShiftIds.length;
   const [isBulkRetrying, setIsBulkRetrying] = useState(false);
+  const monthFromQuery = useMemo(() => {
+    const rawMonth = searchParams.get("month");
+    if (!rawMonth) {
+      return null;
+    }
+
+    const parsed = fromMonthInputValue(rawMonth);
+    return parsed ? startOfMonth(parsed) : null;
+  }, [searchParams]);
+
+  useEffect(() => {
+    const nextMonth = startOfMonth(
+      dateFromDateKey(initialMonthStartDate) ?? new Date(),
+    );
+
+    setMonth((current) => {
+      const isSameMonth =
+        current.getFullYear() === nextMonth.getFullYear() &&
+        current.getMonth() === nextMonth.getMonth();
+
+      return isSameMonth ? current : nextMonth;
+    });
+  }, [initialMonthStartDate]);
+
+  useEffect(() => {
+    if (!monthFromQuery) {
+      return;
+    }
+
+    setMonth((current) => {
+      const isSameMonth =
+        current.getFullYear() === monthFromQuery.getFullYear() &&
+        current.getMonth() === monthFromQuery.getMonth();
+
+      return isSameMonth ? current : monthFromQuery;
+    });
+  }, [monthFromQuery]);
 
   const handleCreateShift = (date: Date) => {
     const dateString = toDateKey(date);
-    router.push(`/my/shifts/new?date=${dateString}`);
+    const params = new URLSearchParams({
+      date: dateString,
+      month: toMonthInputValue(month),
+    });
+    router.push(`/my/shifts/new?${params.toString()}`);
   };
 
   const handleBulkRetrySync = async () => {
@@ -388,7 +432,10 @@ export function DashboardPageClient({
         shifts={selectedDateShifts}
         onCreateShift={handleCreateShift}
         onEditShift={(shiftId) => {
-          router.push(`/my/shifts/${shiftId}/edit`);
+          const params = new URLSearchParams({
+            month: toMonthInputValue(month),
+          });
+          router.push(`/my/shifts/${shiftId}/edit?${params.toString()}`);
         }}
         onDeleteShift={async (shiftId) => {
           const response = await fetch(`/api/shifts/${shiftId}`, {

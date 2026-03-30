@@ -1,7 +1,7 @@
 "use client";
 
 import dynamic from "next/dynamic";
-import { useParams } from "next/navigation";
+import { useParams, useSearchParams } from "next/navigation";
 import { EditShiftFormLoadingSkeleton } from "@/components/shifts/ShiftFormLoadingSkeleton";
 
 const ShiftForm = dynamic(
@@ -13,6 +13,13 @@ const ShiftForm = dynamic(
 
 export default function EditShiftPage() {
   const params = useParams<{ id: string }>();
+  const searchParams = useSearchParams();
 
-  return <ShiftForm mode="edit" shiftId={params.id} />;
+  return (
+    <ShiftForm
+      mode="edit"
+      shiftId={params.id}
+      returnMonth={searchParams.get("month") ?? undefined}
+    />
+  );
 }

@@ -30,7 +30,9 @@ import { TimePicker } from "@/components/ui/time-picker";
 import {
   dateFromDateKey,
   dateKeyFromApiDate,
+  fromMonthInputValue,
   toDateKey,
+  toMonthInputValue,
 } from "@/lib/calendar/date";
 import { formatLessonType, formatShiftType } from "@/lib/enum-labels";
 import {
@@ -130,6 +132,7 @@ type ShiftFormProps = {
   mode: ShiftFormMode;
   shiftId?: string;
   initialDate?: string;
+  returnMonth?: string;
 };
 
 function formatCramShiftType(type: "NORMAL" | "LESSON"): string {
@@ -263,7 +266,12 @@ function findTimetableByTypeAndPeriod(
   );
 }
 
-export function ShiftForm({ mode, shiftId, initialDate }: ShiftFormProps) {
+export function ShiftForm({
+  mode,
+  shiftId,
+  initialDate,
+  returnMonth,
+}: ShiftFormProps) {
   const router = useRouter();
 
   const defaultDate = isValidDateKey(initialDate)
@@ -294,11 +302,23 @@ export function ShiftForm({ mode, shiftId, initialDate }: ShiftFormProps) {
     endTime: string;
   } | null>(null);
   const [isLessonTypeInferred, setIsLessonTypeInferred] = useState(false);
+  const returnPath = useMemo(() => {
+    if (!returnMonth) {
+      return "/my";
+    }
+
+    const parsed = fromMonthInputValue(returnMonth);
+    if (!parsed) {
+      return "/my";
+    }
+
+    return `/my?month=${toMonthInputValue(parsed)}`;
+  }, [returnMonth]);
 
   const selectedWorkplace = useMemo(() => {
     return workplaces.find((workplace) => workplace.id === form.workplaceId);
   }, [form.workplaceId, workplaces]);
-  const selectedWorkplaceId = selectedWorkplace?.id;
+  const selectedWorkplaceId = form.workplaceId;
   const selectedWorkplaceType = selectedWorkplace?.type;
 
   const lessonPeriods = useMemo(() => {
@@ -495,7 +515,17 @@ export function ShiftForm({ mode, shiftId, initialDate }: ShiftFormProps) {
   }, [form.workplaceId, mode, workplaces]);
 
   useEffect(() => {
-    if (!selectedWorkplaceId || selectedWorkplaceType !== "CRAM_SCHOOL") {
+    if (!selectedWorkplaceId) {
+      setTimetables([]);
+      return;
+    }
+
+    if (!selectedWorkplaceType) {
+      setTimetables([]);
+      return;
+    }
+
+    if (selectedWorkplaceType !== "CRAM_SCHOOL") {
       setTimetables([]);
 
       setForm((current) => {
@@ -607,6 +637,10 @@ export function ShiftForm({ mode, shiftId, initialDate }: ShiftFormProps) {
       return;
     }
 
+    if (timetables.length === 0) {
+      return;
+    }
+
     const startPeriod = Number(form.startPeriod);
     const endPeriod = Number(form.endPeriod);
     if (
@@ -645,6 +679,10 @@ export function ShiftForm({ mode, shiftId, initialDate }: ShiftFormProps) {
     }
 
     if (lessonPeriods.length === 0) {
+      if (mode === "edit" && isLessonTypeInferred === false) {
+        return;
+      }
+
       if (!form.startPeriod && !form.endPeriod) {
         return;
       }
@@ -676,7 +714,14 @@ export function ShiftForm({ mode, shiftId, initialDate }: ShiftFormProps) {
         endPeriod: nextEnd,
       };
     });
-  }, [form.endPeriod, form.shiftType, form.startPeriod, lessonPeriods]);
+  }, [
+    form.endPeriod,
+    form.shiftType,
+    form.startPeriod,
+    isLessonTypeInferred,
+    lessonPeriods,
+    mode,
+  ]);
 
   function updateForm<K extends keyof FormState>(key: K, value: FormState[K]) {
     setForm((current) => ({
@@ -1013,7 +1058,7 @@ export function ShiftForm({ mode, shiftId, initialDate }: ShiftFormProps) {
           return;
         }
 
-        router.push("/my");
+        router.push(returnPath);
         return;
       }
 
@@ -1026,7 +1071,7 @@ export function ShiftForm({ mode, shiftId, initialDate }: ShiftFormProps) {
           description: `${form.date} ${validation.candidateTimes.startTime} - ${validation.candidateTimes.endTime}`,
         },
       );
-      router.push("/my");
+      router.push(returnPath);
     } catch (error) {
       console.error("failed to save shift", error);
       const message = toErrorMessage(error, messages.error.shiftSaveFailed);
@@ -1383,7 +1428,7 @@ export function ShiftForm({ mode, shiftId, initialDate }: ShiftFormProps) {
           <Button
             type="button"
             variant="outline"
-            onClick={() => router.push("/my")}
+            onClick={() => router.push(returnPath)}
             disabled={isSubmitting}
           >
             キャンセル
