@@ -518,7 +518,9 @@ export function SummaryPageClient({
                       tickLine={false}
                       axisLine={false}
                       tickFormatter={(value: number) =>
-                        `${Math.round(value / 1000)}k`
+                        new Intl.NumberFormat("ja-JP", {
+                          maximumFractionDigits: 0,
+                        }).format(value)
                       }
                     />
                     <ChartTooltip

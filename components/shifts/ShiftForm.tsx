@@ -709,15 +709,6 @@ export function ShiftForm({ mode, shiftId, initialDate }: ShiftFormProps) {
       nextErrors.date = "ERR_001: 日付は必須項目です";
     }
 
-    const breakMinutes = Number(form.breakMinutes);
-    if (Number.isFinite(breakMinutes) === false || breakMinutes < 0) {
-      nextErrors.breakMinutes = "休憩時間は0以上で入力してください";
-    }
-
-    if (breakMinutes > 240) {
-      nextErrors.breakMinutes = "休憩時間は240分以下で入力してください";
-    }
-
     if (form.shiftType === "LESSON") {
       if (!form.lessonType) {
         nextErrors.lessonType = "ERR_001: コマ種別は必須項目です";
@@ -772,6 +763,15 @@ export function ShiftForm({ mode, shiftId, initialDate }: ShiftFormProps) {
         errors: nextErrors,
         candidateTimes: resolved,
       };
+    }
+
+    const breakMinutes = Number(form.breakMinutes);
+    if (Number.isFinite(breakMinutes) === false || breakMinutes < 0) {
+      nextErrors.breakMinutes = "休憩時間は0以上で入力してください";
+    }
+
+    if (breakMinutes > 240) {
+      nextErrors.breakMinutes = "休憩時間は240分以下で入力してください";
     }
 
     if (!form.startTime) {
@@ -926,7 +926,12 @@ export function ShiftForm({ mode, shiftId, initialDate }: ShiftFormProps) {
       workplaceId: form.workplaceId,
       date: form.date,
       shiftType: effectiveShiftType,
-      breakMinutes: Number.isNaN(breakMinutes) ? 0 : breakMinutes,
+      breakMinutes:
+        effectiveShiftType === "LESSON"
+          ? 0
+          : Number.isNaN(breakMinutes)
+            ? 0
+            : breakMinutes,
     };
 
     if (effectiveShiftType === "LESSON") {
@@ -1338,29 +1343,31 @@ export function ShiftForm({ mode, shiftId, initialDate }: ShiftFormProps) {
             </>
           )}
 
-          <Field data-invalid={Boolean(errors.breakMinutes)}>
-            <FieldLabel htmlFor="shift-break-minutes">休憩時間</FieldLabel>
-            <FieldContent>
-              <div className="flex items-center gap-2">
-                <Input
-                  id="shift-break-minutes"
-                  type="number"
-                  min={0}
-                  max={240}
-                  value={form.breakMinutes}
-                  onChange={(event) =>
-                    updateForm("breakMinutes", event.currentTarget.value)
-                  }
-                  disabled={disabled}
-                  className="max-w-14"
-                />
-                <span className="shrink-0 text-sm text-muted-foreground">
-                  分
-                </span>
-              </div>
-              <FormErrorMessage message={errors.breakMinutes} />
-            </FieldContent>
-          </Field>
+          {showLessonFields ? null : (
+            <Field data-invalid={Boolean(errors.breakMinutes)}>
+              <FieldLabel htmlFor="shift-break-minutes">休憩時間</FieldLabel>
+              <FieldContent>
+                <div className="flex items-center gap-2">
+                  <Input
+                    id="shift-break-minutes"
+                    type="number"
+                    min={0}
+                    max={240}
+                    value={form.breakMinutes}
+                    onChange={(event) =>
+                      updateForm("breakMinutes", event.currentTarget.value)
+                    }
+                    disabled={disabled}
+                    className="max-w-14"
+                  />
+                  <span className="shrink-0 text-sm text-muted-foreground">
+                    分
+                  </span>
+                </div>
+                <FormErrorMessage message={errors.breakMinutes} />
+              </FieldContent>
+            </Field>
+          )}
         </FieldGroup>
 
         <div className="flex flex-wrap gap-2">

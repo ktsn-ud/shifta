@@ -477,6 +477,23 @@ export function BulkShiftForm() {
     }
 
     setDefaults((current) => {
+      if (current.shiftType !== "NORMAL") {
+        return current;
+      }
+
+      return {
+        ...current,
+        shiftType: "LESSON",
+      };
+    });
+  }, [selectedWorkplace?.type]);
+
+  useEffect(() => {
+    if (selectedWorkplace?.type !== "CRAM_SCHOOL") {
+      return;
+    }
+
+    setDefaults((current) => {
       if (current.shiftType !== "LESSON") {
         return current;
       }
@@ -671,13 +688,6 @@ export function BulkShiftForm() {
         continue;
       }
 
-      const breakMinutes = Number(row.breakMinutes);
-      if (!Number.isInteger(breakMinutes)) {
-        rowErrors.breakMinutes = "休憩時間は整数で入力してください。";
-      } else if (breakMinutes < 0 || breakMinutes > MAX_BREAK_MINUTES) {
-        rowErrors.breakMinutes = "休憩時間は0〜240分で入力してください。";
-      }
-
       if (
         selectedWorkplace?.type === "CRAM_SCHOOL" &&
         row.shiftType === "OTHER"
@@ -733,7 +743,7 @@ export function BulkShiftForm() {
           payload.push({
             date: dateKey,
             shiftType: "LESSON",
-            breakMinutes,
+            breakMinutes: 0,
             lessonRange: {
               lessonType: row.lessonType,
               startPeriod,
@@ -742,6 +752,13 @@ export function BulkShiftForm() {
           });
         }
       } else {
+        const breakMinutes = Number(row.breakMinutes);
+        if (!Number.isInteger(breakMinutes)) {
+          rowErrors.breakMinutes = "休憩時間は整数で入力してください。";
+        } else if (breakMinutes < 0 || breakMinutes > MAX_BREAK_MINUTES) {
+          rowErrors.breakMinutes = "休憩時間は0〜240分で入力してください。";
+        }
+
         if (!TIME_ONLY_REGEX.test(row.startTime)) {
           rowErrors.startTime = "開始時刻はHH:MM形式で入力してください。";
         }
@@ -1173,33 +1190,35 @@ export function BulkShiftForm() {
               </FieldContent>
             </Field>
 
-            <Field>
-              <FieldLabel htmlFor="default-break">
-                デフォルト休憩時間
-              </FieldLabel>
-              <FieldContent>
-                <div className="flex items-center gap-2">
-                  <Input
-                    id="default-break"
-                    type="number"
-                    min={0}
-                    max={MAX_BREAK_MINUTES}
-                    value={defaults.breakMinutes}
-                    onChange={(event) => {
-                      const breakMinutes = event.currentTarget.value;
-                      setDefaults((current) => ({
-                        ...current,
-                        breakMinutes,
-                      }));
-                    }}
-                    className="max-w-16"
-                  />
-                  <span className="shrink-0 text-sm text-muted-foreground">
-                    分
-                  </span>
-                </div>
-              </FieldContent>
-            </Field>
+            {defaults.shiftType === "LESSON" ? null : (
+              <Field>
+                <FieldLabel htmlFor="default-break">
+                  デフォルト休憩時間
+                </FieldLabel>
+                <FieldContent>
+                  <div className="flex items-center gap-2">
+                    <Input
+                      id="default-break"
+                      type="number"
+                      min={0}
+                      max={MAX_BREAK_MINUTES}
+                      value={defaults.breakMinutes}
+                      onChange={(event) => {
+                        const breakMinutes = event.currentTarget.value;
+                        setDefaults((current) => ({
+                          ...current,
+                          breakMinutes,
+                        }));
+                      }}
+                      className="max-w-16"
+                    />
+                    <span className="shrink-0 text-sm text-muted-foreground">
+                      分
+                    </span>
+                  </div>
+                </FieldContent>
+              </Field>
+            )}
           </FieldGroup>
 
           {defaults.shiftType === "LESSON" ? (
@@ -1524,33 +1543,38 @@ export function BulkShiftForm() {
                         </FieldContent>
                       </Field>
 
-                      <Field>
-                        <FieldLabel htmlFor={`${row.date}-break`}>
-                          休憩時間（分）
-                        </FieldLabel>
-                        <FieldContent>
-                          <div className="flex items-center gap-2">
-                            <Input
-                              id={`${row.date}-break`}
-                              type="number"
-                              min={0}
-                              max={MAX_BREAK_MINUTES}
-                              className="max-w-16"
-                              value={row.breakMinutes}
-                              onChange={(event) => {
-                                const breakMinutes = event.currentTarget.value;
-                                updateRow(row.date, {
-                                  breakMinutes,
-                                });
-                              }}
+                      {row.shiftType === "LESSON" ? null : (
+                        <Field>
+                          <FieldLabel htmlFor={`${row.date}-break`}>
+                            休憩時間（分）
+                          </FieldLabel>
+                          <FieldContent>
+                            <div className="flex items-center gap-2">
+                              <Input
+                                id={`${row.date}-break`}
+                                type="number"
+                                min={0}
+                                max={MAX_BREAK_MINUTES}
+                                className="max-w-16"
+                                value={row.breakMinutes}
+                                onChange={(event) => {
+                                  const breakMinutes =
+                                    event.currentTarget.value;
+                                  updateRow(row.date, {
+                                    breakMinutes,
+                                  });
+                                }}
+                              />
+                              <span className="shrink-0 text-sm text-muted-foreground">
+                                分
+                              </span>
+                            </div>
+                            <FormErrorMessage
+                              message={rowErrors.breakMinutes}
                             />
-                            <span className="shrink-0 text-sm text-muted-foreground">
-                              分
-                            </span>
-                          </div>
-                          <FormErrorMessage message={rowErrors.breakMinutes} />
-                        </FieldContent>
-                      </Field>
+                          </FieldContent>
+                        </Field>
+                      )}
                     </FieldGroup>
 
                     {row.shiftType === "LESSON" ? (
