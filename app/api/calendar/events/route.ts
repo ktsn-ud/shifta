@@ -12,6 +12,11 @@ const PAGE_SIZE_CALENDAR_LIST = 250;
 const PAGE_SIZE_EVENTS = 2500;
 const MAX_ITEMS_PER_DAY = 20;
 
+type GoogleColorPalettes = {
+  calendar: Map<string, string>;
+  event: Map<string, string>;
+};
+
 type CalendarDescriptor = {
   id: string;
   summary: string;
@@ -160,6 +165,19 @@ function mapGoogleAuthErrorStatus(error: GoogleCalendarAuthError): number {
   return 400;
 }
 
+function normalizeHexColor(value: string | null | undefined): string | null {
+  if (typeof value !== "string") {
+    return null;
+  }
+
+  const normalized = value.trim();
+  if (!/^#[0-9A-Fa-f]{6}$/.test(normalized)) {
+    return null;
+  }
+
+  return normalized.toUpperCase();
+}
+
 async function mapWithConcurrency<T, R>(
   values: readonly T[],
   limit: number,
@@ -193,31 +211,9 @@ async function mapWithConcurrency<T, R>(
 
 async function listCalendars(
   calendar: Awaited<ReturnType<typeof getReadCalendarClientByUserId>>,
+  colorPalettes: GoogleColorPalettes,
 ): Promise<CalendarDescriptor[]> {
   const calendars: CalendarDescriptor[] = [];
-  const calendarColorPalette = await (async () => {
-    try {
-      const response = await calendar.colors.get();
-      const palette = new Map<string, string>();
-
-      for (const [colorId, definition] of Object.entries(
-        response.data.calendar ?? {},
-      )) {
-        if (
-          definition &&
-          typeof definition === "object" &&
-          typeof definition.background === "string"
-        ) {
-          palette.set(colorId, definition.background);
-        }
-      }
-
-      return palette;
-    } catch (error) {
-      console.warn("Failed to fetch google calendar colors", error);
-      return new Map<string, string>();
-    }
-  })();
   let pageToken: string | undefined;
 
   do {
@@ -234,19 +230,17 @@ async function listCalendars(
         continue;
       }
 
-      const backgroundColor =
-        typeof entry.backgroundColor === "string"
-          ? entry.backgroundColor
-          : null;
+      const backgroundColor = normalizeHexColor(entry.backgroundColor);
       const colorFromPalette =
         typeof entry.colorId === "string"
-          ? (calendarColorPalette.get(entry.colorId) ?? null)
+          ? (colorPalettes.calendar.get(entry.colorId) ?? null)
           : null;
+      const resolvedColor = backgroundColor ?? colorFromPalette;
 
       calendars.push({
         id: entry.id,
         summary: entry.summary ?? "(タイトルなし)",
-        color: backgroundColor ?? colorFromPalette,
+        color: resolvedColor,
       });
     }
 
@@ -311,9 +305,12 @@ function aggregateEvent(
   dayMap: Map<string, AggregatedDay>,
   range: MonthRange,
   calendarInfo: CalendarDescriptor,
+  colorPalettes: GoogleColorPalettes,
   event: {
+    id?: string | null;
     summary?: string | null;
     status?: string | null;
+    colorId?: string | null;
     start?: { date?: string | null; dateTime?: string | null } | null;
     end?: { date?: string | null; dateTime?: string | null } | null;
   },
@@ -323,6 +320,11 @@ function aggregateEvent(
   }
 
   const title = event.summary?.trim() || "(タイトルなし)";
+  const eventColor =
+    typeof event.colorId === "string"
+      ? (colorPalettes.event.get(event.colorId) ?? null)
+      : null;
+  const resolvedColor = eventColor ?? calendarInfo.color;
   const allDayStart = event.start?.date;
   const allDayEndExclusive = event.end?.date;
 
@@ -335,7 +337,7 @@ function aggregateEvent(
       allDay: true,
       calendarId: calendarInfo.id,
       calendarSummary: calendarInfo.summary,
-      calendarColor: calendarInfo.color,
+      calendarColor: resolvedColor,
     };
 
     let cursor = allDayStart;
@@ -374,7 +376,7 @@ function aggregateEvent(
     allDay: false,
     calendarId: calendarInfo.id,
     calendarSummary: calendarInfo.summary,
-    calendarColor: calendarInfo.color,
+    calendarColor: resolvedColor,
   };
 
   pushAggregatedEvent(dayMap, dateKey, item);
@@ -394,7 +396,54 @@ export async function GET(request: Request) {
     }
 
     const calendar = await getReadCalendarClientByUserId(current.user.id);
-    const calendars = await listCalendars(calendar);
+    const colorPalettes = await (async (): Promise<GoogleColorPalettes> => {
+      try {
+        const response = await calendar.colors.get();
+        const calendarPalette = new Map<string, string>();
+        const eventPalette = new Map<string, string>();
+
+        for (const [colorId, definition] of Object.entries(
+          response.data.calendar ?? {},
+        )) {
+          if (
+            definition &&
+            typeof definition === "object" &&
+            typeof definition.background === "string"
+          ) {
+            const color = normalizeHexColor(definition.background);
+            if (color) {
+              calendarPalette.set(colorId, color);
+            }
+          }
+        }
+
+        for (const [colorId, definition] of Object.entries(
+          response.data.event ?? {},
+        )) {
+          if (
+            definition &&
+            typeof definition === "object" &&
+            typeof definition.background === "string"
+          ) {
+            const color = normalizeHexColor(definition.background);
+            if (color) {
+              eventPalette.set(colorId, color);
+            }
+          }
+        }
+
+        return {
+          calendar: calendarPalette,
+          event: eventPalette,
+        };
+      } catch {
+        return {
+          calendar: new Map<string, string>(),
+          event: new Map<string, string>(),
+        };
+      }
+    })();
+    const calendars = await listCalendars(calendar, colorPalettes);
 
     const eventsByCalendar = await mapWithConcurrency(
       calendars,
@@ -416,7 +465,7 @@ export async function GET(request: Request) {
 
     for (const { calendarInfo, events } of eventsByCalendar) {
       for (const event of events) {
-        aggregateEvent(dayMap, range, calendarInfo, event);
+        aggregateEvent(dayMap, range, calendarInfo, colorPalettes, event);
       }
     }
 
