@@ -1,10 +1,17 @@
-"use client";
-
-import { useParams } from "next/navigation";
 import { WorkplaceForm } from "@/components/workplaces/workplace-form";
 
-export default function EditWorkplacePage() {
-  const params = useParams<{ workplaceId: string }>();
+type EditWorkplacePageParams = {
+  workplaceId: string;
+};
 
-  return <WorkplaceForm mode="edit" workplaceId={params.workplaceId} />;
+type EditWorkplacePageProps = {
+  params: EditWorkplacePageParams | Promise<EditWorkplacePageParams>;
+};
+
+export default async function EditWorkplacePage({
+  params,
+}: EditWorkplacePageProps) {
+  const resolvedParams = await params;
+
+  return <WorkplaceForm mode="edit" workplaceId={resolvedParams.workplaceId} />;
 }

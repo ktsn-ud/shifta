@@ -114,7 +114,6 @@ export function WorkplaceList({ initialWorkplaces }: WorkplaceListProps) {
 
       try {
         const response = await fetch("/api/workplaces", {
-          cache: "no-store",
           signal: abortController.signal,
         });
 

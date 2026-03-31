@@ -3,7 +3,6 @@
 import { useEffect, useMemo, useState } from "react";
 import { useRouter } from "next/navigation";
 import { toast } from "sonner";
-import { z } from "zod";
 import { FormErrorMessage } from "@/components/form/form-error-message";
 import { Button } from "@/components/ui/button";
 import {
@@ -25,27 +24,6 @@ import { RadioGroup, RadioGroupItem } from "@/components/ui/radio-group";
 import { formatLessonType } from "@/lib/enum-labels";
 import { messages, toErrorMessage } from "@/lib/messages";
 
-const workplaceResponseSchema = z.object({
-  data: z.object({
-    id: z.string(),
-    name: z.string(),
-    type: z.enum(["GENERAL", "CRAM_SCHOOL"]),
-  }),
-});
-
-const timetableSchema = z.object({
-  id: z.string(),
-  workplaceId: z.string(),
-  type: z.enum(["NORMAL", "INTENSIVE"]),
-  period: z.number().int().positive(),
-  startTime: z.string(),
-  endTime: z.string(),
-});
-
-const timetableListResponseSchema = z.object({
-  data: z.array(timetableSchema),
-});
-
 const timeRegex = /^([01]\d|2[0-3]):([0-5]\d)$/;
 
 type TimetableFormMode = "create" | "edit";
@@ -66,6 +44,77 @@ type FormValues = {
 
 type FormErrors = Partial<Record<keyof FormValues | "form", string>>;
 type RowErrors = Partial<Record<keyof FormValues, string>>;
+type WorkplaceSummary = {
+  id: string;
+  name: string;
+  type: "GENERAL" | "CRAM_SCHOOL";
+};
+type TimetableItem = {
+  id: string;
+  workplaceId: string;
+  type: TimetableType;
+  period: number;
+  startTime: string;
+  endTime: string;
+};
+
+function isRecord(value: unknown): value is Record<string, unknown> {
+  return typeof value === "object" && value !== null;
+}
+
+function isTimetableType(value: unknown): value is TimetableType {
+  return value === "NORMAL" || value === "INTENSIVE";
+}
+
+function parseWorkplaceResponse(payload: unknown): WorkplaceSummary | null {
+  if (!isRecord(payload) || !isRecord(payload.data)) {
+    return null;
+  }
+
+  const data = payload.data;
+  if (
+    typeof data.id !== "string" ||
+    typeof data.name !== "string" ||
+    (data.type !== "GENERAL" && data.type !== "CRAM_SCHOOL")
+  ) {
+    return null;
+  }
+
+  return {
+    id: data.id,
+    name: data.name,
+    type: data.type,
+  };
+}
+
+function isTimetableItem(value: unknown): value is TimetableItem {
+  if (!isRecord(value)) {
+    return false;
+  }
+
+  return (
+    typeof value.id === "string" &&
+    typeof value.workplaceId === "string" &&
+    isTimetableType(value.type) &&
+    typeof value.period === "number" &&
+    Number.isInteger(value.period) &&
+    value.period > 0 &&
+    typeof value.startTime === "string" &&
+    typeof value.endTime === "string"
+  );
+}
+
+function parseTimetableListResponse(payload: unknown): TimetableItem[] | null {
+  if (!isRecord(payload) || !Array.isArray(payload.data)) {
+    return null;
+  }
+
+  if (payload.data.every(isTimetableItem) === false) {
+    return null;
+  }
+
+  return payload.data;
+}
 
 function createEmptyRow(type: TimetableType = "NORMAL"): FormValues {
   return {
@@ -236,16 +285,16 @@ export function TimetableForm({
           );
         }
 
-        const parsedWorkplace = workplaceResponseSchema.safeParse(
+        const workplacePayload = parseWorkplaceResponse(
           (await workplaceResponse.json()) as unknown,
         );
-        if (parsedWorkplace.success === false) {
+        if (!workplacePayload) {
           throw new Error("勤務先情報レスポンスの形式が不正です。");
         }
 
-        setWorkplace(parsedWorkplace.data.data);
+        setWorkplace(workplacePayload);
 
-        if (parsedWorkplace.data.data.type !== "CRAM_SCHOOL") {
+        if (workplacePayload.type !== "CRAM_SCHOOL") {
           return;
         }
 
@@ -266,14 +315,14 @@ export function TimetableForm({
             );
           }
 
-          const parsedTimetables = timetableListResponseSchema.safeParse(
+          const timetableItems = parseTimetableListResponse(
             (await timetablesResponse.json()) as unknown,
           );
-          if (parsedTimetables.success === false) {
+          if (!timetableItems) {
             throw new Error("時間割レスポンスの形式が不正です。");
           }
 
-          const target = parsedTimetables.data.data.find(
+          const target = timetableItems.find(
             (timetable) => timetable.id === timetableId,
           );
           if (!target) {
@@ -404,7 +453,6 @@ export function TimetableForm({
       }
 
       router.push(listHref);
-      router.refresh();
     } catch (error) {
       console.error("failed to submit timetable form", error);
       const message = toErrorMessage(error, messages.error.timetableSaveFailed);

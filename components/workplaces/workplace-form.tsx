@@ -2,7 +2,6 @@
 import { useEffect, useMemo, useState } from "react";
 import { useRouter } from "next/navigation";
 import { toast } from "sonner";
-import { z } from "zod";
 import { FormErrorMessage } from "@/components/form/form-error-message";
 import { Button } from "@/components/ui/button";
 import { Checkbox } from "@/components/ui/checkbox";
@@ -22,17 +21,6 @@ import { messages, toErrorMessage } from "@/lib/messages";
 
 const colorRegex = /^#[0-9A-Fa-f]{6}$/;
 const timeRegex = /^([01]\d|2[0-3]):([0-5]\d)$/;
-
-const workplaceSchema = z.object({
-  id: z.string(),
-  name: z.string(),
-  type: z.enum(["GENERAL", "CRAM_SCHOOL"]),
-  color: z.string(),
-});
-
-const workplaceDetailResponseSchema = z.object({
-  data: workplaceSchema,
-});
 
 type WorkplaceType = "GENERAL" | "CRAM_SCHOOL";
 type HolidayType = "NONE" | "WEEKEND" | "HOLIDAY" | "WEEKEND_HOLIDAY";
@@ -65,6 +53,45 @@ type InitialRuleValues = {
 
 type FormErrorKey = keyof FormValues | keyof InitialRuleValues | "form";
 type FormErrors = Partial<Record<FormErrorKey, string>>;
+type WorkplaceDetail = {
+  id: string;
+  name: string;
+  type: WorkplaceType;
+  color: string;
+};
+
+function isRecord(value: unknown): value is Record<string, unknown> {
+  return typeof value === "object" && value !== null;
+}
+
+function isWorkplaceType(value: unknown): value is WorkplaceType {
+  return value === "GENERAL" || value === "CRAM_SCHOOL";
+}
+
+function parseWorkplaceDetailResponse(
+  payload: unknown,
+): WorkplaceDetail | null {
+  if (!isRecord(payload) || !isRecord(payload.data)) {
+    return null;
+  }
+
+  const data = payload.data;
+  if (
+    typeof data.id !== "string" ||
+    typeof data.name !== "string" ||
+    !isWorkplaceType(data.type) ||
+    typeof data.color !== "string"
+  ) {
+    return null;
+  }
+
+  return {
+    id: data.id,
+    name: data.name,
+    type: data.type,
+    color: data.color,
+  };
+}
 
 async function readApiErrorMessage(
   response: Response,
@@ -254,17 +281,17 @@ export function WorkplaceForm({ mode, workplaceId }: WorkplaceFormProps) {
           );
         }
 
-        const parsed = workplaceDetailResponseSchema.safeParse(
+        const workplace = parseWorkplaceDetailResponse(
           (await response.json()) as unknown,
         );
-        if (parsed.success === false) {
+        if (!workplace) {
           throw new Error("勤務先データの形式が不正です。");
         }
 
         setValues({
-          name: parsed.data.data.name,
-          type: parsed.data.data.type,
-          color: parsed.data.data.color,
+          name: workplace.name,
+          type: workplace.type,
+          color: workplace.color,
         });
       } catch (error) {
         if (abortController.signal.aborted) {
@@ -414,7 +441,6 @@ export function WorkplaceForm({ mode, workplaceId }: WorkplaceFormProps) {
         );
         router.push("/my/workplaces");
       }
-      router.refresh();
     } catch (error) {
       console.error("failed to submit workplace form", error);
       const message = toErrorMessage(error, messages.error.workplaceSaveFailed);
