@@ -202,3 +202,45 @@
 
 - Next.js MCP `get_errors`: 取得時点で runtime/config error はなし。
 - `get_page_metadata`: `/my` は `app/layout.tsx` + `app/my/layout.tsx` + `app/my/page.tsx` 構成で描画されていることを確認。
+
+## 8. 実装コメント（2026-03-31 反映）
+
+- `P0-1` 実装済み:
+  - `/my/workplaces` 配下の page を Server Component 化（`params` 受け渡しへ移行）
+  - 対象:
+    - `app/my/workplaces/new/page.tsx`
+    - `app/my/workplaces/[workplaceId]/edit/page.tsx`
+    - `app/my/workplaces/[workplaceId]/payroll-rules/page.tsx`
+    - `app/my/workplaces/[workplaceId]/payroll-rules/new/page.tsx`
+    - `app/my/workplaces/[workplaceId]/payroll-rules/[ruleId]/edit/page.tsx`
+    - `app/my/workplaces/[workplaceId]/timetables/page.tsx`
+    - `app/my/workplaces/[workplaceId]/timetables/new/page.tsx`
+    - `app/my/workplaces/[workplaceId]/timetables/[id]/edit/page.tsx`
+  - 一覧ページは Server 側で初期データを注入してから hydrate する経路を追加
+- `P0-2` 実装済み:
+  - `router.push` 後の `router.refresh` を削除（重複再取得を解消）
+  - 対象:
+    - `components/workplaces/workplace-form.tsx`
+    - `components/workplaces/payroll-rule-form.tsx`
+    - `components/workplaces/timetable-form.tsx`
+    - `components/shifts/BulkShiftForm.tsx`
+- `P0-3` 実装済み:
+  - `/api/calendar/events` に `calendarId` 絞り込み・短TTLキャッシュ（60秒）を追加
+  - レスポンスへ `calendars` / `selectedCalendarIds` を追加
+  - `BulkShiftForm` に表示対象カレンダー選択UIを追加し、月表示取得を絞り込み連動
+- `P1-1` 実装済み:
+  - Client 側 `zod` 検証を軽量型ガードへ置換
+  - 対象:
+    - `components/shifts/ShiftForm.tsx`
+    - `components/shifts/BulkShiftForm.tsx`
+    - `components/workplaces/workplace-form.tsx`
+    - `components/workplaces/payroll-rule-form.tsx`
+    - `components/workplaces/timetable-form.tsx`
+- `P1-2` 実装済み:
+  - 勤務先関連一覧で初期Serverデータ優先 + fallback fetch の `no-store` 依存を緩和
+  - API共通ヘッダーを `private, max-age=30, stale-while-revalidate=300` へ変更（`next.config.ts`）
+- `P1-3` 実装済み:
+  - `/my/shifts/list` を Server 側で当月初期データ取得して `ShiftListPageClient` へ注入
+  - `useMonthShifts` の初期値経路を利用し、初回ローディング依存を削減
+- `P2`:
+  - 依頼どおり未実装（本反映では着手していない）
