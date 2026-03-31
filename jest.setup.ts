@@ -16,3 +16,13 @@ if (typeof globalThis.TextDecoder === "undefined") {
     writable: true,
   });
 }
+
+if (typeof globalThis.PointerEvent === "undefined") {
+  class PointerEventPolyfill extends MouseEvent {}
+
+  Object.defineProperty(globalThis, "PointerEvent", {
+    value: PointerEventPolyfill,
+    configurable: true,
+    writable: true,
+  });
+}

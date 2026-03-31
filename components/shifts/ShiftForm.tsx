@@ -101,6 +101,7 @@ type Timetable = z.infer<typeof timetableListResponseSchema>["data"][number];
 type ShiftType = "NORMAL" | "LESSON" | "OTHER";
 type LessonType = "NORMAL" | "INTENSIVE";
 type ShiftFormMode = "create" | "edit";
+type ShiftFormReturnTo = "dashboard" | "list";
 
 type FormState = {
   workplaceId: string;
@@ -133,6 +134,7 @@ type ShiftFormProps = {
   shiftId?: string;
   initialDate?: string;
   returnMonth?: string;
+  returnTo?: ShiftFormReturnTo;
 };
 
 function formatCramShiftType(type: "NORMAL" | "LESSON"): string {
@@ -271,6 +273,7 @@ export function ShiftForm({
   shiftId,
   initialDate,
   returnMonth,
+  returnTo = "dashboard",
 }: ShiftFormProps) {
   const router = useRouter();
 
@@ -303,17 +306,19 @@ export function ShiftForm({
   } | null>(null);
   const [isLessonTypeInferred, setIsLessonTypeInferred] = useState(false);
   const returnPath = useMemo(() => {
+    const basePath = returnTo === "list" ? "/my/shifts/list" : "/my";
+
     if (!returnMonth) {
-      return "/my";
+      return basePath;
     }
 
     const parsed = fromMonthInputValue(returnMonth);
     if (!parsed) {
-      return "/my";
+      return basePath;
     }
 
-    return `/my?month=${toMonthInputValue(parsed)}`;
-  }, [returnMonth]);
+    return `${basePath}?month=${toMonthInputValue(parsed)}`;
+  }, [returnMonth, returnTo]);
 
   const selectedWorkplace = useMemo(() => {
     return workplaces.find((workplace) => workplace.id === form.workplaceId);

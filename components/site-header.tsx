@@ -72,6 +72,9 @@ function buildBreadcrumbs(pathname: string): Crumb[] {
 
   if (section === "shifts") {
     const action = segments[2];
+    if (action === "list") {
+      return [root, { title: "シフト一覧" }];
+    }
     if (action === "confirm") {
       return [root, { title: "シフト確定" }];
     }

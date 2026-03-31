@@ -22,6 +22,7 @@ import {
   CommandIcon,
   LandmarkIcon,
   LayoutDashboardIcon,
+  ListIcon,
   WalletCardsIcon,
 } from "lucide-react";
 
@@ -39,6 +40,11 @@ type NavItem = {
 
 const mainNavItems: NavItem[] = [
   { title: "ダッシュボード", href: "/my", icon: <LayoutDashboardIcon /> },
+  {
+    title: "シフト一覧",
+    href: "/my/shifts/list",
+    icon: <ListIcon />,
+  },
   {
     title: "シフト確定",
     href: "/my/shifts/confirm",
