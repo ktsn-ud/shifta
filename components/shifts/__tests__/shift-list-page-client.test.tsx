@@ -7,6 +7,7 @@ import {
 } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { ShiftListPageClient } from "@/components/shifts/shift-list-page-client";
+import { clearMonthShiftsCache } from "@/hooks/use-month-shifts";
 
 const pushMock = jest.fn();
 const toastSuccessMock = jest.fn();
@@ -81,10 +82,10 @@ function getBodyRows(): HTMLTableRowElement[] {
 
 describe("ShiftListPageClient", () => {
   beforeEach(() => {
-    jest.useFakeTimers().setSystemTime(new Date("2026-03-15T09:00:00.000Z"));
     pushMock.mockReset();
     toastSuccessMock.mockReset();
     toastErrorMock.mockReset();
+    clearMonthShiftsCache();
 
     Object.defineProperty(globalThis, "fetch", {
       writable: true,
@@ -92,11 +93,8 @@ describe("ShiftListPageClient", () => {
     });
   });
 
-  afterEach(() => {
-    jest.useRealTimers();
-  });
-
   it("shows default date/time ascending order and supports workplace sort", async () => {
+    const user = userEvent.setup();
     const fetchMock = globalThis.fetch as jest.Mock;
 
     fetchMock.mockImplementation(async (input: string) => {
@@ -140,18 +138,14 @@ describe("ShiftListPageClient", () => {
     let rows = getBodyRows();
     expect(rows[0]).toHaveTextContent("Beta");
 
-    await userEvent.click(
-      screen.getByRole("button", { name: "勤務先で並び替え" }),
-    );
+    await user.click(screen.getByRole("button", { name: "勤務先で並び替え" }));
 
     await waitFor(() => {
       rows = getBodyRows();
       expect(rows[0]).toHaveTextContent("Alpha");
     });
 
-    await userEvent.click(
-      screen.getByRole("button", { name: "勤務先で並び替え" }),
-    );
+    await user.click(screen.getByRole("button", { name: "勤務先で並び替え" }));
 
     await waitFor(() => {
       rows = getBodyRows();
@@ -194,9 +188,7 @@ describe("ShiftListPageClient", () => {
   });
 
   it("sends selected shift ids to bulk delete API", async () => {
-    const user = userEvent.setup({
-      advanceTimers: jest.advanceTimersByTime,
-    });
+    const user = userEvent.setup();
     const fetchMock = globalThis.fetch as jest.Mock;
 
     let shifts = [

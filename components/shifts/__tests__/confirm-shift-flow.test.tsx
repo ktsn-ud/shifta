@@ -1,8 +1,11 @@
 import { fireEvent, render, screen, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
-import ShiftConfirmPage from "@/app/my/shifts/confirm/page";
 import { ConfirmShiftCard } from "@/components/shifts/ConfirmShiftCard";
-import type { UnconfirmedShiftItem } from "@/components/shifts/shift-confirmation-types";
+import { ShiftConfirmPageClient } from "@/components/shifts/shift-confirm-page-client";
+import type {
+  ConfirmedShiftWorkplaceGroup,
+  UnconfirmedShiftItem,
+} from "@/components/shifts/shift-confirmation-types";
 import { toast } from "sonner";
 
 const pushMock = jest.fn();
@@ -55,59 +58,31 @@ describe("shift confirm page and card flow", () => {
     });
   });
 
-  it("loads and renders unconfirmed/confirmed shifts", async () => {
-    const fetchMock = globalThis.fetch as jest.Mock;
+  it("loads and renders initial unconfirmed/confirmed shifts", () => {
+    const initialConfirmedShiftGroups: ConfirmedShiftWorkplaceGroup[] = [
+      {
+        workplaceId: "workplace-1",
+        workplaceName: "コンビニA",
+        workplaceColor: "#FF5733",
+        shifts: [
+          {
+            id: "shift-2",
+            date: "2026年3月6日(金)",
+            startTime: "09:00",
+            endTime: "15:00",
+            workDurationHours: 5.5,
+            wage: 6500,
+          },
+        ],
+      },
+    ];
 
-    fetchMock.mockImplementation(async (input: string) => {
-      if (input === "/api/shifts/unconfirmed") {
-        return jsonResponse({
-          shifts: [
-            {
-              id: "shift-1",
-              date: "2026-03-05",
-              startTime: "10:00",
-              endTime: "18:00",
-              breakMinutes: 60,
-              isConfirmed: false,
-              workplace: {
-                id: "workplace-1",
-                name: "コンビニA",
-                color: "#FF5733",
-              },
-            },
-          ],
-        });
-      }
-
-      if (input === "/api/shifts/confirmed-current-month") {
-        return jsonResponse({
-          shifts: [
-            {
-              id: "shift-2",
-              date: "2026-03-06",
-              startTime: "09:00",
-              endTime: "15:00",
-              breakMinutes: 30,
-              workDurationHours: 5.5,
-              wage: 6500,
-              isConfirmed: true,
-              workplace: {
-                id: "workplace-1",
-                name: "コンビニA",
-              },
-            },
-          ],
-        });
-      }
-
-      throw new Error(`Unexpected fetch: ${input}`);
-    });
-
-    render(<ShiftConfirmPage />);
-
-    await waitFor(() => {
-      expect(screen.getAllByText("コンビニA").length).toBeGreaterThan(0);
-    });
+    render(
+      <ShiftConfirmPageClient
+        initialUnconfirmedShifts={[createUnconfirmedShift()]}
+        initialConfirmedShiftGroups={initialConfirmedShiftGroups}
+      />,
+    );
 
     expect(screen.getByDisplayValue("10:00")).toBeInTheDocument();
     expect(screen.getByText("2026年3月6日(金)")).toBeInTheDocument();
@@ -115,21 +90,20 @@ describe("shift confirm page and card flow", () => {
     expect(screen.getByText(/6,500/)).toBeInTheDocument();
   });
 
-  it("shows fetch error state when API request fails", async () => {
-    const fetchMock = globalThis.fetch as jest.Mock;
+  it("shows empty states when no initial shifts are passed", () => {
+    render(
+      <ShiftConfirmPageClient
+        initialUnconfirmedShifts={[]}
+        initialConfirmedShiftGroups={[]}
+      />,
+    );
 
-    fetchMock.mockResolvedValueOnce(jsonResponse({ error: "failed" }, 500));
-    fetchMock.mockResolvedValueOnce(jsonResponse({ shifts: [] }));
-
-    render(<ShiftConfirmPage />);
-
-    await waitFor(() => {
-      expect(
-        screen.getByText("シフト確定ページのデータ取得に失敗しました。"),
-      ).toBeInTheDocument();
-    });
-
-    expect(toast.error).toHaveBeenCalled();
+    expect(
+      screen.getByText("未確定シフトはまだありません"),
+    ).toBeInTheDocument();
+    expect(
+      screen.getByText("今月の確定済みシフトはまだありません"),
+    ).toBeInTheDocument();
   });
 
   it("confirms a shift with edited values", async () => {

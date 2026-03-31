@@ -100,6 +100,10 @@ function writeMonthShiftsCache(cacheKey: string, shifts: MonthShift[]): void {
   });
 }
 
+export function clearMonthShiftsCache(): void {
+  monthShiftsCache.clear();
+}
+
 export function summarizeShifts(shifts: MonthShift[]): ShiftSummary {
   return shifts.reduce<ShiftSummary>(
     (summary, shift) => {
