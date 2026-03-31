@@ -5,6 +5,7 @@ import {
   waitFor,
   within,
 } from "@testing-library/react";
+import type { ComponentProps } from "react";
 import userEvent from "@testing-library/user-event";
 import { ShiftListPageClient } from "@/components/shifts/shift-list-page-client";
 import { clearMonthShiftsCache } from "@/hooks/use-month-shifts";
@@ -15,13 +16,6 @@ const toastErrorMock = jest.fn();
 
 jest.mock("next/navigation", () => ({
   useRouter: () => ({ push: pushMock }),
-  useSearchParams: () => {
-    const params = new URLSearchParams("month=2026-03");
-    return {
-      get: (key: string) => params.get(key),
-      toString: () => params.toString(),
-    };
-  },
 }));
 
 jest.mock("sonner", () => ({
@@ -80,6 +74,21 @@ function getBodyRows(): HTMLTableRowElement[] {
   return Array.from(tbody.querySelectorAll("tr"));
 }
 
+function renderShiftListPage(
+  override: Partial<ComponentProps<typeof ShiftListPageClient>> = {},
+) {
+  return render(
+    <ShiftListPageClient
+      currentUserId="user-test"
+      initialMonth="2026-03"
+      initialMonthShifts={[]}
+      initialMonthStartDate="2026-02-01"
+      initialMonthEndDate="2026-02-28"
+      {...override}
+    />,
+  );
+}
+
 describe("ShiftListPageClient", () => {
   beforeEach(() => {
     pushMock.mockReset();
@@ -129,7 +138,7 @@ describe("ShiftListPageClient", () => {
       throw new Error(`Unexpected fetch: ${input}`);
     });
 
-    render(<ShiftListPageClient />);
+    renderShiftListPage();
 
     await waitFor(() => {
       expect(screen.getByText("Beta")).toBeInTheDocument();
@@ -174,7 +183,7 @@ describe("ShiftListPageClient", () => {
       throw new Error(`Unexpected fetch: ${input}`);
     });
 
-    render(<ShiftListPageClient />);
+    renderShiftListPage();
 
     await waitFor(() => {
       expect(screen.getByText("勤務先A")).toBeInTheDocument();
@@ -234,7 +243,7 @@ describe("ShiftListPageClient", () => {
       },
     );
 
-    render(<ShiftListPageClient />);
+    renderShiftListPage();
 
     await waitFor(() => {
       expect(screen.getByText("勤務先A")).toBeInTheDocument();

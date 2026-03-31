@@ -11,6 +11,9 @@ const FETCH_CONCURRENCY = 3;
 const PAGE_SIZE_CALENDAR_LIST = 250;
 const PAGE_SIZE_EVENTS = 2500;
 const MAX_ITEMS_PER_DAY = 20;
+const DEFAULT_SELECTED_CALENDAR_LIMIT = 3;
+const MAX_SELECTED_CALENDAR_COUNT = 10;
+const CALENDAR_EVENTS_CACHE_TTL_MS = 60 * 1000;
 
 type GoogleColorPalettes = {
   calendar: Map<string, string>;
@@ -47,6 +50,13 @@ type AggregatedDay = {
   items: AggregatedEventItem[];
 };
 
+type CalendarEventsResponseData = {
+  month: string;
+  calendars: CalendarDescriptor[];
+  selectedCalendarIds: string[];
+  dates: AggregatedDay[];
+};
+
 type GoogleApiErrorCandidate = Error & {
   code?: number | string;
   status?: number;
@@ -54,6 +64,13 @@ type GoogleApiErrorCandidate = Error & {
     status?: number;
   };
 };
+
+type CalendarEventsCacheEntry = {
+  expiresAt: number;
+  data: CalendarEventsResponseData;
+};
+
+const calendarEventsCache = new Map<string, CalendarEventsCacheEntry>();
 
 const dateKeyFormatter = new Intl.DateTimeFormat("en-CA", {
   timeZone: SHIFTA_CALENDAR_TIMEZONE,
@@ -176,6 +193,71 @@ function normalizeHexColor(value: string | null | undefined): string | null {
   }
 
   return normalized.toUpperCase();
+}
+
+function normalizeRequestedCalendarIds(values: string[]): string[] {
+  const ids = values
+    .map((value) => value.trim())
+    .filter((value) => value.length > 0);
+
+  return Array.from(new Set(ids))
+    .sort((left, right) => left.localeCompare(right))
+    .slice(0, MAX_SELECTED_CALENDAR_COUNT);
+}
+
+function resolveSelectedCalendars(
+  calendars: CalendarDescriptor[],
+  requestedCalendarIds: string[],
+): CalendarDescriptor[] {
+  if (requestedCalendarIds.length === 0) {
+    return calendars.slice(0, DEFAULT_SELECTED_CALENDAR_LIMIT);
+  }
+
+  const calendarById = new Map(
+    calendars.map((calendar) => [calendar.id, calendar] as const),
+  );
+
+  return requestedCalendarIds
+    .map((calendarId) => calendarById.get(calendarId) ?? null)
+    .filter((calendar): calendar is CalendarDescriptor => Boolean(calendar));
+}
+
+function toCacheKey(
+  userId: string,
+  month: string,
+  requestedCalendarIds: string[],
+): string {
+  const requestedKey =
+    requestedCalendarIds.length > 0
+      ? requestedCalendarIds.join(",")
+      : "default";
+  return `${userId}:${month}:${requestedKey}`;
+}
+
+function readCalendarEventsCache(
+  cacheKey: string,
+): CalendarEventsResponseData | null {
+  const cached = calendarEventsCache.get(cacheKey);
+  if (!cached) {
+    return null;
+  }
+
+  if (cached.expiresAt <= Date.now()) {
+    calendarEventsCache.delete(cacheKey);
+    return null;
+  }
+
+  return cached.data;
+}
+
+function writeCalendarEventsCache(
+  cacheKey: string,
+  data: CalendarEventsResponseData,
+): void {
+  calendarEventsCache.set(cacheKey, {
+    data,
+    expiresAt: Date.now() + CALENDAR_EVENTS_CACHE_TTL_MS,
+  });
 }
 
 async function mapWithConcurrency<T, R>(
@@ -389,10 +471,24 @@ export async function GET(request: Request) {
       return current.response;
     }
 
-    const month = new URL(request.url).searchParams.get("month");
+    const url = new URL(request.url);
+    const month = url.searchParams.get("month");
+    const requestedCalendarIds = normalizeRequestedCalendarIds(
+      url.searchParams.getAll("calendarId"),
+    );
     const range = parseMonth(month);
     if (!range) {
       return jsonError("month は YYYY-MM 形式で指定してください", 400);
+    }
+
+    const cacheKey = toCacheKey(
+      current.user.id,
+      range.month,
+      requestedCalendarIds,
+    );
+    const cached = readCalendarEventsCache(cacheKey);
+    if (cached) {
+      return NextResponse.json({ data: cached });
     }
 
     const calendar = await getReadCalendarClientByUserId(current.user.id);
@@ -444,9 +540,13 @@ export async function GET(request: Request) {
       }
     })();
     const calendars = await listCalendars(calendar, colorPalettes);
+    const selectedCalendars = resolveSelectedCalendars(
+      calendars,
+      requestedCalendarIds,
+    );
 
     const eventsByCalendar = await mapWithConcurrency(
-      calendars,
+      selectedCalendars,
       FETCH_CONCURRENCY,
       async (calendarInfo) => {
         const events = await listEventsByCalendar(
@@ -473,12 +573,17 @@ export async function GET(request: Request) {
       return left.date.localeCompare(right.date);
     });
 
-    return NextResponse.json({
-      data: {
-        month: range.month,
-        dates,
-      },
-    });
+    const responseData: CalendarEventsResponseData = {
+      month: range.month,
+      calendars,
+      selectedCalendarIds: selectedCalendars.map(
+        (calendarInfo) => calendarInfo.id,
+      ),
+      dates,
+    };
+    writeCalendarEventsCache(cacheKey, responseData);
+
+    return NextResponse.json({ data: responseData });
   } catch (error) {
     if (error instanceof GoogleCalendarAuthError) {
       const details =

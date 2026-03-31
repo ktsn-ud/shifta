@@ -3,7 +3,6 @@
 import { useEffect, useMemo, useState } from "react";
 import { useRouter } from "next/navigation";
 import { toast } from "sonner";
-import { z } from "zod";
 import { FormErrorMessage } from "@/components/form/form-error-message";
 import { Button } from "@/components/ui/button";
 import { DatePicker } from "@/components/ui/date-picker";
@@ -44,64 +43,193 @@ import { messages, toErrorMessage } from "@/lib/messages";
 
 const LAST_WORKPLACE_ID_KEY = "shifta:last-workplace-id";
 const DATE_ONLY_REGEX = /^\d{4}-\d{2}-\d{2}$/;
-
-const workplaceListResponseSchema = z.object({
-  data: z.array(
-    z.object({
-      id: z.string(),
-      name: z.string(),
-      color: z.string(),
-      type: z.enum(["GENERAL", "CRAM_SCHOOL"]),
-    }),
-  ),
-});
-
-const timetableListResponseSchema = z.object({
-  data: z.array(
-    z.object({
-      id: z.string(),
-      type: z.enum(["NORMAL", "INTENSIVE"]),
-      period: z.number().int().positive(),
-      startTime: z.string(),
-      endTime: z.string(),
-    }),
-  ),
-});
-
-const shiftListResponseSchema = z.object({
-  data: z.array(
-    z.object({
-      id: z.string(),
-      startTime: z.string(),
-      endTime: z.string(),
-    }),
-  ),
-});
-
-const shiftDetailResponseSchema = z.object({
-  data: z.object({
-    id: z.string(),
-    workplaceId: z.string(),
-    date: z.string(),
-    startTime: z.string(),
-    endTime: z.string(),
-    breakMinutes: z.number().int().nonnegative(),
-    shiftType: z.enum(["NORMAL", "LESSON", "OTHER"]),
-    lessonRange: z
-      .object({
-        startPeriod: z.number().int().positive(),
-        endPeriod: z.number().int().positive(),
-      })
-      .nullable(),
-  }),
-});
-
-type Workplace = z.infer<typeof workplaceListResponseSchema>["data"][number];
-type Timetable = z.infer<typeof timetableListResponseSchema>["data"][number];
 type ShiftType = "NORMAL" | "LESSON" | "OTHER";
 type LessonType = "NORMAL" | "INTENSIVE";
 type ShiftFormMode = "create" | "edit";
 type ShiftFormReturnTo = "dashboard" | "list";
+
+type Workplace = {
+  id: string;
+  name: string;
+  color: string;
+  type: "GENERAL" | "CRAM_SCHOOL";
+};
+
+type Timetable = {
+  id: string;
+  type: LessonType;
+  period: number;
+  startTime: string;
+  endTime: string;
+};
+
+type ShiftListItem = {
+  id: string;
+  startTime: string;
+  endTime: string;
+};
+
+type ShiftDetail = {
+  id: string;
+  workplaceId: string;
+  date: string;
+  startTime: string;
+  endTime: string;
+  breakMinutes: number;
+  shiftType: ShiftType;
+  lessonRange: {
+    startPeriod: number;
+    endPeriod: number;
+  } | null;
+};
+
+function isRecord(value: unknown): value is Record<string, unknown> {
+  return typeof value === "object" && value !== null;
+}
+
+function isShiftWorkplaceType(value: unknown): value is Workplace["type"] {
+  return value === "GENERAL" || value === "CRAM_SCHOOL";
+}
+
+function isLessonType(value: unknown): value is LessonType {
+  return value === "NORMAL" || value === "INTENSIVE";
+}
+
+function isShiftType(value: unknown): value is ShiftType {
+  return value === "NORMAL" || value === "LESSON" || value === "OTHER";
+}
+
+function isWorkplace(value: unknown): value is Workplace {
+  if (!isRecord(value)) {
+    return false;
+  }
+
+  return (
+    typeof value.id === "string" &&
+    typeof value.name === "string" &&
+    typeof value.color === "string" &&
+    isShiftWorkplaceType(value.type)
+  );
+}
+
+function isTimetable(value: unknown): value is Timetable {
+  if (!isRecord(value)) {
+    return false;
+  }
+
+  return (
+    typeof value.id === "string" &&
+    isLessonType(value.type) &&
+    typeof value.period === "number" &&
+    Number.isInteger(value.period) &&
+    value.period > 0 &&
+    typeof value.startTime === "string" &&
+    typeof value.endTime === "string"
+  );
+}
+
+function parseWorkplaceListResponse(payload: unknown): Workplace[] | null {
+  if (!isRecord(payload) || !Array.isArray(payload.data)) {
+    return null;
+  }
+
+  if (payload.data.every(isWorkplace) === false) {
+    return null;
+  }
+
+  return payload.data;
+}
+
+function parseTimetableListResponse(payload: unknown): Timetable[] | null {
+  if (!isRecord(payload) || !Array.isArray(payload.data)) {
+    return null;
+  }
+
+  if (payload.data.every(isTimetable) === false) {
+    return null;
+  }
+
+  return payload.data;
+}
+
+function isShiftListItem(value: unknown): value is ShiftListItem {
+  if (!isRecord(value)) {
+    return false;
+  }
+
+  return (
+    typeof value.id === "string" &&
+    typeof value.startTime === "string" &&
+    typeof value.endTime === "string"
+  );
+}
+
+function parseShiftListResponse(payload: unknown): ShiftListItem[] | null {
+  if (!isRecord(payload) || !Array.isArray(payload.data)) {
+    return null;
+  }
+
+  if (payload.data.every(isShiftListItem) === false) {
+    return null;
+  }
+
+  return payload.data;
+}
+
+function parseShiftDetailResponse(payload: unknown): ShiftDetail | null {
+  if (!isRecord(payload) || !isRecord(payload.data)) {
+    return null;
+  }
+
+  const data = payload.data;
+  if (
+    typeof data.id !== "string" ||
+    typeof data.workplaceId !== "string" ||
+    typeof data.date !== "string" ||
+    typeof data.startTime !== "string" ||
+    typeof data.endTime !== "string" ||
+    typeof data.breakMinutes !== "number" ||
+    Number.isInteger(data.breakMinutes) === false ||
+    data.breakMinutes < 0 ||
+    !isShiftType(data.shiftType)
+  ) {
+    return null;
+  }
+
+  let lessonRange: ShiftDetail["lessonRange"] = null;
+  if (data.lessonRange !== null) {
+    if (!isRecord(data.lessonRange)) {
+      return null;
+    }
+
+    if (
+      typeof data.lessonRange.startPeriod !== "number" ||
+      Number.isInteger(data.lessonRange.startPeriod) === false ||
+      data.lessonRange.startPeriod <= 0 ||
+      typeof data.lessonRange.endPeriod !== "number" ||
+      Number.isInteger(data.lessonRange.endPeriod) === false ||
+      data.lessonRange.endPeriod <= 0
+    ) {
+      return null;
+    }
+
+    lessonRange = {
+      startPeriod: data.lessonRange.startPeriod,
+      endPeriod: data.lessonRange.endPeriod,
+    };
+  }
+
+  return {
+    id: data.id,
+    workplaceId: data.workplaceId,
+    date: data.date,
+    startTime: data.startTime,
+    endTime: data.endTime,
+    breakMinutes: data.breakMinutes,
+    shiftType: data.shiftType,
+    lessonRange,
+  };
+}
 
 type FormState = {
   workplaceId: string;
@@ -364,15 +492,14 @@ export function ShiftForm({
           throw new Error("WORKPLACE_FETCH_FAILED");
         }
 
-        const payload = workplaceListResponseSchema.safeParse(
+        const workplacesPayload = parseWorkplaceListResponse(
           (await response.json()) as unknown,
         );
-
-        if (payload.success === false) {
+        if (!workplacesPayload) {
           throw new Error("WORKPLACE_RESPONSE_INVALID");
         }
 
-        setWorkplaces(payload.data.data);
+        setWorkplaces(workplacesPayload);
       } catch (error) {
         if (abortController.signal.aborted) {
           return;
@@ -427,15 +554,12 @@ export function ShiftForm({
           throw new Error(payload.error ?? "シフトの取得に失敗しました");
         }
 
-        const payload = shiftDetailResponseSchema.safeParse(
+        const shift = parseShiftDetailResponse(
           (await response.json()) as unknown,
         );
-
-        if (payload.success === false) {
+        if (!shift) {
           throw new Error("シフトデータの形式が不正です");
         }
-
-        const shift = payload.data.data;
 
         setForm((current) => ({
           ...current,
@@ -570,15 +694,14 @@ export function ShiftForm({
           throw new Error("TIMETABLE_FETCH_FAILED");
         }
 
-        const payload = timetableListResponseSchema.safeParse(
+        const timetablePayload = parseTimetableListResponse(
           (await response.json()) as unknown,
         );
-
-        if (payload.success === false) {
+        if (!timetablePayload) {
           throw new Error("TIMETABLE_RESPONSE_INVALID");
         }
 
-        setTimetables(payload.data.data);
+        setTimetables(timetablePayload);
       } catch (error) {
         if (abortController.signal.aborted) {
           return;
@@ -877,18 +1000,17 @@ export function ShiftForm({
         return null;
       }
 
-      const payload = shiftListResponseSchema.safeParse(
+      const shiftsPayload = parseShiftListResponse(
         (await response.json()) as unknown,
       );
-
-      if (payload.success === false) {
+      if (!shiftsPayload) {
         return null;
       }
 
       const candidateStart = toMinutes(candidateTimes.startTime);
       const candidateEnd = toMinutes(candidateTimes.endTime);
 
-      const overlapped = payload.data.data.some((shift) => {
+      const overlapped = shiftsPayload.some((shift) => {
         if (mode === "edit" && shift.id === shiftId) {
           return false;
         }
