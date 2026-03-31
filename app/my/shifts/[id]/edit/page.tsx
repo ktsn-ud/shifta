@@ -14,12 +14,15 @@ const ShiftForm = dynamic(
 export default function EditShiftPage() {
   const params = useParams<{ id: string }>();
   const searchParams = useSearchParams();
+  const returnTo =
+    searchParams.get("returnTo") === "list" ? "list" : "dashboard";
 
   return (
     <ShiftForm
       mode="edit"
       shiftId={params.id}
       returnMonth={searchParams.get("month") ?? undefined}
+      returnTo={returnTo}
     />
   );
 }

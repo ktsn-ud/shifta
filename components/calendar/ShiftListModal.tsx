@@ -14,6 +14,7 @@ import {
   DialogTitle,
 } from "@/components/ui/dialog";
 import { messages } from "@/lib/messages";
+import { formatShiftWorkplaceLabel } from "@/lib/shifts/format";
 
 type ShiftListModalShift = {
   id: string;
@@ -74,11 +75,11 @@ function formatShiftLabel(shift: ShiftListModalShift): string {
 }
 
 function formatWorkplaceLabel(shift: ShiftListModalShift): string {
-  if (shift.workplace.type === "CRAM_SCHOOL" && shift.shiftType === "NORMAL") {
-    return `${shift.workplace.name}（事務）`;
-  }
-
-  return shift.workplace.name;
+  return formatShiftWorkplaceLabel({
+    workplaceName: shift.workplace.name,
+    workplaceType: shift.workplace.type ?? "GENERAL",
+    shiftType: shift.shiftType,
+  });
 }
 
 function formatSyncStatus(status: ShiftListModalShift["googleSyncStatus"]): {
