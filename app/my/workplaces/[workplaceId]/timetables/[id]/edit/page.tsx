@@ -1,16 +1,24 @@
-"use client";
-
-import { useParams } from "next/navigation";
 import { TimetableForm } from "@/components/workplaces/timetable-form";
 
-export default function EditTimetablePage() {
-  const params = useParams<{ workplaceId: string; id: string }>();
+type EditTimetablePageParams = {
+  workplaceId: string;
+  id: string;
+};
+
+type EditTimetablePageProps = {
+  params: EditTimetablePageParams | Promise<EditTimetablePageParams>;
+};
+
+export default async function EditTimetablePage({
+  params,
+}: EditTimetablePageProps) {
+  const resolvedParams = await params;
 
   return (
     <TimetableForm
       mode="edit"
-      workplaceId={params.workplaceId}
-      timetableId={params.id}
+      workplaceId={resolvedParams.workplaceId}
+      timetableId={resolvedParams.id}
     />
   );
 }

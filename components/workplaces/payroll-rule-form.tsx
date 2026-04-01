@@ -2,7 +2,6 @@
 import { useEffect, useMemo, useState } from "react";
 import { useRouter } from "next/navigation";
 import { toast } from "sonner";
-import { z } from "zod";
 import { FormErrorMessage } from "@/components/form/form-error-message";
 import { Button } from "@/components/ui/button";
 import {
@@ -18,44 +17,6 @@ import { RadioGroup, RadioGroupItem } from "@/components/ui/radio-group";
 import { dateKeyFromApiDate } from "@/lib/calendar/date";
 import { formatHolidayType, formatWorkplaceType } from "@/lib/enum-labels";
 import { messages, toErrorMessage } from "@/lib/messages";
-
-const workplaceResponseSchema = z.object({
-  data: z.object({
-    id: z.string(),
-    name: z.string(),
-    type: z.enum(["GENERAL", "CRAM_SCHOOL"]),
-  }),
-});
-
-const numericValueSchema = z.union([z.number(), z.string()]);
-
-const payrollRuleResponseSchema = z.object({
-  data: z.object({
-    id: z.string(),
-    workplaceId: z.string(),
-    startDate: z.string(),
-    endDate: z.string().nullable(),
-    baseHourlyWage: numericValueSchema,
-    perLessonWage: numericValueSchema.nullable(),
-    holidayHourlyWage: numericValueSchema.nullable(),
-    nightMultiplier: numericValueSchema,
-    overtimeMultiplier: numericValueSchema,
-    nightStart: z.string(),
-    nightEnd: z.string(),
-    dailyOvertimeThreshold: numericValueSchema,
-    holidayType: z.enum(["NONE", "WEEKEND", "HOLIDAY", "WEEKEND_HOLIDAY"]),
-  }),
-});
-
-const upsertResponseSchema = z.object({
-  warning: z
-    .object({
-      message: z.string(),
-      overlappingRuleIds: z.array(z.string()),
-    })
-    .nullable()
-    .optional(),
-});
 
 const timeRegex = /^([01]\d|2[0-3]):([0-5]\d)$/;
 
@@ -84,6 +45,126 @@ type FormValues = {
 };
 
 type FormErrors = Partial<Record<keyof FormValues | "form", string>>;
+type NumericValue = string | number;
+type WorkplaceSummary = {
+  id: string;
+  name: string;
+  type: WorkplaceType;
+};
+type PayrollRuleDetail = {
+  id: string;
+  workplaceId: string;
+  startDate: string;
+  endDate: string | null;
+  baseHourlyWage: NumericValue;
+  perLessonWage: NumericValue | null;
+  holidayHourlyWage: NumericValue | null;
+  nightMultiplier: NumericValue;
+  overtimeMultiplier: NumericValue;
+  nightStart: string;
+  nightEnd: string;
+  dailyOvertimeThreshold: NumericValue;
+  holidayType: HolidayType;
+};
+
+function isRecord(value: unknown): value is Record<string, unknown> {
+  return typeof value === "object" && value !== null;
+}
+
+function isWorkplaceType(value: unknown): value is WorkplaceType {
+  return value === "GENERAL" || value === "CRAM_SCHOOL";
+}
+
+function isHolidayType(value: unknown): value is HolidayType {
+  return (
+    value === "NONE" ||
+    value === "WEEKEND" ||
+    value === "HOLIDAY" ||
+    value === "WEEKEND_HOLIDAY"
+  );
+}
+
+function isNumericValue(value: unknown): value is NumericValue {
+  return typeof value === "number" || typeof value === "string";
+}
+
+function parseWorkplaceResponse(payload: unknown): WorkplaceSummary | null {
+  if (!isRecord(payload) || !isRecord(payload.data)) {
+    return null;
+  }
+
+  const data = payload.data;
+  if (
+    typeof data.id !== "string" ||
+    typeof data.name !== "string" ||
+    !isWorkplaceType(data.type)
+  ) {
+    return null;
+  }
+
+  return {
+    id: data.id,
+    name: data.name,
+    type: data.type,
+  };
+}
+
+function parsePayrollRuleResponse(payload: unknown): PayrollRuleDetail | null {
+  if (!isRecord(payload) || !isRecord(payload.data)) {
+    return null;
+  }
+
+  const data = payload.data;
+  if (
+    typeof data.id !== "string" ||
+    typeof data.workplaceId !== "string" ||
+    typeof data.startDate !== "string" ||
+    (typeof data.endDate !== "string" && data.endDate !== null) ||
+    !isNumericValue(data.baseHourlyWage) ||
+    (!isNumericValue(data.perLessonWage) && data.perLessonWage !== null) ||
+    (!isNumericValue(data.holidayHourlyWage) &&
+      data.holidayHourlyWage !== null) ||
+    !isNumericValue(data.nightMultiplier) ||
+    !isNumericValue(data.overtimeMultiplier) ||
+    typeof data.nightStart !== "string" ||
+    typeof data.nightEnd !== "string" ||
+    !isNumericValue(data.dailyOvertimeThreshold) ||
+    !isHolidayType(data.holidayType)
+  ) {
+    return null;
+  }
+
+  return {
+    id: data.id,
+    workplaceId: data.workplaceId,
+    startDate: data.startDate,
+    endDate: data.endDate,
+    baseHourlyWage: data.baseHourlyWage,
+    perLessonWage: data.perLessonWage,
+    holidayHourlyWage: data.holidayHourlyWage,
+    nightMultiplier: data.nightMultiplier,
+    overtimeMultiplier: data.overtimeMultiplier,
+    nightStart: data.nightStart,
+    nightEnd: data.nightEnd,
+    dailyOvertimeThreshold: data.dailyOvertimeThreshold,
+    holidayType: data.holidayType,
+  };
+}
+
+function parseUpsertWarningMessage(payload: unknown): string | null {
+  if (!isRecord(payload) || payload.warning == null) {
+    return null;
+  }
+
+  if (
+    !isRecord(payload.warning) ||
+    typeof payload.warning.message !== "string"
+  ) {
+    return null;
+  }
+
+  return payload.warning.message;
+}
 
 function toNumberString(value: string | number | null): string {
   if (value === null) {
@@ -335,13 +416,13 @@ export function PayrollRuleForm({
           );
         }
 
-        const parsedWorkplace = workplaceResponseSchema.safeParse(
+        const workplacePayload = parseWorkplaceResponse(
           (await workplaceResponse.json()) as unknown,
         );
-        if (parsedWorkplace.success === false) {
+        if (!workplacePayload) {
           throw new Error("勤務先情報レスポンスの形式が不正です。");
         }
-        setWorkplace(parsedWorkplace.data.data);
+        setWorkplace(workplacePayload);
 
         if (ruleResponse) {
           if (ruleResponse.ok === false) {
@@ -355,14 +436,12 @@ export function PayrollRuleForm({
             );
           }
 
-          const parsedRule = payrollRuleResponseSchema.safeParse(
+          const rule = parsePayrollRuleResponse(
             (await ruleResponse.json()) as unknown,
           );
-          if (parsedRule.success === false) {
+          if (!rule) {
             throw new Error("給与ルールレスポンスの形式が不正です。");
           }
-
-          const rule = parsedRule.data.data;
           setValues({
             startDate: dateKeyFromApiDate(rule.startDate),
             endDate: rule.endDate
@@ -477,13 +556,9 @@ export function PayrollRuleForm({
         return;
       }
 
-      const parsedResponse = upsertResponseSchema.safeParse(
+      const warningMessage = parseUpsertWarningMessage(
         (await response.json()) as unknown,
       );
-      const warningMessage =
-        parsedResponse.success && parsedResponse.data.warning
-          ? parsedResponse.data.warning.message
-          : null;
 
       if (warningMessage) {
         toast.warning(messages.warning.payrollRuleOverlap, {
@@ -503,7 +578,6 @@ export function PayrollRuleForm({
         );
         router.push(listHref);
       }
-      router.refresh();
     } catch (error) {
       console.error("failed to submit payroll rule form", error);
       const message = toErrorMessage(

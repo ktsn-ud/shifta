@@ -4,9 +4,9 @@ import { useEffect, useMemo, useState } from "react";
 import { useRouter } from "next/navigation";
 import { ChevronLeftIcon, ChevronRightIcon, Trash2Icon } from "lucide-react";
 import { toast } from "sonner";
-import { z } from "zod";
 import { FormErrorMessage } from "@/components/form/form-error-message";
 import { Button } from "@/components/ui/button";
+import { Checkbox } from "@/components/ui/checkbox";
 import {
   Field,
   FieldContent,
@@ -54,61 +54,204 @@ const MAX_BREAK_MINUTES = 240;
 const GOOGLE_EVENT_LIST_LIMIT = 5;
 const GOOGLE_EVENT_LIST_VISIBLE_WHEN_OVERFLOW = 3;
 
-const workplaceListResponseSchema = z.object({
-  data: z.array(
-    z.object({
-      id: z.string(),
-      name: z.string(),
-      color: z.string(),
-      type: z.enum(["GENERAL", "CRAM_SCHOOL"]),
-    }),
-  ),
-});
-
-const timetableListResponseSchema = z.object({
-  data: z.array(
-    z.object({
-      id: z.string(),
-      type: z.enum(["NORMAL", "INTENSIVE"]),
-      period: z.number().int().positive(),
-      startTime: z.string(),
-      endTime: z.string(),
-    }),
-  ),
-});
-
-const googleCalendarEventsResponseSchema = z.object({
-  data: z.object({
-    month: z.string().regex(/^\d{4}-\d{2}$/),
-    dates: z.array(
-      z.object({
-        date: z.string().regex(DATE_ONLY_REGEX),
-        count: z.number().int().min(0),
-        items: z.array(
-          z.object({
-            title: z.string(),
-            start: z.string(),
-            end: z.string(),
-            allDay: z.boolean(),
-            calendarId: z.string(),
-            calendarSummary: z.string(),
-            calendarColor: z.string().nullable().optional(),
-          }),
-        ),
-      }),
-    ),
-  }),
-});
-
 type ShiftType = "NORMAL" | "LESSON" | "OTHER";
 type LessonType = "NORMAL" | "INTENSIVE";
 
-type Workplace = z.infer<typeof workplaceListResponseSchema>["data"][number];
-type Timetable = z.infer<typeof timetableListResponseSchema>["data"][number];
-type GoogleCalendarDay = z.infer<
-  typeof googleCalendarEventsResponseSchema
->["data"]["dates"][number];
-type GoogleCalendarEventItem = GoogleCalendarDay["items"][number];
+type Workplace = {
+  id: string;
+  name: string;
+  color: string;
+  type: "GENERAL" | "CRAM_SCHOOL";
+};
+
+type Timetable = {
+  id: string;
+  type: "NORMAL" | "INTENSIVE";
+  period: number;
+  startTime: string;
+  endTime: string;
+};
+
+type GoogleCalendarOption = {
+  id: string;
+  summary: string;
+  color: string | null;
+};
+
+type GoogleCalendarEventItem = {
+  title: string;
+  start: string;
+  end: string;
+  allDay: boolean;
+  calendarId: string;
+  calendarSummary: string;
+  calendarColor: string | null;
+};
+
+type GoogleCalendarDay = {
+  date: string;
+  count: number;
+  items: GoogleCalendarEventItem[];
+};
+
+const MONTH_KEY_REGEX = /^\d{4}-\d{2}$/;
+
+function isRecord(value: unknown): value is Record<string, unknown> {
+  return typeof value === "object" && value !== null;
+}
+
+function isShiftWorkplaceType(value: unknown): value is Workplace["type"] {
+  return value === "GENERAL" || value === "CRAM_SCHOOL";
+}
+
+function isLessonTypeValue(value: unknown): value is LessonType {
+  return value === "NORMAL" || value === "INTENSIVE";
+}
+
+function isWorkplace(value: unknown): value is Workplace {
+  if (!isRecord(value)) {
+    return false;
+  }
+
+  return (
+    typeof value.id === "string" &&
+    typeof value.name === "string" &&
+    typeof value.color === "string" &&
+    isShiftWorkplaceType(value.type)
+  );
+}
+
+function isTimetable(value: unknown): value is Timetable {
+  if (!isRecord(value)) {
+    return false;
+  }
+
+  return (
+    typeof value.id === "string" &&
+    isLessonTypeValue(value.type) &&
+    typeof value.period === "number" &&
+    Number.isInteger(value.period) &&
+    value.period > 0 &&
+    typeof value.startTime === "string" &&
+    typeof value.endTime === "string"
+  );
+}
+
+function isGoogleCalendarOption(value: unknown): value is GoogleCalendarOption {
+  if (!isRecord(value)) {
+    return false;
+  }
+
+  return (
+    typeof value.id === "string" &&
+    typeof value.summary === "string" &&
+    (typeof value.color === "string" || value.color === null)
+  );
+}
+
+function isGoogleCalendarEventItem(
+  value: unknown,
+): value is GoogleCalendarEventItem {
+  if (!isRecord(value)) {
+    return false;
+  }
+
+  return (
+    typeof value.title === "string" &&
+    typeof value.start === "string" &&
+    typeof value.end === "string" &&
+    typeof value.allDay === "boolean" &&
+    typeof value.calendarId === "string" &&
+    typeof value.calendarSummary === "string" &&
+    (typeof value.calendarColor === "string" || value.calendarColor === null)
+  );
+}
+
+function isGoogleCalendarDay(value: unknown): value is GoogleCalendarDay {
+  if (!isRecord(value) || !Array.isArray(value.items)) {
+    return false;
+  }
+
+  return (
+    typeof value.date === "string" &&
+    DATE_ONLY_REGEX.test(value.date) &&
+    typeof value.count === "number" &&
+    Number.isInteger(value.count) &&
+    value.count >= 0 &&
+    value.items.every(isGoogleCalendarEventItem)
+  );
+}
+
+function parseWorkplaceListResponse(payload: unknown): Workplace[] | null {
+  if (!isRecord(payload) || !Array.isArray(payload.data)) {
+    return null;
+  }
+
+  if (payload.data.every(isWorkplace) === false) {
+    return null;
+  }
+
+  return payload.data;
+}
+
+function parseTimetableListResponse(payload: unknown): Timetable[] | null {
+  if (!isRecord(payload) || !Array.isArray(payload.data)) {
+    return null;
+  }
+
+  if (payload.data.every(isTimetable) === false) {
+    return null;
+  }
+
+  return payload.data;
+}
+
+function parseGoogleCalendarEventsResponse(payload: unknown): {
+  month: string;
+  calendars: GoogleCalendarOption[];
+  selectedCalendarIds: string[];
+  dates: GoogleCalendarDay[];
+} | null {
+  if (!isRecord(payload) || !isRecord(payload.data)) {
+    return null;
+  }
+
+  const data = payload.data;
+  if (typeof data.month !== "string" || !MONTH_KEY_REGEX.test(data.month)) {
+    return null;
+  }
+
+  if (
+    !Array.isArray(data.calendars) ||
+    !Array.isArray(data.selectedCalendarIds)
+  ) {
+    return null;
+  }
+
+  if (data.calendars.every(isGoogleCalendarOption) === false) {
+    return null;
+  }
+
+  if (
+    data.selectedCalendarIds.every((id) => typeof id === "string") === false
+  ) {
+    return null;
+  }
+
+  if (
+    !Array.isArray(data.dates) ||
+    data.dates.every(isGoogleCalendarDay) === false
+  ) {
+    return null;
+  }
+
+  return {
+    month: data.month,
+    calendars: data.calendars,
+    selectedCalendarIds: data.selectedCalendarIds,
+    dates: data.dates,
+  };
+}
 
 type BulkShiftRow = {
   date: string;
@@ -362,6 +505,12 @@ export function BulkShiftForm() {
   const [googleEventsByDate, setGoogleEventsByDate] = useState<
     Record<string, GoogleCalendarDay>
   >({});
+  const [calendarOptions, setCalendarOptions] = useState<
+    GoogleCalendarOption[]
+  >([]);
+  const [selectedCalendarIds, setSelectedCalendarIds] = useState<string[]>([]);
+  const [hasUserCalendarSelection, setHasUserCalendarSelection] =
+    useState(false);
   const [isGoogleEventsLoading, setIsGoogleEventsLoading] = useState(false);
   const [googleEventsError, setGoogleEventsError] = useState<string | null>(
     null,
@@ -404,6 +553,12 @@ export function BulkShiftForm() {
       .filter((row): row is BulkShiftRow => Boolean(row));
   }, [rowsByDate, selectedDateKeys]);
 
+  const calendarFilterKey = useMemo(
+    () =>
+      hasUserCalendarSelection ? selectedCalendarIds.join(",") : "default",
+    [hasUserCalendarSelection, selectedCalendarIds],
+  );
+
   useEffect(() => {
     const abortController = new AbortController();
 
@@ -413,22 +568,19 @@ export function BulkShiftForm() {
       try {
         const response = await fetch("/api/workplaces", {
           signal: abortController.signal,
-          cache: "no-store",
         });
 
         if (response.ok === false) {
           throw new Error("勤務先一覧の取得に失敗しました。");
         }
 
-        const payload = workplaceListResponseSchema.safeParse(
+        const nextWorkplaces = parseWorkplaceListResponse(
           (await response.json()) as unknown,
         );
-
-        if (payload.success === false) {
+        if (!nextWorkplaces) {
           throw new Error("勤務先一覧レスポンスの形式が不正です。");
         }
 
-        const nextWorkplaces = payload.data.data;
         setWorkplaces(nextWorkplaces);
 
         setSelectedWorkplaceId((current) => {
@@ -476,7 +628,14 @@ export function BulkShiftForm() {
 
   useEffect(() => {
     const abortController = new AbortController();
-    const monthParam = toMonthInputValue(month);
+    const params = new URLSearchParams({
+      month: toMonthInputValue(month),
+    });
+    if (hasUserCalendarSelection) {
+      for (const calendarId of selectedCalendarIds) {
+        params.append("calendarId", calendarId);
+      }
+    }
 
     async function fetchGoogleCalendarEvents() {
       setIsGoogleEventsLoading(true);
@@ -484,10 +643,9 @@ export function BulkShiftForm() {
 
       try {
         const response = await fetch(
-          `/api/calendar/events?month=${monthParam}`,
+          `/api/calendar/events?${params.toString()}`,
           {
             signal: abortController.signal,
-            cache: "no-store",
           },
         );
 
@@ -508,18 +666,41 @@ export function BulkShiftForm() {
           throw new Error(payload?.error ?? "Google予定の取得に失敗しました。");
         }
 
-        const payload = googleCalendarEventsResponseSchema.safeParse(
+        const payload = parseGoogleCalendarEventsResponse(
           (await response.json()) as unknown,
         );
-        if (payload.success === false) {
+        if (!payload) {
           throw new Error("Google予定レスポンスの形式が不正です。");
         }
 
         const nextByDate: Record<string, GoogleCalendarDay> = {};
-        for (const day of payload.data.data.dates) {
+        for (const day of payload.dates) {
           nextByDate[day.date] = day;
         }
 
+        setCalendarOptions(payload.calendars);
+        setSelectedCalendarIds((current) => {
+          if (!hasUserCalendarSelection) {
+            const nextDefaultIds = payload.selectedCalendarIds;
+            const isSameDefaultSelection =
+              current.length === nextDefaultIds.length &&
+              current.every((id, index) => id === nextDefaultIds[index]);
+
+            return isSameDefaultSelection ? current : nextDefaultIds;
+          }
+
+          const availableIds = new Set(
+            payload.calendars.map((item) => item.id),
+          );
+          const filtered = current.filter((id) => availableIds.has(id));
+          const nextIds =
+            filtered.length > 0 ? filtered : payload.selectedCalendarIds;
+          const isSameSelection =
+            current.length === nextIds.length &&
+            current.every((id, index) => id === nextIds[index]);
+
+          return isSameSelection ? current : nextIds;
+        });
         setGoogleEventsByDate(nextByDate);
       } catch (error) {
         if (abortController.signal.aborted) {
@@ -527,6 +708,7 @@ export function BulkShiftForm() {
         }
 
         console.error("failed to fetch google calendar events", error);
+        setCalendarOptions([]);
         setGoogleEventsByDate({});
         setGoogleEventsError(
           toErrorMessage(error, "Google予定の取得に失敗しました。"),
@@ -543,7 +725,7 @@ export function BulkShiftForm() {
     return () => {
       abortController.abort();
     };
-  }, [month]);
+  }, [calendarFilterKey, hasUserCalendarSelection, month, selectedCalendarIds]);
 
   useEffect(() => {
     if (!selectedWorkplaceId) {
@@ -575,7 +757,6 @@ export function BulkShiftForm() {
           `/api/workplaces/${workplaceId}/timetables`,
           {
             signal: abortController.signal,
-            cache: "no-store",
           },
         );
 
@@ -583,15 +764,14 @@ export function BulkShiftForm() {
           throw new Error("時間割の取得に失敗しました。");
         }
 
-        const payload = timetableListResponseSchema.safeParse(
+        const timetablesPayload = parseTimetableListResponse(
           (await response.json()) as unknown,
         );
-
-        if (payload.success === false) {
+        if (!timetablesPayload) {
           throw new Error("時間割レスポンスの形式が不正です。");
         }
 
-        setTimetables(payload.data.data);
+        setTimetables(timetablesPayload);
       } catch (error) {
         if (abortController.signal.aborted) {
           return;
@@ -728,6 +908,31 @@ export function BulkShiftForm() {
         selectedWorkplace?.type,
       ),
     );
+  };
+
+  const toggleCalendarSelection = (calendarId: string, checked: boolean) => {
+    setHasUserCalendarSelection(true);
+    setSelectedCalendarIds((current) => {
+      const currentSet = new Set(current);
+
+      if (checked) {
+        currentSet.add(calendarId);
+      } else {
+        currentSet.delete(calendarId);
+      }
+
+      if (currentSet.size === 0) {
+        return current;
+      }
+
+      return calendarOptions
+        .map((option) => option.id)
+        .filter((id) => currentSet.has(id));
+    });
+  };
+
+  const resetCalendarSelectionToDefault = () => {
+    setHasUserCalendarSelection(false);
   };
 
   const toggleDateSelection = (dateKey: string) => {
@@ -1059,7 +1264,6 @@ export function BulkShiftForm() {
         }
 
         router.push("/my");
-        router.refresh();
         return;
       }
 
@@ -1070,7 +1274,6 @@ export function BulkShiftForm() {
           : undefined,
       });
       router.push("/my");
-      router.refresh();
     } catch (error) {
       console.error("failed to submit bulk shifts", error);
       const message = toErrorMessage(error, messages.error.bulkShiftSaveFailed);
@@ -1184,6 +1387,49 @@ export function BulkShiftForm() {
               </Button>
             </div>
           </div>
+
+          {calendarOptions.length > 0 ? (
+            <div className="space-y-2 rounded-md border border-dashed px-3 py-2">
+              <div className="flex flex-wrap items-center justify-between gap-2">
+                <p className="text-xs text-muted-foreground">
+                  Google予定の表示対象カレンダー（{selectedCalendarIds.length}/
+                  {calendarOptions.length}）
+                </p>
+                <Button
+                  type="button"
+                  variant="ghost"
+                  size="sm"
+                  onClick={resetCalendarSelectionToDefault}
+                >
+                  デフォルトに戻す
+                </Button>
+              </div>
+              <div className="grid gap-2 md:grid-cols-2 xl:grid-cols-3">
+                {calendarOptions.map((calendar) => (
+                  <label
+                    key={calendar.id}
+                    className="flex items-center gap-2 rounded-md border px-2 py-1.5 text-xs"
+                  >
+                    <Checkbox
+                      checked={selectedCalendarIds.includes(calendar.id)}
+                      onCheckedChange={(checked) => {
+                        toggleCalendarSelection(calendar.id, checked === true);
+                      }}
+                    />
+                    <span
+                      className="size-2 shrink-0 rounded-full"
+                      style={{
+                        backgroundColor: getGoogleEventBadgeColor(
+                          calendar.color,
+                        ),
+                      }}
+                    />
+                    <span className="truncate">{calendar.summary}</span>
+                  </label>
+                ))}
+              </div>
+            </div>
+          ) : null}
 
           <div className="rounded-lg border">
             <div className="flex items-center justify-between border-b px-3 py-2 md:px-4">

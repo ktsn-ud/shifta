@@ -56,6 +56,13 @@ const timetableListResponseSchema = z.object({
 
 type TimetableListProps = {
   workplaceId: string;
+  initialWorkplace?: {
+    id: string;
+    name: string;
+    type: "GENERAL" | "CRAM_SCHOOL";
+    color: string;
+  } | null;
+  initialTimetables?: Timetable[];
 };
 
 type Timetable = z.infer<typeof timetableSchema>;
@@ -87,15 +94,23 @@ function toTimeOnly(value: string): string {
   return `${hour}:${minute}`;
 }
 
-export function TimetableList({ workplaceId }: TimetableListProps) {
+export function TimetableList({
+  workplaceId,
+  initialWorkplace,
+  initialTimetables,
+}: TimetableListProps) {
+  const hasInitialData =
+    initialWorkplace !== undefined && initialTimetables !== undefined;
   const [workplace, setWorkplace] = useState<{
     id: string;
     name: string;
     type: "GENERAL" | "CRAM_SCHOOL";
     color: string;
-  } | null>(null);
-  const [timetables, setTimetables] = useState<Timetable[]>([]);
-  const [isLoading, setIsLoading] = useState(true);
+  } | null>(() => initialWorkplace ?? null);
+  const [timetables, setTimetables] = useState<Timetable[]>(
+    () => initialTimetables ?? [],
+  );
+  const [isLoading, setIsLoading] = useState(() => !hasInitialData);
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
   const [infoMessage, setInfoMessage] = useState<string | null>(null);
   const [deletingId, setDeletingId] = useState<string | null>(null);
@@ -117,6 +132,12 @@ export function TimetableList({ workplaceId }: TimetableListProps) {
   );
 
   useEffect(() => {
+    if (hasInitialData) {
+      setErrorMessage(null);
+      setIsLoading(false);
+      return;
+    }
+
     const abortController = new AbortController();
 
     async function fetchData() {
@@ -127,7 +148,6 @@ export function TimetableList({ workplaceId }: TimetableListProps) {
         const workplaceResponse = await fetch(
           `/api/workplaces/${workplaceId}`,
           {
-            cache: "no-store",
             signal: abortController.signal,
           },
         );
@@ -157,7 +177,6 @@ export function TimetableList({ workplaceId }: TimetableListProps) {
         const timetableResponse = await fetch(
           `/api/workplaces/${workplaceId}/timetables`,
           {
-            cache: "no-store",
             signal: abortController.signal,
           },
         );
@@ -203,7 +222,7 @@ export function TimetableList({ workplaceId }: TimetableListProps) {
     return () => {
       abortController.abort();
     };
-  }, [workplaceId]);
+  }, [hasInitialData, workplaceId]);
 
   const handleDelete = async () => {
     if (!deletingTarget) {

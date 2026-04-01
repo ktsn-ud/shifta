@@ -1,7 +1,6 @@
 "use client";
 
 import Link from "next/link";
-import { useSearchParams } from "next/navigation";
 import { useEffect, useMemo, useState } from "react";
 import { toast } from "sonner";
 import { z } from "zod";
@@ -66,6 +65,14 @@ const payrollRuleListResponseSchema = z.object({
 
 type PayrollRuleListProps = {
   workplaceId: string;
+  initialWorkplace?: {
+    id: string;
+    name: string;
+    type: WorkplaceType;
+    color: string;
+  } | null;
+  initialRules?: PayrollRule[];
+  initialInfoMessage?: string | null;
 };
 
 type WorkplaceType = "GENERAL" | "CRAM_SCHOOL";
@@ -144,20 +151,26 @@ function formatMultiplier(value: string | number): string {
   return `${numeric.toFixed(2)}x`;
 }
 
-export function PayrollRuleList({ workplaceId }: PayrollRuleListProps) {
-  const searchParams = useSearchParams();
-  const queryWarning = searchParams.get("warning");
-
+export function PayrollRuleList({
+  workplaceId,
+  initialWorkplace,
+  initialRules,
+  initialInfoMessage,
+}: PayrollRuleListProps) {
+  const hasInitialData =
+    initialWorkplace !== undefined && initialRules !== undefined;
   const [workplace, setWorkplace] = useState<{
     id: string;
     name: string;
     type: WorkplaceType;
     color: string;
-  } | null>(null);
-  const [rules, setRules] = useState<PayrollRule[]>([]);
-  const [isLoading, setIsLoading] = useState(true);
+  } | null>(() => initialWorkplace ?? null);
+  const [rules, setRules] = useState<PayrollRule[]>(() => initialRules ?? []);
+  const [isLoading, setIsLoading] = useState(() => !hasInitialData);
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
-  const [infoMessage, setInfoMessage] = useState<string | null>(queryWarning);
+  const [infoMessage, setInfoMessage] = useState<string | null>(
+    initialInfoMessage ?? null,
+  );
   const [deletingRuleId, setDeletingRuleId] = useState<string | null>(null);
   const [isDeleting, setIsDeleting] = useState(false);
   const [deleteError, setDeleteError] = useState<string | null>(null);
@@ -168,10 +181,12 @@ export function PayrollRuleList({ workplaceId }: PayrollRuleListProps) {
   );
 
   useEffect(() => {
-    setInfoMessage(queryWarning);
-  }, [queryWarning]);
+    if (hasInitialData) {
+      setErrorMessage(null);
+      setIsLoading(false);
+      return;
+    }
 
-  useEffect(() => {
     const abortController = new AbortController();
 
     async function fetchData() {
@@ -181,11 +196,9 @@ export function PayrollRuleList({ workplaceId }: PayrollRuleListProps) {
       try {
         const [workplaceResponse, rulesResponse] = await Promise.all([
           fetch(`/api/workplaces/${workplaceId}`, {
-            cache: "no-store",
             signal: abortController.signal,
           }),
           fetch(`/api/workplaces/${workplaceId}/payroll-rules`, {
-            cache: "no-store",
             signal: abortController.signal,
           }),
         ]);
@@ -249,7 +262,7 @@ export function PayrollRuleList({ workplaceId }: PayrollRuleListProps) {
     return () => {
       abortController.abort();
     };
-  }, [workplaceId]);
+  }, [hasInitialData, workplaceId]);
 
   const handleDelete = async () => {
     if (!deletingRule) {

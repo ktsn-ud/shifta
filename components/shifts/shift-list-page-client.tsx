@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useMemo, useState } from "react";
-import { useRouter, useSearchParams } from "next/navigation";
+import { useRouter } from "next/navigation";
 import {
   ArrowDownIcon,
   ArrowUpDownIcon,
@@ -192,12 +192,24 @@ function compareShifts(
   return sortState.direction === "asc" ? baseCompare : -baseCompare;
 }
 
-export function ShiftListPageClient() {
+type ShiftListPageClientProps = {
+  currentUserId: string;
+  initialMonth: string;
+  initialMonthShifts: MonthShift[];
+  initialMonthStartDate: string;
+  initialMonthEndDate: string;
+};
+
+export function ShiftListPageClient({
+  currentUserId,
+  initialMonth,
+  initialMonthShifts,
+  initialMonthStartDate,
+  initialMonthEndDate,
+}: ShiftListPageClientProps) {
   const router = useRouter();
-  const searchParams = useSearchParams();
   const [month, setMonth] = useState(() => {
-    const monthQuery = searchParams.get("month");
-    const parsedMonth = monthQuery ? fromMonthInputValue(monthQuery) : null;
+    const parsedMonth = fromMonthInputValue(initialMonth);
     return startOfMonth(parsedMonth ?? new Date());
   });
   const [sortState, setSortState] = useState<SortState>(null);
@@ -211,7 +223,10 @@ export function ShiftListPageClient() {
   );
 
   const { shifts, isLoading, errorMessage, reload } = useMonthShifts(month, {
-    cacheUserKey: "shift-list-page",
+    cacheUserKey: currentUserId,
+    initialShifts: initialMonthShifts,
+    initialStartDate: initialMonthStartDate,
+    initialEndDate: initialMonthEndDate,
   });
 
   const sortedShifts = useMemo(() => {
@@ -233,6 +248,20 @@ export function ShiftListPageClient() {
   const isSomeSelected =
     sortedShifts.some((shift) => selectedShiftIds.has(shift.id)) &&
     !isAllSelected;
+
+  useEffect(() => {
+    const nextMonth = startOfMonth(
+      fromMonthInputValue(initialMonth) ?? new Date(),
+    );
+
+    setMonth((current) => {
+      const isSameMonth =
+        current.getFullYear() === nextMonth.getFullYear() &&
+        current.getMonth() === nextMonth.getMonth();
+
+      return isSameMonth ? current : nextMonth;
+    });
+  }, [initialMonth]);
 
   useEffect(() => {
     const validIds = new Set(shifts.map((shift) => shift.id));
