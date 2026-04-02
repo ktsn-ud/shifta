@@ -48,6 +48,8 @@ import { messages, toErrorMessage } from "@/lib/messages";
 import { cn } from "@/lib/utils";
 
 const LAST_WORKPLACE_ID_KEY = "shifta:last-workplace-id";
+const BULK_CALENDAR_SELECTION_STORAGE_KEY = "shifta:bulk-calendar-selection";
+const BULK_CALENDAR_SELECTION_SCHEMA_VERSION = 1;
 const WEEKDAY_LABELS = ["日", "月", "火", "水", "木", "金", "土"] as const;
 const DAY_CELL_COUNT = 42;
 const MAX_BREAK_MINUTES = 240;
@@ -92,6 +94,12 @@ type GoogleCalendarDay = {
   date: string;
   count: number;
   items: GoogleCalendarEventItem[];
+};
+
+type PersistedBulkCalendarSelection = {
+  version: number;
+  hasUserSelection: boolean;
+  selectedCalendarIds: string[];
 };
 
 const MONTH_KEY_REGEX = /^\d{4}-\d{2}$/;
@@ -251,6 +259,52 @@ function parseGoogleCalendarEventsResponse(payload: unknown): {
     selectedCalendarIds: data.selectedCalendarIds,
     dates: data.dates,
   };
+}
+
+function isPersistedBulkCalendarSelection(
+  value: unknown,
+): value is PersistedBulkCalendarSelection {
+  if (!isRecord(value) || !Array.isArray(value.selectedCalendarIds)) {
+    return false;
+  }
+
+  return (
+    typeof value.version === "number" &&
+    typeof value.hasUserSelection === "boolean" &&
+    value.selectedCalendarIds.every((id) => typeof id === "string")
+  );
+}
+
+function readPersistedBulkCalendarSelection(): PersistedBulkCalendarSelection | null {
+  try {
+    const raw = localStorage.getItem(BULK_CALENDAR_SELECTION_STORAGE_KEY);
+    if (!raw) {
+      return null;
+    }
+
+    const parsed = JSON.parse(raw) as unknown;
+    if (!isPersistedBulkCalendarSelection(parsed)) {
+      return null;
+    }
+
+    if (parsed.version !== BULK_CALENDAR_SELECTION_SCHEMA_VERSION) {
+      return null;
+    }
+
+    return {
+      version: parsed.version,
+      hasUserSelection: parsed.hasUserSelection,
+      selectedCalendarIds: Array.from(
+        new Set(
+          parsed.selectedCalendarIds
+            .map((id) => id.trim())
+            .filter((id) => id.length > 0),
+        ),
+      ),
+    };
+  } catch {
+    return null;
+  }
 }
 
 type BulkShiftRow = {
@@ -511,6 +565,8 @@ export function BulkShiftForm() {
   const [selectedCalendarIds, setSelectedCalendarIds] = useState<string[]>([]);
   const [hasUserCalendarSelection, setHasUserCalendarSelection] =
     useState(false);
+  const [isCalendarSelectionReady, setIsCalendarSelectionReady] =
+    useState(false);
   const [isGoogleEventsLoading, setIsGoogleEventsLoading] = useState(false);
   const [googleEventsError, setGoogleEventsError] = useState<string | null>(
     null,
@@ -558,6 +614,41 @@ export function BulkShiftForm() {
       hasUserCalendarSelection ? selectedCalendarIds.join(",") : "default",
     [hasUserCalendarSelection, selectedCalendarIds],
   );
+
+  useEffect(() => {
+    const persistedSelection = readPersistedBulkCalendarSelection();
+    if (
+      persistedSelection?.hasUserSelection &&
+      persistedSelection.selectedCalendarIds.length > 0
+    ) {
+      setHasUserCalendarSelection(true);
+      setSelectedCalendarIds(persistedSelection.selectedCalendarIds);
+    }
+
+    setIsCalendarSelectionReady(true);
+  }, []);
+
+  useEffect(() => {
+    if (!isCalendarSelectionReady) {
+      return;
+    }
+
+    if (!hasUserCalendarSelection || selectedCalendarIds.length === 0) {
+      localStorage.removeItem(BULK_CALENDAR_SELECTION_STORAGE_KEY);
+      return;
+    }
+
+    const payload: PersistedBulkCalendarSelection = {
+      version: BULK_CALENDAR_SELECTION_SCHEMA_VERSION,
+      hasUserSelection: true,
+      selectedCalendarIds,
+    };
+
+    localStorage.setItem(
+      BULK_CALENDAR_SELECTION_STORAGE_KEY,
+      JSON.stringify(payload),
+    );
+  }, [hasUserCalendarSelection, isCalendarSelectionReady, selectedCalendarIds]);
 
   useEffect(() => {
     const abortController = new AbortController();
@@ -627,6 +718,10 @@ export function BulkShiftForm() {
   }, []);
 
   useEffect(() => {
+    if (!isCalendarSelectionReady) {
+      return;
+    }
+
     const abortController = new AbortController();
     const params = new URLSearchParams({
       month: toMonthInputValue(month),
@@ -725,7 +820,13 @@ export function BulkShiftForm() {
     return () => {
       abortController.abort();
     };
-  }, [calendarFilterKey, hasUserCalendarSelection, month, selectedCalendarIds]);
+  }, [
+    calendarFilterKey,
+    hasUserCalendarSelection,
+    isCalendarSelectionReady,
+    month,
+    selectedCalendarIds,
+  ]);
 
   useEffect(() => {
     if (!selectedWorkplaceId) {
@@ -933,6 +1034,7 @@ export function BulkShiftForm() {
 
   const resetCalendarSelectionToDefault = () => {
     setHasUserCalendarSelection(false);
+    setSelectedCalendarIds([]);
   };
 
   const toggleDateSelection = (dateKey: string) => {
