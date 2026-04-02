@@ -10,6 +10,7 @@ import { BulkShiftForm } from "@/components/shifts/BulkShiftForm";
 
 const pushMock = jest.fn();
 const refreshMock = jest.fn();
+const BULK_CALENDAR_SELECTION_STORAGE_KEY = "shifta:bulk-calendar-selection";
 
 jest.mock("next/navigation", () => ({
   useRouter: () => ({
@@ -50,6 +51,7 @@ describe("bulk shift flow integration", () => {
     jest.useFakeTimers().setSystemTime(new Date("2026-03-15T09:00:00.000Z"));
     pushMock.mockReset();
     refreshMock.mockReset();
+    localStorage.clear();
 
     Object.defineProperty(globalThis, "fetch", {
       writable: true,
@@ -73,6 +75,8 @@ describe("bulk shift flow integration", () => {
           return jsonResponse({
             data: {
               month: "2026-03",
+              calendars: [],
+              selectedCalendarIds: [],
               dates: [],
             },
           });
@@ -212,6 +216,8 @@ describe("bulk shift flow integration", () => {
           return jsonResponse({
             data: {
               month: "2026-03",
+              calendars: [],
+              selectedCalendarIds: [],
               dates: [],
             },
           });
@@ -282,6 +288,14 @@ describe("bulk shift flow integration", () => {
         return jsonResponse({
           data: {
             month: "2026-03",
+            calendars: [
+              {
+                id: "cal-1",
+                summary: "個人",
+                color: "#3366FF",
+              },
+            ],
+            selectedCalendarIds: ["cal-1"],
             dates: [
               {
                 date: "2026-03-20",
@@ -346,5 +360,89 @@ describe("bulk shift flow integration", () => {
       throw new Error("event color dot not found");
     }
     expect(colorDot).toHaveStyle({ backgroundColor: "#3366FF" });
+  });
+
+  it("restores and clears selected google calendars from localStorage", async () => {
+    const user = userEvent.setup({
+      advanceTimers: jest.advanceTimersByTime,
+    });
+    const fetchMock = globalThis.fetch as jest.Mock;
+    const calendarRequests: string[] = [];
+
+    localStorage.setItem(
+      BULK_CALENDAR_SELECTION_STORAGE_KEY,
+      JSON.stringify({
+        version: 1,
+        hasUserSelection: true,
+        selectedCalendarIds: ["cal-2"],
+      }),
+    );
+
+    fetchMock.mockImplementation(async (input: string) => {
+      if (input.startsWith("/api/calendar/events?month=")) {
+        calendarRequests.push(input);
+
+        const requestUrl = new URL(input, "http://localhost");
+        const requestedCalendarIds =
+          requestUrl.searchParams.getAll("calendarId");
+        const selectedCalendarIds =
+          requestedCalendarIds.length > 0 ? requestedCalendarIds : ["cal-1"];
+
+        return jsonResponse({
+          data: {
+            month: "2026-03",
+            calendars: [
+              {
+                id: "cal-1",
+                summary: "個人",
+                color: "#3366FF",
+              },
+              {
+                id: "cal-2",
+                summary: "バイト",
+                color: "#0EA5E9",
+              },
+            ],
+            selectedCalendarIds,
+            dates: [],
+          },
+        });
+      }
+
+      if (input === "/api/workplaces") {
+        return jsonResponse({
+          data: [
+            {
+              id: "workplace-1",
+              name: "勤務先A",
+              color: "#3366FF",
+              type: "GENERAL",
+            },
+          ],
+        });
+      }
+
+      throw new Error(`Unexpected fetch: ${input}`);
+    });
+
+    render(<BulkShiftForm />);
+
+    await waitFor(() => {
+      expect(calendarRequests.length).toBeGreaterThan(0);
+    });
+
+    const firstRequest = new URL(calendarRequests[0], "http://localhost");
+    expect(firstRequest.searchParams.getAll("calendarId")).toEqual(["cal-2"]);
+
+    const resetButton = await screen.findByRole("button", {
+      name: "デフォルトに戻す",
+    });
+    await user.click(resetButton);
+
+    await waitFor(() => {
+      expect(
+        localStorage.getItem(BULK_CALENDAR_SELECTION_STORAGE_KEY),
+      ).toBeNull();
+    });
   });
 });
