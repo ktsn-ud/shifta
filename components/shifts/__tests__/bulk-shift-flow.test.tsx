@@ -362,6 +362,52 @@ describe("bulk shift flow integration", () => {
     expect(colorDot).toHaveStyle({ backgroundColor: "#3366FF" });
   });
 
+  it("renders holiday in red and saturday in blue on bulk calendar", async () => {
+    const fetchMock = globalThis.fetch as jest.Mock;
+
+    fetchMock.mockImplementation(async (input: string) => {
+      if (input.startsWith("/api/calendar/events?month=")) {
+        return jsonResponse({
+          data: {
+            month: "2026-03",
+            calendars: [],
+            selectedCalendarIds: [],
+            dates: [],
+          },
+        });
+      }
+
+      if (input === "/api/workplaces") {
+        return jsonResponse({
+          data: [
+            {
+              id: "workplace-1",
+              name: "勤務先A",
+              color: "#3366FF",
+              type: "GENERAL",
+            },
+          ],
+        });
+      }
+
+      throw new Error(`Unexpected fetch: ${input}`);
+    });
+
+    render(<BulkShiftForm />);
+
+    await waitFor(() => {
+      expect(
+        screen.getByRole("combobox", { name: "勤務先" }),
+      ).toHaveTextContent("勤務先A");
+    });
+
+    const holidayButton = findEnabledDayButton(20);
+    const saturdayButton = findEnabledDayButton(21);
+
+    expect(within(holidayButton).getByText("20")).toHaveClass("text-red-600");
+    expect(within(saturdayButton).getByText("21")).toHaveClass("text-blue-600");
+  });
+
   it("restores and clears selected google calendars from localStorage", async () => {
     const user = userEvent.setup({
       advanceTimers: jest.advanceTimersByTime,
