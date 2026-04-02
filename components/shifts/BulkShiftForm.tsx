@@ -4,6 +4,7 @@ import { useEffect, useMemo, useState } from "react";
 import { useRouter } from "next/navigation";
 import { ChevronLeftIcon, ChevronRightIcon, Trash2Icon } from "lucide-react";
 import { toast } from "sonner";
+import holidayJp from "@holiday-jp/holiday_jp";
 import { FormErrorMessage } from "@/components/form/form-error-message";
 import { Button } from "@/components/ui/button";
 import { Checkbox } from "@/components/ui/checkbox";
@@ -1568,6 +1569,11 @@ export function BulkShiftForm() {
               {calendarCells.map((cell) => {
                 const isSelected = selectedDateKeys.includes(cell.key);
                 const isToday = cell.key === todayKey;
+                const dayOfWeek = cell.date.getDay();
+                const isHoliday = holidayJp.isHoliday(cell.key);
+                const isSunday = dayOfWeek === 0;
+                const isSaturday = dayOfWeek === 6;
+                const isRedDate = isSunday || isHoliday;
                 const googleEventDay = googleEventsByDate[cell.key];
                 const { visible: visibleGoogleEvents, hiddenCount } =
                   getVisibleGoogleEvents(googleEventDay);
@@ -1597,7 +1603,17 @@ export function BulkShiftForm() {
                       <span className="pointer-events-none absolute top-0.5 left-1/2 size-8 -translate-x-1/2 rounded-full bg-primary/20" />
                     ) : null}
 
-                    <span className="relative z-10 self-center text-sm font-medium">
+                    <span
+                      className={cn(
+                        "relative z-10 self-center text-sm font-medium",
+                        cell.isCurrentMonth && isRedDate && "text-red-600",
+                        cell.isCurrentMonth &&
+                          !isRedDate &&
+                          isSaturday &&
+                          "text-blue-600",
+                        !cell.isCurrentMonth && "text-muted-foreground",
+                      )}
+                    >
                       {cell.date.getDate()}
                     </span>
 
