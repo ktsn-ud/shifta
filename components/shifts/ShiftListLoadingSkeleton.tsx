@@ -1,33 +1,20 @@
-import { TableLoadingSkeleton } from "@/components/ui/loading-skeletons";
-import { Skeleton } from "@/components/ui/skeleton";
+import { SpinnerPanel } from "@/components/ui/spinner";
 
 export function ShiftListPageLoadingSkeleton() {
   return (
     <section className="space-y-6 p-4 md:p-6">
-      <header className="flex flex-wrap items-center justify-between gap-3">
-        <div className="space-y-2">
-          <Skeleton className="h-7 w-32" />
-          <Skeleton className="h-4 w-72" />
-        </div>
-        <div className="flex gap-2">
-          <Skeleton className="h-9 w-20" />
-          <Skeleton className="h-9 w-20" />
-          <Skeleton className="h-9 w-24" />
+      <header>
+        <div>
+          <h2 className="text-xl font-semibold">シフト一覧</h2>
+          <p className="mt-1 text-sm text-muted-foreground">
+            月ごとのシフトを確認し、並び替え・一括削除できます。
+          </p>
         </div>
       </header>
-
-      <div className="space-y-4 rounded-xl border p-4">
-        <div className="flex flex-wrap items-center justify-between gap-2">
-          <Skeleton className="h-6 w-32" />
-          <div className="flex gap-2">
-            <Skeleton className="h-9 w-32" />
-            <Skeleton className="h-9 w-44" />
-          </div>
-        </div>
-
-        <Skeleton className="h-4 w-44" />
-        <TableLoadingSkeleton rows={8} columns={6} />
-      </div>
+      <SpinnerPanel
+        className="min-h-[360px]"
+        label="シフト一覧を読み込み中..."
+      />
     </section>
   );
 }

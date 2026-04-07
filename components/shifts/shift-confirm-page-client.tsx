@@ -3,15 +3,12 @@
 import { useCallback, useState } from "react";
 import { toast } from "sonner";
 import { ConfirmShiftCard } from "@/components/shifts/ConfirmShiftCard";
-import {
-  ConfirmedShiftTableSkeleton,
-  UnconfirmedShiftCardsSkeleton,
-} from "@/components/shifts/ShiftConfirmLoadingSkeleton";
 import { ConfirmedShiftsList } from "@/components/shifts/ConfirmedShiftsList";
 import {
   type ConfirmedShiftWorkplaceGroup,
   type UnconfirmedShiftItem,
 } from "@/components/shifts/shift-confirmation-types";
+import { SpinnerPanel } from "@/components/ui/spinner";
 
 type UnconfirmedShiftApiResponse = {
   shifts: Array<{
@@ -189,52 +186,55 @@ export function ShiftConfirmPageClient({
         </p>
       ) : null}
 
-      <div className="flex flex-col gap-6 md:min-h-0 md:flex-1 md:grid md:grid-cols-[minmax(0,1fr)_1px_minmax(0,1fr)] md:gap-6">
-        <section className="space-y-3 md:flex md:min-h-0 md:flex-col">
-          <h3 className="text-lg font-semibold">未確定シフト</h3>
-          <div className="md:min-h-0 md:overflow-y-auto md:pr-2">
-            {isLoading ? (
-              <UnconfirmedShiftCardsSkeleton />
-            ) : unconfirmedShifts.length === 0 ? (
-              <p className="text-sm text-muted-foreground">
-                未確定シフトはまだありません
-              </p>
-            ) : (
-              <div className="p-1">
-                <div className="flex flex-col gap-3">
-                  {unconfirmedShifts.map((shift) => (
-                    <ConfirmShiftCard
-                      key={shift.id}
-                      shift={shift}
-                      onActionCompleted={loadShiftConfirmationData}
-                    />
-                  ))}
-                </div>
-              </div>
-            )}
-          </div>
-        </section>
-
-        <div
-          aria-hidden="true"
-          className="hidden w-px self-stretch bg-border md:mb-[15px] md:block"
+      {isLoading ? (
+        <SpinnerPanel
+          className="min-h-[360px]"
+          label="シフト確定情報を読み込み中..."
         />
+      ) : (
+        <div className="flex flex-col gap-6 md:min-h-0 md:flex-1 md:grid md:grid-cols-[minmax(0,1fr)_1px_minmax(0,1fr)] md:gap-6">
+          <section className="space-y-3 md:flex md:min-h-0 md:flex-col">
+            <h3 className="text-lg font-semibold">未確定シフト</h3>
+            <div className="md:min-h-0 md:overflow-y-auto md:pr-2">
+              {unconfirmedShifts.length === 0 ? (
+                <p className="text-sm text-muted-foreground">
+                  未確定シフトはまだありません
+                </p>
+              ) : (
+                <div className="p-1">
+                  <div className="flex flex-col gap-3">
+                    {unconfirmedShifts.map((shift) => (
+                      <ConfirmShiftCard
+                        key={shift.id}
+                        shift={shift}
+                        onActionCompleted={loadShiftConfirmationData}
+                      />
+                    ))}
+                  </div>
+                </div>
+              )}
+            </div>
+          </section>
 
-        <section className="space-y-3 md:flex md:min-h-0 md:flex-col">
-          <h3 className="text-lg font-semibold">今月の確定済みシフト</h3>
-          <div className="md:min-h-0 md:overflow-y-auto md:pr-2">
-            {isLoading ? (
-              <ConfirmedShiftTableSkeleton />
-            ) : confirmedShiftGroups.length > 0 ? (
-              <ConfirmedShiftsList groups={confirmedShiftGroups} />
-            ) : (
-              <p className="text-sm text-muted-foreground">
-                今月の確定済みシフトはまだありません
-              </p>
-            )}
-          </div>
-        </section>
-      </div>
+          <div
+            aria-hidden="true"
+            className="hidden w-px self-stretch bg-border md:mb-[15px] md:block"
+          />
+
+          <section className="space-y-3 md:flex md:min-h-0 md:flex-col">
+            <h3 className="text-lg font-semibold">今月の確定済みシフト</h3>
+            <div className="md:min-h-0 md:overflow-y-auto md:pr-2">
+              {confirmedShiftGroups.length > 0 ? (
+                <ConfirmedShiftsList groups={confirmedShiftGroups} />
+              ) : (
+                <p className="text-sm text-muted-foreground">
+                  今月の確定済みシフトはまだありません
+                </p>
+              )}
+            </div>
+          </section>
+        </div>
+      )}
     </section>
   );
 }

@@ -26,7 +26,7 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
-import { Skeleton } from "@/components/ui/skeleton";
+import { SpinnerPanel } from "@/components/ui/spinner";
 import {
   DATE_ONLY_REGEX,
   TIME_ONLY_REGEX,
@@ -1412,11 +1412,10 @@ export function BulkShiftForm() {
           <h3 className="text-base font-semibold">1. 勤務先選択</h3>
 
           {isWorkplaceLoading ? (
-            <div className="flex max-w-md flex-col gap-2">
-              <Skeleton className="h-4 w-20" />
-              <Skeleton className="h-10 w-full" />
-              <Skeleton className="h-3 w-48" />
-            </div>
+            <SpinnerPanel
+              className="min-h-[120px] max-w-md"
+              label="勤務先情報を読み込み中..."
+            />
           ) : (
             <Field>
               <FieldLabel htmlFor="bulk-workplace">勤務先</FieldLabel>
@@ -1975,10 +1974,10 @@ export function BulkShiftForm() {
           <h3 className="text-base font-semibold">4. 選択日の詳細入力</h3>
 
           {isTimetableLoading ? (
-            <div className="flex flex-col gap-2">
-              <Skeleton className="h-4 w-32" />
-              <Skeleton className="h-32 w-full" />
-            </div>
+            <SpinnerPanel
+              className="min-h-[220px]"
+              label="時間割データを読み込み中..."
+            />
           ) : selectedRows.length === 0 ? (
             <p className="text-sm text-muted-foreground">
               カレンダーから日付を選択してください。

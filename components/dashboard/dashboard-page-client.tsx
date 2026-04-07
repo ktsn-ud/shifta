@@ -18,11 +18,7 @@ import {
   CardHeader,
   CardTitle,
 } from "@/components/ui/card";
-import {
-  CalendarLoadingSkeleton,
-  StatCardsLoadingSkeleton,
-} from "@/components/ui/loading-skeletons";
-import { Skeleton } from "@/components/ui/skeleton";
+import { SpinnerPanel } from "@/components/ui/spinner";
 import {
   addMonths,
   dateFromDateKey,
@@ -76,19 +72,18 @@ function formatSummaryPeriodLabel(month: Date): string {
 export function DashboardPageLoadingSkeleton() {
   return (
     <section className="space-y-6 p-4 md:p-6">
-      <header className="flex flex-wrap items-center justify-between gap-3">
-        <div className="space-y-2">
-          <Skeleton className="h-7 w-36" />
-          <Skeleton className="h-4 w-72" />
-        </div>
-        <div className="flex gap-2">
-          <Skeleton className="h-9 w-24" />
-          <Skeleton className="h-9 w-28" />
-          <Skeleton className="h-9 w-20" />
+      <header>
+        <div>
+          <h2 className="text-xl font-semibold">ダッシュボード</h2>
+          <p className="mt-1 text-sm text-muted-foreground">
+            当月のシフト状況と概算値を確認できます。
+          </p>
         </div>
       </header>
-      <StatCardsLoadingSkeleton />
-      <CalendarLoadingSkeleton />
+      <SpinnerPanel
+        className="min-h-[360px]"
+        label="ダッシュボードを読み込み中..."
+      />
     </section>
   );
 }
@@ -304,7 +299,14 @@ export function DashboardPageClient({
         </div>
       </header>
 
-      {initialUnconfirmedShiftCount > 0 ? (
+      {isLoading ? (
+        <SpinnerPanel
+          className="min-h-[360px]"
+          label="ダッシュボードを読み込み中..."
+        />
+      ) : null}
+
+      {!isLoading && initialUnconfirmedShiftCount > 0 ? (
         <Card className="border-amber-300/70 bg-amber-50/70">
           <CardHeader className="gap-3 md:flex sm:flex-row sm:items-center sm:justify-between">
             <div className="space-y-1">
@@ -325,47 +327,47 @@ export function DashboardPageClient({
         </Card>
       ) : null}
 
-      <Card
-        className={
-          failedShiftCount > 0
-            ? "border-amber-300/70 bg-amber-50/70"
-            : "border-emerald-300/70 bg-emerald-50/70"
-        }
-      >
-        <CardContent className="flex items-center justify-between gap-3 py-1">
-          <div className="flex items-center gap-2 text-sm">
+      {!isLoading ? (
+        <Card
+          className={
+            failedShiftCount > 0
+              ? "border-amber-300/70 bg-amber-50/70"
+              : "border-emerald-300/70 bg-emerald-50/70"
+          }
+        >
+          <CardContent className="flex items-center justify-between gap-3 py-1">
+            <div className="flex items-center gap-2 text-sm">
+              {failedShiftCount > 0 ? (
+                <AlertTriangleIcon className="size-4 text-amber-700" />
+              ) : (
+                <CheckCircle2Icon className="size-4 text-emerald-700" />
+              )}
+              <p>
+                {failedShiftCount > 0
+                  ? `${failedShiftCount}件のシフトが Google Calendar に同期できていません`
+                  : "すべてのシフトが Google Calendar に正常に同期されています"}
+              </p>
+            </div>
             {failedShiftCount > 0 ? (
-              <AlertTriangleIcon className="size-4 text-amber-700" />
-            ) : (
-              <CheckCircle2Icon className="size-4 text-emerald-700" />
-            )}
-            <p>
-              {failedShiftCount > 0
-                ? `${failedShiftCount}件のシフトが Google Calendar に同期できていません`
-                : "すべてのシフトが Google Calendar に正常に同期されています"}
-            </p>
-          </div>
-          {failedShiftCount > 0 ? (
-            <Button
-              type="button"
-              variant="outline"
-              onClick={() => {
-                void handleBulkRetrySync();
-              }}
-              disabled={isBulkRetrying}
-            >
-              <RefreshCwIcon
-                className={`size-4 ${isBulkRetrying ? "animate-spin" : ""}`}
-              />
-              {isBulkRetrying ? "再同期中..." : "一括して再同期"}
-            </Button>
-          ) : null}
-        </CardContent>
-      </Card>
+              <Button
+                type="button"
+                variant="outline"
+                onClick={() => {
+                  void handleBulkRetrySync();
+                }}
+                disabled={isBulkRetrying}
+              >
+                <RefreshCwIcon
+                  className={`size-4 ${isBulkRetrying ? "animate-spin" : ""}`}
+                />
+                {isBulkRetrying ? "再同期中..." : "一括して再同期"}
+              </Button>
+            ) : null}
+          </CardContent>
+        </Card>
+      ) : null}
 
-      {isLoading ? (
-        <StatCardsLoadingSkeleton />
-      ) : (
+      {!isLoading ? (
         <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
           <Card size="sm">
             <CardHeader>
@@ -397,7 +399,7 @@ export function DashboardPageClient({
             </CardContent>
           </Card>
         </div>
-      )}
+      ) : null}
 
       {errorMessage ? (
         <p className="rounded-md border border-destructive/40 bg-destructive/5 px-3 py-2 text-sm text-destructive">
@@ -405,9 +407,7 @@ export function DashboardPageClient({
         </p>
       ) : null}
 
-      {isLoading ? (
-        <CalendarLoadingSkeleton />
-      ) : (
+      {!isLoading ? (
         <MonthCalendar
           month={month}
           shifts={shifts}
@@ -423,7 +423,7 @@ export function DashboardPageClient({
             setModalOpen(true);
           }}
         />
-      )}
+      ) : null}
 
       <ShiftListModal
         open={modalOpen}

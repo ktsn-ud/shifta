@@ -1,5 +1,4 @@
 import { FormLoadingSkeleton } from "@/components/ui/loading-skeletons";
-import { Skeleton } from "@/components/ui/skeleton";
 
 export function NewShiftFormLoadingSkeleton() {
   return (
@@ -10,43 +9,7 @@ export function NewShiftFormLoadingSkeleton() {
           新しいシフトを登録します。登録後はカレンダー画面へ戻ります。
         </p>
       </header>
-
-      <div className="flex max-w-sm flex-col gap-6">
-        <div className="flex flex-col gap-7">
-          <div className="flex flex-col gap-3">
-            <Skeleton className="h-4 w-12" />
-            <Skeleton className="h-10 w-full max-w-50" />
-          </div>
-
-          <div className="flex flex-col gap-3">
-            <Skeleton className="h-4 w-10" />
-            <Skeleton className="h-10 w-40" />
-          </div>
-
-          <div className="flex flex-col gap-3">
-            <Skeleton className="h-4 w-14" />
-            <Skeleton className="h-10 w-full max-w-30" />
-          </div>
-
-          <div className="grid grid-cols-2 gap-3">
-            <div className="flex flex-col gap-3">
-              <Skeleton className="h-4 w-12" />
-              <Skeleton className="h-10 w-full" />
-            </div>
-            <div className="flex flex-col gap-3">
-              <Skeleton className="h-4 w-12" />
-              <Skeleton className="h-10 w-full" />
-            </div>
-          </div>
-
-          <div className="flex flex-col gap-3">
-            <Skeleton className="h-4 w-16" />
-            <Skeleton className="h-10 w-20" />
-          </div>
-        </div>
-
-        <Skeleton className="h-10 w-24" />
-      </div>
+      <FormLoadingSkeleton className="max-w-sm" />
     </section>
   );
 }
@@ -60,7 +23,7 @@ export function EditShiftFormLoadingSkeleton() {
           既存シフトを更新します。更新後はカレンダー画面へ戻ります。
         </p>
       </header>
-      <FormLoadingSkeleton />
+      <FormLoadingSkeleton className="max-w-sm" />
     </section>
   );
 }
