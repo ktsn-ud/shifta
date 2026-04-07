@@ -61,7 +61,6 @@ type TimetableSet = {
 
 type FormValues = {
   name: string;
-  sortOrder: string;
   items: Array<{
     period: string;
     startTime: string;
@@ -69,7 +68,7 @@ type FormValues = {
   }>;
 };
 
-type FormErrors = Partial<Record<"name" | "sortOrder" | "form", string>>;
+type FormErrors = Partial<Record<"name" | "form", string>>;
 type RowErrors = Partial<Record<"period" | "startTime" | "endTime", string>>;
 
 function isRecord(value: unknown): value is Record<string, unknown> {
@@ -275,7 +274,6 @@ export function TimetableForm({
   const [workplace, setWorkplace] = useState<WorkplaceSummary | null>(null);
   const [values, setValues] = useState<FormValues>({
     name: "",
-    sortOrder: "",
     items: [createEmptyItem()],
   });
   const [errors, setErrors] = useState<FormErrors>({});
@@ -367,7 +365,6 @@ export function TimetableForm({
 
         setValues({
           name: target.name,
-          sortOrder: String(target.sortOrder),
           items:
             target.items.length > 0
               ? normalizeItems(target.items)
@@ -396,7 +393,7 @@ export function TimetableForm({
     };
   }, [isEdit, timetableId, workplaceId]);
 
-  function updateValue(key: "name" | "sortOrder", value: string) {
+  function updateValue(key: "name", value: string) {
     setValues((current) => ({
       ...current,
       [key]: value,
@@ -469,13 +466,6 @@ export function TimetableForm({
       formErrors.name = "時間割セット名は50文字以内で入力してください。";
     }
 
-    if (values.sortOrder) {
-      const sortOrder = Number(values.sortOrder);
-      if (!Number.isInteger(sortOrder) || sortOrder < 0) {
-        formErrors.sortOrder = "並び順は0以上の整数で入力してください。";
-      }
-    }
-
     const rowValidation = validateRows(values.items);
     return {
       formErrors,
@@ -521,11 +511,6 @@ export function TimetableForm({
 
     const payload = {
       name: values.name.trim(),
-      ...(values.sortOrder
-        ? {
-            sortOrder: Number(values.sortOrder),
-          }
-        : {}),
       items: values.items.map((item) => ({
         period: Number(item.period),
         startTime: item.startTime,
@@ -644,7 +629,7 @@ export function TimetableForm({
       ) : null}
 
       <Form className="space-y-6" onSubmit={handleSubmit}>
-        <FieldGroup className="grid gap-4 md:grid-cols-2">
+        <FieldGroup className="grid gap-4">
           <Field data-invalid={Boolean(errors.name)}>
             <FieldLabel htmlFor="timetable-set-name">時間割セット名</FieldLabel>
             <FieldContent>
@@ -658,23 +643,6 @@ export function TimetableForm({
                 maxLength={50}
               />
               <FormErrorMessage message={errors.name} />
-            </FieldContent>
-          </Field>
-
-          <Field data-invalid={Boolean(errors.sortOrder)}>
-            <FieldLabel htmlFor="timetable-set-sort-order">並び順</FieldLabel>
-            <FieldContent>
-              <Input
-                id="timetable-set-sort-order"
-                type="number"
-                min={0}
-                value={values.sortOrder}
-                onChange={(event) =>
-                  updateValue("sortOrder", event.currentTarget.value)
-                }
-                disabled={isSubmitting}
-              />
-              <FormErrorMessage message={errors.sortOrder} />
             </FieldContent>
           </Field>
         </FieldGroup>

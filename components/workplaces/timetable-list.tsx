@@ -340,9 +340,7 @@ export function TimetableList({
             <Card key={set.id}>
               <CardHeader>
                 <CardTitle>{set.name}</CardTitle>
-                <CardDescription>
-                  コマ数: {set.items.length} / 並び順: {set.sortOrder}
-                </CardDescription>
+                <CardDescription>コマ数: {set.items.length}</CardDescription>
               </CardHeader>
               <CardContent className="space-y-3">
                 <Table>
