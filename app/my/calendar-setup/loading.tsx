@@ -1,28 +1,17 @@
-import {
-  Card,
-  CardContent,
-  CardFooter,
-  CardHeader,
-} from "@/components/ui/card";
-import { Skeleton } from "@/components/ui/skeleton";
+import { SpinnerPanel } from "@/components/ui/spinner";
 
 export default function Loading() {
   return (
-    <section className="p-4 md:p-6">
-      <Card className="mx-auto w-full max-w-xl">
-        <CardHeader>
-          <Skeleton className="h-7 w-72" />
-          <Skeleton className="h-4 w-full" />
-          <Skeleton className="h-4 w-5/6" />
-        </CardHeader>
-        <CardContent>
-          <Skeleton className="h-4 w-3/4" />
-        </CardContent>
-        <CardFooter className="flex flex-wrap gap-2">
-          <Skeleton className="h-10 w-52" />
-          <Skeleton className="h-10 w-20" />
-        </CardFooter>
-      </Card>
+    <section className="space-y-6 p-4 md:p-6">
+      <header>
+        <h2 className="text-xl font-semibold">
+          Shifta カレンダーを設定しましょう
+        </h2>
+        <p className="mt-1 text-sm text-muted-foreground">
+          Google Calendar と同期するための準備を行います。
+        </p>
+      </header>
+      <SpinnerPanel className="min-h-[280px]" label="設定情報を読み込み中..." />
     </section>
   );
 }

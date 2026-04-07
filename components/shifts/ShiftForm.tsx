@@ -24,7 +24,7 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
-import { Skeleton } from "@/components/ui/skeleton";
+import { SpinnerPanel } from "@/components/ui/spinner";
 import { TimePicker } from "@/components/ui/time-picker";
 import {
   dateFromDateKey,
@@ -1234,12 +1234,10 @@ export function ShiftForm({
           </p>
         </header>
 
-        <div className="flex max-w-2xl flex-col gap-3 rounded-xl border p-4">
-          <Skeleton className="h-5 w-32" />
-          <Skeleton className="h-10 w-full" />
-          <Skeleton className="h-10 w-full" />
-          <Skeleton className="h-10 w-full" />
-        </div>
+        <SpinnerPanel
+          className="min-h-[180px] max-w-2xl"
+          label="シフト情報を読み込み中..."
+        />
       </section>
     );
   }

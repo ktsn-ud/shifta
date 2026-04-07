@@ -19,8 +19,8 @@ import {
   Form,
 } from "@/components/ui/form";
 import { Input } from "@/components/ui/input";
-import { FormLoadingSkeleton } from "@/components/ui/loading-skeletons";
 import { RadioGroup, RadioGroupItem } from "@/components/ui/radio-group";
+import { SpinnerPanel } from "@/components/ui/spinner";
 import { formatLessonType } from "@/lib/enum-labels";
 import { messages, toErrorMessage } from "@/lib/messages";
 
@@ -472,7 +472,16 @@ export function TimetableForm({
   if (isLoading) {
     return (
       <section className="space-y-6 p-4 md:p-6">
-        <FormLoadingSkeleton />
+        <header className="space-y-1">
+          <h2 className="text-xl font-semibold">{pageTitle}</h2>
+          <p className="text-sm text-muted-foreground">
+            授業コマ設定を行います。
+          </p>
+        </header>
+        <SpinnerPanel
+          className="min-h-[120px] max-w-2xl"
+          label="時間割データを読み込み中..."
+        />
       </section>
     );
   }

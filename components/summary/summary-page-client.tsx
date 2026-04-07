@@ -16,8 +16,7 @@ import {
 } from "@/components/ui/chart";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
-import { StatCardsLoadingSkeleton } from "@/components/ui/loading-skeletons";
-import { Skeleton } from "@/components/ui/skeleton";
+import { SpinnerPanel } from "@/components/ui/spinner";
 import {
   Table,
   TableBody,
@@ -108,57 +107,19 @@ function writeSummaryCache(
 export function SummaryPageLoadingSkeleton() {
   return (
     <section className="space-y-6 p-4 md:p-6">
-      <header className="space-y-3">
-        <div className="space-y-2">
-          <Skeleton className="h-7 w-36" />
-          <Skeleton className="h-4 w-72" />
-        </div>
-        <div className="flex flex-wrap items-center gap-2">
-          <Skeleton className="h-8 w-16" />
-          <Skeleton className="h-8 w-24" />
-          <Skeleton className="h-8 w-20" />
-          <Skeleton className="h-10 w-44" />
+      <header>
+        <div>
+          <h2 className="text-xl font-semibold">給与サマリー</h2>
+          <p className="mt-1 text-sm text-muted-foreground">
+            期間別の概算給与と勤務時間を確認できます。
+          </p>
         </div>
       </header>
 
-      <StatCardsLoadingSkeleton count={4} className="lg:grid-cols-4" />
-      <div className="grid gap-4 lg:grid-cols-3">
-        {Array.from({ length: 3 }).map((_, index) => (
-          <Card size="sm" key={`summary-sub-card-${index}`}>
-            <CardHeader>
-              <Skeleton className="h-5 w-28" />
-              <Skeleton className="h-4 w-40" />
-            </CardHeader>
-            <CardContent className="flex flex-col gap-2">
-              <Skeleton className="h-8 w-32" />
-              <Skeleton className="h-4 w-24" />
-            </CardContent>
-          </Card>
-        ))}
-      </div>
-      <div className="grid gap-4 xl:grid-cols-2">
-        <Card>
-          <CardHeader>
-            <Skeleton className="h-5 w-32" />
-            <Skeleton className="h-4 w-40" />
-          </CardHeader>
-          <CardContent>
-            <Skeleton className="h-[280px] w-full" />
-          </CardContent>
-        </Card>
-        <Card>
-          <CardHeader>
-            <Skeleton className="h-5 w-32" />
-            <Skeleton className="h-4 w-40" />
-          </CardHeader>
-          <CardContent className="flex flex-col gap-3">
-            <Skeleton className="h-10 w-full" />
-            <Skeleton className="h-9 w-full" />
-            <Skeleton className="h-9 w-full" />
-            <Skeleton className="h-9 w-full" />
-          </CardContent>
-        </Card>
-      </div>
+      <SpinnerPanel
+        className="min-h-[360px]"
+        label="給与サマリーを読み込み中..."
+      />
     </section>
   );
 }
@@ -320,10 +281,6 @@ export function SummaryPageClient({
     targetPeriod.startDate,
   ]);
 
-  if (isLoading) {
-    return <SummaryPageLoadingSkeleton />;
-  }
-
   return (
     <section className="space-y-6 p-4 md:p-6">
       <header className="space-y-3">
@@ -334,70 +291,72 @@ export function SummaryPageClient({
           </p>
         </div>
 
-        <div className="flex flex-wrap items-center gap-2">
-          <button
-            type="button"
-            className={`rounded-md border px-3 py-1 text-sm ${
-              periodMode === "month"
-                ? "border-primary bg-primary text-primary-foreground"
-                : "border-border bg-background"
-            }`}
-            onClick={() => setPeriodMode("month")}
-          >
-            月選択
-          </button>
-          <button
-            type="button"
-            className={`rounded-md border px-3 py-1 text-sm ${
-              periodMode === "custom"
-                ? "border-primary bg-primary text-primary-foreground"
-                : "border-border bg-background"
-            }`}
-            onClick={() => setPeriodMode("custom")}
-          >
-            カスタム期間
-          </button>
-          <Button
-            type="button"
-            variant="outline"
-            size="sm"
-            onClick={handleBackToCurrentMonth}
-            disabled={
-              periodMode === "month" && monthValue === currentMonthValue
-            }
-          >
-            今月に戻る
-          </Button>
+        {!isLoading ? (
+          <div className="flex flex-wrap items-center gap-2">
+            <button
+              type="button"
+              className={`rounded-md border px-3 py-1 text-sm ${
+                periodMode === "month"
+                  ? "border-primary bg-primary text-primary-foreground"
+                  : "border-border bg-background"
+              }`}
+              onClick={() => setPeriodMode("month")}
+            >
+              月選択
+            </button>
+            <button
+              type="button"
+              className={`rounded-md border px-3 py-1 text-sm ${
+                periodMode === "custom"
+                  ? "border-primary bg-primary text-primary-foreground"
+                  : "border-border bg-background"
+              }`}
+              onClick={() => setPeriodMode("custom")}
+            >
+              カスタム期間
+            </button>
+            <Button
+              type="button"
+              variant="outline"
+              size="sm"
+              onClick={handleBackToCurrentMonth}
+              disabled={
+                periodMode === "month" && monthValue === currentMonthValue
+              }
+            >
+              今月に戻る
+            </Button>
 
-          {periodMode === "month" ? (
-            <Input
-              type="month"
-              value={monthValue}
-              onChange={(event) => setMonthValue(event.currentTarget.value)}
-              className="w-44"
-            />
-          ) : (
-            <div className="flex flex-wrap items-center gap-2">
+            {periodMode === "month" ? (
               <Input
-                type="date"
-                value={customStartDate}
-                onChange={(event) =>
-                  setCustomStartDate(event.currentTarget.value)
-                }
+                type="month"
+                value={monthValue}
+                onChange={(event) => setMonthValue(event.currentTarget.value)}
                 className="w-44"
               />
-              <span className="text-sm text-muted-foreground">〜</span>
-              <Input
-                type="date"
-                value={customEndDate}
-                onChange={(event) =>
-                  setCustomEndDate(event.currentTarget.value)
-                }
-                className="w-44"
-              />
-            </div>
-          )}
-        </div>
+            ) : (
+              <div className="flex flex-wrap items-center gap-2">
+                <Input
+                  type="date"
+                  value={customStartDate}
+                  onChange={(event) =>
+                    setCustomStartDate(event.currentTarget.value)
+                  }
+                  className="w-44"
+                />
+                <span className="text-sm text-muted-foreground">〜</span>
+                <Input
+                  type="date"
+                  value={customEndDate}
+                  onChange={(event) =>
+                    setCustomEndDate(event.currentTarget.value)
+                  }
+                  className="w-44"
+                />
+              </div>
+            )}
+          </div>
+        ) : null}
       </header>
 
       {errorMessage ? (
@@ -406,7 +365,12 @@ export function SummaryPageClient({
         </p>
       ) : null}
 
-      {summary ? (
+      {isLoading ? (
+        <SpinnerPanel
+          className="min-h-[360px]"
+          label="給与サマリーを読み込み中..."
+        />
+      ) : summary ? (
         <>
           <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
             <Card size="sm">
