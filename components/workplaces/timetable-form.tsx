@@ -186,6 +186,23 @@ function createEmptyItem(): FormValues["items"][number] {
   };
 }
 
+function createEmptyFormValues(): FormValues {
+  return {
+    name: "",
+    items: [createEmptyItem()],
+  };
+}
+
+function hasAnySetInput(values: FormValues): boolean {
+  if (values.name.trim().length > 0) {
+    return true;
+  }
+
+  return values.items.some(
+    (item) => item.period || item.startTime || item.endTime,
+  );
+}
+
 function normalizeItems(items: TimetableItem[]): FormValues["items"] {
   return items
     .slice()
@@ -272,10 +289,8 @@ export function TimetableForm({
   const isEdit = mode === "edit";
 
   const [workplace, setWorkplace] = useState<WorkplaceSummary | null>(null);
-  const [values, setValues] = useState<FormValues>({
-    name: "",
-    items: [createEmptyItem()],
-  });
+  const [values, setValues] = useState<FormValues>(createEmptyFormValues);
+  const [queuedSets, setQueuedSets] = useState<FormValues[]>([]);
   const [errors, setErrors] = useState<FormErrors>({});
   const [rowErrors, setRowErrors] = useState<RowErrors[]>([]);
   const [isLoading, setIsLoading] = useState(true);
@@ -457,26 +472,38 @@ export function TimetableForm({
     );
   }
 
-  function validateForm(): { formErrors: FormErrors; rowErrors: RowErrors[] } {
+  function validateForm(target: FormValues): {
+    formErrors: FormErrors;
+    rowErrors: RowErrors[];
+  } {
     const formErrors: FormErrors = {};
 
-    if (!values.name.trim()) {
+    if (!target.name.trim()) {
       formErrors.name = "時間割セット名は必須です。";
-    } else if (values.name.trim().length > 50) {
+    } else if (target.name.trim().length > 50) {
       formErrors.name = "時間割セット名は50文字以内で入力してください。";
     }
 
-    const rowValidation = validateRows(values.items);
+    const rowValidation = validateRows(target.items);
     return {
       formErrors,
       rowErrors: rowValidation.rowErrors,
     };
   }
 
-  async function handleSubmit(event: React.FormEvent<HTMLFormElement>) {
-    event.preventDefault();
+  function toCreatePayload(set: FormValues) {
+    return {
+      name: set.name.trim(),
+      items: set.items.map((item) => ({
+        period: Number(item.period),
+        startTime: item.startTime,
+        endTime: item.endTime,
+      })),
+    };
+  }
 
-    const validation = validateForm();
+  function handleQueueCurrentSet() {
+    const validation = validateForm(values);
     const hasFormError = Object.keys(validation.formErrors).length > 0;
     const hasRowError = validation.rowErrors.some(
       (error) => Object.keys(error).length > 0,
@@ -504,23 +531,105 @@ export function TimetableForm({
       return;
     }
 
+    setQueuedSets((current) => [...current, values]);
+    setValues(createEmptyFormValues());
+    setErrors({});
+    setRowErrors([]);
+    toast.success("作成予定セットに追加しました。");
+  }
+
+  function removeQueuedSet(index: number) {
+    setQueuedSets((current) =>
+      current.filter((_, itemIndex) => itemIndex !== index),
+    );
+  }
+
+  async function handleSubmit(event: React.FormEvent<HTMLFormElement>) {
+    event.preventDefault();
+
     if (isEdit && !timetableId) {
       setErrors({ form: "編集対象の時間割セットIDが指定されていません。" });
       return;
     }
 
-    const payload = {
-      name: values.name.trim(),
-      items: values.items.map((item) => ({
-        period: Number(item.period),
-        startTime: item.startTime,
-        endTime: item.endTime,
-      })),
-    };
+    const validation = validateForm(values);
+    const hasFormError = Object.keys(validation.formErrors).length > 0;
+    const hasRowError = validation.rowErrors.some(
+      (error) => Object.keys(error).length > 0,
+    );
+
+    if (isEdit && (hasFormError || hasRowError)) {
+      setErrors(validation.formErrors);
+      setRowErrors(validation.rowErrors);
+      const firstError =
+        Object.values(validation.formErrors).find(
+          (value): value is string =>
+            typeof value === "string" && value.length > 0,
+        ) ??
+        validation.rowErrors
+          .flatMap((error) => Object.values(error))
+          .find(
+            (value): value is string =>
+              typeof value === "string" && value.length > 0,
+          );
+
+      toast.error(messages.error.validation, {
+        description: firstError,
+        duration: 6000,
+      });
+      return;
+    }
+
+    const createTargets = [...queuedSets];
+    if (!isEdit) {
+      const shouldIncludeCurrent = hasAnySetInput(values);
+
+      if (shouldIncludeCurrent) {
+        if (hasFormError || hasRowError) {
+          setErrors(validation.formErrors);
+          setRowErrors(validation.rowErrors);
+          const firstError =
+            Object.values(validation.formErrors).find(
+              (value): value is string =>
+                typeof value === "string" && value.length > 0,
+            ) ??
+            validation.rowErrors
+              .flatMap((error) => Object.values(error))
+              .find(
+                (value): value is string =>
+                  typeof value === "string" && value.length > 0,
+              );
+
+          toast.error(messages.error.validation, {
+            description: firstError,
+            duration: 6000,
+          });
+          return;
+        }
+
+        createTargets.push(values);
+      } else if (createTargets.length === 0) {
+        setErrors({ name: "少なくとも1つの時間割セットを入力してください。" });
+        toast.error(messages.error.validation, {
+          description: "少なくとも1つの時間割セットを入力してください。",
+          duration: 6000,
+        });
+        return;
+      }
+    }
+
+    const payload =
+      isEdit || createTargets.length <= 1
+        ? toCreatePayload(isEdit ? values : createTargets[0]!)
+        : {
+            sets: createTargets.map((set) => toCreatePayload(set)),
+          };
 
     setIsSubmitting(true);
     const loadingToastId = toast.loading(
-      isEdit ? "時間割セットを更新中です..." : "時間割セットを作成中です...",
+      isEdit
+        ? "時間割セットを更新中です..."
+        : "時間割セットを一括作成中です...",
     );
 
     try {
@@ -546,13 +655,12 @@ export function TimetableForm({
         );
       }
 
+      const createdCount = isEdit ? 1 : createTargets.length;
       toast.success(
         isEdit
           ? messages.success.timetableUpdated
-          : messages.success.timetableCreated(1),
-        {
-          id: loadingToastId,
-        },
+          : messages.success.timetableCreated(createdCount),
+        { id: loadingToastId },
       );
       router.push(listHref);
     } catch (error) {
@@ -617,8 +725,12 @@ export function TimetableForm({
         <h2 className="text-xl font-semibold">{pageTitle}</h2>
         <p className="text-sm text-muted-foreground">
           {workplace
-            ? `${workplace.name} の時間割セットを編集します。`
-            : "時間割セットを編集します。"}
+            ? isEdit
+              ? `${workplace.name} の時間割セットを編集します。`
+              : `${workplace.name} の時間割セットを作成します。`
+            : isEdit
+              ? "時間割セットを編集します。"
+              : "時間割セットを作成します。"}
         </p>
       </header>
 
@@ -646,6 +758,60 @@ export function TimetableForm({
             </FieldContent>
           </Field>
         </FieldGroup>
+
+        {!isEdit ? (
+          <div className="space-y-3">
+            <div className="flex items-center justify-between">
+              <h3 className="text-sm font-semibold">
+                作成予定セット ({queuedSets.length})
+              </h3>
+              <Button
+                type="button"
+                variant="outline"
+                size="sm"
+                onClick={handleQueueCurrentSet}
+                disabled={isSubmitting}
+              >
+                現在の入力を追加
+              </Button>
+            </div>
+
+            {queuedSets.length === 0 ? (
+              <p className="rounded-md border px-3 py-2 text-sm text-muted-foreground">
+                追加済みのセットはありません。入力中のセットを「現在の入力を追加」で作成予定に積めます。
+              </p>
+            ) : (
+              <div className="space-y-2">
+                {queuedSets.map((set, index) => (
+                  <Card key={`queued-set-${index}`}>
+                    <CardHeader className="py-3">
+                      <div className="flex items-center justify-between gap-2">
+                        <div className="space-y-1">
+                          <CardTitle className="text-sm">
+                            {index + 1}. {set.name}
+                          </CardTitle>
+                          <CardDescription>
+                            コマ数: {set.items.length}
+                          </CardDescription>
+                        </div>
+                        <Button
+                          type="button"
+                          variant="ghost"
+                          size="icon"
+                          onClick={() => removeQueuedSet(index)}
+                          disabled={isSubmitting}
+                          aria-label={`作成予定${index + 1}を削除`}
+                        >
+                          <Trash2Icon className="size-4" />
+                        </Button>
+                      </div>
+                    </CardHeader>
+                  </Card>
+                ))}
+              </div>
+            )}
+          </div>
+        ) : null}
 
         <div className="space-y-3">
           <div className="flex items-center justify-between">
@@ -751,7 +917,7 @@ export function TimetableForm({
                 : "作成中..."
               : isEdit
                 ? "更新"
-                : "作成"}
+                : "まとめて作成"}
           </Button>
           <Button
             type="button"

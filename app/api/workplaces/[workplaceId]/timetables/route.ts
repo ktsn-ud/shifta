@@ -23,6 +23,17 @@ const timetableSetSchema = z
   })
   .strict();
 
+const timetableSetBulkSchema = z
+  .object({
+    sets: z.array(timetableSetSchema).min(1),
+  })
+  .strict();
+
+const timetableSetCreateSchema = z.union([
+  timetableSetSchema,
+  timetableSetBulkSchema,
+]);
+
 type Context = {
   params: Promise<{ workplaceId: string }>;
 };
@@ -108,6 +119,16 @@ function buildSetResponse(sets: TimetableSetRow[], timetables: TimetableRow[]) {
   }));
 }
 
+function normalizeCreateInputs(
+  input: z.infer<typeof timetableSetCreateSchema>,
+): Array<z.infer<typeof timetableSetSchema>> {
+  if ("sets" in input) {
+    return input.sets;
+  }
+
+  return [input];
+}
+
 export async function POST(request: Request, context: Context) {
   try {
     const current = await requireCurrentUser();
@@ -128,27 +149,38 @@ export async function POST(request: Request, context: Context) {
       return jsonError("時間割はCRAM_SCHOOL勤務先でのみ操作できます", 400);
     }
 
-    const body = await parseJsonBody(request, timetableSetSchema);
+    const body = await parseJsonBody(request, timetableSetCreateSchema);
     if (!body.success) {
       return body.response;
     }
 
-    const validationError = validateItems(body.data.items);
-    if (validationError) {
-      return jsonError(validationError, 400);
+    const inputs = normalizeCreateInputs(body.data);
+    for (const input of inputs) {
+      const validationError = validateItems(input.items);
+      if (validationError) {
+        return jsonError(validationError, 400);
+      }
     }
 
     const created = await prisma.$transaction(async (tx) => {
-      const duplicatedByName = await tx.$queryRaw<Array<{ id: string }>>`
-        SELECT "id"
+      const existing = await tx.$queryRaw<Array<{ name: string }>>`
+        SELECT "name"
         FROM "TimetableSet"
         WHERE "workplaceId" = ${workplaceId}
-          AND "name" = ${body.data.name}
-        LIMIT 1
       `;
 
-      if (duplicatedByName.length > 0) {
-        throw new Error("DUPLICATED_TIMETABLE_SET_NAME");
+      const existingNameSet = new Set(existing.map((row) => row.name));
+      const requestNameSet = new Set<string>();
+
+      for (const input of inputs) {
+        const normalizedName = input.name.trim();
+        if (
+          requestNameSet.has(normalizedName) ||
+          existingNameSet.has(normalizedName)
+        ) {
+          throw new Error("DUPLICATED_TIMETABLE_SET_NAME");
+        }
+        requestNameSet.add(normalizedName);
       }
 
       const maxSort = await tx.$queryRaw<Array<{ value: number | null }>>`
@@ -157,44 +189,65 @@ export async function POST(request: Request, context: Context) {
         WHERE "workplaceId" = ${workplaceId}
       `;
 
-      const setId = randomUUID();
-      const sortOrder = body.data.sortOrder ?? (maxSort[0]?.value ?? -1) + 1;
+      let nextSortOrder = (maxSort[0]?.value ?? -1) + 1;
+      const createdIds: string[] = [];
 
-      await tx.$executeRaw`
-        INSERT INTO "TimetableSet"
-          ("id", "workplaceId", "name", "sortOrder", "createdAt", "updatedAt")
-        VALUES
-          (${setId}, ${workplaceId}, ${body.data.name}, ${sortOrder}, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP)
-      `;
+      for (const input of inputs) {
+        const setId = randomUUID();
+        const sortOrder = input.sortOrder ?? nextSortOrder;
+        if (input.sortOrder === undefined) {
+          nextSortOrder += 1;
+        }
+        createdIds.push(setId);
 
-      for (const item of body.data.items) {
-        const timetableId = randomUUID();
         await tx.$executeRaw`
-          INSERT INTO "Timetable"
-            ("id", "timetableSetId", "period", "startTime", "endTime")
+          INSERT INTO "TimetableSet"
+            ("id", "workplaceId", "name", "sortOrder", "createdAt", "updatedAt")
           VALUES
-            (${timetableId}, ${setId}, ${item.period}, ${parseTimeOnly(item.startTime)}, ${parseTimeOnly(item.endTime)})
+            (${setId}, ${workplaceId}, ${input.name.trim()}, ${sortOrder}, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP)
         `;
+
+        for (const item of input.items) {
+          const timetableId = randomUUID();
+          await tx.$executeRaw`
+            INSERT INTO "Timetable"
+              ("id", "timetableSetId", "period", "startTime", "endTime")
+            VALUES
+              (${timetableId}, ${setId}, ${item.period}, ${parseTimeOnly(item.startTime)}, ${parseTimeOnly(item.endTime)})
+          `;
+        }
       }
 
-      const sets = await tx.$queryRaw<Array<TimetableSetRow>>`
-        SELECT "id", "workplaceId", "name", "sortOrder", "createdAt", "updatedAt"
-        FROM "TimetableSet"
-        WHERE "id" = ${setId}
-      `;
+      const createdSets: ReturnType<typeof buildSetResponse>[number][] = [];
+      for (const createdId of createdIds) {
+        const sets = await tx.$queryRaw<Array<TimetableSetRow>>`
+          SELECT "id", "workplaceId", "name", "sortOrder", "createdAt", "updatedAt"
+          FROM "TimetableSet"
+          WHERE "id" = ${createdId}
+        `;
 
-      const timetables = await tx.$queryRaw<Array<TimetableRow>>`
-        SELECT "id", "timetableSetId", "period", "startTime", "endTime"
-        FROM "Timetable"
-        WHERE "timetableSetId" = ${setId}
-        ORDER BY "period" ASC
-      `;
+        const timetables = await tx.$queryRaw<Array<TimetableRow>>`
+          SELECT "id", "timetableSetId", "period", "startTime", "endTime"
+          FROM "Timetable"
+          WHERE "timetableSetId" = ${createdId}
+          ORDER BY "period" ASC
+        `;
 
-      return buildSetResponse(sets, timetables)[0] ?? null;
+        const responseItem = buildSetResponse(sets, timetables)[0];
+        if (responseItem) {
+          createdSets.push(responseItem);
+        }
+      }
+
+      return createdSets;
     });
 
-    if (!created) {
+    if (created.length === 0) {
       return jsonError("時間割セットの作成に失敗しました", 500);
+    }
+
+    if (created.length === 1 && !("sets" in body.data)) {
+      return NextResponse.json({ data: created[0] }, { status: 201 });
     }
 
     return NextResponse.json({ data: created }, { status: 201 });
