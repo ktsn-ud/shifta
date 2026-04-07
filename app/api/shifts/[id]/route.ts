@@ -1,3 +1,4 @@
+import { randomUUID } from "node:crypto";
 import { after, NextResponse } from "next/server";
 import { requireCurrentUser } from "@/lib/api/current-user";
 import {
@@ -21,6 +22,14 @@ type Context = {
   params: Promise<{ id: string }>;
 };
 
+type LessonRangeWithSet = {
+  id: string;
+  shiftId: string;
+  startPeriod: number;
+  endPeriod: number;
+  timetableSetId: string;
+};
+
 async function findOwnedShift(shiftId: string, userId: string) {
   return prisma.shift.findFirst({
     where: {
@@ -36,6 +45,36 @@ async function findOwnedShift(shiftId: string, userId: string) {
   });
 }
 
+async function findLessonRangeWithSet(shiftId: string) {
+  const rows = await prisma.$queryRaw<Array<LessonRangeWithSet>>`
+    SELECT "id", "shiftId", "startPeriod", "endPeriod", "timetableSetId"
+    FROM "ShiftLessonRange"
+    WHERE "shiftId" = ${shiftId}
+    LIMIT 1
+  `;
+
+  return rows[0] ?? null;
+}
+
+async function hydrateLessonRangeWithSet<
+  T extends { id: string } & Record<string, unknown>,
+>(shift: T & { lessonRange?: unknown }) {
+  const lessonRange = await findLessonRangeWithSet(shift.id);
+
+  return {
+    ...shift,
+    lessonRange: lessonRange
+      ? {
+          id: lessonRange.id,
+          shiftId: lessonRange.shiftId,
+          startPeriod: lessonRange.startPeriod,
+          endPeriod: lessonRange.endPeriod,
+          timetableSetId: lessonRange.timetableSetId,
+        }
+      : null,
+  };
+}
+
 export async function GET(_: Request, context: Context) {
   try {
     const current = await requireCurrentUser();
@@ -49,7 +88,8 @@ export async function GET(_: Request, context: Context) {
       return jsonError("シフトが見つかりません", 404);
     }
 
-    return NextResponse.json({ data: shift });
+    const hydrated = await hydrateLessonRangeWithSet(shift);
+    return NextResponse.json({ data: hydrated });
   } catch (error) {
     console.error("GET /api/shifts/:id failed", error);
     return jsonError("シフト取得に失敗しました", 500);
@@ -99,18 +139,29 @@ export async function PUT(request: Request, context: Context) {
       });
 
       if (built.lessonRange) {
-        await tx.shiftLessonRange.upsert({
-          where: { shiftId: id },
-          create: {
-            shiftId: id,
-            startPeriod: built.lessonRange.startPeriod,
-            endPeriod: built.lessonRange.endPeriod,
-          },
-          update: {
-            startPeriod: built.lessonRange.startPeriod,
-            endPeriod: built.lessonRange.endPeriod,
-          },
-        });
+        const lessonRows = await tx.$queryRaw<Array<{ id: string }>>`
+          SELECT "id"
+          FROM "ShiftLessonRange"
+          WHERE "shiftId" = ${id}
+          LIMIT 1
+        `;
+
+        if (lessonRows[0]) {
+          await tx.$executeRaw`
+            UPDATE "ShiftLessonRange"
+            SET "timetableSetId" = ${built.lessonRange.timetableSetId},
+                "startPeriod" = ${built.lessonRange.startPeriod},
+                "endPeriod" = ${built.lessonRange.endPeriod}
+            WHERE "shiftId" = ${id}
+          `;
+        } else {
+          await tx.$executeRaw`
+            INSERT INTO "ShiftLessonRange"
+              ("id", "shiftId", "timetableSetId", "startPeriod", "endPeriod")
+            VALUES
+              (${randomUUID()}, ${id}, ${built.lessonRange.timetableSetId}, ${built.lessonRange.startPeriod}, ${built.lessonRange.endPeriod})
+          `;
+        }
       } else {
         await tx.shiftLessonRange.deleteMany({ where: { shiftId: id } });
       }
@@ -148,9 +199,11 @@ export async function PUT(request: Request, context: Context) {
         })
       : null;
 
+    const hydrated = latest ? await hydrateLessonRangeWithSet(latest) : null;
+
     return NextResponse.json({
-      data: latest,
-      syncStatus: latest ? "pending" : null,
+      data: hydrated,
+      syncStatus: hydrated ? "pending" : null,
     });
   } catch (error) {
     console.error("PUT /api/shifts/:id failed", error);

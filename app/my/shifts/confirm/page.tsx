@@ -145,14 +145,22 @@ async function getShiftConfirmationInitialData(userId: string): Promise<{
   const grouped = new Map<string, ConfirmedShiftWorkplaceGroup>();
 
   for (const shift of confirmedShiftsRaw) {
+    const normalizedShiftType =
+      shift.shiftType === "LESSON" ? "LESSON" : "NORMAL";
     const workedMinutes = calculateWorkedMinutes({
       date: shift.date,
       startTime: shift.startTime,
       endTime: shift.endTime,
       breakMinutes: shift.breakMinutes,
-      shiftType: shift.shiftType,
+      shiftType: normalizedShiftType,
       lessonRange: shift.lessonRange
         ? {
+            timetableSetId:
+              (
+                shift.lessonRange as {
+                  timetableSetId?: string;
+                }
+              ).timetableSetId ?? "",
             startPeriod: shift.lessonRange.startPeriod,
             endPeriod: shift.lessonRange.endPeriod,
           }

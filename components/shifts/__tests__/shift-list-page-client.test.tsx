@@ -32,7 +32,7 @@ type TestShift = {
   endTime: string;
   workplaceName: string;
   workplaceType?: "GENERAL" | "CRAM_SCHOOL";
-  shiftType?: "NORMAL" | "LESSON" | "OTHER";
+  shiftType?: "NORMAL" | "LESSON";
   breakMinutes?: number;
   estimatedPay?: number | null;
 };

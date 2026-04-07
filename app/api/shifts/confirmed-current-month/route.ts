@@ -88,14 +88,22 @@ export async function GET() {
 
     return NextResponse.json({
       shifts: shifts.map((shift) => {
+        const normalizedShiftType =
+          shift.shiftType === "LESSON" ? "LESSON" : "NORMAL";
         const workedMinutes = calculateWorkedMinutes({
           date: shift.date,
           startTime: shift.startTime,
           endTime: shift.endTime,
           breakMinutes: shift.breakMinutes,
-          shiftType: shift.shiftType,
+          shiftType: normalizedShiftType,
           lessonRange: shift.lessonRange
             ? {
+                timetableSetId:
+                  (
+                    shift.lessonRange as {
+                      timetableSetId?: string;
+                    }
+                  ).timetableSetId ?? "",
                 startPeriod: shift.lessonRange.startPeriod,
                 endPeriod: shift.lessonRange.endPeriod,
               }

@@ -4,9 +4,8 @@ import type {
   ShiftLessonRange,
   Workplace,
 } from "@/lib/generated/prisma/client";
-import { calculateLessonShiftWage } from "@/lib/payroll/calculateLessonShiftWage";
 import {
-  calculateOtherShiftWage,
+  calculateShiftWage,
   type PayrollResult,
 } from "@/lib/payroll/calculateShiftWage";
 
@@ -93,16 +92,11 @@ export function calculateShiftPayrollResultByRule(
   shift: ShiftForPayrollCalculation,
   rule: PayrollRule,
 ): PayrollResult {
-  if (shift.shiftType === "LESSON") {
-    if (!shift.lessonRange) {
-      throw new Error(
-        `LESSON型のコマ範囲が見つかりません: shiftId=${shift.id}`,
-      );
-    }
-    return calculateLessonShiftWage(shift, shift.lessonRange, rule);
+  if (shift.shiftType === "LESSON" && !shift.lessonRange) {
+    throw new Error(`LESSON型のコマ範囲が見つかりません: shiftId=${shift.id}`);
   }
 
-  return calculateOtherShiftWage(shift, rule);
+  return calculateShiftWage(shift, rule);
 }
 
 export function calculateShiftPayrollResult(

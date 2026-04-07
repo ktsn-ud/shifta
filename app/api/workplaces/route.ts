@@ -23,7 +23,6 @@ const createInitialPayrollRuleSchema = z
       .nullable()
       .optional(),
     baseHourlyWage: z.coerce.number().positive(),
-    perLessonWage: z.coerce.number().positive().nullable().optional(),
     holidayHourlyWage: z.coerce.number().positive().nullable().optional(),
     nightMultiplier: z.coerce.number().min(1),
     overtimeMultiplier: z.coerce.number().min(1),
@@ -49,7 +48,6 @@ type NormalizedInitialPayrollRule = {
   startDate: Date;
   endDate: Date | null;
   baseHourlyWage: number;
-  perLessonWage: number | null;
   holidayHourlyWage: number | null;
   nightMultiplier: number;
   overtimeMultiplier: number;
@@ -73,7 +71,6 @@ function normalizeInitialPayrollRule(
     startDate,
     endDate,
     baseHourlyWage: input.baseHourlyWage,
-    perLessonWage: input.perLessonWage ?? null,
     holidayHourlyWage: input.holidayHourlyWage ?? null,
     nightMultiplier: input.nightMultiplier,
     overtimeMultiplier: input.overtimeMultiplier,
@@ -88,14 +85,8 @@ function validateByWorkplaceType(
   workplaceType: "GENERAL" | "CRAM_SCHOOL",
   normalized: NormalizedInitialPayrollRule,
 ): string | null {
-  if (workplaceType === "GENERAL" && normalized.baseHourlyWage <= 0) {
-    return "GENERAL勤務先では baseHourlyWage を正の数で指定してください";
-  }
-
-  if (workplaceType === "CRAM_SCHOOL") {
-    if (normalized.perLessonWage === null || normalized.perLessonWage <= 0) {
-      return "CRAM_SCHOOL勤務先では perLessonWage を正の数で指定してください";
-    }
+  if (normalized.baseHourlyWage <= 0) {
+    return `${workplaceType}勤務先では baseHourlyWage を正の数で指定してください`;
   }
 
   return null;
@@ -160,10 +151,6 @@ export async function POST(request: Request) {
             startDate: normalizedInitialRule.startDate,
             endDate: normalizedInitialRule.endDate,
             baseHourlyWage: normalizedInitialRule.baseHourlyWage.toString(),
-            perLessonWage:
-              normalizedInitialRule.perLessonWage === null
-                ? null
-                : normalizedInitialRule.perLessonWage.toString(),
             holidayHourlyWage:
               normalizedInitialRule.holidayHourlyWage === null
                 ? null
@@ -207,14 +194,35 @@ export async function GET() {
           select: {
             shifts: true,
             payrollRules: true,
-            timetables: true,
           },
         },
       },
       orderBy: { createdAt: "desc" },
     });
 
-    return NextResponse.json({ data: workplaces });
+    const timetableSetCounts = await Promise.all(
+      workplaces.map(async (workplace) => {
+        const rows = await prisma.$queryRaw<Array<{ count: number }>>`
+          SELECT COUNT(*)::int AS "count"
+          FROM "TimetableSet"
+          WHERE "workplaceId" = ${workplace.id}
+        `;
+
+        return [workplace.id, rows[0]?.count ?? 0] as const;
+      }),
+    );
+    const timetableSetCountByWorkplaceId = new Map(timetableSetCounts);
+
+    return NextResponse.json({
+      data: workplaces.map((workplace) => ({
+        ...workplace,
+        _count: {
+          shifts: workplace._count.shifts,
+          payrollRules: workplace._count.payrollRules,
+          timetableSets: timetableSetCountByWorkplaceId.get(workplace.id) ?? 0,
+        },
+      })),
+    });
   } catch (error) {
     console.error("GET /api/workplaces failed", error);
     return jsonError("勤務先一覧の取得に失敗しました", 500);

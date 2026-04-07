@@ -64,14 +64,10 @@ function getHourlyWage(shift: Shift, payrollRule: PayrollRule): number {
   return baseHourlyWage;
 }
 
-export function calculateOtherShiftWage(
+export function calculateShiftWage(
   shift: Shift,
   payrollRule: PayrollRule,
 ): PayrollResult {
-  if (shift.shiftType === "LESSON") {
-    throw new Error("calculateOtherShiftWage は LESSON 型シフトを扱えません");
-  }
-
   const workHours = calculateWorkedHours(shift);
   const nightHoursRaw = calculateNightHours(
     shift.startTime,
@@ -104,3 +100,5 @@ export function calculateOtherShiftWage(
     nightHours: roundHours(nightHours),
   };
 }
+
+export const calculateOtherShiftWage = calculateShiftWage;

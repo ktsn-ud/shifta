@@ -122,20 +122,28 @@ describe("major flow integration", () => {
           return jsonResponse({
             data: [
               {
-                id: "tt-1",
+                id: "set-1",
                 workplaceId: "workplace-1",
-                type: "NORMAL",
-                period: 1,
-                startTime: "1970-01-01T16:30:00.000Z",
-                endTime: "1970-01-01T17:30:00.000Z",
-              },
-              {
-                id: "tt-2",
-                workplaceId: "workplace-1",
-                type: "NORMAL",
-                period: 2,
-                startTime: "1970-01-01T17:40:00.000Z",
-                endTime: "1970-01-01T18:40:00.000Z",
+                name: "通常授業",
+                sortOrder: 0,
+                createdAt: "2026-03-01T00:00:00.000Z",
+                updatedAt: "2026-03-01T00:00:00.000Z",
+                items: [
+                  {
+                    id: "tt-1",
+                    timetableSetId: "set-1",
+                    period: 1,
+                    startTime: "1970-01-01T16:30:00.000Z",
+                    endTime: "1970-01-01T17:30:00.000Z",
+                  },
+                  {
+                    id: "tt-2",
+                    timetableSetId: "set-1",
+                    period: 2,
+                    startTime: "1970-01-01T17:40:00.000Z",
+                    endTime: "1970-01-01T18:40:00.000Z",
+                  },
+                ],
               },
             ],
           });
@@ -189,7 +197,7 @@ describe("major flow integration", () => {
     ) as {
       shiftType: string;
       lessonRange?: {
-        lessonType: string;
+        timetableSetId: string;
         startPeriod: number;
         endPeriod: number;
       };
@@ -198,7 +206,7 @@ describe("major flow integration", () => {
     expect(body.shiftType).toBe("LESSON");
     expect(body.lessonRange).toEqual(
       expect.objectContaining({
-        lessonType: "NORMAL",
+        timetableSetId: "set-1",
       }),
     );
     expect(body.lessonRange?.startPeriod).toEqual(expect.any(Number));

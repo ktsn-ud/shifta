@@ -81,14 +81,22 @@ async function getMonthShiftsWithEstimate(
   const rulesByWorkplace = groupPayrollRulesByWorkplace(payrollRules);
 
   return shifts.map((shift: ShiftWithRelations) => {
+    const normalizedShiftType =
+      shift.shiftType === "LESSON" ? "LESSON" : "NORMAL";
     const workedMinutes = calculateWorkedMinutes({
       date: shift.date,
       startTime: shift.startTime,
       endTime: shift.endTime,
       breakMinutes: shift.breakMinutes,
-      shiftType: shift.shiftType,
+      shiftType: normalizedShiftType,
       lessonRange: shift.lessonRange
         ? {
+            timetableSetId:
+              (
+                shift.lessonRange as {
+                  timetableSetId?: string;
+                }
+              ).timetableSetId ?? "",
             startPeriod: shift.lessonRange.startPeriod,
             endPeriod: shift.lessonRange.endPeriod,
           }
@@ -112,7 +120,7 @@ async function getMonthShiftsWithEstimate(
       startTime: shift.startTime.toISOString(),
       endTime: shift.endTime.toISOString(),
       breakMinutes: shift.breakMinutes,
-      shiftType: shift.shiftType,
+      shiftType: normalizedShiftType,
       googleSyncStatus:
         shift.googleSyncStatus === "SUCCESS" ||
         shift.googleSyncStatus === "FAILED"
@@ -132,6 +140,12 @@ async function getMonthShiftsWithEstimate(
         ? {
             id: shift.lessonRange.id,
             shiftId: shift.lessonRange.shiftId,
+            timetableSetId:
+              (
+                shift.lessonRange as {
+                  timetableSetId?: string;
+                }
+              ).timetableSetId ?? "",
             startPeriod: shift.lessonRange.startPeriod,
             endPeriod: shift.lessonRange.endPeriod,
           }

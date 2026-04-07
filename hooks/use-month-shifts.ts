@@ -23,7 +23,7 @@ type MonthShift = {
   startTime: string;
   endTime: string;
   breakMinutes: number;
-  shiftType: "NORMAL" | "LESSON" | "OTHER";
+  shiftType: "NORMAL" | "LESSON";
   googleSyncStatus: "PENDING" | "SUCCESS" | "FAILED";
   googleSyncError: string | null;
   googleSyncedAt: string | null;
@@ -38,6 +38,7 @@ type MonthShift = {
   lessonRange: {
     id: string;
     shiftId: string;
+    timetableSetId: string;
     startPeriod: number;
     endPeriod: number;
   } | null;
@@ -50,7 +51,7 @@ type ShiftSummary = {
 };
 
 type ShiftListResponse = {
-  data: MonthShift[];
+  data: unknown[];
 };
 
 type UseMonthShiftsOptions = {
@@ -98,6 +99,82 @@ function writeMonthShiftsCache(cacheKey: string, shifts: MonthShift[]): void {
     shifts,
     expiresAt: Date.now() + MONTH_SHIFTS_CACHE_TTL_MS,
   });
+}
+
+function normalizeMonthShift(raw: unknown): MonthShift | null {
+  if (typeof raw !== "object" || raw === null) {
+    return null;
+  }
+
+  const shift = raw as Partial<MonthShift> & {
+    shiftType?: string;
+    lessonRange?: {
+      id?: string;
+      shiftId?: string;
+      timetableSetId?: string;
+      startPeriod?: number;
+      endPeriod?: number;
+    } | null;
+  };
+
+  if (
+    typeof shift.id !== "string" ||
+    typeof shift.workplaceId !== "string" ||
+    typeof shift.date !== "string" ||
+    typeof shift.startTime !== "string" ||
+    typeof shift.endTime !== "string" ||
+    typeof shift.breakMinutes !== "number" ||
+    typeof shift.googleSyncStatus !== "string" ||
+    typeof shift.workedMinutes !== "number" ||
+    !shift.workplace ||
+    typeof shift.workplace.id !== "string" ||
+    typeof shift.workplace.name !== "string" ||
+    typeof shift.workplace.color !== "string" ||
+    (shift.workplace.type !== "GENERAL" &&
+      shift.workplace.type !== "CRAM_SCHOOL")
+  ) {
+    return null;
+  }
+
+  return {
+    id: shift.id,
+    workplaceId: shift.workplaceId,
+    date: shift.date,
+    startTime: shift.startTime,
+    endTime: shift.endTime,
+    breakMinutes: shift.breakMinutes,
+    shiftType: shift.shiftType === "LESSON" ? "LESSON" : "NORMAL",
+    googleSyncStatus:
+      shift.googleSyncStatus === "SUCCESS" ||
+      shift.googleSyncStatus === "FAILED"
+        ? shift.googleSyncStatus
+        : "PENDING",
+    googleSyncError: shift.googleSyncError ?? null,
+    googleSyncedAt: shift.googleSyncedAt ?? null,
+    workedMinutes: shift.workedMinutes,
+    estimatedPay:
+      typeof shift.estimatedPay === "number" ? shift.estimatedPay : null,
+    workplace: {
+      id: shift.workplace.id,
+      name: shift.workplace.name,
+      color: shift.workplace.color,
+      type: shift.workplace.type,
+    },
+    lessonRange:
+      shift.lessonRange &&
+      typeof shift.lessonRange.id === "string" &&
+      typeof shift.lessonRange.shiftId === "string" &&
+      typeof shift.lessonRange.startPeriod === "number" &&
+      typeof shift.lessonRange.endPeriod === "number"
+        ? {
+            id: shift.lessonRange.id,
+            shiftId: shift.lessonRange.shiftId,
+            timetableSetId: shift.lessonRange.timetableSetId ?? "",
+            startPeriod: shift.lessonRange.startPeriod,
+            endPeriod: shift.lessonRange.endPeriod,
+          }
+        : null,
+  };
 }
 
 export function clearMonthShiftsCache(): void {
@@ -204,8 +281,12 @@ export function useMonthShifts(month: Date, options: UseMonthShiftsOptions) {
           throw new Error("SHIFT_RESPONSE_INVALID");
         }
 
-        setShifts(payload.data);
-        writeMonthShiftsCache(cacheKey, payload.data);
+        const normalized = payload.data
+          .map((shift) => normalizeMonthShift(shift))
+          .filter((shift): shift is MonthShift => shift !== null);
+
+        setShifts(normalized);
+        writeMonthShiftsCache(cacheKey, normalized);
       } catch (error) {
         if (abortController.signal.aborted) {
           return;

@@ -74,15 +74,9 @@ enum WorkplaceType {
   CRAM_SCHOOL
 }
 
-enum TimetableType {
-  NORMAL
-  INTENSIVE
-}
-
 enum ShiftType {
   NORMAL
   LESSON
-  OTHER
 }
 
 enum HolidayType {
@@ -101,7 +95,7 @@ model Workplace {
   createdAt    DateTime      @default(now())
   user         User          @relation(fields: [userId], references: [id], onDelete: Cascade)
   payrollRules PayrollRule[]
-  timetables   Timetable[]
+  timetableSets TimetableSet[]
   shifts       Shift[]
 
   @@index([userId])
@@ -113,7 +107,6 @@ model PayrollRule {
   startDate              DateTime    @db.Date
   endDate                DateTime?   @db.Date
   baseHourlyWage         Decimal     @db.Decimal(10, 2)
-  perLessonWage          Decimal?    @db.Decimal(10, 2)
   holidayHourlyWage      Decimal?    @db.Decimal(10, 2)
   nightMultiplier        Decimal     @db.Decimal(4, 2)
   overtimeMultiplier     Decimal     @db.Decimal(4, 2)
@@ -127,17 +120,31 @@ model PayrollRule {
   @@index([workplaceId, startDate, endDate])
 }
 
-model Timetable {
-  id          String        @id @default(cuid())
-  workplaceId String
-  type        TimetableType
-  period      Int
-  startTime   DateTime      @db.Time(0)
-  endTime     DateTime      @db.Time(0)
-  workplace   Workplace     @relation(fields: [workplaceId], references: [id], onDelete: Cascade)
+model TimetableSet {
+  id               String            @id @default(cuid())
+  workplaceId      String
+  name             String
+  sortOrder        Int               @default(0)
+  createdAt        DateTime          @default(now())
+  updatedAt        DateTime          @updatedAt
+  workplace        Workplace         @relation(fields: [workplaceId], references: [id], onDelete: Cascade)
+  timetables       Timetable[]
+  shiftLessonRanges ShiftLessonRange[]
 
-  @@unique([workplaceId, type, period])
   @@index([workplaceId])
+  @@unique([workplaceId, name])
+}
+
+model Timetable {
+  id             String       @id @default(cuid())
+  timetableSetId String
+  period         Int
+  startTime      DateTime     @db.Time(0)
+  endTime        DateTime     @db.Time(0)
+  timetableSet   TimetableSet @relation(fields: [timetableSetId], references: [id], onDelete: Cascade)
+
+  @@unique([timetableSetId, period])
+  @@index([timetableSetId])
 }
 
 model Shift {
@@ -161,9 +168,13 @@ model Shift {
 }
 
 model ShiftLessonRange {
-  id          String @id @default(cuid())
-  shiftId     String @unique
-  startPeriod Int
-  endPeriod   Int
-  shift       Shift  @relation(fields: [shiftId], references: [id], onDelete: Cascade)
+  id             String       @id @default(cuid())
+  shiftId         String       @unique
+  timetableSetId  String
+  startPeriod     Int
+  endPeriod       Int
+  shift           Shift        @relation(fields: [shiftId], references: [id], onDelete: Cascade)
+  timetableSet    TimetableSet @relation(fields: [timetableSetId], references: [id], onDelete: Restrict)
+
+  @@index([timetableSetId])
 }
