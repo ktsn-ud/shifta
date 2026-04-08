@@ -17,10 +17,10 @@ import {
 
 export const maxDuration = 60;
 
-const commonShiftItemSchema = z
+const bulkShiftItemSchema = z
   .object({
     date: z.string().regex(DATE_ONLY_REGEX, "YYYY-MM-DD形式で入力してください"),
-    shiftType: z.enum(["NORMAL", "LESSON", "OTHER"]),
+    shiftType: z.enum(["NORMAL", "LESSON"]),
     startTime: z
       .string()
       .regex(TIME_ONLY_REGEX, "HH:MM形式で入力してください")
@@ -34,22 +34,6 @@ const commonShiftItemSchema = z
   })
   .strict();
 
-const legacyLessonItemSchema = z
-  .object({
-    date: z.string().regex(DATE_ONLY_REGEX, "YYYY-MM-DD形式で入力してください"),
-    shiftType: z.literal("LESSON"),
-    breakMinutes: z.coerce.number().int().min(0).default(0),
-    lessonType: z.enum(["NORMAL", "INTENSIVE"]),
-    startPeriod: z.coerce.number().int().positive(),
-    endPeriod: z.coerce.number().int().positive(),
-  })
-  .strict();
-
-const bulkShiftItemSchema = z.union([
-  commonShiftItemSchema,
-  legacyLessonItemSchema,
-]);
-
 const bulkCreateSchema = z
   .object({
     workplaceId: z.string().min(1),
@@ -57,30 +41,9 @@ const bulkCreateSchema = z
   })
   .strict();
 
-type BulkShiftItem = z.infer<typeof bulkShiftItemSchema>;
-
-type NormalizedBulkShiftItem = Omit<ShiftInput, "workplaceId">;
-
 type CreatedShift = {
   id: string;
 };
-
-function normalizeBulkShiftItem(item: BulkShiftItem): NormalizedBulkShiftItem {
-  if ("lessonType" in item) {
-    return {
-      date: item.date,
-      shiftType: "LESSON",
-      breakMinutes: item.breakMinutes,
-      lessonRange: {
-        lessonType: item.lessonType,
-        startPeriod: item.startPeriod,
-        endPeriod: item.endPeriod,
-      },
-    };
-  }
-
-  return item;
-}
 
 async function createShiftsInTransaction(
   builtItems: BuiltShiftData[],
@@ -103,18 +66,25 @@ async function createShiftsInTransaction(
     return [
       {
         shiftId,
+        timetableSetId: built.lessonRange.timetableSetId,
         startPeriod: built.lessonRange.startPeriod,
         endPeriod: built.lessonRange.endPeriod,
       },
     ];
   });
 
-  const queries = [prisma.shift.createMany({ data: shiftRows })];
-  if (lessonRangeRows.length > 0) {
-    queries.push(prisma.shiftLessonRange.createMany({ data: lessonRangeRows }));
-  }
+  await prisma.$transaction(async (tx) => {
+    await tx.shift.createMany({ data: shiftRows });
 
-  await prisma.$transaction(queries);
+    for (const row of lessonRangeRows) {
+      await tx.$executeRaw`
+        INSERT INTO "ShiftLessonRange"
+          ("id", "shiftId", "timetableSetId", "startPeriod", "endPeriod")
+        VALUES
+          (${randomUUID()}, ${row.shiftId}, ${row.timetableSetId}, ${row.startPeriod}, ${row.endPeriod})
+      `;
+    }
+  });
 
   return shiftRows.map((row) => ({ id: row.id }));
 }
@@ -139,17 +109,15 @@ export async function POST(request: Request) {
       return workplaceResult.response;
     }
 
-    const normalizedItems = body.data.shifts.map(normalizeBulkShiftItem);
-
     const builtItems: BuiltShiftData[] = [];
 
-    for (let index = 0; index < normalizedItems.length; index += 1) {
-      const item = normalizedItems[index];
+    for (let index = 0; index < body.data.shifts.length; index += 1) {
+      const item = body.data.shifts[index];
 
       try {
         const built = await buildShiftData(
           {
-            ...item,
+            ...(item as Omit<ShiftInput, "workplaceId">),
             workplaceId: body.data.workplaceId,
           },
           workplaceResult.workplace.type,

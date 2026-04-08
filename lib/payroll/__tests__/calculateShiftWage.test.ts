@@ -36,7 +36,6 @@ function createRule(overrides: Partial<PayrollRule> = {}): PayrollRule {
     startDate: date("2026-01-01"),
     endDate: null,
     baseHourlyWage: new Prisma.Decimal(1100),
-    perLessonWage: new Prisma.Decimal(2000),
     holidayHourlyWage: new Prisma.Decimal(1200),
     nightMultiplier: new Prisma.Decimal(1.25),
     overtimeMultiplier: new Prisma.Decimal(1.5),
@@ -123,12 +122,20 @@ describe("calculateOtherShiftWage", () => {
     expect(result.nightWage).toBe(0);
   });
 
-  it("LESSON型シフトではエラーを返す", () => {
+  it("LESSON型シフトでも時給ベースで計算できる", () => {
     const shift = createShift({ shiftType: "LESSON" });
     const rule = createRule();
 
-    expect(() => calculateOtherShiftWage(shift, rule)).toThrow(
-      "calculateOtherShiftWage は LESSON 型シフトを扱えません",
-    );
+    const result = calculateOtherShiftWage(shift, rule);
+
+    expect(result).toEqual({
+      totalWage: 7700,
+      dayWage: 7700,
+      overtimeWage: 0,
+      nightWage: 0,
+      workHours: 7,
+      overtimeHours: 0,
+      nightHours: 0,
+    });
   });
 });

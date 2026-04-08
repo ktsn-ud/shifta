@@ -49,7 +49,6 @@ const payrollRuleSchema = z.object({
   startDate: z.string(),
   endDate: z.string().nullable(),
   baseHourlyWage: numericValueSchema,
-  perLessonWage: numericValueSchema.nullable(),
   holidayHourlyWage: numericValueSchema.nullable(),
   nightMultiplier: numericValueSchema,
   overtimeMultiplier: numericValueSchema,
@@ -359,34 +358,22 @@ export function PayrollRuleList({
         </CardHeader>
         <CardContent>
           {isLoading ? (
-            <TableLoadingSkeleton
-              rows={5}
-              columns={workplace?.type === "GENERAL" ? 5 : 3}
-            />
+            <TableLoadingSkeleton rows={5} columns={5} />
           ) : (
             <Table>
               <TableHeader>
                 <TableRow>
                   <TableHead>適用期間</TableHead>
-                  <TableHead>
-                    {workplace?.type === "CRAM_SCHOOL" ? "コマ給" : "基本時給"}
-                  </TableHead>
-                  {workplace?.type === "GENERAL" ? (
-                    <>
-                      <TableHead>深夜倍率</TableHead>
-                      <TableHead>残業倍率</TableHead>
-                    </>
-                  ) : null}
+                  <TableHead>基本時給</TableHead>
+                  <TableHead>深夜倍率</TableHead>
+                  <TableHead>残業倍率</TableHead>
                   <TableHead className="text-right">操作</TableHead>
                 </TableRow>
               </TableHeader>
               <TableBody>
                 {rules.length === 0 ? (
                   <TableRow>
-                    <TableCell
-                      colSpan={workplace?.type === "GENERAL" ? 5 : 3}
-                      className="h-16 text-center"
-                    >
+                    <TableCell colSpan={5} className="h-16 text-center">
                       給与ルールがありません。
                     </TableCell>
                   </TableRow>
@@ -398,20 +385,14 @@ export function PayrollRuleList({
                         {formatDate(rule.endDate, -1)}
                       </TableCell>
                       <TableCell>
-                        {workplace?.type === "CRAM_SCHOOL"
-                          ? formatCurrency(rule.perLessonWage)
-                          : formatCurrency(rule.baseHourlyWage)}
+                        {formatCurrency(rule.baseHourlyWage)}
                       </TableCell>
-                      {workplace?.type === "GENERAL" ? (
-                        <>
-                          <TableCell>
-                            {formatMultiplier(rule.nightMultiplier)}
-                          </TableCell>
-                          <TableCell>
-                            {formatMultiplier(rule.overtimeMultiplier)}
-                          </TableCell>
-                        </>
-                      ) : null}
+                      <TableCell>
+                        {formatMultiplier(rule.nightMultiplier)}
+                      </TableCell>
+                      <TableCell>
+                        {formatMultiplier(rule.overtimeMultiplier)}
+                      </TableCell>
                       <TableCell>
                         <div className="flex justify-end gap-2">
                           <Link

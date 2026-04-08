@@ -33,7 +33,7 @@ import {
   toDateKey,
   toMonthInputValue,
 } from "@/lib/calendar/date";
-import { formatLessonType, formatShiftType } from "@/lib/enum-labels";
+import { formatShiftType } from "@/lib/enum-labels";
 import {
   parseGoogleSyncFailureFromPayload,
   readGoogleSyncFailureFromErrorResponse,
@@ -43,8 +43,8 @@ import { messages, toErrorMessage } from "@/lib/messages";
 
 const LAST_WORKPLACE_ID_KEY = "shifta:last-workplace-id";
 const DATE_ONLY_REGEX = /^\d{4}-\d{2}-\d{2}$/;
-type ShiftType = "NORMAL" | "LESSON" | "OTHER";
-type LessonType = "NORMAL" | "INTENSIVE";
+
+type ShiftType = "NORMAL" | "LESSON";
 type ShiftFormMode = "create" | "edit";
 type ShiftFormReturnTo = "dashboard" | "list";
 
@@ -55,12 +55,24 @@ type Workplace = {
   type: "GENERAL" | "CRAM_SCHOOL";
 };
 
-type Timetable = {
+type TimetableSetItem = {
   id: string;
-  type: LessonType;
+  timetableSetId: string;
   period: number;
   startTime: string;
   endTime: string;
+  startTimeLabel?: string;
+  endTimeLabel?: string;
+};
+
+type TimetableSet = {
+  id: string;
+  workplaceId: string;
+  name: string;
+  sortOrder: number;
+  createdAt: string;
+  updatedAt: string;
+  items: TimetableSetItem[];
 };
 
 type ShiftListItem = {
@@ -78,9 +90,44 @@ type ShiftDetail = {
   breakMinutes: number;
   shiftType: ShiftType;
   lessonRange: {
+    timetableSetId: string;
     startPeriod: number;
     endPeriod: number;
   } | null;
+};
+
+type FormState = {
+  workplaceId: string;
+  date: string;
+  shiftType: ShiftType;
+  startTime: string;
+  endTime: string;
+  breakMinutes: string;
+  timetableSetId: string;
+  startPeriod: string;
+  endPeriod: string;
+};
+
+type FormErrorKey =
+  | "workplaceId"
+  | "date"
+  | "shiftType"
+  | "startTime"
+  | "endTime"
+  | "breakMinutes"
+  | "timetableSetId"
+  | "startPeriod"
+  | "endPeriod"
+  | "form";
+
+type FormErrors = Partial<Record<FormErrorKey, string>>;
+
+type ShiftFormProps = {
+  mode: ShiftFormMode;
+  shiftId?: string;
+  initialDate?: string;
+  returnMonth?: string;
+  returnTo?: ShiftFormReturnTo;
 };
 
 function isRecord(value: unknown): value is Record<string, unknown> {
@@ -91,12 +138,8 @@ function isShiftWorkplaceType(value: unknown): value is Workplace["type"] {
   return value === "GENERAL" || value === "CRAM_SCHOOL";
 }
 
-function isLessonType(value: unknown): value is LessonType {
-  return value === "NORMAL" || value === "INTENSIVE";
-}
-
 function isShiftType(value: unknown): value is ShiftType {
-  return value === "NORMAL" || value === "LESSON" || value === "OTHER";
+  return value === "NORMAL" || value === "LESSON";
 }
 
 function isWorkplace(value: unknown): value is Workplace {
@@ -112,19 +155,39 @@ function isWorkplace(value: unknown): value is Workplace {
   );
 }
 
-function isTimetable(value: unknown): value is Timetable {
+function isTimetableSetItem(value: unknown): value is TimetableSetItem {
   if (!isRecord(value)) {
     return false;
   }
 
   return (
     typeof value.id === "string" &&
-    isLessonType(value.type) &&
+    typeof value.timetableSetId === "string" &&
     typeof value.period === "number" &&
     Number.isInteger(value.period) &&
     value.period > 0 &&
     typeof value.startTime === "string" &&
-    typeof value.endTime === "string"
+    typeof value.endTime === "string" &&
+    (value.startTimeLabel === undefined ||
+      typeof value.startTimeLabel === "string") &&
+    (value.endTimeLabel === undefined || typeof value.endTimeLabel === "string")
+  );
+}
+
+function isTimetableSet(value: unknown): value is TimetableSet {
+  if (!isRecord(value) || !Array.isArray(value.items)) {
+    return false;
+  }
+
+  return (
+    typeof value.id === "string" &&
+    typeof value.workplaceId === "string" &&
+    typeof value.name === "string" &&
+    typeof value.sortOrder === "number" &&
+    Number.isInteger(value.sortOrder) &&
+    typeof value.createdAt === "string" &&
+    typeof value.updatedAt === "string" &&
+    value.items.every(isTimetableSetItem)
   );
 }
 
@@ -140,12 +203,14 @@ function parseWorkplaceListResponse(payload: unknown): Workplace[] | null {
   return payload.data;
 }
 
-function parseTimetableListResponse(payload: unknown): Timetable[] | null {
+function parseTimetableSetListResponse(
+  payload: unknown,
+): TimetableSet[] | null {
   if (!isRecord(payload) || !Array.isArray(payload.data)) {
     return null;
   }
 
-  if (payload.data.every(isTimetable) === false) {
+  if (payload.data.every(isTimetableSet) === false) {
     return null;
   }
 
@@ -203,6 +268,7 @@ function parseShiftDetailResponse(payload: unknown): ShiftDetail | null {
     }
 
     if (
+      typeof data.lessonRange.timetableSetId !== "string" ||
       typeof data.lessonRange.startPeriod !== "number" ||
       Number.isInteger(data.lessonRange.startPeriod) === false ||
       data.lessonRange.startPeriod <= 0 ||
@@ -214,6 +280,7 @@ function parseShiftDetailResponse(payload: unknown): ShiftDetail | null {
     }
 
     lessonRange = {
+      timetableSetId: data.lessonRange.timetableSetId,
       startPeriod: data.lessonRange.startPeriod,
       endPeriod: data.lessonRange.endPeriod,
     };
@@ -229,48 +296,6 @@ function parseShiftDetailResponse(payload: unknown): ShiftDetail | null {
     shiftType: data.shiftType,
     lessonRange,
   };
-}
-
-type FormState = {
-  workplaceId: string;
-  date: string;
-  shiftType: ShiftType;
-  startTime: string;
-  endTime: string;
-  breakMinutes: string;
-  lessonType: LessonType;
-  startPeriod: string;
-  endPeriod: string;
-};
-
-type FormErrorKey =
-  | "workplaceId"
-  | "date"
-  | "shiftType"
-  | "startTime"
-  | "endTime"
-  | "breakMinutes"
-  | "lessonType"
-  | "startPeriod"
-  | "endPeriod"
-  | "form";
-
-type FormErrors = Partial<Record<FormErrorKey, string>>;
-
-type ShiftFormProps = {
-  mode: ShiftFormMode;
-  shiftId?: string;
-  initialDate?: string;
-  returnMonth?: string;
-  returnTo?: ShiftFormReturnTo;
-};
-
-function formatCramShiftType(type: "NORMAL" | "LESSON"): string {
-  if (type === "NORMAL") {
-    return "事務";
-  }
-
-  return formatShiftType(type);
 }
 
 function isValidDateKey(value?: string | null): value is string {
@@ -306,36 +331,57 @@ function hasTimeOverlap(
   return startA < endB && startB < endA;
 }
 
+function findSetById(
+  timetableSets: TimetableSet[],
+  timetableSetId: string,
+): TimetableSet | null {
+  return timetableSets.find((set) => set.id === timetableSetId) ?? null;
+}
+
+function findSetItemByPeriod(
+  timetableSet: TimetableSet | null,
+  periodValue: string,
+): TimetableSetItem | null {
+  if (!timetableSet) {
+    return null;
+  }
+
+  const period = Number(periodValue);
+  if (Number.isFinite(period) === false) {
+    return null;
+  }
+
+  return timetableSet.items.find((item) => item.period === period) ?? null;
+}
+
 function resolveLessonTimeRange(
-  timetables: Timetable[],
-  lessonType: LessonType,
+  timetableSet: TimetableSet | null,
   startPeriod: number,
   endPeriod: number,
 ): { startTime: string; endTime: string } | null {
-  const timetableByPeriod = new Map<number, Timetable>();
+  if (!timetableSet || startPeriod > endPeriod) {
+    return null;
+  }
 
-  for (const timetable of timetables) {
-    if (timetable.type === lessonType) {
-      timetableByPeriod.set(timetable.period, timetable);
-    }
+  const itemByPeriod = new Map<number, TimetableSetItem>();
+  for (const item of timetableSet.items) {
+    itemByPeriod.set(item.period, item);
   }
 
   for (let period = startPeriod; period <= endPeriod; period += 1) {
-    if (timetableByPeriod.has(period) === false) {
+    if (!itemByPeriod.has(period)) {
       return null;
     }
   }
 
-  const first = timetableByPeriod.get(startPeriod);
-  const last = timetableByPeriod.get(endPeriod);
-
+  const first = itemByPeriod.get(startPeriod);
+  const last = itemByPeriod.get(endPeriod);
   if (!first || !last) {
     return null;
   }
 
-  const startTime = toTimeOnly(first.startTime);
-  const endTime = toTimeOnly(last.endTime);
-
+  const startTime = first.startTimeLabel ?? toTimeOnly(first.startTime);
+  const endTime = last.endTimeLabel ?? toTimeOnly(last.endTime);
   if (!startTime || !endTime) {
     return null;
   }
@@ -346,54 +392,12 @@ function resolveLessonTimeRange(
   };
 }
 
-function inferLessonType(
-  timetables: Timetable[],
-  startPeriod: number,
-  endPeriod: number,
-  expectedStartTime: string,
-  expectedEndTime: string,
-): LessonType {
-  const lessonTypes: LessonType[] = ["NORMAL", "INTENSIVE"];
-
-  for (const lessonType of lessonTypes) {
-    const resolved = resolveLessonTimeRange(
-      timetables,
-      lessonType,
-      startPeriod,
-      endPeriod,
-    );
-
-    if (!resolved) {
-      continue;
-    }
-
-    if (
-      resolved.startTime === expectedStartTime &&
-      resolved.endTime === expectedEndTime
-    ) {
-      return lessonType;
-    }
+function formatCramShiftType(type: ShiftType): string {
+  if (type === "NORMAL") {
+    return "事務";
   }
 
-  return "NORMAL";
-}
-
-function findTimetableByTypeAndPeriod(
-  timetables: Timetable[],
-  lessonType: LessonType,
-  periodValue: string,
-): Timetable | null {
-  const period = Number(periodValue);
-  if (Number.isFinite(period) === false) {
-    return null;
-  }
-
-  return (
-    timetables.find(
-      (timetable) =>
-        timetable.type === lessonType && timetable.period === period,
-    ) ?? null
-  );
+  return formatShiftType(type);
 }
 
 export function ShiftForm({
@@ -416,23 +420,19 @@ export function ShiftForm({
     startTime: "",
     endTime: "",
     breakMinutes: "0",
-    lessonType: "NORMAL",
+    timetableSetId: "",
     startPeriod: "",
     endPeriod: "",
   });
   const [workplaces, setWorkplaces] = useState<Workplace[]>([]);
-  const [timetables, setTimetables] = useState<Timetable[]>([]);
+  const [timetableSets, setTimetableSets] = useState<TimetableSet[]>([]);
   const [isWorkplaceLoading, setIsWorkplaceLoading] = useState(true);
   const [isTimetableLoading, setIsTimetableLoading] = useState(false);
   const [isShiftLoading, setIsShiftLoading] = useState(mode === "edit");
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [errors, setErrors] = useState<FormErrors>({});
   const [warningMessage, setWarningMessage] = useState<string | null>(null);
-  const [loadedLessonTime, setLoadedLessonTime] = useState<{
-    startTime: string;
-    endTime: string;
-  } | null>(null);
-  const [isLessonTypeInferred, setIsLessonTypeInferred] = useState(false);
+
   const returnPath = useMemo(() => {
     const basePath = returnTo === "list" ? "/my/shifts/list" : "/my";
 
@@ -454,26 +454,28 @@ export function ShiftForm({
   const selectedWorkplaceId = form.workplaceId;
   const selectedWorkplaceType = selectedWorkplace?.type;
 
-  const lessonPeriods = useMemo(() => {
-    return timetables
-      .filter((timetable) => timetable.type === form.lessonType)
-      .map((timetable) => timetable.period)
-      .sort((left, right) => left - right);
-  }, [form.lessonType, timetables]);
-
-  const selectedStartPeriodTimetable = useMemo(
-    () =>
-      findTimetableByTypeAndPeriod(
-        timetables,
-        form.lessonType,
-        form.startPeriod,
-      ),
-    [form.lessonType, form.startPeriod, timetables],
+  const selectedSet = useMemo(
+    () => findSetById(timetableSets, form.timetableSetId),
+    [form.timetableSetId, timetableSets],
   );
-  const selectedEndPeriodTimetable = useMemo(
-    () =>
-      findTimetableByTypeAndPeriod(timetables, form.lessonType, form.endPeriod),
-    [form.endPeriod, form.lessonType, timetables],
+
+  const lessonPeriods = useMemo(() => {
+    if (!selectedSet) {
+      return [] as number[];
+    }
+
+    return selectedSet.items
+      .map((item) => item.period)
+      .sort((left, right) => left - right);
+  }, [selectedSet]);
+
+  const selectedStartPeriodItem = useMemo(
+    () => findSetItemByPeriod(selectedSet, form.startPeriod),
+    [form.startPeriod, selectedSet],
+  );
+  const selectedEndPeriodItem = useMemo(
+    () => findSetItemByPeriod(selectedSet, form.endPeriod),
+    [form.endPeriod, selectedSet],
   );
 
   useEffect(() => {
@@ -569,7 +571,7 @@ export function ShiftForm({
           startTime: toTimeOnly(shift.startTime),
           endTime: toTimeOnly(shift.endTime),
           breakMinutes: String(shift.breakMinutes),
-          lessonType: "NORMAL",
+          timetableSetId: shift.lessonRange?.timetableSetId ?? "",
           startPeriod: shift.lessonRange
             ? String(shift.lessonRange.startPeriod)
             : "",
@@ -577,16 +579,6 @@ export function ShiftForm({
             ? String(shift.lessonRange.endPeriod)
             : "",
         }));
-
-        setLoadedLessonTime(
-          shift.shiftType === "LESSON"
-            ? {
-                startTime: toTimeOnly(shift.startTime),
-                endTime: toTimeOnly(shift.endTime),
-              }
-            : null,
-        );
-        setIsLessonTypeInferred(false);
       } catch (error) {
         if (abortController.signal.aborted) {
           return;
@@ -644,22 +636,13 @@ export function ShiftForm({
   }, [form.workplaceId, mode, workplaces]);
 
   useEffect(() => {
-    if (!selectedWorkplaceId) {
-      setTimetables([]);
-      return;
-    }
-
-    if (!selectedWorkplaceType) {
-      setTimetables([]);
-      return;
-    }
-
-    if (selectedWorkplaceType !== "CRAM_SCHOOL") {
-      setTimetables([]);
+    if (!selectedWorkplaceId || selectedWorkplaceType !== "CRAM_SCHOOL") {
+      setTimetableSets([]);
 
       setForm((current) => {
         if (
           current.shiftType === "NORMAL" &&
+          !current.timetableSetId &&
           !current.startPeriod &&
           !current.endPeriod
         ) {
@@ -669,6 +652,7 @@ export function ShiftForm({
         return {
           ...current,
           shiftType: "NORMAL",
+          timetableSetId: "",
           startPeriod: "",
           endPeriod: "",
         };
@@ -678,7 +662,7 @@ export function ShiftForm({
 
     const abortController = new AbortController();
 
-    async function fetchTimetables() {
+    async function fetchTimetableSets() {
       setIsTimetableLoading(true);
 
       try {
@@ -694,21 +678,29 @@ export function ShiftForm({
           throw new Error("TIMETABLE_FETCH_FAILED");
         }
 
-        const timetablePayload = parseTimetableListResponse(
+        const payload = parseTimetableSetListResponse(
           (await response.json()) as unknown,
         );
-        if (!timetablePayload) {
+        if (!payload) {
           throw new Error("TIMETABLE_RESPONSE_INVALID");
         }
 
-        setTimetables(timetablePayload);
+        const sorted = payload.slice().sort((left, right) => {
+          if (left.sortOrder !== right.sortOrder) {
+            return left.sortOrder - right.sortOrder;
+          }
+
+          return left.createdAt.localeCompare(right.createdAt);
+        });
+
+        setTimetableSets(sorted);
       } catch (error) {
         if (abortController.signal.aborted) {
           return;
         }
 
-        console.error("failed to fetch timetables", error);
-        setTimetables([]);
+        console.error("failed to fetch timetable sets", error);
+        setTimetableSets([]);
       } finally {
         if (abortController.signal.aborted === false) {
           setIsTimetableLoading(false);
@@ -716,23 +708,12 @@ export function ShiftForm({
       }
     }
 
-    void fetchTimetables();
+    void fetchTimetableSets();
 
     return () => {
       abortController.abort();
     };
   }, [selectedWorkplaceId, selectedWorkplaceType]);
-
-  useEffect(() => {
-    if (selectedWorkplaceType !== "CRAM_SCHOOL" || form.shiftType !== "OTHER") {
-      return;
-    }
-
-    setForm((current) => ({
-      ...current,
-      shiftType: "NORMAL",
-    }));
-  }, [form.shiftType, selectedWorkplaceType]);
 
   useEffect(() => {
     if (
@@ -756,100 +737,68 @@ export function ShiftForm({
   }, [mode, selectedWorkplaceId, selectedWorkplaceType]);
 
   useEffect(() => {
-    if (
-      mode !== "edit" ||
-      form.shiftType !== "LESSON" ||
-      !loadedLessonTime ||
-      isLessonTypeInferred
-    ) {
+    if (selectedWorkplaceType !== "CRAM_SCHOOL") {
       return;
     }
-
-    if (timetables.length === 0) {
-      return;
-    }
-
-    const startPeriod = Number(form.startPeriod);
-    const endPeriod = Number(form.endPeriod);
-    if (
-      Number.isFinite(startPeriod) === false ||
-      Number.isFinite(endPeriod) === false
-    ) {
-      return;
-    }
-
-    const lessonType = inferLessonType(
-      timetables,
-      startPeriod,
-      endPeriod,
-      loadedLessonTime.startTime,
-      loadedLessonTime.endTime,
-    );
-
-    setForm((current) => ({
-      ...current,
-      lessonType,
-    }));
-    setIsLessonTypeInferred(true);
-  }, [
-    form.endPeriod,
-    form.shiftType,
-    form.startPeriod,
-    isLessonTypeInferred,
-    loadedLessonTime,
-    mode,
-    timetables,
-  ]);
-
-  useEffect(() => {
-    if (form.shiftType !== "LESSON") {
-      return;
-    }
-
-    if (mode === "edit" && isLessonTypeInferred === false) {
-      return;
-    }
-
-    if (lessonPeriods.length === 0) {
-      if (!form.startPeriod && !form.endPeriod) {
-        return;
-      }
-
-      setForm((current) => ({
-        ...current,
-        startPeriod: "",
-        endPeriod: "",
-      }));
-      return;
-    }
-
-    const first = String(lessonPeriods[0]);
-    const last = String(lessonPeriods[lessonPeriods.length - 1]);
 
     setForm((current) => {
-      const hasStart = lessonPeriods.includes(Number(current.startPeriod));
-      const hasEnd = lessonPeriods.includes(Number(current.endPeriod));
+      if (current.shiftType !== "LESSON") {
+        return current;
+      }
+
+      const nextSetId =
+        current.timetableSetId &&
+        findSetById(timetableSets, current.timetableSetId)
+          ? current.timetableSetId
+          : (timetableSets[0]?.id ?? "");
+
+      if (!nextSetId) {
+        if (
+          !current.timetableSetId &&
+          !current.startPeriod &&
+          !current.endPeriod
+        ) {
+          return current;
+        }
+
+        return {
+          ...current,
+          timetableSetId: "",
+          startPeriod: "",
+          endPeriod: "",
+        };
+      }
+
+      const nextSet = findSetById(timetableSets, nextSetId);
+      const periods = (nextSet?.items ?? [])
+        .map((item) => item.period)
+        .sort((left, right) => left - right);
+      const first = periods[0] ? String(periods[0]) : "";
+      const last = periods[periods.length - 1]
+        ? String(periods[periods.length - 1])
+        : "";
+
+      const hasStart = periods.includes(Number(current.startPeriod));
+      const hasEnd = periods.includes(Number(current.endPeriod));
       const nextStart = hasStart ? current.startPeriod : first;
       const nextEnd = hasEnd ? current.endPeriod : last;
 
-      if (nextStart === current.startPeriod && nextEnd === current.endPeriod) {
+      if (
+        nextSetId === current.timetableSetId &&
+        nextStart === current.startPeriod &&
+        nextEnd === current.endPeriod
+      ) {
         return current;
       }
 
       return {
         ...current,
+        timetableSetId: nextSetId,
         startPeriod: nextStart,
         endPeriod: nextEnd,
       };
     });
-  }, [
-    form.endPeriod,
-    form.shiftType,
-    form.startPeriod,
-    isLessonTypeInferred,
-    lessonPeriods,
-    mode,
-  ]);
+  }, [selectedWorkplaceType, timetableSets]);
 
   function updateForm<K extends keyof FormState>(key: K, value: FormState[K]) {
     setForm((current) => ({
@@ -883,8 +832,12 @@ export function ShiftForm({
     }
 
     if (form.shiftType === "LESSON") {
-      if (!form.lessonType) {
-        nextErrors.lessonType = "ERR_001: コマ種別は必須項目です";
+      if (selectedWorkplace?.type !== "CRAM_SCHOOL") {
+        nextErrors.shiftType = "授業シフトは塾タイプ勤務先でのみ選択できます";
+      }
+
+      if (!form.timetableSetId) {
+        nextErrors.timetableSetId = "ERR_001: 時間割セットは必須項目です";
       }
 
       if (!form.startPeriod) {
@@ -906,28 +859,25 @@ export function ShiftForm({
         nextErrors.endPeriod = "開始コマは終了コマ以下で指定してください";
       }
 
-      if (selectedWorkplace?.type !== "CRAM_SCHOOL") {
-        nextErrors.shiftType = "授業シフトは塾タイプ勤務先でのみ選択できます";
-      }
-
-      const hasTimetables = timetables.length > 0;
-      if (!hasTimetables) {
-        nextErrors.lessonType = "ERR_004: 塾の授業は時間割が登録されていません";
+      const timetableSet = findSetById(timetableSets, form.timetableSetId);
+      if (!timetableSet) {
+        if (timetableSets.length === 0) {
+          nextErrors.timetableSetId =
+            "ERR_004: 塾の授業は時間割セットが登録されていません";
+        } else if (!nextErrors.timetableSetId) {
+          nextErrors.timetableSetId =
+            "ERR_004: 選択した時間割セットが見つかりません";
+        }
       }
 
       const resolved =
         Number.isFinite(startPeriod) &&
         Number.isFinite(endPeriod) &&
         startPeriod <= endPeriod
-          ? resolveLessonTimeRange(
-              timetables,
-              form.lessonType,
-              startPeriod,
-              endPeriod,
-            )
+          ? resolveLessonTimeRange(timetableSet, startPeriod, endPeriod)
           : null;
 
-      if (!resolved && hasTimetables && !nextErrors.endPeriod) {
+      if (!resolved && timetableSet && !nextErrors.endPeriod) {
         nextErrors.endPeriod =
           "ERR_004: 選択したコマ範囲の時間割が登録されていません";
       }
@@ -1090,7 +1040,7 @@ export function ShiftForm({
       endTime?: string;
       breakMinutes: number;
       lessonRange?: {
-        lessonType: LessonType;
+        timetableSetId: string;
         startPeriod: number;
         endPeriod: number;
       };
@@ -1108,7 +1058,7 @@ export function ShiftForm({
 
     if (effectiveShiftType === "LESSON") {
       payload.lessonRange = {
-        lessonType: form.lessonType,
+        timetableSetId: form.timetableSetId,
         startPeriod: Number(form.startPeriod),
         endPeriod: Number(form.endPeriod),
       };
@@ -1365,39 +1315,53 @@ export function ShiftForm({
 
           {showLessonFields ? (
             <>
-              <Field data-invalid={Boolean(errors.lessonType)}>
-                <FieldLabel>コマ種別</FieldLabel>
+              <Field data-invalid={Boolean(errors.timetableSetId)}>
+                <FieldLabel>時間割セット</FieldLabel>
                 <FieldContent>
-                  <RadioGroup
-                    value={form.lessonType}
+                  <Select
+                    value={form.timetableSetId}
                     onValueChange={(value) => {
-                      setIsLessonTypeInferred(true);
-                      updateForm("lessonType", value as LessonType);
+                      const nextSetId = value ?? "";
+                      const nextSet = findSetById(timetableSets, nextSetId);
+                      const periods = (nextSet?.items ?? [])
+                        .map((item) => item.period)
+                        .sort((left, right) => left - right);
+                      const first = periods[0] ? String(periods[0]) : "";
+                      const last = periods[periods.length - 1]
+                        ? String(periods[periods.length - 1])
+                        : "";
+
+                      setForm((current) => ({
+                        ...current,
+                        timetableSetId: nextSetId,
+                        startPeriod: first,
+                        endPeriod: last,
+                      }));
+                      setErrors((current) => ({
+                        ...current,
+                        timetableSetId: undefined,
+                        startPeriod: undefined,
+                        endPeriod: undefined,
+                      }));
                     }}
                     disabled={disabled || isTimetableLoading}
                   >
-                    <Field orientation="horizontal">
-                      <RadioGroupItem
-                        id="lesson-type-normal"
-                        value="NORMAL"
-                        disabled={disabled || isTimetableLoading}
-                      />
-                      <FieldLabel htmlFor="lesson-type-normal">
-                        {formatLessonType("NORMAL")}
-                      </FieldLabel>
-                    </Field>
-                    <Field orientation="horizontal">
-                      <RadioGroupItem
-                        id="lesson-type-intensive"
-                        value="INTENSIVE"
-                        disabled={disabled || isTimetableLoading}
-                      />
-                      <FieldLabel htmlFor="lesson-type-intensive">
-                        {formatLessonType("INTENSIVE")}
-                      </FieldLabel>
-                    </Field>
-                  </RadioGroup>
-                  <FormErrorMessage message={errors.lessonType} />
+                    <SelectTrigger className="w-full">
+                      <SelectValue placeholder="時間割セットを選択">
+                        {selectedSet?.name}
+                      </SelectValue>
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectGroup>
+                        {timetableSets.map((set) => (
+                          <SelectItem key={set.id} value={set.id}>
+                            {set.name}
+                          </SelectItem>
+                        ))}
+                      </SelectGroup>
+                    </SelectContent>
+                  </Select>
+                  <FormErrorMessage message={errors.timetableSetId} />
                 </FieldContent>
               </Field>
 
@@ -1431,9 +1395,11 @@ export function ShiftForm({
                         </SelectGroup>
                       </SelectContent>
                     </Select>
-                    {selectedStartPeriodTimetable ? (
+                    {selectedStartPeriodItem ? (
                       <span className="text-sm text-muted-foreground">
-                        {toTimeOnly(selectedStartPeriodTimetable.startTime)}〜
+                        {selectedStartPeriodItem.startTimeLabel ??
+                          toTimeOnly(selectedStartPeriodItem.startTime)}
+                        〜
                       </span>
                     ) : null}
                   </div>
@@ -1471,9 +1437,11 @@ export function ShiftForm({
                         </SelectGroup>
                       </SelectContent>
                     </Select>
-                    {selectedEndPeriodTimetable ? (
+                    {selectedEndPeriodItem ? (
                       <span className="text-sm text-muted-foreground">
-                        〜{toTimeOnly(selectedEndPeriodTimetable.endTime)}
+                        〜
+                        {selectedEndPeriodItem.endTimeLabel ??
+                          toTimeOnly(selectedEndPeriodItem.endTime)}
                       </span>
                     ) : null}
                   </div>
@@ -1563,5 +1531,3 @@ export function ShiftForm({
     </section>
   );
 }
-
-export type { ShiftFormMode, ShiftFormProps };

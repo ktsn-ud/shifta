@@ -37,28 +37,7 @@ export default async function TimetableListPage({
     notFound();
   }
 
-  const timetables =
-    workplace.type === "CRAM_SCHOOL"
-      ? await prisma.timetable.findMany({
-          where: { workplaceId: workplace.id },
-          orderBy: [{ type: "asc" }, { period: "asc" }],
-        })
-      : [];
-
-  const initialTimetables = timetables.map((timetable) => ({
-    id: timetable.id,
-    workplaceId: timetable.workplaceId,
-    type: timetable.type,
-    period: timetable.period,
-    startTime: timetable.startTime.toISOString(),
-    endTime: timetable.endTime.toISOString(),
-  }));
-
   return (
-    <TimetableList
-      workplaceId={workplace.id}
-      initialWorkplace={workplace}
-      initialTimetables={initialTimetables}
-    />
+    <TimetableList workplaceId={workplace.id} initialWorkplace={workplace} />
   );
 }

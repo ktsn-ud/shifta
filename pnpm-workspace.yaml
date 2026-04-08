@@ -4,9 +4,9 @@ ignoredBuiltDependencies:
   - unrs-resolver
 
 onlyBuiltDependencies:
-  - '@prisma/client'
-  - '@prisma/engines'
+  - "@prisma/client"
+  - "@prisma/engines"
   - prisma
 
 overrides:
-  effect@<3.20.0: '>=3.20.0'
+  effect@<3.20.0: ">=3.20.0"

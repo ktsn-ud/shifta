@@ -69,7 +69,6 @@ export default async function PayrollRuleListPage({
     startDate: rule.startDate.toISOString(),
     endDate: rule.endDate?.toISOString() ?? null,
     baseHourlyWage: rule.baseHourlyWage.toString(),
-    perLessonWage: rule.perLessonWage?.toString() ?? null,
     holidayHourlyWage: rule.holidayHourlyWage?.toString() ?? null,
     nightMultiplier: rule.nightMultiplier.toString(),
     overtimeMultiplier: rule.overtimeMultiplier.toString(),

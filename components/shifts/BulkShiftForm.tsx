@@ -39,7 +39,7 @@ import {
   toMonthInputValue,
   toDateKey,
 } from "@/lib/calendar/date";
-import { formatLessonType, formatShiftType } from "@/lib/enum-labels";
+import { formatShiftType } from "@/lib/enum-labels";
 import {
   parseGoogleSyncFailureFromPayload,
   readGoogleSyncFailureFromErrorResponse,
@@ -57,8 +57,7 @@ const MAX_BREAK_MINUTES = 240;
 const GOOGLE_EVENT_LIST_LIMIT = 5;
 const GOOGLE_EVENT_LIST_VISIBLE_WHEN_OVERFLOW = 3;
 
-type ShiftType = "NORMAL" | "LESSON" | "OTHER";
-type LessonType = "NORMAL" | "INTENSIVE";
+type ShiftType = "NORMAL" | "LESSON";
 
 type Workplace = {
   id: string;
@@ -67,12 +66,24 @@ type Workplace = {
   type: "GENERAL" | "CRAM_SCHOOL";
 };
 
-type Timetable = {
+type TimetableSetItem = {
   id: string;
-  type: "NORMAL" | "INTENSIVE";
+  timetableSetId: string;
   period: number;
   startTime: string;
   endTime: string;
+  startTimeLabel?: string;
+  endTimeLabel?: string;
+};
+
+type TimetableSet = {
+  id: string;
+  workplaceId: string;
+  name: string;
+  sortOrder: number;
+  createdAt: string;
+  updatedAt: string;
+  items: TimetableSetItem[];
 };
 
 type GoogleCalendarOption = {
@@ -113,10 +124,6 @@ function isShiftWorkplaceType(value: unknown): value is Workplace["type"] {
   return value === "GENERAL" || value === "CRAM_SCHOOL";
 }
 
-function isLessonTypeValue(value: unknown): value is LessonType {
-  return value === "NORMAL" || value === "INTENSIVE";
-}
-
 function isWorkplace(value: unknown): value is Workplace {
   if (!isRecord(value)) {
     return false;
@@ -130,19 +137,39 @@ function isWorkplace(value: unknown): value is Workplace {
   );
 }
 
-function isTimetable(value: unknown): value is Timetable {
+function isTimetableSetItem(value: unknown): value is TimetableSetItem {
   if (!isRecord(value)) {
     return false;
   }
 
   return (
     typeof value.id === "string" &&
-    isLessonTypeValue(value.type) &&
+    typeof value.timetableSetId === "string" &&
     typeof value.period === "number" &&
     Number.isInteger(value.period) &&
     value.period > 0 &&
     typeof value.startTime === "string" &&
-    typeof value.endTime === "string"
+    typeof value.endTime === "string" &&
+    (value.startTimeLabel === undefined ||
+      typeof value.startTimeLabel === "string") &&
+    (value.endTimeLabel === undefined || typeof value.endTimeLabel === "string")
+  );
+}
+
+function isTimetableSet(value: unknown): value is TimetableSet {
+  if (!isRecord(value) || !Array.isArray(value.items)) {
+    return false;
+  }
+
+  return (
+    typeof value.id === "string" &&
+    typeof value.workplaceId === "string" &&
+    typeof value.name === "string" &&
+    typeof value.sortOrder === "number" &&
+    Number.isInteger(value.sortOrder) &&
+    typeof value.createdAt === "string" &&
+    typeof value.updatedAt === "string" &&
+    value.items.every(isTimetableSetItem)
   );
 }
 
@@ -203,12 +230,14 @@ function parseWorkplaceListResponse(payload: unknown): Workplace[] | null {
   return payload.data;
 }
 
-function parseTimetableListResponse(payload: unknown): Timetable[] | null {
+function parseTimetableSetListResponse(
+  payload: unknown,
+): TimetableSet[] | null {
   if (!isRecord(payload) || !Array.isArray(payload.data)) {
     return null;
   }
 
-  if (payload.data.every(isTimetable) === false) {
+  if (payload.data.every(isTimetableSet) === false) {
     return null;
   }
 
@@ -314,7 +343,7 @@ type BulkShiftRow = {
   startTime: string;
   endTime: string;
   breakMinutes: string;
-  lessonType: LessonType;
+  timetableSetId: string;
   startPeriod: string;
   endPeriod: string;
 };
@@ -326,7 +355,7 @@ type RowErrorKey =
   | "startTime"
   | "endTime"
   | "breakMinutes"
-  | "lessonType"
+  | "timetableSetId"
   | "startPeriod"
   | "endPeriod";
 
@@ -345,9 +374,9 @@ type CalendarCell = {
   isCurrentMonth: boolean;
 };
 
-type NormalOrOtherShiftPayload = {
+type NormalShiftPayload = {
   date: string;
-  shiftType: "NORMAL" | "OTHER";
+  shiftType: "NORMAL";
   startTime: string;
   endTime: string;
   breakMinutes: number;
@@ -358,20 +387,20 @@ type LessonShiftPayload = {
   shiftType: "LESSON";
   breakMinutes: number;
   lessonRange: {
-    lessonType: LessonType;
+    timetableSetId: string;
     startPeriod: number;
     endPeriod: number;
   };
 };
 
-type BulkShiftPayload = NormalOrOtherShiftPayload | LessonShiftPayload;
+type BulkShiftPayload = NormalShiftPayload | LessonShiftPayload;
 
 const DEFAULT_BULK_VALUES: BulkDefaults = {
   shiftType: "NORMAL",
   startTime: "09:00",
   endTime: "18:00",
   breakMinutes: "0",
-  lessonType: "NORMAL",
+  timetableSetId: "",
   startPeriod: "",
   endPeriod: "",
 };
@@ -383,7 +412,7 @@ function createRow(date: string, defaults: BulkDefaults): BulkShiftRow {
     startTime: defaults.startTime,
     endTime: defaults.endTime,
     breakMinutes: defaults.breakMinutes,
-    lessonType: defaults.lessonType,
+    timetableSetId: defaults.timetableSetId,
     startPeriod: defaults.startPeriod,
     endPeriod: defaults.endPeriod,
   };
@@ -494,13 +523,6 @@ function normalizeDefaultsForWorkplace(
   defaults: BulkDefaults,
   workplaceType: Workplace["type"] | undefined,
 ): BulkDefaults {
-  if (workplaceType === "CRAM_SCHOOL" && defaults.shiftType === "OTHER") {
-    return {
-      ...defaults,
-      shiftType: "NORMAL",
-    };
-  }
-
   if (workplaceType !== "GENERAL") {
     return defaults;
   }
@@ -519,13 +541,6 @@ function normalizeRowForWorkplace(
   row: BulkShiftRow,
   workplaceType: Workplace["type"] | undefined,
 ): BulkShiftRow {
-  if (workplaceType === "CRAM_SCHOOL" && row.shiftType === "OTHER") {
-    return {
-      ...row,
-      shiftType: "NORMAL",
-    };
-  }
-
   if (workplaceType !== "GENERAL") {
     return row;
   }
@@ -552,7 +567,7 @@ export function BulkShiftForm() {
   );
   const [workplaces, setWorkplaces] = useState<Workplace[]>([]);
   const [selectedWorkplaceId, setSelectedWorkplaceId] = useState("");
-  const [timetables, setTimetables] = useState<Timetable[]>([]);
+  const [timetableSets, setTimetableSets] = useState<TimetableSet[]>([]);
   const [selectedDateKeys, setSelectedDateKeys] = useState<string[]>([]);
   const [rowsByDate, setRowsByDate] = useState<Record<string, BulkShiftRow>>(
     {},
@@ -583,22 +598,27 @@ export function BulkShiftForm() {
   const selectedWorkplace = useMemo(() => {
     return workplaces.find((workplace) => workplace.id === selectedWorkplaceId);
   }, [selectedWorkplaceId, workplaces]);
+  const firstTimetableSetId = timetableSets[0]?.id ?? "";
 
-  const lessonPeriodsByType = useMemo(() => {
-    const map = {
-      NORMAL: [] as number[],
-      INTENSIVE: [] as number[],
-    };
-
-    for (const timetable of timetables) {
-      map[timetable.type].push(timetable.period);
+  const lessonPeriodsBySetId = useMemo(() => {
+    const map: Record<string, number[]> = {};
+    for (const set of timetableSets) {
+      map[set.id] = set.items
+        .map((item) => item.period)
+        .sort((left, right) => left - right);
     }
 
-    map.NORMAL.sort((left, right) => left - right);
-    map.INTENSIVE.sort((left, right) => left - right);
-
     return map;
-  }, [timetables]);
+  }, [timetableSets]);
+
+  const timetableSetOptions = useMemo(
+    () =>
+      timetableSets.map((set) => ({
+        id: set.id,
+        name: set.name,
+      })),
+    [timetableSets],
+  );
 
   const calendarCells = useMemo(() => {
     return toMonthGrid(month);
@@ -841,12 +861,12 @@ export function BulkShiftForm() {
 
   useEffect(() => {
     if (!selectedWorkplace) {
-      setTimetables([]);
+      setTimetableSets([]);
       return;
     }
 
     if (selectedWorkplace.type !== "CRAM_SCHOOL") {
-      setTimetables([]);
+      setTimetableSets([]);
       return;
     }
 
@@ -868,21 +888,29 @@ export function BulkShiftForm() {
           throw new Error("時間割の取得に失敗しました。");
         }
 
-        const timetablesPayload = parseTimetableListResponse(
+        const timetablesPayload = parseTimetableSetListResponse(
           (await response.json()) as unknown,
         );
         if (!timetablesPayload) {
           throw new Error("時間割レスポンスの形式が不正です。");
         }
 
-        setTimetables(timetablesPayload);
+        setTimetableSets(
+          timetablesPayload.slice().sort((left, right) => {
+            if (left.sortOrder !== right.sortOrder) {
+              return left.sortOrder - right.sortOrder;
+            }
+
+            return left.createdAt.localeCompare(right.createdAt);
+          }),
+        );
       } catch (error) {
         if (abortController.signal.aborted) {
           return;
         }
 
-        console.error("failed to fetch timetables", error);
-        setTimetables([]);
+        console.error("failed to fetch timetableSets", error);
+        setTimetableSets([]);
         setErrors((current) => ({
           ...current,
           form: "時間割の取得に失敗しました。時間を置いて再度お試しください。",
@@ -943,10 +971,15 @@ export function BulkShiftForm() {
         return current;
       }
 
-      const periods = lessonPeriodsByType[current.lessonType];
+      const nextSetId =
+        current.timetableSetId && lessonPeriodsBySetId[current.timetableSetId]
+          ? current.timetableSetId
+          : firstTimetableSetId;
+      const periods = lessonPeriodsBySetId[nextSetId] ?? [];
       if (periods.length === 0) {
         return {
           ...current,
+          timetableSetId: nextSetId,
           startPeriod: "",
           endPeriod: "",
         };
@@ -955,6 +988,7 @@ export function BulkShiftForm() {
       const fallback = String(periods[0]);
       return {
         ...current,
+        timetableSetId: nextSetId,
         startPeriod: current.startPeriod || fallback,
         endPeriod: current.endPeriod || fallback,
       };
@@ -969,11 +1003,16 @@ export function BulkShiftForm() {
           continue;
         }
 
-        const periods = lessonPeriodsByType[row.lessonType];
+        const nextSetId =
+          row.timetableSetId && lessonPeriodsBySetId[row.timetableSetId]
+            ? row.timetableSetId
+            : firstTimetableSetId;
+        const periods = lessonPeriodsBySetId[nextSetId] ?? [];
         const fallback = periods[0] ? String(periods[0]) : "";
 
         next[dateKey] = {
           ...row,
+          timetableSetId: nextSetId,
           startPeriod: row.startPeriod || fallback,
           endPeriod: row.endPeriod || fallback,
         };
@@ -981,7 +1020,7 @@ export function BulkShiftForm() {
 
       return next;
     });
-  }, [lessonPeriodsByType, selectedWorkplace?.type]);
+  }, [firstTimetableSetId, lessonPeriodsBySetId, selectedWorkplace?.type]);
 
   const applyDefaultsToRows = () => {
     const normalizedDefaults = normalizeDefaultsForWorkplace(
@@ -1159,18 +1198,14 @@ export function BulkShiftForm() {
         continue;
       }
 
-      if (
-        selectedWorkplace?.type === "CRAM_SCHOOL" &&
-        row.shiftType === "OTHER"
-      ) {
-        rowErrors.shiftType =
-          "塾タイプ勤務先では授業または事務を選択してください。";
-      }
-
       if (row.shiftType === "LESSON") {
         if (selectedWorkplace?.type !== "CRAM_SCHOOL") {
           rowErrors.shiftType =
             "授業シフトは塾タイプ勤務先でのみ選択できます。";
+        }
+
+        if (!row.timetableSetId) {
+          rowErrors.timetableSetId = "時間割セットを選択してください。";
         }
 
         const startPeriod = Number(row.startPeriod);
@@ -1192,7 +1227,7 @@ export function BulkShiftForm() {
           rowErrors.endPeriod = "コマ範囲は開始<=終了で指定してください。";
         }
 
-        const periods = lessonPeriodsByType[row.lessonType];
+        const periods = lessonPeriodsBySetId[row.timetableSetId] ?? [];
         if (periods.length === 0) {
           rowErrors.startPeriod = "塾の授業は時間割が登録されていません。";
         } else if (
@@ -1216,7 +1251,7 @@ export function BulkShiftForm() {
             shiftType: "LESSON",
             breakMinutes: 0,
             lessonRange: {
-              lessonType: row.lessonType,
+              timetableSetId: row.timetableSetId,
               startPeriod,
               endPeriod,
             },
@@ -1683,19 +1718,16 @@ export function BulkShiftForm() {
                   value={defaults.shiftType}
                   onValueChange={(value) => {
                     const shiftType = value as ShiftType;
-                    const isCramWorkplace =
-                      selectedWorkplace?.type === "CRAM_SCHOOL";
                     if (
                       shiftType === "LESSON" &&
                       selectedWorkplace?.type !== "CRAM_SCHOOL"
                     ) {
                       return;
                     }
-                    if (isCramWorkplace && shiftType === "OTHER") {
-                      return;
-                    }
 
-                    const periods = lessonPeriodsByType[defaults.lessonType];
+                    const nextSetId =
+                      defaults.timetableSetId || firstTimetableSetId;
+                    const periods = lessonPeriodsBySetId[nextSetId] ?? [];
                     const fallbackPeriod = periods[0] ? String(periods[0]) : "";
 
                     setDefaults((current) => ({
@@ -1703,6 +1735,7 @@ export function BulkShiftForm() {
                       shiftType,
                       ...(shiftType === "LESSON"
                         ? {
+                            timetableSetId: nextSetId,
                             startPeriod: current.startPeriod || fallbackPeriod,
                             endPeriod: current.endPeriod || fallbackPeriod,
                           }
@@ -1738,32 +1771,18 @@ export function BulkShiftForm() {
                       </div>
                     </>
                   ) : (
-                    <>
-                      <div className="flex items-center gap-2">
-                        <RadioGroupItem
-                          value="NORMAL"
-                          id="default-shift-normal"
-                        />
-                        <FieldLabel htmlFor="default-shift-normal">
-                          {formatShiftTypeForWorkplace(
-                            "NORMAL",
-                            selectedWorkplace?.type,
-                          )}
-                        </FieldLabel>
-                      </div>
-                      <div className="flex items-center gap-2">
-                        <RadioGroupItem
-                          value="OTHER"
-                          id="default-shift-other"
-                        />
-                        <FieldLabel htmlFor="default-shift-other">
-                          {formatShiftTypeForWorkplace(
-                            "OTHER",
-                            selectedWorkplace?.type,
-                          )}
-                        </FieldLabel>
-                      </div>
-                    </>
+                    <div className="flex items-center gap-2">
+                      <RadioGroupItem
+                        value="NORMAL"
+                        id="default-shift-normal"
+                      />
+                      <FieldLabel htmlFor="default-shift-normal">
+                        {formatShiftTypeForWorkplace(
+                          "NORMAL",
+                          selectedWorkplace?.type,
+                        )}
+                      </FieldLabel>
+                    </div>
                   )}
                 </RadioGroup>
               </FieldContent>
@@ -1803,42 +1822,41 @@ export function BulkShiftForm() {
           {defaults.shiftType === "LESSON" ? (
             <FieldGroup className="grid gap-4 md:grid-cols-3">
               <Field>
-                <FieldLabel>デフォルトコマ種別</FieldLabel>
+                <FieldLabel>デフォルト時間割セット</FieldLabel>
                 <FieldContent>
-                  <RadioGroup
-                    value={defaults.lessonType}
+                  <Select
+                    value={defaults.timetableSetId}
                     onValueChange={(value) => {
-                      const lessonType = value as LessonType;
-                      const periods = lessonPeriodsByType[lessonType];
+                      if (value === null) {
+                        return;
+                      }
+
+                      const timetableSetId = value;
+                      const periods =
+                        lessonPeriodsBySetId[timetableSetId] ?? [];
                       const fallback = periods[0] ? String(periods[0]) : "";
 
                       setDefaults((current) => ({
                         ...current,
-                        lessonType,
+                        timetableSetId,
                         startPeriod: fallback,
                         endPeriod: fallback,
                       }));
                     }}
                   >
-                    <div className="flex items-center gap-2">
-                      <RadioGroupItem
-                        value="NORMAL"
-                        id="default-lesson-normal"
-                      />
-                      <FieldLabel htmlFor="default-lesson-normal">
-                        {formatLessonType("NORMAL")}
-                      </FieldLabel>
-                    </div>
-                    <div className="flex items-center gap-2">
-                      <RadioGroupItem
-                        value="INTENSIVE"
-                        id="default-lesson-intensive"
-                      />
-                      <FieldLabel htmlFor="default-lesson-intensive">
-                        {formatLessonType("INTENSIVE")}
-                      </FieldLabel>
-                    </div>
-                  </RadioGroup>
+                    <SelectTrigger>
+                      <SelectValue placeholder="時間割セットを選択" />
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectGroup>
+                        {timetableSetOptions.map((set) => (
+                          <SelectItem key={set.id} value={set.id}>
+                            {set.name}
+                          </SelectItem>
+                        ))}
+                      </SelectGroup>
+                    </SelectContent>
+                  </Select>
                 </FieldContent>
               </Field>
 
@@ -1863,16 +1881,16 @@ export function BulkShiftForm() {
                     </SelectTrigger>
                     <SelectContent>
                       <SelectGroup>
-                        {lessonPeriodsByType[defaults.lessonType].map(
-                          (period) => (
-                            <SelectItem
-                              key={`default-start-${period}`}
-                              value={String(period)}
-                            >
-                              {period}限
-                            </SelectItem>
-                          ),
-                        )}
+                        {(
+                          lessonPeriodsBySetId[defaults.timetableSetId] ?? []
+                        ).map((period) => (
+                          <SelectItem
+                            key={`default-start-${period}`}
+                            value={String(period)}
+                          >
+                            {period}限
+                          </SelectItem>
+                        ))}
                       </SelectGroup>
                     </SelectContent>
                   </Select>
@@ -1900,16 +1918,16 @@ export function BulkShiftForm() {
                     </SelectTrigger>
                     <SelectContent>
                       <SelectGroup>
-                        {lessonPeriodsByType[defaults.lessonType].map(
-                          (period) => (
-                            <SelectItem
-                              key={`default-end-${period}`}
-                              value={String(period)}
-                            >
-                              {period}限
-                            </SelectItem>
-                          ),
-                        )}
+                        {(
+                          lessonPeriodsBySetId[defaults.timetableSetId] ?? []
+                        ).map((period) => (
+                          <SelectItem
+                            key={`default-end-${period}`}
+                            value={String(period)}
+                          >
+                            {period}限
+                          </SelectItem>
+                        ))}
                       </SelectGroup>
                     </SelectContent>
                   </Select>
@@ -1975,7 +1993,7 @@ export function BulkShiftForm() {
 
           {defaults.shiftType === "LESSON" &&
           selectedWorkplace?.type === "CRAM_SCHOOL" &&
-          lessonPeriodsByType[defaults.lessonType].length === 0 ? (
+          (lessonPeriodsBySetId[defaults.timetableSetId] ?? []).length === 0 ? (
             <FormErrorMessage message="塾の授業は時間割が登録されていません。" />
           ) : null}
         </section>
@@ -1996,7 +2014,8 @@ export function BulkShiftForm() {
             <div className="max-h-[560px] space-y-3 overflow-y-auto pr-1">
               {selectedRows.map((row) => {
                 const rowErrors = errors.rows?.[row.date] ?? {};
-                const lessonPeriods = lessonPeriodsByType[row.lessonType];
+                const lessonPeriods =
+                  lessonPeriodsBySetId[row.timetableSetId] ?? [];
                 const googleEventDay = googleEventsByDate[row.date];
                 const {
                   visible: visibleGoogleEvents,
@@ -2062,20 +2081,17 @@ export function BulkShiftForm() {
                             value={row.shiftType}
                             onValueChange={(value) => {
                               const shiftType = value as ShiftType;
-                              const isCramWorkplace =
-                                selectedWorkplace?.type === "CRAM_SCHOOL";
                               if (
                                 shiftType === "LESSON" &&
                                 selectedWorkplace?.type !== "CRAM_SCHOOL"
                               ) {
                                 return;
                               }
-                              if (isCramWorkplace && shiftType === "OTHER") {
-                                return;
-                              }
 
+                              const nextSetId =
+                                row.timetableSetId || firstTimetableSetId;
                               const periods =
-                                lessonPeriodsByType[row.lessonType];
+                                lessonPeriodsBySetId[nextSetId] ?? [];
                               const fallbackPeriod = periods[0]
                                 ? String(periods[0])
                                 : "";
@@ -2084,6 +2100,7 @@ export function BulkShiftForm() {
                                 shiftType,
                                 ...(shiftType === "LESSON"
                                   ? {
+                                      timetableSetId: nextSetId,
                                       startPeriod:
                                         row.startPeriod || fallbackPeriod,
                                       endPeriod:
@@ -2125,36 +2142,20 @@ export function BulkShiftForm() {
                                 </div>
                               </>
                             ) : (
-                              <>
-                                <div className="flex items-center gap-2">
-                                  <RadioGroupItem
-                                    value="NORMAL"
-                                    id={`${row.date}-shift-normal`}
-                                  />
-                                  <FieldLabel
-                                    htmlFor={`${row.date}-shift-normal`}
-                                  >
-                                    {formatShiftTypeForWorkplace(
-                                      "NORMAL",
-                                      selectedWorkplace?.type,
-                                    )}
-                                  </FieldLabel>
-                                </div>
-                                <div className="flex items-center gap-2">
-                                  <RadioGroupItem
-                                    value="OTHER"
-                                    id={`${row.date}-shift-other`}
-                                  />
-                                  <FieldLabel
-                                    htmlFor={`${row.date}-shift-other`}
-                                  >
-                                    {formatShiftTypeForWorkplace(
-                                      "OTHER",
-                                      selectedWorkplace?.type,
-                                    )}
-                                  </FieldLabel>
-                                </div>
-                              </>
+                              <div className="flex items-center gap-2">
+                                <RadioGroupItem
+                                  value="NORMAL"
+                                  id={`${row.date}-shift-normal`}
+                                />
+                                <FieldLabel
+                                  htmlFor={`${row.date}-shift-normal`}
+                                >
+                                  {formatShiftTypeForWorkplace(
+                                    "NORMAL",
+                                    selectedWorkplace?.type,
+                                  )}
+                                </FieldLabel>
+                              </div>
                             )}
                           </RadioGroup>
                           <FormErrorMessage message={rowErrors.shiftType} />
@@ -2198,48 +2199,48 @@ export function BulkShiftForm() {
                     {row.shiftType === "LESSON" ? (
                       <FieldGroup className="mt-4 grid gap-4 md:grid-cols-3">
                         <Field>
-                          <FieldLabel>コマ種別</FieldLabel>
+                          <FieldLabel>時間割セット</FieldLabel>
                           <FieldContent>
-                            <RadioGroup
-                              value={row.lessonType}
+                            <Select
+                              value={row.timetableSetId}
                               onValueChange={(value) => {
-                                const lessonType = value as LessonType;
-                                const periods = lessonPeriodsByType[lessonType];
+                                if (value === null) {
+                                  return;
+                                }
+
+                                const timetableSetId = value;
+                                const periods =
+                                  lessonPeriodsBySetId[timetableSetId] ?? [];
                                 const fallback = periods[0]
                                   ? String(periods[0])
                                   : "";
 
                                 updateRow(row.date, {
-                                  lessonType,
+                                  timetableSetId,
                                   startPeriod: fallback,
                                   endPeriod: fallback,
                                 });
                               }}
                             >
-                              <div className="flex items-center gap-2">
-                                <RadioGroupItem
-                                  value="NORMAL"
-                                  id={`${row.date}-lesson-type-normal`}
-                                />
-                                <FieldLabel
-                                  htmlFor={`${row.date}-lesson-type-normal`}
-                                >
-                                  {formatLessonType("NORMAL")}
-                                </FieldLabel>
-                              </div>
-                              <div className="flex items-center gap-2">
-                                <RadioGroupItem
-                                  value="INTENSIVE"
-                                  id={`${row.date}-lesson-type-intensive`}
-                                />
-                                <FieldLabel
-                                  htmlFor={`${row.date}-lesson-type-intensive`}
-                                >
-                                  {formatLessonType("INTENSIVE")}
-                                </FieldLabel>
-                              </div>
-                            </RadioGroup>
-                            <FormErrorMessage message={rowErrors.lessonType} />
+                              <SelectTrigger>
+                                <SelectValue placeholder="時間割セットを選択" />
+                              </SelectTrigger>
+                              <SelectContent>
+                                <SelectGroup>
+                                  {timetableSetOptions.map((set) => (
+                                    <SelectItem
+                                      key={`${row.date}-set-${set.id}`}
+                                      value={set.id}
+                                    >
+                                      {set.name}
+                                    </SelectItem>
+                                  ))}
+                                </SelectGroup>
+                              </SelectContent>
+                            </Select>
+                            <FormErrorMessage
+                              message={rowErrors.timetableSetId}
+                            />
                           </FieldContent>
                         </Field>
 

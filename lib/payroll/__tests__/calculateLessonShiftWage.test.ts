@@ -39,6 +39,7 @@ function createLessonRange(
   return {
     id: "lesson-range-1",
     shiftId: "shift-lesson-1",
+    timetableSetId: "set-1",
     startPeriod: 1,
     endPeriod: 3,
     ...overrides,
@@ -52,7 +53,6 @@ function createRule(overrides: Partial<PayrollRule> = {}): PayrollRule {
     startDate: date("2026-01-01"),
     endDate: null,
     baseHourlyWage: new Prisma.Decimal(1100),
-    perLessonWage: new Prisma.Decimal(2000),
     holidayHourlyWage: new Prisma.Decimal(1200),
     nightMultiplier: new Prisma.Decimal(1.0),
     overtimeMultiplier: new Prisma.Decimal(1.0),
@@ -73,8 +73,8 @@ describe("calculateLessonShiftWage", () => {
     const result = calculateLessonShiftWage(shift, lessonRange, rule);
 
     expect(result).toEqual({
-      totalWage: 6000,
-      dayWage: 6000,
+      totalWage: 3667,
+      dayWage: 3667,
       overtimeWage: 0,
       nightWage: 0,
       workHours: 3.33,

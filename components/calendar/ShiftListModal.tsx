@@ -20,7 +20,7 @@ type ShiftListModalShift = {
   id: string;
   startTime: string;
   endTime: string;
-  shiftType: "NORMAL" | "LESSON" | "OTHER";
+  shiftType: "NORMAL" | "LESSON";
   googleSyncStatus: "PENDING" | "SUCCESS" | "FAILED";
   googleSyncError: string | null;
   estimatedPay: number | null;

@@ -22,7 +22,6 @@ const payrollRuleSchema = z
       .nullable()
       .optional(),
     baseHourlyWage: z.coerce.number().positive(),
-    perLessonWage: z.coerce.number().positive().nullable().optional(),
     holidayHourlyWage: z.coerce.number().positive().nullable().optional(),
     nightMultiplier: z.coerce.number().min(1),
     overtimeMultiplier: z.coerce.number().min(1),
@@ -43,7 +42,6 @@ type NormalizedPayrollRule = {
   startDate: Date;
   endDate: Date | null;
   baseHourlyWage: number;
-  perLessonWage: number | null;
   holidayHourlyWage: number | null;
   nightMultiplier: number;
   overtimeMultiplier: number;
@@ -67,7 +65,6 @@ function normalizePayrollRule(
     startDate,
     endDate,
     baseHourlyWage: input.baseHourlyWage,
-    perLessonWage: input.perLessonWage ?? null,
     holidayHourlyWage: input.holidayHourlyWage ?? null,
     nightMultiplier: input.nightMultiplier,
     overtimeMultiplier: input.overtimeMultiplier,
@@ -123,14 +120,8 @@ function validateByWorkplaceType(
   workplaceType: "GENERAL" | "CRAM_SCHOOL",
   normalized: NormalizedPayrollRule,
 ): string | null {
-  if (workplaceType === "GENERAL" && normalized.baseHourlyWage <= 0) {
-    return "GENERAL勤務先では baseHourlyWage を正の数で指定してください";
-  }
-
-  if (workplaceType === "CRAM_SCHOOL") {
-    if (normalized.perLessonWage === null || normalized.perLessonWage <= 0) {
-      return "CRAM_SCHOOL勤務先では perLessonWage を正の数で指定してください";
-    }
+  if (normalized.baseHourlyWage <= 0) {
+    return `${workplaceType}勤務先では baseHourlyWage を正の数で指定してください`;
   }
 
   return null;
@@ -211,10 +202,6 @@ export async function POST(request: Request, context: Context) {
         startDate: normalized.startDate,
         endDate: normalized.endDate,
         baseHourlyWage: normalized.baseHourlyWage.toString(),
-        perLessonWage:
-          normalized.perLessonWage === null
-            ? null
-            : normalized.perLessonWage.toString(),
         holidayHourlyWage:
           normalized.holidayHourlyWage === null
             ? null

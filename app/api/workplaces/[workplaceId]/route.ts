@@ -39,11 +39,20 @@ async function findOwnedWorkplace(id: string, userId: string) {
         select: {
           shifts: true,
           payrollRules: true,
-          timetables: true,
         },
       },
     },
   });
+}
+
+async function countTimetableSets(workplaceId: string): Promise<number> {
+  const rows = await prisma.$queryRaw<Array<{ count: number }>>`
+    SELECT COUNT(*)::int AS "count"
+    FROM "TimetableSet"
+    WHERE "workplaceId" = ${workplaceId}
+  `;
+
+  return rows[0]?.count ?? 0;
 }
 
 export async function GET(_: Request, context: Context) {
@@ -60,7 +69,18 @@ export async function GET(_: Request, context: Context) {
       return jsonError("勤務先が見つかりません", 404);
     }
 
-    return NextResponse.json({ data: workplace });
+    const timetableSetCount = await countTimetableSets(workplace.id);
+
+    return NextResponse.json({
+      data: {
+        ...workplace,
+        _count: {
+          shifts: workplace._count.shifts,
+          payrollRules: workplace._count.payrollRules,
+          timetableSets: timetableSetCount,
+        },
+      },
+    });
   } catch (error) {
     console.error("GET /api/workplaces/:id failed", error);
     return jsonError("勤務先の取得に失敗しました", 500);
@@ -115,10 +135,11 @@ export async function DELETE(request: Request, context: Context) {
       return jsonError("勤務先が見つかりません", 404);
     }
 
+    const timetableSetCount = await countTimetableSets(existing.id);
     const relatedCounts = {
       shifts: existing._count.shifts,
       payrollRules: existing._count.payrollRules,
-      timetables: existing._count.timetables,
+      timetableSets: timetableSetCount,
     };
 
     await prisma.workplace.delete({ where: { id: workplaceId } });
@@ -132,7 +153,7 @@ export async function DELETE(request: Request, context: Context) {
       warning:
         relatedCounts.shifts +
           relatedCounts.payrollRules +
-          relatedCounts.timetables >
+          relatedCounts.timetableSets >
         0
           ? "関連データをCASCADE削除しました"
           : null,

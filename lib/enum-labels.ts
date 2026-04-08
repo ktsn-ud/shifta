@@ -1,6 +1,5 @@
 export type WorkplaceType = "GENERAL" | "CRAM_SCHOOL";
-export type ShiftType = "NORMAL" | "LESSON" | "OTHER";
-export type LessonType = "NORMAL" | "INTENSIVE";
+export type ShiftType = "NORMAL" | "LESSON";
 export type HolidayType = "NONE" | "WEEKEND" | "HOLIDAY" | "WEEKEND_HOLIDAY";
 
 const workplaceTypeLabels: Record<WorkplaceType, string> = {
@@ -11,12 +10,6 @@ const workplaceTypeLabels: Record<WorkplaceType, string> = {
 const shiftTypeLabels: Record<ShiftType, string> = {
   NORMAL: "通常",
   LESSON: "授業",
-  OTHER: "その他",
-};
-
-const lessonTypeLabels: Record<LessonType, string> = {
-  NORMAL: "通常期",
-  INTENSIVE: "講習期",
 };
 
 const holidayTypeLabels: Record<HolidayType, string> = {
@@ -32,10 +25,6 @@ export function formatWorkplaceType(type: WorkplaceType): string {
 
 export function formatShiftType(type: ShiftType): string {
   return shiftTypeLabels[type];
-}
-
-export function formatLessonType(type: LessonType): string {
-  return lessonTypeLabels[type];
 }
 
 export function formatHolidayType(type: HolidayType): string {
