@@ -759,60 +759,6 @@ export function TimetableForm({
           </Field>
         </FieldGroup>
 
-        {!isEdit ? (
-          <div className="space-y-3">
-            <div className="flex items-center justify-between">
-              <h3 className="text-sm font-semibold">
-                作成予定セット ({queuedSets.length})
-              </h3>
-              <Button
-                type="button"
-                variant="outline"
-                size="sm"
-                onClick={handleQueueCurrentSet}
-                disabled={isSubmitting}
-              >
-                現在の入力を追加
-              </Button>
-            </div>
-
-            {queuedSets.length === 0 ? (
-              <p className="rounded-md border px-3 py-2 text-sm text-muted-foreground">
-                追加済みのセットはありません。入力中のセットを「現在の入力を追加」で作成予定に積めます。
-              </p>
-            ) : (
-              <div className="space-y-2">
-                {queuedSets.map((set, index) => (
-                  <Card key={`queued-set-${index}`}>
-                    <CardHeader className="py-3">
-                      <div className="flex items-center justify-between gap-2">
-                        <div className="space-y-1">
-                          <CardTitle className="text-sm">
-                            {index + 1}. {set.name}
-                          </CardTitle>
-                          <CardDescription>
-                            コマ数: {set.items.length}
-                          </CardDescription>
-                        </div>
-                        <Button
-                          type="button"
-                          variant="ghost"
-                          size="icon"
-                          onClick={() => removeQueuedSet(index)}
-                          disabled={isSubmitting}
-                          aria-label={`作成予定${index + 1}を削除`}
-                        >
-                          <Trash2Icon className="size-4" />
-                        </Button>
-                      </div>
-                    </CardHeader>
-                  </Card>
-                ))}
-              </div>
-            )}
-          </div>
-        ) : null}
-
         <div className="space-y-3">
           <div className="flex items-center justify-between">
             <h3 className="text-sm font-semibold">コマ設定</h3>
@@ -908,6 +854,60 @@ export function TimetableForm({
             })}
           </div>
         </div>
+
+        {!isEdit ? (
+          <div className="space-y-3">
+            <div className="flex items-center justify-between">
+              <h3 className="text-sm font-semibold">
+                作成予定セット ({queuedSets.length})
+              </h3>
+              <Button
+                type="button"
+                variant="outline"
+                size="sm"
+                onClick={handleQueueCurrentSet}
+                disabled={isSubmitting}
+              >
+                現在の入力を追加
+              </Button>
+            </div>
+
+            {queuedSets.length === 0 ? (
+              <p className="rounded-md border px-3 py-2 text-sm text-muted-foreground">
+                追加済みのセットはありません。入力中のセットを「現在の入力を追加」で作成予定に積めます。
+              </p>
+            ) : (
+              <div className="space-y-2">
+                {queuedSets.map((set, index) => (
+                  <Card key={`queued-set-${index}`}>
+                    <CardHeader className="py-3">
+                      <div className="flex items-center justify-between gap-2">
+                        <div className="space-y-1">
+                          <CardTitle className="text-sm">
+                            {index + 1}. {set.name}
+                          </CardTitle>
+                          <CardDescription>
+                            コマ数: {set.items.length}
+                          </CardDescription>
+                        </div>
+                        <Button
+                          type="button"
+                          variant="ghost"
+                          size="icon"
+                          onClick={() => removeQueuedSet(index)}
+                          disabled={isSubmitting}
+                          aria-label={`作成予定${index + 1}を削除`}
+                        >
+                          <Trash2Icon className="size-4" />
+                        </Button>
+                      </div>
+                    </CardHeader>
+                  </Card>
+                ))}
+              </div>
+            )}
+          </div>
+        ) : null}
 
         <div className="flex gap-2">
           <Button type="submit" disabled={isSubmitting}>
