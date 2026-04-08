@@ -39,20 +39,11 @@ async function findOwnedWorkplace(id: string, userId: string) {
         select: {
           shifts: true,
           payrollRules: true,
+          timetableSets: true,
         },
       },
     },
   });
-}
-
-async function countTimetableSets(workplaceId: string): Promise<number> {
-  const rows = await prisma.$queryRaw<Array<{ count: number }>>`
-    SELECT COUNT(*)::int AS "count"
-    FROM "TimetableSet"
-    WHERE "workplaceId" = ${workplaceId}
-  `;
-
-  return rows[0]?.count ?? 0;
 }
 
 export async function GET(_: Request, context: Context) {
@@ -69,15 +60,13 @@ export async function GET(_: Request, context: Context) {
       return jsonError("勤務先が見つかりません", 404);
     }
 
-    const timetableSetCount = await countTimetableSets(workplace.id);
-
     return NextResponse.json({
       data: {
         ...workplace,
         _count: {
           shifts: workplace._count.shifts,
           payrollRules: workplace._count.payrollRules,
-          timetableSets: timetableSetCount,
+          timetableSets: workplace._count.timetableSets,
         },
       },
     });
@@ -135,11 +124,10 @@ export async function DELETE(request: Request, context: Context) {
       return jsonError("勤務先が見つかりません", 404);
     }
 
-    const timetableSetCount = await countTimetableSets(existing.id);
     const relatedCounts = {
       shifts: existing._count.shifts,
       payrollRules: existing._count.payrollRules,
-      timetableSets: timetableSetCount,
+      timetableSets: existing._count.timetableSets,
     };
 
     await prisma.workplace.delete({ where: { id: workplaceId } });

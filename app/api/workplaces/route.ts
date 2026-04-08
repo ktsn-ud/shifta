@@ -194,24 +194,12 @@ export async function GET() {
           select: {
             shifts: true,
             payrollRules: true,
+            timetableSets: true,
           },
         },
       },
       orderBy: { createdAt: "desc" },
     });
-
-    const timetableSetCounts = await Promise.all(
-      workplaces.map(async (workplace) => {
-        const rows = await prisma.$queryRaw<Array<{ count: number }>>`
-          SELECT COUNT(*)::int AS "count"
-          FROM "TimetableSet"
-          WHERE "workplaceId" = ${workplace.id}
-        `;
-
-        return [workplace.id, rows[0]?.count ?? 0] as const;
-      }),
-    );
-    const timetableSetCountByWorkplaceId = new Map(timetableSetCounts);
 
     return NextResponse.json({
       data: workplaces.map((workplace) => ({
@@ -219,7 +207,7 @@ export async function GET() {
         _count: {
           shifts: workplace._count.shifts,
           payrollRules: workplace._count.payrollRules,
-          timetableSets: timetableSetCountByWorkplaceId.get(workplace.id) ?? 0,
+          timetableSets: workplace._count.timetableSets,
         },
       })),
     });

@@ -16,8 +16,6 @@ export class ShiftValidationError extends Error {
 }
 
 type TimetableRow = {
-  id: string;
-  timetableSetId: string;
   period: number;
   startTime: Date;
   endTime: Date;
@@ -71,6 +69,17 @@ export type BuiltShiftData = {
   } | null;
 };
 
+export type LessonTimeRange = {
+  startTime: Date;
+  endTime: Date;
+  breakMinutes: number;
+};
+
+export type LessonTimeRangeResolver = (
+  workplaceId: string,
+  lessonRange: z.infer<typeof lessonRangeSchema>,
+) => Promise<LessonTimeRange>;
+
 function validateShiftInput(input: ShiftInput) {
   if (input.shiftType === "LESSON") {
     if (!input.lessonRange) {
@@ -113,31 +122,10 @@ function validateShiftInput(input: ShiftInput) {
   }
 }
 
-async function resolveLessonTimeRange(
-  workplaceId: string,
+export function resolveLessonTimeRangeFromRows(
   lessonRange: z.infer<typeof lessonRangeSchema>,
-) {
-  const setRows = await prisma.$queryRaw<Array<{ id: string }>>`
-    SELECT "id"
-    FROM "TimetableSet"
-    WHERE "id" = ${lessonRange.timetableSetId}
-      AND "workplaceId" = ${workplaceId}
-    LIMIT 1
-  `;
-
-  if (!setRows[0]) {
-    throw new ShiftValidationError("選択した時間割セットが見つかりません");
-  }
-
-  const timetables = await prisma.$queryRaw<Array<TimetableRow>>`
-    SELECT "id", "timetableSetId", "period", "startTime", "endTime"
-    FROM "Timetable"
-    WHERE "timetableSetId" = ${lessonRange.timetableSetId}
-      AND "period" >= ${lessonRange.startPeriod}
-      AND "period" <= ${lessonRange.endPeriod}
-    ORDER BY "period" ASC
-  `;
-
+  timetables: TimetableRow[],
+): LessonTimeRange {
   const expectedCount = lessonRange.endPeriod - lessonRange.startPeriod + 1;
   if (timetables.length !== expectedCount) {
     throw new ShiftValidationError("指定コマ範囲の時間割が不足しています");
@@ -194,9 +182,50 @@ async function resolveLessonTimeRange(
   };
 }
 
+async function resolveLessonTimeRangeFromDatabase(
+  workplaceId: string,
+  lessonRange: z.infer<typeof lessonRangeSchema>,
+): Promise<LessonTimeRange> {
+  const set = await prisma.timetableSet.findFirst({
+    where: {
+      id: lessonRange.timetableSetId,
+      workplaceId,
+    },
+    select: {
+      id: true,
+    },
+  });
+  if (!set) {
+    throw new ShiftValidationError("選択した時間割セットが見つかりません");
+  }
+
+  const timetables = await prisma.timetable.findMany({
+    where: {
+      timetableSetId: lessonRange.timetableSetId,
+      period: {
+        gte: lessonRange.startPeriod,
+        lte: lessonRange.endPeriod,
+      },
+    },
+    select: {
+      period: true,
+      startTime: true,
+      endTime: true,
+    },
+    orderBy: {
+      period: "asc",
+    },
+  });
+
+  return resolveLessonTimeRangeFromRows(lessonRange, timetables);
+}
+
 export async function buildShiftData(
   input: ShiftInput,
   workplaceType: "GENERAL" | "CRAM_SCHOOL",
+  options?: {
+    lessonTimeRangeResolver?: LessonTimeRangeResolver;
+  },
 ): Promise<BuiltShiftData> {
   validateShiftInput(input);
 
@@ -214,7 +243,9 @@ export async function buildShiftData(
       throw new ShiftValidationError("lessonRange が指定されていません");
     }
 
-    const lessonTimes = await resolveLessonTimeRange(
+    const lessonTimeRangeResolver =
+      options?.lessonTimeRangeResolver ?? resolveLessonTimeRangeFromDatabase;
+    const lessonTimes = await lessonTimeRangeResolver(
       input.workplaceId,
       lessonRange,
     );

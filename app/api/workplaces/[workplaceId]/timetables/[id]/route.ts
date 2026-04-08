@@ -1,4 +1,5 @@
 import { randomUUID } from "node:crypto";
+import { Prisma } from "@/lib/generated/prisma/client";
 import { NextResponse } from "next/server";
 import { z } from "zod";
 import { requireCurrentUser } from "@/lib/api/current-user";
@@ -31,21 +32,20 @@ type Context = {
   params: Promise<{ workplaceId: string; id: string }>;
 };
 
-type TimetableSetRow = {
+type TimetableSetWithItems = {
   id: string;
   workplaceId: string;
   name: string;
   sortOrder: number;
   createdAt: Date;
   updatedAt: Date;
-};
-
-type TimetableRow = {
-  id: string;
-  timetableSetId: string;
-  period: number;
-  startTime: Date;
-  endTime: Date;
+  timetables: Array<{
+    id: string;
+    timetableSetId: string;
+    period: number;
+    startTime: Date;
+    endTime: Date;
+  }>;
 };
 
 function toTimeOnly(value: Date): string {
@@ -72,44 +72,37 @@ function validateItems(items: Array<z.infer<typeof timetableItemSchema>>) {
   return null;
 }
 
-function buildSetResponse(sets: TimetableSetRow[], timetables: TimetableRow[]) {
-  const timetablesBySet = new Map<string, TimetableRow[]>();
-
-  for (const timetable of timetables) {
-    const rows = timetablesBySet.get(timetable.timetableSetId) ?? [];
-    rows.push(timetable);
-    timetablesBySet.set(timetable.timetableSetId, rows);
-  }
-
-  return sets.map((set) => ({
+function buildSetResponse(set: TimetableSetWithItems) {
+  return {
     id: set.id,
     workplaceId: set.workplaceId,
     name: set.name,
     sortOrder: set.sortOrder,
     createdAt: set.createdAt.toISOString(),
     updatedAt: set.updatedAt.toISOString(),
-    items: (timetablesBySet.get(set.id) ?? [])
-      .sort((left, right) => left.period - right.period)
-      .map((timetable) => ({
-        id: timetable.id,
-        timetableSetId: timetable.timetableSetId,
-        period: timetable.period,
-        startTime: timetable.startTime.toISOString(),
-        endTime: timetable.endTime.toISOString(),
-        startTimeLabel: toTimeOnly(timetable.startTime),
-        endTimeLabel: toTimeOnly(timetable.endTime),
-      })),
-  }));
+    items: set.timetables.map((timetable) => ({
+      id: timetable.id,
+      timetableSetId: timetable.timetableSetId,
+      period: timetable.period,
+      startTime: timetable.startTime.toISOString(),
+      endTime: timetable.endTime.toISOString(),
+      startTimeLabel: toTimeOnly(timetable.startTime),
+      endTimeLabel: toTimeOnly(timetable.endTime),
+    })),
+  };
 }
 
-async function findSet(id: string, workplaceId: string) {
-  return prisma.$queryRaw<Array<TimetableSetRow>>`
-    SELECT "id", "workplaceId", "name", "sortOrder", "createdAt", "updatedAt"
-    FROM "TimetableSet"
-    WHERE "id" = ${id}
-      AND "workplaceId" = ${workplaceId}
-    LIMIT 1
-  `;
+async function findSetMeta(id: string, workplaceId: string) {
+  return prisma.timetableSet.findFirst({
+    where: {
+      id,
+      workplaceId,
+    },
+    select: {
+      id: true,
+      sortOrder: true,
+    },
+  });
 }
 
 export async function PUT(request: Request, context: Context) {
@@ -132,8 +125,8 @@ export async function PUT(request: Request, context: Context) {
       return jsonError("時間割はCRAM_SCHOOL勤務先でのみ操作できます", 400);
     }
 
-    const existing = await findSet(id, workplaceId);
-    if (!existing[0]) {
+    const existing = await findSetMeta(id, workplaceId);
+    if (!existing) {
       return jsonError("時間割セットが見つかりません", 404);
     }
 
@@ -148,67 +141,77 @@ export async function PUT(request: Request, context: Context) {
     }
 
     const updated = await prisma.$transaction(async (tx) => {
-      const duplicatedByName = await tx.$queryRaw<Array<{ id: string }>>`
-        SELECT "id"
-        FROM "TimetableSet"
-        WHERE "workplaceId" = ${workplaceId}
-          AND "name" = ${body.data.name}
-          AND "id" <> ${id}
-        LIMIT 1
-      `;
+      const duplicatedByName = await tx.timetableSet.findFirst({
+        where: {
+          workplaceId,
+          name: body.data.name,
+          id: {
+            not: id,
+          },
+        },
+        select: {
+          id: true,
+        },
+      });
 
-      if (duplicatedByName.length > 0) {
+      if (duplicatedByName) {
         throw new Error("DUPLICATED_TIMETABLE_SET_NAME");
       }
 
-      await tx.$executeRaw`
-        UPDATE "TimetableSet"
-        SET "name" = ${body.data.name},
-            "sortOrder" = ${body.data.sortOrder ?? existing[0]!.sortOrder},
-            "updatedAt" = CURRENT_TIMESTAMP
-        WHERE "id" = ${id}
-          AND "workplaceId" = ${workplaceId}
-      `;
+      await tx.timetableSet.update({
+        where: { id },
+        data: {
+          name: body.data.name,
+          sortOrder: body.data.sortOrder ?? existing.sortOrder,
+        },
+      });
 
-      await tx.$executeRaw`
-        DELETE FROM "Timetable"
-        WHERE "timetableSetId" = ${id}
-      `;
+      await tx.timetable.deleteMany({
+        where: {
+          timetableSetId: id,
+        },
+      });
 
-      for (const item of body.data.items) {
-        const timetableId = randomUUID();
-        await tx.$executeRaw`
-          INSERT INTO "Timetable"
-            ("id", "timetableSetId", "period", "startTime", "endTime")
-          VALUES
-            (${timetableId}, ${id}, ${item.period}, ${parseTimeOnly(item.startTime)}, ${parseTimeOnly(item.endTime)})
-        `;
-      }
+      await tx.timetable.createMany({
+        data: body.data.items.map((item) => ({
+          id: randomUUID(),
+          timetableSetId: id,
+          period: item.period,
+          startTime: parseTimeOnly(item.startTime),
+          endTime: parseTimeOnly(item.endTime),
+        })),
+      });
 
-      const setRows = await tx.$queryRaw<Array<TimetableSetRow>>`
-        SELECT "id", "workplaceId", "name", "sortOrder", "createdAt", "updatedAt"
-        FROM "TimetableSet"
-        WHERE "id" = ${id}
-      `;
-      const timetableRows = await tx.$queryRaw<Array<TimetableRow>>`
-        SELECT "id", "timetableSetId", "period", "startTime", "endTime"
-        FROM "Timetable"
-        WHERE "timetableSetId" = ${id}
-        ORDER BY "period" ASC
-      `;
-
-      return buildSetResponse(setRows, timetableRows)[0] ?? null;
+      return tx.timetableSet.findUnique({
+        where: {
+          id,
+        },
+        include: {
+          timetables: {
+            orderBy: {
+              period: "asc",
+            },
+          },
+        },
+      });
     });
 
     if (!updated) {
       return jsonError("時間割セットの更新に失敗しました", 500);
     }
 
-    return NextResponse.json({ data: updated });
+    return NextResponse.json({ data: buildSetResponse(updated) });
   } catch (error) {
     if (
       error instanceof Error &&
       error.message === "DUPLICATED_TIMETABLE_SET_NAME"
+    ) {
+      return jsonError("同じ名前の時間割セットが既に存在します", 409);
+    }
+
+    if (
+      error instanceof Prisma.PrismaClientKnownRequestError &&
+      error.code === "P2002"
     ) {
       return jsonError("同じ名前の時間割セットが既に存在します", 409);
     }
@@ -246,30 +249,33 @@ export async function DELETE(request: Request, context: Context) {
       return jsonError("時間割はCRAM_SCHOOL勤務先でのみ操作できます", 400);
     }
 
-    const existing = await findSet(id, workplaceId);
-    if (!existing[0]) {
+    const existing = await findSetMeta(id, workplaceId);
+    if (!existing) {
       return jsonError("時間割セットが見つかりません", 404);
     }
 
-    const inUse = await prisma.$queryRaw<Array<{ id: string }>>`
-      SELECT "id"
-      FROM "ShiftLessonRange"
-      WHERE "timetableSetId" = ${id}
-      LIMIT 1
-    `;
+    const inUse = await prisma.shiftLessonRange.findFirst({
+      where: {
+        timetableSetId: id,
+      },
+      select: {
+        id: true,
+      },
+    });
 
-    if (inUse.length > 0) {
+    if (inUse) {
       return jsonError(
         "この時間割セットはシフトで使用中のため削除できません",
         409,
       );
     }
 
-    await prisma.$executeRaw`
-      DELETE FROM "TimetableSet"
-      WHERE "id" = ${id}
-        AND "workplaceId" = ${workplaceId}
-    `;
+    await prisma.timetableSet.deleteMany({
+      where: {
+        id,
+        workplaceId,
+      },
+    });
 
     return NextResponse.json({
       data: {

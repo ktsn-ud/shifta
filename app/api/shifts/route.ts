@@ -1,4 +1,3 @@
-import { randomUUID } from "node:crypto";
 import { type Prisma } from "@/lib/generated/prisma/client";
 import { after, NextResponse } from "next/server";
 import { z } from "zod";
@@ -85,25 +84,25 @@ export async function POST(request: Request) {
       throw error;
     }
 
-    const created = await prisma.$transaction(async (tx) => {
-      const shift = await tx.shift.create({ data: built.shiftData });
-
-      if (built.lessonRange) {
-        await tx.$executeRaw`
-          INSERT INTO "ShiftLessonRange"
-            ("id", "shiftId", "timetableSetId", "startPeriod", "endPeriod")
-          VALUES
-            (${randomUUID()}, ${shift.id}, ${built.lessonRange.timetableSetId}, ${built.lessonRange.startPeriod}, ${built.lessonRange.endPeriod})
-        `;
-      }
-
-      return tx.shift.findUnique({
-        where: { id: shift.id },
-        include: {
-          lessonRange: true,
-          workplace: true,
-        },
-      });
+    const created = await prisma.shift.create({
+      data: {
+        ...built.shiftData,
+        ...(built.lessonRange
+          ? {
+              lessonRange: {
+                create: {
+                  timetableSetId: built.lessonRange.timetableSetId,
+                  startPeriod: built.lessonRange.startPeriod,
+                  endPeriod: built.lessonRange.endPeriod,
+                },
+              },
+            }
+          : {}),
+      },
+      include: {
+        lessonRange: true,
+        workplace: true,
+      },
     });
 
     if (created) {
@@ -120,20 +119,10 @@ export async function POST(request: Request) {
       });
     }
 
-    const latest = created
-      ? await prisma.shift.findUnique({
-          where: { id: created.id },
-          include: {
-            lessonRange: true,
-            workplace: true,
-          },
-        })
-      : null;
-
     return NextResponse.json(
       {
-        data: latest,
-        syncStatus: latest ? "pending" : null,
+        data: created,
+        syncStatus: created ? "pending" : null,
       },
       { status: 201 },
     );

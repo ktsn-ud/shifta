@@ -1,4 +1,5 @@
 import { randomUUID } from "node:crypto";
+import { Prisma } from "@/lib/generated/prisma/client";
 import { NextResponse } from "next/server";
 import { z } from "zod";
 import { requireCurrentUser } from "@/lib/api/current-user";
@@ -38,21 +39,20 @@ type Context = {
   params: Promise<{ workplaceId: string }>;
 };
 
-type TimetableSetRow = {
+type TimetableSetWithItems = {
   id: string;
   workplaceId: string;
   name: string;
   sortOrder: number;
   createdAt: Date;
   updatedAt: Date;
-};
-
-type TimetableRow = {
-  id: string;
-  timetableSetId: string;
-  period: number;
-  startTime: Date;
-  endTime: Date;
+  timetables: Array<{
+    id: string;
+    timetableSetId: string;
+    period: number;
+    startTime: Date;
+    endTime: Date;
+  }>;
 };
 
 function toTimeOnly(value: Date): string {
@@ -89,15 +89,7 @@ function validateItems(items: Array<z.infer<typeof timetableItemSchema>>) {
   return null;
 }
 
-function buildSetResponse(sets: TimetableSetRow[], timetables: TimetableRow[]) {
-  const timetablesBySet = new Map<string, TimetableRow[]>();
-
-  for (const timetable of timetables) {
-    const rows = timetablesBySet.get(timetable.timetableSetId) ?? [];
-    rows.push(timetable);
-    timetablesBySet.set(timetable.timetableSetId, rows);
-  }
-
+function buildSetResponse(sets: TimetableSetWithItems[]) {
   return sets.map((set) => ({
     id: set.id,
     workplaceId: set.workplaceId,
@@ -105,17 +97,15 @@ function buildSetResponse(sets: TimetableSetRow[], timetables: TimetableRow[]) {
     sortOrder: set.sortOrder,
     createdAt: set.createdAt.toISOString(),
     updatedAt: set.updatedAt.toISOString(),
-    items: (timetablesBySet.get(set.id) ?? [])
-      .sort((left, right) => left.period - right.period)
-      .map((timetable) => ({
-        id: timetable.id,
-        timetableSetId: timetable.timetableSetId,
-        period: timetable.period,
-        startTime: timetable.startTime.toISOString(),
-        endTime: timetable.endTime.toISOString(),
-        startTimeLabel: toTimeOnly(timetable.startTime),
-        endTimeLabel: toTimeOnly(timetable.endTime),
-      })),
+    items: set.timetables.map((timetable) => ({
+      id: timetable.id,
+      timetableSetId: timetable.timetableSetId,
+      period: timetable.period,
+      startTime: timetable.startTime.toISOString(),
+      endTime: timetable.endTime.toISOString(),
+      startTimeLabel: toTimeOnly(timetable.startTime),
+      endTimeLabel: toTimeOnly(timetable.endTime),
+    })),
   }));
 }
 
@@ -163,83 +153,97 @@ export async function POST(request: Request, context: Context) {
     }
 
     const created = await prisma.$transaction(async (tx) => {
-      const existing = await tx.$queryRaw<Array<{ name: string }>>`
-        SELECT "name"
-        FROM "TimetableSet"
-        WHERE "workplaceId" = ${workplaceId}
-      `;
+      const normalizedInputs = inputs.map((input) => ({
+        ...input,
+        name: input.name.trim(),
+      }));
 
-      const existingNameSet = new Set(existing.map((row) => row.name));
-      const requestNameSet = new Set<string>();
-
-      for (const input of inputs) {
-        const normalizedName = input.name.trim();
-        if (
-          requestNameSet.has(normalizedName) ||
-          existingNameSet.has(normalizedName)
-        ) {
+      const requestedNameSet = new Set<string>();
+      for (const input of normalizedInputs) {
+        if (requestedNameSet.has(input.name)) {
           throw new Error("DUPLICATED_TIMETABLE_SET_NAME");
         }
-        requestNameSet.add(normalizedName);
+        requestedNameSet.add(input.name);
       }
 
-      const maxSort = await tx.$queryRaw<Array<{ value: number | null }>>`
-        SELECT MAX("sortOrder")::int AS "value"
-        FROM "TimetableSet"
-        WHERE "workplaceId" = ${workplaceId}
-      `;
+      const requestedNames = Array.from(requestedNameSet);
+      if (requestedNames.length > 0) {
+        const existing = await tx.timetableSet.findMany({
+          where: {
+            workplaceId,
+            name: {
+              in: requestedNames,
+            },
+          },
+          select: {
+            id: true,
+          },
+        });
+        if (existing.length > 0) {
+          throw new Error("DUPLICATED_TIMETABLE_SET_NAME");
+        }
+      }
 
-      let nextSortOrder = (maxSort[0]?.value ?? -1) + 1;
-      const createdIds: string[] = [];
+      const maxSort = await tx.timetableSet.aggregate({
+        where: {
+          workplaceId,
+        },
+        _max: {
+          sortOrder: true,
+        },
+      });
 
-      for (const input of inputs) {
-        const setId = randomUUID();
+      let nextSortOrder = (maxSort._max.sortOrder ?? -1) + 1;
+      const setRows = normalizedInputs.map((input) => {
         const sortOrder = input.sortOrder ?? nextSortOrder;
         if (input.sortOrder === undefined) {
           nextSortOrder += 1;
         }
-        createdIds.push(setId);
 
-        await tx.$executeRaw`
-          INSERT INTO "TimetableSet"
-            ("id", "workplaceId", "name", "sortOrder", "createdAt", "updatedAt")
-          VALUES
-            (${setId}, ${workplaceId}, ${input.name.trim()}, ${sortOrder}, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP)
-        `;
+        return {
+          id: randomUUID(),
+          workplaceId,
+          name: input.name,
+          sortOrder,
+        };
+      });
 
-        for (const item of input.items) {
-          const timetableId = randomUUID();
-          await tx.$executeRaw`
-            INSERT INTO "Timetable"
-              ("id", "timetableSetId", "period", "startTime", "endTime")
-            VALUES
-              (${timetableId}, ${setId}, ${item.period}, ${parseTimeOnly(item.startTime)}, ${parseTimeOnly(item.endTime)})
-          `;
-        }
-      }
+      await tx.timetableSet.createMany({
+        data: setRows,
+      });
 
-      const createdSets: ReturnType<typeof buildSetResponse>[number][] = [];
-      for (const createdId of createdIds) {
-        const sets = await tx.$queryRaw<Array<TimetableSetRow>>`
-          SELECT "id", "workplaceId", "name", "sortOrder", "createdAt", "updatedAt"
-          FROM "TimetableSet"
-          WHERE "id" = ${createdId}
-        `;
+      const timetableRows = setRows.flatMap((setRow, index) => {
+        const input = normalizedInputs[index];
+        return input.items.map((item) => ({
+          id: randomUUID(),
+          timetableSetId: setRow.id,
+          period: item.period,
+          startTime: parseTimeOnly(item.startTime),
+          endTime: parseTimeOnly(item.endTime),
+        }));
+      });
 
-        const timetables = await tx.$queryRaw<Array<TimetableRow>>`
-          SELECT "id", "timetableSetId", "period", "startTime", "endTime"
-          FROM "Timetable"
-          WHERE "timetableSetId" = ${createdId}
-          ORDER BY "period" ASC
-        `;
+      await tx.timetable.createMany({
+        data: timetableRows,
+      });
 
-        const responseItem = buildSetResponse(sets, timetables)[0];
-        if (responseItem) {
-          createdSets.push(responseItem);
-        }
-      }
+      const createdSets = await tx.timetableSet.findMany({
+        where: {
+          id: {
+            in: setRows.map((set) => set.id),
+          },
+        },
+        include: {
+          timetables: {
+            orderBy: {
+              period: "asc",
+            },
+          },
+        },
+        orderBy: [{ sortOrder: "asc" }, { createdAt: "asc" }],
+      });
 
-      return createdSets;
+      return buildSetResponse(createdSets);
     });
 
     if (created.length === 0) {
@@ -255,6 +259,13 @@ export async function POST(request: Request, context: Context) {
     if (
       error instanceof Error &&
       error.message === "DUPLICATED_TIMETABLE_SET_NAME"
+    ) {
+      return jsonError("同じ名前の時間割セットが既に存在します", 409);
+    }
+
+    if (
+      error instanceof Prisma.PrismaClientKnownRequestError &&
+      error.code === "P2002"
     ) {
       return jsonError("同じ名前の時間割セットが既に存在します", 409);
     }
@@ -284,27 +295,23 @@ export async function GET(_: Request, context: Context) {
       return jsonError("時間割はCRAM_SCHOOL勤務先でのみ操作できます", 400);
     }
 
-    const sets = await prisma.$queryRaw<Array<TimetableSetRow>>`
-      SELECT "id", "workplaceId", "name", "sortOrder", "createdAt", "updatedAt"
-      FROM "TimetableSet"
-      WHERE "workplaceId" = ${workplaceId}
-      ORDER BY "sortOrder" ASC, "createdAt" ASC
-    `;
+    const sets = await prisma.timetableSet.findMany({
+      where: {
+        workplaceId,
+      },
+      include: {
+        timetables: {
+          orderBy: {
+            period: "asc",
+          },
+        },
+      },
+      orderBy: [{ sortOrder: "asc" }, { createdAt: "asc" }],
+    });
 
-    if (sets.length === 0) {
-      return NextResponse.json({ data: [] });
-    }
-
-    const timetables = await prisma.$queryRaw<Array<TimetableRow>>`
-      SELECT "id", "timetableSetId", "period", "startTime", "endTime"
-      FROM "Timetable"
-      WHERE "timetableSetId" IN (
-        SELECT "id" FROM "TimetableSet" WHERE "workplaceId" = ${workplaceId}
-      )
-      ORDER BY "timetableSetId" ASC, "period" ASC
-    `;
-
-    return NextResponse.json({ data: buildSetResponse(sets, timetables) });
+    return NextResponse.json({
+      data: buildSetResponse(sets),
+    });
   } catch (error) {
     console.error("GET /api/workplaces/:workplaceId/timetables failed", error);
     return jsonError("時間割一覧の取得に失敗しました", 500);
