@@ -1,4 +1,5 @@
 "use client";
+
 import { useEffect, useMemo, useState } from "react";
 import { useRouter } from "next/navigation";
 import { toast } from "sonner";
@@ -34,7 +35,6 @@ type FormValues = {
   startDate: string;
   endDate: string;
   baseHourlyWage: string;
-  perLessonWage: string;
   holidayHourlyWage: string;
   nightMultiplier: string;
   overtimeMultiplier: string;
@@ -46,18 +46,19 @@ type FormValues = {
 
 type FormErrors = Partial<Record<keyof FormValues | "form", string>>;
 type NumericValue = string | number;
+
 type WorkplaceSummary = {
   id: string;
   name: string;
   type: WorkplaceType;
 };
+
 type PayrollRuleDetail = {
   id: string;
   workplaceId: string;
   startDate: string;
   endDate: string | null;
   baseHourlyWage: NumericValue;
-  perLessonWage: NumericValue | null;
   holidayHourlyWage: NumericValue | null;
   nightMultiplier: NumericValue;
   overtimeMultiplier: NumericValue;
@@ -121,7 +122,6 @@ function parsePayrollRuleResponse(payload: unknown): PayrollRuleDetail | null {
     typeof data.startDate !== "string" ||
     (typeof data.endDate !== "string" && data.endDate !== null) ||
     !isNumericValue(data.baseHourlyWage) ||
-    (!isNumericValue(data.perLessonWage) && data.perLessonWage !== null) ||
     (!isNumericValue(data.holidayHourlyWage) &&
       data.holidayHourlyWage !== null) ||
     !isNumericValue(data.nightMultiplier) ||
@@ -140,7 +140,6 @@ function parsePayrollRuleResponse(payload: unknown): PayrollRuleDetail | null {
     startDate: data.startDate,
     endDate: data.endDate,
     baseHourlyWage: data.baseHourlyWage,
-    perLessonWage: data.perLessonWage,
     holidayHourlyWage: data.holidayHourlyWage,
     nightMultiplier: data.nightMultiplier,
     overtimeMultiplier: data.overtimeMultiplier,
@@ -226,12 +225,12 @@ async function parseApiError(
       const rawFieldErrors = (payload.details as { fieldErrors?: unknown })
         .fieldErrors;
       if (rawFieldErrors && typeof rawFieldErrors === "object") {
-        Object.entries(rawFieldErrors).forEach(([field, messages]) => {
-          if (Array.isArray(messages) === false) {
+        Object.entries(rawFieldErrors).forEach(([field, detail]) => {
+          if (Array.isArray(detail) === false) {
             return;
           }
 
-          const firstMessage = messages.find(
+          const firstMessage = detail.find(
             (message): message is string =>
               typeof message === "string" && message.length > 0,
           );
@@ -261,10 +260,7 @@ async function parseApiError(
   };
 }
 
-function validate(
-  values: FormValues,
-  workplaceType: WorkplaceType,
-): FormErrors {
+function validate(values: FormValues): FormErrors {
   const errors: FormErrors = {};
 
   if (!values.startDate) {
@@ -273,15 +269,6 @@ function validate(
 
   if (values.endDate && values.startDate && values.endDate < values.startDate) {
     errors.endDate = "終了日は開始日以降の日付を指定してください。";
-  }
-
-  if (workplaceType === "CRAM_SCHOOL") {
-    const perLessonWage = Number(values.perLessonWage);
-    if (!values.perLessonWage || Number.isFinite(perLessonWage) === false) {
-      errors.perLessonWage = "コマ給は必須です。";
-    } else if (perLessonWage <= 0) {
-      errors.perLessonWage = "コマ給は正の数で入力してください。";
-    }
   }
 
   const baseHourlyWage = Number(values.baseHourlyWage);
@@ -343,16 +330,11 @@ export function PayrollRuleForm({
   const router = useRouter();
   const isEdit = mode === "edit";
 
-  const [workplace, setWorkplace] = useState<{
-    id: string;
-    name: string;
-    type: WorkplaceType;
-  } | null>(null);
+  const [workplace, setWorkplace] = useState<WorkplaceSummary | null>(null);
   const [values, setValues] = useState<FormValues>({
     startDate: "",
     endDate: "",
     baseHourlyWage: "1000",
-    perLessonWage: "",
     holidayHourlyWage: "",
     nightMultiplier: "1.25",
     overtimeMultiplier: "1.25",
@@ -448,7 +430,6 @@ export function PayrollRuleForm({
               ? shiftDateKeyByDays(dateKeyFromApiDate(rule.endDate), -1)
               : "",
             baseHourlyWage: toNumberString(rule.baseHourlyWage),
-            perLessonWage: toNumberString(rule.perLessonWage),
             holidayHourlyWage: toNumberString(rule.holidayHourlyWage),
             nightMultiplier: toNumberString(rule.nightMultiplier),
             overtimeMultiplier: toNumberString(rule.overtimeMultiplier),
@@ -485,8 +466,7 @@ export function PayrollRuleForm({
   }, [isEdit, ruleId, workplaceId]);
 
   const handleSubmit = async () => {
-    const workplaceType = workplace?.type ?? "GENERAL";
-    const validationErrors = validate(values, workplaceType);
+    const validationErrors = validate(values);
     if (Object.keys(validationErrors).length > 0) {
       setErrors(validationErrors);
       const firstValidationMessage = Object.values(validationErrors).find(
@@ -508,8 +488,6 @@ export function PayrollRuleForm({
       startDate: values.startDate,
       endDate: values.endDate ? shiftDateKeyByDays(values.endDate, 1) : null,
       baseHourlyWage: Number(values.baseHourlyWage),
-      perLessonWage:
-        workplaceType === "CRAM_SCHOOL" ? Number(values.perLessonWage) : null,
       holidayHourlyWage: values.holidayHourlyWage
         ? Number(values.holidayHourlyWage)
         : null,
@@ -661,41 +639,8 @@ export function PayrollRuleForm({
             </FieldContent>
           </Field>
 
-          {workplace?.type === "CRAM_SCHOOL" ? (
-            <Field data-invalid={Boolean(errors.perLessonWage)}>
-              <FieldLabel htmlFor="per-lesson-wage">コマ給</FieldLabel>
-              <FieldContent>
-                <div className="flex items-center gap-2">
-                  <Input
-                    id="per-lesson-wage"
-                    type="number"
-                    min="0"
-                    step="0.01"
-                    value={values.perLessonWage}
-                    onChange={(event) => {
-                      const nextValue = event.currentTarget.value;
-                      setValues((current) => ({
-                        ...current,
-                        perLessonWage: nextValue,
-                      }));
-                    }}
-                    className="max-w-20"
-                  />
-                  <span className="shrink-0 text-sm text-muted-foreground">
-                    円/コマ
-                  </span>
-                </div>
-                <FormErrorMessage message={errors.perLessonWage} />
-              </FieldContent>
-            </Field>
-          ) : null}
-
           <Field data-invalid={Boolean(errors.baseHourlyWage)}>
-            <FieldLabel htmlFor="base-hourly-wage">
-              {workplace?.type === "CRAM_SCHOOL"
-                ? "基本時給（事務）"
-                : "基本時給"}
-            </FieldLabel>
+            <FieldLabel htmlFor="base-hourly-wage">基本時給</FieldLabel>
             <FieldContent>
               <div className="flex items-center gap-2">
                 <Input
@@ -768,7 +713,7 @@ export function PayrollRuleForm({
                       nightMultiplier: nextValue,
                     }));
                   }}
-                  className="max-w-20"
+                  className="max-w-24"
                 />
                 <span className="shrink-0 text-sm text-muted-foreground">
                   倍
@@ -795,7 +740,7 @@ export function PayrollRuleForm({
                       overtimeMultiplier: nextValue,
                     }));
                   }}
-                  className="max-w-20"
+                  className="max-w-24"
                 />
                 <span className="shrink-0 text-sm text-muted-foreground">
                   倍
@@ -815,7 +760,7 @@ export function PayrollRuleForm({
                   id="daily-overtime-threshold"
                   type="number"
                   min="0"
-                  step="0.01"
+                  step="0.25"
                   value={values.dailyOvertimeThreshold}
                   onChange={(event) => {
                     const nextValue = event.currentTarget.value;
@@ -824,7 +769,7 @@ export function PayrollRuleForm({
                       dailyOvertimeThreshold: nextValue,
                     }));
                   }}
-                  className="max-w-20"
+                  className="max-w-24"
                 />
                 <span className="shrink-0 text-sm text-muted-foreground">
                   時間
@@ -848,7 +793,7 @@ export function PayrollRuleForm({
                     nightStart: nextValue,
                   }));
                 }}
-                className="max-w-24"
+                className="max-w-32"
               />
               <FormErrorMessage message={errors.nightStart} />
             </FieldContent>
@@ -868,7 +813,7 @@ export function PayrollRuleForm({
                     nightEnd: nextValue,
                   }));
                 }}
-                className="max-w-24"
+                className="max-w-32"
               />
               <FormErrorMessage message={errors.nightEnd} />
             </FieldContent>
@@ -922,7 +867,7 @@ export function PayrollRuleForm({
               <FieldLabel>補足</FieldLabel>
               <FieldContent>
                 <FieldDescription>
-                  塾タイプでは授業シフトにコマ給、事務シフトに時給・割増設定を使用します。
+                  塾タイプでも通常シフトと同様に時給・割増設定を使用します。
                 </FieldDescription>
               </FieldContent>
             </Field>

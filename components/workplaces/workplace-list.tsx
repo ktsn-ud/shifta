@@ -40,7 +40,7 @@ const workplaceSchema = z.object({
   _count: z.object({
     shifts: z.number().int().nonnegative(),
     payrollRules: z.number().int().nonnegative(),
-    timetables: z.number().int().nonnegative(),
+    timetableSets: z.number().int().nonnegative(),
   }),
 });
 
@@ -55,7 +55,7 @@ const workplaceDeleteResponseSchema = z.object({
     relatedCounts: z.object({
       shifts: z.number().int().nonnegative(),
       payrollRules: z.number().int().nonnegative(),
-      timetables: z.number().int().nonnegative(),
+      timetableSets: z.number().int().nonnegative(),
     }),
   }),
   warning: z.string().nullable().optional(),
@@ -298,7 +298,7 @@ export function WorkplaceList({ initialWorkplaces }: WorkplaceListProps) {
                       <TableCell className="text-sm text-muted-foreground">
                         シフト {workplace._count.shifts} / 給与ルール{" "}
                         {workplace._count.payrollRules} / 時間割{" "}
-                        {workplace._count.timetables}
+                        {workplace._count.timetableSets}
                       </TableCell>
                       <TableCell>
                         <div className="flex flex-wrap justify-end gap-2">
@@ -379,7 +379,7 @@ export function WorkplaceList({ initialWorkplaces }: WorkplaceListProps) {
             <div className="rounded-md border bg-muted/30 px-3 py-2 text-sm text-muted-foreground">
               関連データ: シフト {deletingTarget._count.shifts} 件 / 給与ルール{" "}
               {deletingTarget._count.payrollRules} 件 / 時間割{" "}
-              {deletingTarget._count.timetables} 件
+              {deletingTarget._count.timetableSets} 件
             </div>
           ) : null}
 

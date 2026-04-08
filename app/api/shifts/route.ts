@@ -1,3 +1,4 @@
+import { randomUUID } from "node:crypto";
 import { type Prisma } from "@/lib/generated/prisma/client";
 import { after, NextResponse } from "next/server";
 import { z } from "zod";
@@ -88,13 +89,12 @@ export async function POST(request: Request) {
       const shift = await tx.shift.create({ data: built.shiftData });
 
       if (built.lessonRange) {
-        await tx.shiftLessonRange.create({
-          data: {
-            shiftId: shift.id,
-            startPeriod: built.lessonRange.startPeriod,
-            endPeriod: built.lessonRange.endPeriod,
-          },
-        });
+        await tx.$executeRaw`
+          INSERT INTO "ShiftLessonRange"
+            ("id", "shiftId", "timetableSetId", "startPeriod", "endPeriod")
+          VALUES
+            (${randomUUID()}, ${shift.id}, ${built.lessonRange.timetableSetId}, ${built.lessonRange.startPeriod}, ${built.lessonRange.endPeriod})
+        `;
       }
 
       return tx.shift.findUnique({
@@ -229,14 +229,22 @@ export async function GET(request: Request) {
     const rulesByWorkplace = groupPayrollRulesByWorkplace(payrollRules);
 
     const withEstimate = shifts.map((shift) => {
+      const normalizedShiftType =
+        shift.shiftType === "LESSON" ? "LESSON" : "NORMAL";
       const workedMinutes = calculateWorkedMinutes({
         date: shift.date,
         startTime: shift.startTime,
         endTime: shift.endTime,
         breakMinutes: shift.breakMinutes,
-        shiftType: shift.shiftType,
+        shiftType: normalizedShiftType,
         lessonRange: shift.lessonRange
           ? {
+              timetableSetId:
+                (
+                  shift.lessonRange as {
+                    timetableSetId?: string;
+                  }
+                ).timetableSetId ?? "",
               startPeriod: shift.lessonRange.startPeriod,
               endPeriod: shift.lessonRange.endPeriod,
             }

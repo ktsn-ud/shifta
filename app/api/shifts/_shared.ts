@@ -15,15 +15,23 @@ export class ShiftValidationError extends Error {
   }
 }
 
+type TimetableRow = {
+  id: string;
+  timetableSetId: string;
+  period: number;
+  startTime: Date;
+  endTime: Date;
+};
+
 function timeToMinutes(value: Date): number {
   return value.getUTCHours() * 60 + value.getUTCMinutes();
 }
 
 export const lessonRangeSchema = z
   .object({
+    timetableSetId: z.string().min(1),
     startPeriod: z.coerce.number().int().positive(),
     endPeriod: z.coerce.number().int().positive(),
-    lessonType: z.enum(["NORMAL", "INTENSIVE"]),
   })
   .strict();
 
@@ -31,7 +39,7 @@ export const shiftInputSchema = z
   .object({
     workplaceId: z.string().min(1),
     date: z.string().regex(DATE_ONLY_REGEX, "YYYY-MM-DD形式で入力してください"),
-    shiftType: z.enum(["NORMAL", "LESSON", "OTHER"]),
+    shiftType: z.enum(["NORMAL", "LESSON"]),
     startTime: z
       .string()
       .regex(TIME_ONLY_REGEX, "HH:MM形式で入力してください")
@@ -54,9 +62,10 @@ export type BuiltShiftData = {
     startTime: Date;
     endTime: Date;
     breakMinutes: number;
-    shiftType: "NORMAL" | "LESSON" | "OTHER";
+    shiftType: "NORMAL" | "LESSON";
   };
   lessonRange: {
+    timetableSetId: string;
     startPeriod: number;
     endPeriod: number;
   } | null;
@@ -108,17 +117,26 @@ async function resolveLessonTimeRange(
   workplaceId: string,
   lessonRange: z.infer<typeof lessonRangeSchema>,
 ) {
-  const timetables = await prisma.timetable.findMany({
-    where: {
-      workplaceId,
-      type: lessonRange.lessonType,
-      period: {
-        gte: lessonRange.startPeriod,
-        lte: lessonRange.endPeriod,
-      },
-    },
-    orderBy: { period: "asc" },
-  });
+  const setRows = await prisma.$queryRaw<Array<{ id: string }>>`
+    SELECT "id"
+    FROM "TimetableSet"
+    WHERE "id" = ${lessonRange.timetableSetId}
+      AND "workplaceId" = ${workplaceId}
+    LIMIT 1
+  `;
+
+  if (!setRows[0]) {
+    throw new ShiftValidationError("選択した時間割セットが見つかりません");
+  }
+
+  const timetables = await prisma.$queryRaw<Array<TimetableRow>>`
+    SELECT "id", "timetableSetId", "period", "startTime", "endTime"
+    FROM "Timetable"
+    WHERE "timetableSetId" = ${lessonRange.timetableSetId}
+      AND "period" >= ${lessonRange.startPeriod}
+      AND "period" <= ${lessonRange.endPeriod}
+    ORDER BY "period" ASC
+  `;
 
   const expectedCount = lessonRange.endPeriod - lessonRange.startPeriod + 1;
   if (timetables.length !== expectedCount) {
@@ -129,10 +147,6 @@ async function resolveLessonTimeRange(
     const expectedPeriod = lessonRange.startPeriod + index;
     if (timetables[index]?.period !== expectedPeriod) {
       throw new ShiftValidationError("コマ範囲に連続した時間割が存在しません");
-    }
-
-    if (timetables[index]?.type !== lessonRange.lessonType) {
-      throw new ShiftValidationError("lessonType が統一されていません");
     }
   }
 
@@ -186,12 +200,6 @@ export async function buildShiftData(
 ): Promise<BuiltShiftData> {
   validateShiftInput(input);
 
-  if (workplaceType === "CRAM_SCHOOL" && input.shiftType === "OTHER") {
-    throw new ShiftValidationError(
-      "CRAM_SCHOOL勤務先では OTHER シフトを登録できません",
-    );
-  }
-
   const date = parseDateOnly(input.date);
 
   if (input.shiftType === "LESSON") {
@@ -221,6 +229,7 @@ export async function buildShiftData(
         shiftType: input.shiftType,
       },
       lessonRange: {
+        timetableSetId: lessonRange.timetableSetId,
         startPeriod: lessonRange.startPeriod,
         endPeriod: lessonRange.endPeriod,
       },

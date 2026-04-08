@@ -1,3 +1,4 @@
+import { randomUUID } from "node:crypto";
 import { NextResponse } from "next/server";
 import { z } from "zod";
 import { requireCurrentUser } from "@/lib/api/current-user";
@@ -10,12 +11,19 @@ import {
 import { requireOwnedWorkplace } from "@/lib/api/workplace";
 import { prisma } from "@/lib/prisma";
 
-const timetableSchema = z
+const timetableItemSchema = z
   .object({
-    type: z.enum(["NORMAL", "INTENSIVE"]),
     period: z.coerce.number().int().positive(),
     startTime: z.string().regex(TIME_ONLY_REGEX, "HH:MM形式で入力してください"),
     endTime: z.string().regex(TIME_ONLY_REGEX, "HH:MM形式で入力してください"),
+  })
+  .strict();
+
+const timetableSetSchema = z
+  .object({
+    name: z.string().trim().min(1).max(50),
+    sortOrder: z.coerce.number().int().min(0).optional(),
+    items: z.array(timetableItemSchema).min(1),
   })
   .strict();
 
@@ -23,35 +31,85 @@ type Context = {
   params: Promise<{ workplaceId: string; id: string }>;
 };
 
-function validateTimeRange(startTime: string, endTime: string): boolean {
-  return toMinutes(startTime) < toMinutes(endTime);
+type TimetableSetRow = {
+  id: string;
+  workplaceId: string;
+  name: string;
+  sortOrder: number;
+  createdAt: Date;
+  updatedAt: Date;
+};
+
+type TimetableRow = {
+  id: string;
+  timetableSetId: string;
+  period: number;
+  startTime: Date;
+  endTime: Date;
+};
+
+function toTimeOnly(value: Date): string {
+  const hour = String(value.getUTCHours()).padStart(2, "0");
+  const minute = String(value.getUTCMinutes()).padStart(2, "0");
+  return `${hour}:${minute}`;
 }
 
-async function hasDuplicateTimetable(
-  workplaceId: string,
-  type: "NORMAL" | "INTENSIVE",
-  period: number,
-  excludeId?: string,
-) {
-  const existing = await prisma.timetable.findFirst({
-    where: {
-      workplaceId,
-      type,
-      period,
-      ...(excludeId ? { id: { not: excludeId } } : {}),
-    },
-  });
+function validateItems(items: Array<z.infer<typeof timetableItemSchema>>) {
+  for (const item of items) {
+    if (toMinutes(item.startTime) >= toMinutes(item.endTime)) {
+      return "startTime は endTime より前にしてください";
+    }
+  }
 
-  return Boolean(existing);
+  const seen = new Set<number>();
+  for (const item of items) {
+    if (seen.has(item.period)) {
+      return "同じ時間割セット内で period が重複しています";
+    }
+    seen.add(item.period);
+  }
+
+  return null;
 }
 
-async function findTimetable(id: string, workplaceId: string) {
-  return prisma.timetable.findFirst({
-    where: {
-      id,
-      workplaceId,
-    },
-  });
+function buildSetResponse(sets: TimetableSetRow[], timetables: TimetableRow[]) {
+  const timetablesBySet = new Map<string, TimetableRow[]>();
+
+  for (const timetable of timetables) {
+    const rows = timetablesBySet.get(timetable.timetableSetId) ?? [];
+    rows.push(timetable);
+    timetablesBySet.set(timetable.timetableSetId, rows);
+  }
+
+  return sets.map((set) => ({
+    id: set.id,
+    workplaceId: set.workplaceId,
+    name: set.name,
+    sortOrder: set.sortOrder,
+    createdAt: set.createdAt.toISOString(),
+    updatedAt: set.updatedAt.toISOString(),
+    items: (timetablesBySet.get(set.id) ?? [])
+      .sort((left, right) => left.period - right.period)
+      .map((timetable) => ({
+        id: timetable.id,
+        timetableSetId: timetable.timetableSetId,
+        period: timetable.period,
+        startTime: timetable.startTime.toISOString(),
+        endTime: timetable.endTime.toISOString(),
+        startTimeLabel: toTimeOnly(timetable.startTime),
+        endTimeLabel: toTimeOnly(timetable.endTime),
+      })),
+  }));
+}
+
+async function findSet(id: string, workplaceId: string) {
+  return prisma.$queryRaw<Array<TimetableSetRow>>`
+    SELECT "id", "workplaceId", "name", "sortOrder", "createdAt", "updatedAt"
+    FROM "TimetableSet"
+    WHERE "id" = ${id}
+      AND "workplaceId" = ${workplaceId}
+    LIMIT 1
+  `;
 }
 
 export async function PUT(request: Request, context: Context) {
@@ -74,47 +132,92 @@ export async function PUT(request: Request, context: Context) {
       return jsonError("時間割はCRAM_SCHOOL勤務先でのみ操作できます", 400);
     }
 
-    const existing = await findTimetable(id, workplaceId);
-    if (!existing) {
-      return jsonError("時間割が見つかりません", 404);
+    const existing = await findSet(id, workplaceId);
+    if (!existing[0]) {
+      return jsonError("時間割セットが見つかりません", 404);
     }
 
-    const body = await parseJsonBody(request, timetableSchema);
+    const body = await parseJsonBody(request, timetableSetSchema);
     if (!body.success) {
       return body.response;
     }
 
-    if (!validateTimeRange(body.data.startTime, body.data.endTime)) {
-      return jsonError("startTime は endTime より前にしてください", 400);
+    const validationError = validateItems(body.data.items);
+    if (validationError) {
+      return jsonError(validationError, 400);
     }
 
-    const duplicated = await hasDuplicateTimetable(
-      workplaceId,
-      body.data.type,
-      body.data.period,
-      id,
-    );
-    if (duplicated) {
-      return jsonError("同じ type と period の時間割が既に存在します", 409);
-    }
+    const updated = await prisma.$transaction(async (tx) => {
+      const duplicatedByName = await tx.$queryRaw<Array<{ id: string }>>`
+        SELECT "id"
+        FROM "TimetableSet"
+        WHERE "workplaceId" = ${workplaceId}
+          AND "name" = ${body.data.name}
+          AND "id" <> ${id}
+        LIMIT 1
+      `;
 
-    const timetable = await prisma.timetable.update({
-      where: { id },
-      data: {
-        type: body.data.type,
-        period: body.data.period,
-        startTime: parseTimeOnly(body.data.startTime),
-        endTime: parseTimeOnly(body.data.endTime),
-      },
+      if (duplicatedByName.length > 0) {
+        throw new Error("DUPLICATED_TIMETABLE_SET_NAME");
+      }
+
+      await tx.$executeRaw`
+        UPDATE "TimetableSet"
+        SET "name" = ${body.data.name},
+            "sortOrder" = ${body.data.sortOrder ?? existing[0]!.sortOrder},
+            "updatedAt" = CURRENT_TIMESTAMP
+        WHERE "id" = ${id}
+          AND "workplaceId" = ${workplaceId}
+      `;
+
+      await tx.$executeRaw`
+        DELETE FROM "Timetable"
+        WHERE "timetableSetId" = ${id}
+      `;
+
+      for (const item of body.data.items) {
+        const timetableId = randomUUID();
+        await tx.$executeRaw`
+          INSERT INTO "Timetable"
+            ("id", "timetableSetId", "period", "startTime", "endTime")
+          VALUES
+            (${timetableId}, ${id}, ${item.period}, ${parseTimeOnly(item.startTime)}, ${parseTimeOnly(item.endTime)})
+        `;
+      }
+
+      const setRows = await tx.$queryRaw<Array<TimetableSetRow>>`
+        SELECT "id", "workplaceId", "name", "sortOrder", "createdAt", "updatedAt"
+        FROM "TimetableSet"
+        WHERE "id" = ${id}
+      `;
+      const timetableRows = await tx.$queryRaw<Array<TimetableRow>>`
+        SELECT "id", "timetableSetId", "period", "startTime", "endTime"
+        FROM "Timetable"
+        WHERE "timetableSetId" = ${id}
+        ORDER BY "period" ASC
+      `;
+
+      return buildSetResponse(setRows, timetableRows)[0] ?? null;
     });
 
-    return NextResponse.json({ data: timetable });
+    if (!updated) {
+      return jsonError("時間割セットの更新に失敗しました", 500);
+    }
+
+    return NextResponse.json({ data: updated });
   } catch (error) {
+    if (
+      error instanceof Error &&
+      error.message === "DUPLICATED_TIMETABLE_SET_NAME"
+    ) {
+      return jsonError("同じ名前の時間割セットが既に存在します", 409);
+    }
+
     console.error(
       "PUT /api/workplaces/:workplaceId/timetables/:id failed",
       error,
     );
-    return jsonError("時間割の更新に失敗しました", 500);
+    return jsonError("時間割セットの更新に失敗しました", 500);
   }
 }
 
@@ -143,12 +246,30 @@ export async function DELETE(request: Request, context: Context) {
       return jsonError("時間割はCRAM_SCHOOL勤務先でのみ操作できます", 400);
     }
 
-    const existing = await findTimetable(id, workplaceId);
-    if (!existing) {
-      return jsonError("時間割が見つかりません", 404);
+    const existing = await findSet(id, workplaceId);
+    if (!existing[0]) {
+      return jsonError("時間割セットが見つかりません", 404);
     }
 
-    await prisma.timetable.delete({ where: { id } });
+    const inUse = await prisma.$queryRaw<Array<{ id: string }>>`
+      SELECT "id"
+      FROM "ShiftLessonRange"
+      WHERE "timetableSetId" = ${id}
+      LIMIT 1
+    `;
+
+    if (inUse.length > 0) {
+      return jsonError(
+        "この時間割セットはシフトで使用中のため削除できません",
+        409,
+      );
+    }
+
+    await prisma.$executeRaw`
+      DELETE FROM "TimetableSet"
+      WHERE "id" = ${id}
+        AND "workplaceId" = ${workplaceId}
+    `;
 
     return NextResponse.json({
       data: {
@@ -161,6 +282,6 @@ export async function DELETE(request: Request, context: Context) {
       "DELETE /api/workplaces/:workplaceId/timetables/:id failed",
       error,
     );
-    return jsonError("時間割の削除に失敗しました", 500);
+    return jsonError("時間割セットの削除に失敗しました", 500);
   }
 }

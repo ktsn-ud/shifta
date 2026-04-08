@@ -3,6 +3,7 @@ type DecimalLike = number | string | { toString: () => string };
 type LessonRange = {
   startPeriod: number;
   endPeriod: number;
+  timetableSetId: string;
 };
 
 type ShiftForEstimate = {
@@ -10,7 +11,7 @@ type ShiftForEstimate = {
   startTime: Date;
   endTime: Date;
   breakMinutes: number;
-  shiftType: "NORMAL" | "LESSON" | "OTHER";
+  shiftType: "NORMAL" | "LESSON";
   lessonRange: LessonRange | null;
 };
 
@@ -18,7 +19,6 @@ type PayrollRuleForEstimate = {
   startDate: Date;
   endDate: Date | null;
   baseHourlyWage: DecimalLike;
-  perLessonWage: DecimalLike | null;
 };
 
 function decimalToNumber(value: DecimalLike): number {
@@ -73,14 +73,6 @@ export function estimateShiftPay(
 ): number | null {
   if (rule === null) {
     return null;
-  }
-
-  if (shift.shiftType === "LESSON" && shift.lessonRange && rule.perLessonWage) {
-    const periodCount =
-      shift.lessonRange.endPeriod - shift.lessonRange.startPeriod + 1;
-    if (periodCount > 0) {
-      return Math.round(decimalToNumber(rule.perLessonWage) * periodCount);
-    }
   }
 
   const workedMinutes = calculateWorkedMinutes(shift);

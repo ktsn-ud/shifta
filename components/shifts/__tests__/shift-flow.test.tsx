@@ -500,6 +500,7 @@ describe("shift flow integration", () => {
               breakMinutes: 0,
               shiftType: "LESSON",
               lessonRange: {
+                timetableSetId: "set-normal",
                 startPeriod: 1,
                 endPeriod: 2,
               },
@@ -511,20 +512,28 @@ describe("shift flow integration", () => {
           return jsonResponse({
             data: [
               {
-                id: "tt-1",
+                id: "set-normal",
                 workplaceId: "workplace-1",
-                type: "NORMAL",
-                period: 1,
-                startTime: "1970-01-01T16:30:00.000Z",
-                endTime: "1970-01-01T17:30:00.000Z",
-              },
-              {
-                id: "tt-2",
-                workplaceId: "workplace-1",
-                type: "NORMAL",
-                period: 2,
-                startTime: "1970-01-01T17:40:00.000Z",
-                endTime: "1970-01-01T18:40:00.000Z",
+                name: "通常授業",
+                sortOrder: 0,
+                createdAt: "2026-03-01T00:00:00.000Z",
+                updatedAt: "2026-03-01T00:00:00.000Z",
+                items: [
+                  {
+                    id: "tt-1",
+                    timetableSetId: "set-normal",
+                    period: 1,
+                    startTime: "1970-01-01T16:30:00.000Z",
+                    endTime: "1970-01-01T17:30:00.000Z",
+                  },
+                  {
+                    id: "tt-2",
+                    timetableSetId: "set-normal",
+                    period: 2,
+                    startTime: "1970-01-01T17:40:00.000Z",
+                    endTime: "1970-01-01T18:40:00.000Z",
+                  },
+                ],
               },
             ],
           });
@@ -590,7 +599,7 @@ describe("shift flow integration", () => {
     ) as {
       shiftType: string;
       lessonRange?: {
-        lessonType: string;
+        timetableSetId: string;
         startPeriod: number;
         endPeriod: number;
       };
@@ -599,7 +608,7 @@ describe("shift flow integration", () => {
     expect(body).toMatchObject({
       shiftType: "LESSON",
       lessonRange: {
-        lessonType: "NORMAL",
+        timetableSetId: "set-normal",
         startPeriod: 1,
         endPeriod: 2,
       },
@@ -628,6 +637,7 @@ describe("shift flow integration", () => {
               breakMinutes: 0,
               shiftType: "LESSON",
               lessonRange: {
+                timetableSetId: "set-intensive",
                 startPeriod: 2,
                 endPeriod: 2,
               },
@@ -639,44 +649,59 @@ describe("shift flow integration", () => {
           return jsonResponse({
             data: [
               {
-                id: "tt-normal-1",
+                id: "set-normal",
                 workplaceId: "workplace-1",
-                type: "NORMAL",
-                period: 1,
-                startTime: "1970-01-01T10:00:00.000Z",
-                endTime: "1970-01-01T11:00:00.000Z",
+                name: "通常授業",
+                sortOrder: 0,
+                createdAt: "2026-03-01T00:00:00.000Z",
+                updatedAt: "2026-03-01T00:00:00.000Z",
+                items: [
+                  {
+                    id: "tt-normal-1",
+                    timetableSetId: "set-normal",
+                    period: 1,
+                    startTime: "1970-01-01T10:00:00.000Z",
+                    endTime: "1970-01-01T11:00:00.000Z",
+                  },
+                  {
+                    id: "tt-normal-2",
+                    timetableSetId: "set-normal",
+                    period: 2,
+                    startTime: "1970-01-01T11:10:00.000Z",
+                    endTime: "1970-01-01T12:10:00.000Z",
+                  },
+                ],
               },
               {
-                id: "tt-normal-2",
+                id: "set-intensive",
                 workplaceId: "workplace-1",
-                type: "NORMAL",
-                period: 2,
-                startTime: "1970-01-01T11:10:00.000Z",
-                endTime: "1970-01-01T12:10:00.000Z",
-              },
-              {
-                id: "tt-intensive-1",
-                workplaceId: "workplace-1",
-                type: "INTENSIVE",
-                period: 1,
-                startTime: "1970-01-01T12:00:00.000Z",
-                endTime: "1970-01-01T12:50:00.000Z",
-              },
-              {
-                id: "tt-intensive-2",
-                workplaceId: "workplace-1",
-                type: "INTENSIVE",
-                period: 2,
-                startTime: "1970-01-01T13:00:00.000Z",
-                endTime: "1970-01-01T14:10:00.000Z",
-              },
-              {
-                id: "tt-intensive-3",
-                workplaceId: "workplace-1",
-                type: "INTENSIVE",
-                period: 3,
-                startTime: "1970-01-01T14:20:00.000Z",
-                endTime: "1970-01-01T15:20:00.000Z",
+                name: "講習授業",
+                sortOrder: 1,
+                createdAt: "2026-03-01T00:00:00.000Z",
+                updatedAt: "2026-03-01T00:00:00.000Z",
+                items: [
+                  {
+                    id: "tt-intensive-1",
+                    timetableSetId: "set-intensive",
+                    period: 1,
+                    startTime: "1970-01-01T12:00:00.000Z",
+                    endTime: "1970-01-01T12:50:00.000Z",
+                  },
+                  {
+                    id: "tt-intensive-2",
+                    timetableSetId: "set-intensive",
+                    period: 2,
+                    startTime: "1970-01-01T13:00:00.000Z",
+                    endTime: "1970-01-01T14:10:00.000Z",
+                  },
+                  {
+                    id: "tt-intensive-3",
+                    timetableSetId: "set-intensive",
+                    period: 3,
+                    startTime: "1970-01-01T14:20:00.000Z",
+                    endTime: "1970-01-01T15:20:00.000Z",
+                  },
+                ],
               },
             ],
           });
@@ -740,7 +765,7 @@ describe("shift flow integration", () => {
     ) as {
       shiftType: string;
       lessonRange?: {
-        lessonType: string;
+        timetableSetId: string;
         startPeriod: number;
         endPeriod: number;
       };
@@ -749,7 +774,7 @@ describe("shift flow integration", () => {
     expect(body).toMatchObject({
       shiftType: "LESSON",
       lessonRange: {
-        lessonType: "INTENSIVE",
+        timetableSetId: "set-intensive",
         startPeriod: 2,
         endPeriod: 2,
       },
@@ -778,6 +803,7 @@ describe("shift flow integration", () => {
               breakMinutes: 0,
               shiftType: "LESSON",
               lessonRange: {
+                timetableSetId: "set-intensive",
                 startPeriod: 5,
                 endPeriod: 5,
               },
@@ -789,44 +815,59 @@ describe("shift flow integration", () => {
           return jsonResponse({
             data: [
               {
-                id: "tt-normal-1",
+                id: "set-normal",
                 workplaceId: "workplace-1",
-                type: "NORMAL",
-                period: 1,
-                startTime: "1970-01-01T10:00:00.000Z",
-                endTime: "1970-01-01T11:00:00.000Z",
+                name: "通常授業",
+                sortOrder: 0,
+                createdAt: "2026-03-01T00:00:00.000Z",
+                updatedAt: "2026-03-01T00:00:00.000Z",
+                items: [
+                  {
+                    id: "tt-normal-1",
+                    timetableSetId: "set-normal",
+                    period: 1,
+                    startTime: "1970-01-01T10:00:00.000Z",
+                    endTime: "1970-01-01T11:00:00.000Z",
+                  },
+                  {
+                    id: "tt-normal-2",
+                    timetableSetId: "set-normal",
+                    period: 2,
+                    startTime: "1970-01-01T11:10:00.000Z",
+                    endTime: "1970-01-01T12:10:00.000Z",
+                  },
+                  {
+                    id: "tt-normal-3",
+                    timetableSetId: "set-normal",
+                    period: 3,
+                    startTime: "1970-01-01T12:20:00.000Z",
+                    endTime: "1970-01-01T13:20:00.000Z",
+                  },
+                ],
               },
               {
-                id: "tt-normal-2",
+                id: "set-intensive",
                 workplaceId: "workplace-1",
-                type: "NORMAL",
-                period: 2,
-                startTime: "1970-01-01T11:10:00.000Z",
-                endTime: "1970-01-01T12:10:00.000Z",
-              },
-              {
-                id: "tt-normal-3",
-                workplaceId: "workplace-1",
-                type: "NORMAL",
-                period: 3,
-                startTime: "1970-01-01T12:20:00.000Z",
-                endTime: "1970-01-01T13:20:00.000Z",
-              },
-              {
-                id: "tt-intensive-4",
-                workplaceId: "workplace-1",
-                type: "INTENSIVE",
-                period: 4,
-                startTime: "1970-01-01T14:30:00.000Z",
-                endTime: "1970-01-01T15:20:00.000Z",
-              },
-              {
-                id: "tt-intensive-5",
-                workplaceId: "workplace-1",
-                type: "INTENSIVE",
-                period: 5,
-                startTime: "1970-01-01T15:30:00.000Z",
-                endTime: "1970-01-01T16:20:00.000Z",
+                name: "講習授業",
+                sortOrder: 1,
+                createdAt: "2026-03-01T00:00:00.000Z",
+                updatedAt: "2026-03-01T00:00:00.000Z",
+                items: [
+                  {
+                    id: "tt-intensive-4",
+                    timetableSetId: "set-intensive",
+                    period: 4,
+                    startTime: "1970-01-01T14:30:00.000Z",
+                    endTime: "1970-01-01T15:20:00.000Z",
+                  },
+                  {
+                    id: "tt-intensive-5",
+                    timetableSetId: "set-intensive",
+                    period: 5,
+                    startTime: "1970-01-01T15:30:00.000Z",
+                    endTime: "1970-01-01T16:20:00.000Z",
+                  },
+                ],
               },
             ],
           });
@@ -890,7 +931,7 @@ describe("shift flow integration", () => {
     ) as {
       shiftType: string;
       lessonRange?: {
-        lessonType: string;
+        timetableSetId: string;
         startPeriod: number;
         endPeriod: number;
       };
@@ -899,7 +940,7 @@ describe("shift flow integration", () => {
     expect(body).toMatchObject({
       shiftType: "LESSON",
       lessonRange: {
-        lessonType: "INTENSIVE",
+        timetableSetId: "set-intensive",
         startPeriod: 5,
         endPeriod: 5,
       },

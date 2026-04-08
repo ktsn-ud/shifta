@@ -29,7 +29,6 @@ import {
   TableHeader,
   TableRow,
 } from "@/components/ui/table";
-import { formatLessonType } from "@/lib/enum-labels";
 import { messages, toErrorMessage } from "@/lib/messages";
 
 const workplaceResponseSchema = z.object({
@@ -41,17 +40,28 @@ const workplaceResponseSchema = z.object({
   }),
 });
 
-const timetableSchema = z.object({
+const timetableItemSchema = z.object({
   id: z.string(),
-  workplaceId: z.string(),
-  type: z.enum(["NORMAL", "INTENSIVE"]),
+  timetableSetId: z.string(),
   period: z.number().int().positive(),
   startTime: z.string(),
   endTime: z.string(),
+  startTimeLabel: z.string().optional(),
+  endTimeLabel: z.string().optional(),
+});
+
+const timetableSetSchema = z.object({
+  id: z.string(),
+  workplaceId: z.string(),
+  name: z.string(),
+  sortOrder: z.number().int(),
+  createdAt: z.string(),
+  updatedAt: z.string(),
+  items: z.array(timetableItemSchema),
 });
 
 const timetableListResponseSchema = z.object({
-  data: z.array(timetableSchema),
+  data: z.array(timetableSetSchema),
 });
 
 type TimetableListProps = {
@@ -62,10 +72,10 @@ type TimetableListProps = {
     type: "GENERAL" | "CRAM_SCHOOL";
     color: string;
   } | null;
-  initialTimetables?: Timetable[];
+  initialTimetables?: TimetableSet[];
 };
 
-type Timetable = z.infer<typeof timetableSchema>;
+type TimetableSet = z.infer<typeof timetableSetSchema>;
 
 async function readApiErrorMessage(
   response: Response,
@@ -107,7 +117,7 @@ export function TimetableList({
     type: "GENERAL" | "CRAM_SCHOOL";
     color: string;
   } | null>(() => initialWorkplace ?? null);
-  const [timetables, setTimetables] = useState<Timetable[]>(
+  const [timetableSets, setTimetableSets] = useState<TimetableSet[]>(
     () => initialTimetables ?? [],
   );
   const [isLoading, setIsLoading] = useState(() => !hasInitialData);
@@ -118,17 +128,8 @@ export function TimetableList({
   const [deleteError, setDeleteError] = useState<string | null>(null);
 
   const deletingTarget = useMemo(
-    () => timetables.find((timetable) => timetable.id === deletingId) ?? null,
-    [deletingId, timetables],
-  );
-
-  const normalTimetables = useMemo(
-    () => timetables.filter((timetable) => timetable.type === "NORMAL"),
-    [timetables],
-  );
-  const intensiveTimetables = useMemo(
-    () => timetables.filter((timetable) => timetable.type === "INTENSIVE"),
-    [timetables],
+    () => timetableSets.find((set) => set.id === deletingId) ?? null,
+    [deletingId, timetableSets],
   );
 
   useEffect(() => {
@@ -170,7 +171,7 @@ export function TimetableList({
         setWorkplace(parsedWorkplace.data.data);
 
         if (parsedWorkplace.data.data.type !== "CRAM_SCHOOL") {
-          setTimetables([]);
+          setTimetableSets([]);
           return;
         }
 
@@ -196,7 +197,7 @@ export function TimetableList({
           throw new Error("時間割一覧レスポンスの形式が不正です。");
         }
 
-        setTimetables(parsedTimetables.data.data);
+        setTimetableSets(parsedTimetables.data.data);
       } catch (error) {
         if (abortController.signal.aborted) {
           return;
@@ -204,7 +205,7 @@ export function TimetableList({
 
         console.error("failed to fetch timetables", error);
         setWorkplace(null);
-        setTimetables([]);
+        setTimetableSets([]);
         setErrorMessage(
           error instanceof Error
             ? error.message
@@ -241,18 +242,21 @@ export function TimetableList({
       );
       if (response.ok === false) {
         throw new Error(
-          await readApiErrorMessage(response, "時間割の削除に失敗しました。"),
+          await readApiErrorMessage(
+            response,
+            "時間割セットの削除に失敗しました。",
+          ),
         );
       }
 
-      setTimetables((current) =>
-        current.filter((timetable) => timetable.id !== deletingTarget.id),
+      setTimetableSets((current) =>
+        current.filter((set) => set.id !== deletingTarget.id),
       );
       setDeletingId(null);
-      setInfoMessage("時間割を削除しました。");
+      setInfoMessage("時間割セットを削除しました。");
       toast.success(messages.success.timetableDeleted);
     } catch (error) {
-      console.error("failed to delete timetable", error);
+      console.error("failed to delete timetable set", error);
       const message = toErrorMessage(
         error,
         messages.error.timetableDeleteFailed,
@@ -267,69 +271,6 @@ export function TimetableList({
     }
   };
 
-  const renderTable = (title: string, items: Timetable[]) => (
-    <Card>
-      <CardHeader>
-        <CardTitle>{title}</CardTitle>
-        <CardDescription>{title}のコマ一覧</CardDescription>
-      </CardHeader>
-      <CardContent>
-        <Table>
-          <TableHeader>
-            <TableRow>
-              <TableHead>コマ番号</TableHead>
-              <TableHead>開始時刻</TableHead>
-              <TableHead>終了時刻</TableHead>
-              <TableHead className="text-right">操作</TableHead>
-            </TableRow>
-          </TableHeader>
-          <TableBody>
-            {items.length === 0 ? (
-              <TableRow>
-                <TableCell colSpan={4} className="h-16 text-center">
-                  登録がありません。
-                </TableCell>
-              </TableRow>
-            ) : (
-              items.map((timetable) => (
-                <TableRow key={timetable.id}>
-                  <TableCell className="font-medium">
-                    {timetable.period}限
-                  </TableCell>
-                  <TableCell>{toTimeOnly(timetable.startTime)}</TableCell>
-                  <TableCell>{toTimeOnly(timetable.endTime)}</TableCell>
-                  <TableCell>
-                    <div className="flex justify-end gap-2">
-                      <Link
-                        href={`/my/workplaces/${workplaceId}/timetables/${timetable.id}/edit`}
-                        className={buttonVariants({
-                          size: "sm",
-                          variant: "outline",
-                        })}
-                      >
-                        編集
-                      </Link>
-                      <Button
-                        size="sm"
-                        variant="destructive"
-                        onClick={() => {
-                          setDeleteError(null);
-                          setDeletingId(timetable.id);
-                        }}
-                      >
-                        削除
-                      </Button>
-                    </div>
-                  </TableCell>
-                </TableRow>
-              ))
-            )}
-          </TableBody>
-        </Table>
-      </CardContent>
-    </Card>
-  );
-
   return (
     <section className="space-y-6 p-4 md:p-6">
       <header className="flex flex-wrap items-start justify-between gap-3">
@@ -337,8 +278,8 @@ export function TimetableList({
           <h2 className="text-xl font-semibold">時間割</h2>
           <p className="mt-1 text-sm text-muted-foreground">
             {workplace
-              ? `${workplace.name} の塾時間割を管理します。`
-              : "勤務先ごとの塾時間割を管理します。"}
+              ? `${workplace.name} の時間割セットを管理します。`
+              : "勤務先ごとの時間割セットを管理します。"}
           </p>
         </div>
         <div className="flex flex-wrap gap-2">
@@ -353,10 +294,10 @@ export function TimetableList({
               href={`/my/workplaces/${workplaceId}/timetables/new`}
               className={buttonVariants({})}
             >
-              新規時間割追加
+              新規時間割セット追加
             </Link>
           ) : (
-            <Button disabled>新規時間割追加</Button>
+            <Button disabled>新規時間割セット追加</Button>
           )}
         </div>
       </header>
@@ -384,10 +325,85 @@ export function TimetableList({
             </CardDescription>
           </CardHeader>
         </Card>
+      ) : timetableSets.length === 0 ? (
+        <Card>
+          <CardHeader>
+            <CardTitle>時間割セットがありません</CardTitle>
+            <CardDescription>
+              「新規時間割セット追加」から作成してください。
+            </CardDescription>
+          </CardHeader>
+        </Card>
       ) : (
-        <div className="grid gap-4 xl:grid-cols-2">
-          {renderTable(formatLessonType("NORMAL"), normalTimetables)}
-          {renderTable(formatLessonType("INTENSIVE"), intensiveTimetables)}
+        <div className="grid gap-4">
+          {timetableSets.map((set) => (
+            <Card key={set.id}>
+              <CardHeader>
+                <CardTitle>{set.name}</CardTitle>
+                <CardDescription>コマ数: {set.items.length}</CardDescription>
+              </CardHeader>
+              <CardContent className="space-y-3">
+                <Table>
+                  <TableHeader>
+                    <TableRow>
+                      <TableHead>コマ番号</TableHead>
+                      <TableHead>開始時刻</TableHead>
+                      <TableHead>終了時刻</TableHead>
+                    </TableRow>
+                  </TableHeader>
+                  <TableBody>
+                    {set.items.length === 0 ? (
+                      <TableRow>
+                        <TableCell colSpan={3} className="h-14 text-center">
+                          登録がありません。
+                        </TableCell>
+                      </TableRow>
+                    ) : (
+                      set.items
+                        .slice()
+                        .sort((left, right) => left.period - right.period)
+                        .map((item) => (
+                          <TableRow key={item.id}>
+                            <TableCell className="font-medium">
+                              {item.period}限
+                            </TableCell>
+                            <TableCell>
+                              {item.startTimeLabel ??
+                                toTimeOnly(item.startTime)}
+                            </TableCell>
+                            <TableCell>
+                              {item.endTimeLabel ?? toTimeOnly(item.endTime)}
+                            </TableCell>
+                          </TableRow>
+                        ))
+                    )}
+                  </TableBody>
+                </Table>
+
+                <div className="flex justify-end gap-2">
+                  <Link
+                    href={`/my/workplaces/${workplaceId}/timetables/${set.id}/edit`}
+                    className={buttonVariants({
+                      size: "sm",
+                      variant: "outline",
+                    })}
+                  >
+                    編集
+                  </Link>
+                  <Button
+                    size="sm"
+                    variant="destructive"
+                    onClick={() => {
+                      setDeleteError(null);
+                      setDeletingId(set.id);
+                    }}
+                  >
+                    削除
+                  </Button>
+                </div>
+              </CardContent>
+            </Card>
+          ))}
         </div>
       )}
 
@@ -402,8 +418,12 @@ export function TimetableList({
       >
         <DialogContent>
           <DialogHeader>
-            <DialogTitle>時間割を削除しますか？</DialogTitle>
-            <DialogDescription>この操作は取り消せません。</DialogDescription>
+            <DialogTitle>時間割セットを削除しますか？</DialogTitle>
+            <DialogDescription>
+              {deletingTarget
+                ? `${deletingTarget.name} を削除します。この操作は取り消せません。`
+                : "この操作は取り消せません。"}
+            </DialogDescription>
           </DialogHeader>
 
           {deleteError ? (

@@ -41,7 +41,6 @@ type InitialRuleValues = {
   startDate: string;
   endDate: string;
   baseHourlyWage: string;
-  perLessonWage: string;
   holidayHourlyWage: string;
   nightMultiplier: string;
   overtimeMultiplier: string;
@@ -144,18 +143,6 @@ function validate(
     errors.endDate = "適用終了日は開始日より後の日付を指定してください。";
   }
 
-  if (values.type === "CRAM_SCHOOL") {
-    const perLessonWage = Number(initialRuleValues.perLessonWage);
-    if (
-      !initialRuleValues.perLessonWage ||
-      Number.isFinite(perLessonWage) === false
-    ) {
-      errors.perLessonWage = "コマ給は必須です。";
-    } else if (perLessonWage <= 0) {
-      errors.perLessonWage = "コマ給は正の数で入力してください。";
-    }
-  }
-
   const baseHourlyWage = Number(initialRuleValues.baseHourlyWage);
   if (
     !initialRuleValues.baseHourlyWage ||
@@ -235,7 +222,6 @@ export function WorkplaceForm({ mode, workplaceId }: WorkplaceFormProps) {
       startDate: toDateOnlyString(new Date()),
       endDate: "",
       baseHourlyWage: "1000",
-      perLessonWage: "2000",
       holidayHourlyWage: "",
       nightMultiplier: "1.25",
       overtimeMultiplier: "1.25",
@@ -352,7 +338,6 @@ export function WorkplaceForm({ mode, workplaceId }: WorkplaceFormProps) {
           startDate: string;
           endDate: string | null;
           baseHourlyWage: number;
-          perLessonWage: number | null;
           holidayHourlyWage: number | null;
           nightMultiplier: number;
           overtimeMultiplier: number;
@@ -372,10 +357,6 @@ export function WorkplaceForm({ mode, workplaceId }: WorkplaceFormProps) {
           startDate: initialRuleValues.startDate,
           endDate: initialRuleValues.endDate ? initialRuleValues.endDate : null,
           baseHourlyWage: Number(initialRuleValues.baseHourlyWage),
-          perLessonWage:
-            values.type === "CRAM_SCHOOL"
-              ? Number(initialRuleValues.perLessonWage)
-              : null,
           holidayHourlyWage: initialRuleValues.holidayHourlyWage
             ? Number(initialRuleValues.holidayHourlyWage)
             : null,
@@ -623,42 +604,9 @@ export function WorkplaceForm({ mode, workplaceId }: WorkplaceFormProps) {
                     </FieldContent>
                   </Field>
 
-                  {values.type === "CRAM_SCHOOL" ? (
-                    <Field data-invalid={Boolean(errors.perLessonWage)}>
-                      <FieldLabel htmlFor="initial-rule-per-lesson-wage">
-                        コマ給
-                      </FieldLabel>
-                      <FieldContent>
-                        <div className="flex items-center gap-2">
-                          <Input
-                            id="initial-rule-per-lesson-wage"
-                            type="number"
-                            min="0"
-                            step="0.01"
-                            value={initialRuleValues.perLessonWage}
-                            onChange={(event) => {
-                              const nextValue = event.currentTarget.value;
-                              setInitialRuleValues((current) => ({
-                                ...current,
-                                perLessonWage: nextValue,
-                              }));
-                            }}
-                            className="max-w-20"
-                          />
-                          <span className="shrink-0 text-sm text-muted-foreground">
-                            円/コマ
-                          </span>
-                        </div>
-                        <FormErrorMessage message={errors.perLessonWage} />
-                      </FieldContent>
-                    </Field>
-                  ) : null}
-
                   <Field data-invalid={Boolean(errors.baseHourlyWage)}>
                     <FieldLabel htmlFor="initial-rule-base-hourly-wage">
-                      {values.type === "CRAM_SCHOOL"
-                        ? "基本時給（事務）"
-                        : "基本時給"}
+                      基本時給
                     </FieldLabel>
                     <FieldContent>
                       <div className="flex items-center gap-2">
