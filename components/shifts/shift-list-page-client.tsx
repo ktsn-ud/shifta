@@ -38,8 +38,9 @@ import {
   startOfMonth,
   toMonthInputValue,
 } from "@/lib/calendar/date";
-import { messages } from "@/lib/messages";
+import { messages, toErrorMessage } from "@/lib/messages";
 import { formatShiftWorkplaceLabel } from "@/lib/shifts/format";
+import { resolveUserFacingErrorFromResponse } from "@/lib/user-facing-error";
 import { type MonthShift, useMonthShifts } from "@/hooks/use-month-shifts";
 
 type SortColumn =
@@ -356,15 +357,17 @@ export function ShiftListPageClient({
         body: JSON.stringify({ shiftIds }),
       });
 
+      if (response.ok === false) {
+        const resolved = await resolveUserFacingErrorFromResponse(
+          response,
+          messages.error.shiftDeleteFailed,
+        );
+        throw new Error(resolved.message);
+      }
+
       const payload = (await response.json().catch(() => null)) as {
         deletedCount?: number;
-        error?: string;
       } | null;
-
-      if (response.ok === false) {
-        const message = payload?.error ?? messages.error.shiftDeleteFailed;
-        throw new Error(message);
-      }
 
       const deletedCount = payload?.deletedCount ?? shiftIds.length;
 
@@ -377,10 +380,7 @@ export function ShiftListPageClient({
       });
     } catch (error) {
       console.error("failed to bulk delete shifts", error);
-      const message =
-        error instanceof Error
-          ? error.message
-          : messages.error.shiftDeleteFailed;
+      const message = toErrorMessage(error, messages.error.shiftDeleteFailed);
       setDeleteErrorMessage(message);
       toast.error(messages.error.shiftDeleteFailed, {
         description: message,

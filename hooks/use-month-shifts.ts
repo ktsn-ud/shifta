@@ -6,6 +6,7 @@ import {
   startOfMonth,
   toDateOnlyString,
 } from "@/lib/calendar/date";
+import { toUserFacingMessage } from "@/lib/user-facing-error";
 
 const MONTH_SHIFTS_CACHE_TTL_MS = 5 * 60 * 1000;
 
@@ -294,7 +295,9 @@ export function useMonthShifts(month: Date, options: UseMonthShiftsOptions) {
 
         console.error("useMonthShifts failed", error);
         setShifts([]);
-        setErrorMessage("シフト一覧の取得に失敗しました");
+        setErrorMessage(
+          toUserFacingMessage(error, "シフト一覧の取得に失敗しました。"),
+        );
       } finally {
         if (abortController.signal.aborted === false) {
           setIsLoading(false);

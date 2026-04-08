@@ -1,3 +1,5 @@
+import { toUserFacingMessage } from "@/lib/user-facing-error";
+
 export const messages = {
   success: {
     shiftCreated: "シフトを登録しました。",
@@ -42,9 +44,5 @@ export const messages = {
 } as const;
 
 export function toErrorMessage(error: unknown, fallback: string): string {
-  if (error instanceof Error && error.message.length > 0) {
-    return error.message;
-  }
-
-  return fallback;
+  return toUserFacingMessage(error, fallback);
 }

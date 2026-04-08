@@ -33,6 +33,7 @@ import {
   toDateOnlyString,
   toMonthInputValue,
 } from "@/lib/calendar/date";
+import { toErrorMessage } from "@/lib/messages";
 import { type PayrollSummaryResult } from "@/lib/payroll/summary";
 
 type PeriodMode = "month" | "custom";
@@ -259,7 +260,9 @@ export function SummaryPageClient({
 
         console.error("failed to fetch payroll summary", error);
         setSummary(null);
-        setErrorMessage("給与集計の取得に失敗しました。");
+        setErrorMessage(
+          toErrorMessage(error, "給与集計の取得に失敗しました。"),
+        );
       } finally {
         if (abortController.signal.aborted === false) {
           setIsLoading(false);

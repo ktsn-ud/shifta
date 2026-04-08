@@ -31,6 +31,7 @@ import {
 } from "@/components/ui/table";
 import { formatWorkplaceType } from "@/lib/enum-labels";
 import { messages, toErrorMessage } from "@/lib/messages";
+import { resolveUserFacingErrorFromResponse } from "@/lib/user-facing-error";
 
 const workplaceSchema = z.object({
   id: z.string(),
@@ -70,16 +71,8 @@ async function readApiErrorMessage(
   response: Response,
   fallback: string,
 ): Promise<string> {
-  try {
-    const payload = (await response.json()) as { error?: unknown };
-    if (typeof payload.error === "string" && payload.error.length > 0) {
-      return payload.error;
-    }
-  } catch {
-    return fallback;
-  }
-
-  return fallback;
+  const resolved = await resolveUserFacingErrorFromResponse(response, fallback);
+  return resolved.message;
 }
 
 export function WorkplaceList({ initialWorkplaces }: WorkplaceListProps) {
@@ -142,9 +135,7 @@ export function WorkplaceList({ initialWorkplaces }: WorkplaceListProps) {
         console.error("failed to fetch workplaces", error);
         setWorkplaces([]);
         setErrorMessage(
-          error instanceof Error
-            ? error.message
-            : "勤務先一覧の取得に失敗しました。",
+          toErrorMessage(error, "勤務先一覧の取得に失敗しました。"),
         );
       } finally {
         if (abortController.signal.aborted === false) {

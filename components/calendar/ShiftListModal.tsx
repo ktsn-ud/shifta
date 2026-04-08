@@ -13,7 +13,7 @@ import {
   DialogHeader,
   DialogTitle,
 } from "@/components/ui/dialog";
-import { messages } from "@/lib/messages";
+import { messages, toErrorMessage } from "@/lib/messages";
 import { formatShiftWorkplaceLabel } from "@/lib/shifts/format";
 
 type ShiftListModalShift = {
@@ -221,10 +221,10 @@ export function ShiftListModal({
                           try {
                             await onRetrySync(shift.id);
                           } catch (error) {
-                            const message =
-                              error instanceof Error
-                                ? error.message
-                                : messages.error.calendarSyncFailed;
+                            const message = toErrorMessage(
+                              error,
+                              messages.error.calendarSyncFailed,
+                            );
                             setRetryError(message);
                             toast.error(messages.error.calendarSyncFailed, {
                               description: message,

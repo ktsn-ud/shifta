@@ -18,6 +18,7 @@ import { RadioGroup, RadioGroupItem } from "@/components/ui/radio-group";
 import { toDateOnlyString } from "@/lib/calendar/date";
 import { formatHolidayType, formatWorkplaceType } from "@/lib/enum-labels";
 import { messages, toErrorMessage } from "@/lib/messages";
+import { resolveUserFacingErrorFromResponse } from "@/lib/user-facing-error";
 
 const colorRegex = /^#[0-9A-Fa-f]{6}$/;
 const timeRegex = /^([01]\d|2[0-3]):([0-5]\d)$/;
@@ -96,16 +97,8 @@ async function readApiErrorMessage(
   response: Response,
   fallback: string,
 ): Promise<string> {
-  try {
-    const payload = (await response.json()) as { error?: unknown };
-    if (typeof payload.error === "string" && payload.error.length > 0) {
-      return payload.error;
-    }
-  } catch {
-    return fallback;
-  }
-
-  return fallback;
+  const resolved = await resolveUserFacingErrorFromResponse(response, fallback);
+  return resolved.message;
 }
 
 function validate(
@@ -286,10 +279,7 @@ export function WorkplaceForm({ mode, workplaceId }: WorkplaceFormProps) {
 
         console.error("failed to fetch workplace", error);
         setErrors({
-          form:
-            error instanceof Error
-              ? error.message
-              : "勤務先の取得に失敗しました。",
+          form: toErrorMessage(error, "勤務先の取得に失敗しました。"),
         });
       } finally {
         if (abortController.signal.aborted === false) {

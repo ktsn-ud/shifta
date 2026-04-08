@@ -9,6 +9,7 @@ import {
   type UnconfirmedShiftItem,
 } from "@/components/shifts/shift-confirmation-types";
 import { SpinnerPanel } from "@/components/ui/spinner";
+import { toErrorMessage } from "@/lib/messages";
 
 type UnconfirmedShiftApiResponse = {
   shifts: Array<{
@@ -164,8 +165,15 @@ export function ShiftConfirmPageClient({
       console.error("failed to fetch shift confirmation data", error);
       setUnconfirmedShifts([]);
       setConfirmedShiftGroups([]);
-      setErrorMessage("シフト確定ページのデータ取得に失敗しました。");
-      toast.error("シフト確定ページのデータ取得に失敗しました。");
+      const message = toErrorMessage(
+        error,
+        "シフト確定ページのデータ取得に失敗しました。",
+      );
+      setErrorMessage(message);
+      toast.error("シフト確定ページのデータ取得に失敗しました。", {
+        description: message,
+        duration: 6000,
+      });
     } finally {
       setIsLoading(false);
     }
