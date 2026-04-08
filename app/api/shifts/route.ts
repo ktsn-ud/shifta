@@ -101,7 +101,14 @@ export async function POST(request: Request) {
       },
       include: {
         lessonRange: true,
-        workplace: true,
+        workplace: {
+          select: {
+            id: true,
+            name: true,
+            color: true,
+            type: true,
+          },
+        },
       },
     });
 
@@ -189,7 +196,14 @@ export async function GET(request: Request) {
       where,
       include: {
         lessonRange: true,
-        workplace: true,
+        workplace: {
+          select: {
+            id: true,
+            name: true,
+            color: true,
+            type: true,
+          },
+        },
       },
       orderBy: [{ date: "desc" }, { startTime: "desc" }],
     });
@@ -308,14 +322,6 @@ export async function DELETE(request: Request) {
     }
 
     await prisma.$transaction(async (tx) => {
-      await tx.shiftLessonRange.deleteMany({
-        where: {
-          shiftId: {
-            in: uniqueShiftIds,
-          },
-        },
-      });
-
       const deleted = await tx.shift.deleteMany({
         where: {
           id: {

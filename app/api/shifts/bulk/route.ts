@@ -267,7 +267,14 @@ export async function POST(request: Request) {
             },
             include: {
               lessonRange: true,
-              workplace: true,
+              workplace: {
+                select: {
+                  id: true,
+                  name: true,
+                  color: true,
+                  type: true,
+                },
+              },
             },
             orderBy: [{ date: "asc" }, { startTime: "asc" }],
           })

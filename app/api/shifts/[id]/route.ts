@@ -31,7 +31,14 @@ async function findOwnedShift(shiftId: string, userId: string) {
     },
     include: {
       lessonRange: true,
-      workplace: true,
+      workplace: {
+        select: {
+          id: true,
+          name: true,
+          color: true,
+          type: true,
+        },
+      },
     },
   });
 }
@@ -121,7 +128,14 @@ export async function PUT(request: Request, context: Context) {
         where: { id: shift.id },
         include: {
           lessonRange: true,
-          workplace: true,
+          workplace: {
+            select: {
+              id: true,
+              name: true,
+              color: true,
+              type: true,
+            },
+          },
         },
       });
     });
@@ -182,10 +196,7 @@ export async function DELETE(request: Request, context: Context) {
       return jsonError("このシフトを削除する権限がありません", 403);
     }
 
-    await prisma.$transaction(async (tx) => {
-      await tx.shiftLessonRange.deleteMany({ where: { shiftId: id } });
-      await tx.shift.delete({ where: { id } });
-    });
+    await prisma.shift.delete({ where: { id } });
 
     after(async () => {
       try {
