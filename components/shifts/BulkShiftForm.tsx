@@ -619,6 +619,13 @@ export function BulkShiftForm() {
       })),
     [timetableSets],
   );
+  const timetableSetNameById = useMemo(
+    () =>
+      Object.fromEntries(
+        timetableSets.map((set) => [set.id, set.name] as const),
+      ),
+    [timetableSets],
+  );
 
   const calendarCells = useMemo(() => {
     return toMonthGrid(month);
@@ -1845,7 +1852,9 @@ export function BulkShiftForm() {
                     }}
                   >
                     <SelectTrigger>
-                      <SelectValue placeholder="時間割セットを選択" />
+                      <SelectValue placeholder="時間割セットを選択">
+                        {timetableSetNameById[defaults.timetableSetId]}
+                      </SelectValue>
                     </SelectTrigger>
                     <SelectContent>
                       <SelectGroup>
@@ -2223,7 +2232,9 @@ export function BulkShiftForm() {
                               }}
                             >
                               <SelectTrigger>
-                                <SelectValue placeholder="時間割セットを選択" />
+                                <SelectValue placeholder="時間割セットを選択">
+                                  {timetableSetNameById[row.timetableSetId]}
+                                </SelectValue>
                               </SelectTrigger>
                               <SelectContent>
                                 <SelectGroup>
