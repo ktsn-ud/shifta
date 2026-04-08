@@ -760,19 +760,7 @@ export function TimetableForm({
         </FieldGroup>
 
         <div className="space-y-3">
-          <div className="flex items-center justify-between">
-            <h3 className="text-sm font-semibold">コマ設定</h3>
-            <Button
-              type="button"
-              variant="outline"
-              size="sm"
-              onClick={appendItem}
-              disabled={isSubmitting}
-            >
-              <PlusIcon className="size-4" />
-              行を追加
-            </Button>
-          </div>
+          <h3 className="text-sm font-semibold">コマ設定</h3>
 
           <div className="space-y-3">
             {values.items.map((item, index) => {
@@ -853,28 +841,43 @@ export function TimetableForm({
               );
             })}
           </div>
-        </div>
 
-        {!isEdit ? (
-          <div className="space-y-3">
-            <div className="flex items-center justify-between">
-              <h3 className="text-sm font-semibold">
-                作成予定セット ({queuedSets.length})
-              </h3>
+          <div className="flex justify-center">
+            <div className="flex items-center gap-2">
               <Button
                 type="button"
                 variant="outline"
                 size="sm"
-                onClick={handleQueueCurrentSet}
+                onClick={appendItem}
                 disabled={isSubmitting}
               >
-                現在の入力を追加
+                <PlusIcon className="size-4" />
+                行を追加
               </Button>
+              {!isEdit ? (
+                <Button
+                  type="button"
+                  variant="outline"
+                  size="sm"
+                  onClick={handleQueueCurrentSet}
+                  disabled={isSubmitting}
+                >
+                  時間割セットを確定
+                </Button>
+              ) : null}
             </div>
+          </div>
+        </div>
+
+        {!isEdit ? (
+          <div className="space-y-3">
+            <h3 className="text-sm font-semibold">
+              作成予定セット ({queuedSets.length})
+            </h3>
 
             {queuedSets.length === 0 ? (
               <p className="rounded-md border px-3 py-2 text-sm text-muted-foreground">
-                追加済みのセットはありません。入力中のセットを「現在の入力を追加」で作成予定に積めます。
+                追加済みのセットはありません。入力中のセットを「時間割セットを確定」で作成予定に積めます。
               </p>
             ) : (
               <div className="space-y-2">
