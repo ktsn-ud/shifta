@@ -1,4 +1,3 @@
-import { randomUUID } from "node:crypto";
 import { after, NextResponse } from "next/server";
 import { requireCurrentUser } from "@/lib/api/current-user";
 import {
@@ -22,14 +21,6 @@ type Context = {
   params: Promise<{ id: string }>;
 };
 
-type LessonRangeWithSet = {
-  id: string;
-  shiftId: string;
-  startPeriod: number;
-  endPeriod: number;
-  timetableSetId: string;
-};
-
 async function findOwnedShift(shiftId: string, userId: string) {
   return prisma.shift.findFirst({
     where: {
@@ -40,39 +31,16 @@ async function findOwnedShift(shiftId: string, userId: string) {
     },
     include: {
       lessonRange: true,
-      workplace: true,
+      workplace: {
+        select: {
+          id: true,
+          name: true,
+          color: true,
+          type: true,
+        },
+      },
     },
   });
-}
-
-async function findLessonRangeWithSet(shiftId: string) {
-  const rows = await prisma.$queryRaw<Array<LessonRangeWithSet>>`
-    SELECT "id", "shiftId", "startPeriod", "endPeriod", "timetableSetId"
-    FROM "ShiftLessonRange"
-    WHERE "shiftId" = ${shiftId}
-    LIMIT 1
-  `;
-
-  return rows[0] ?? null;
-}
-
-async function hydrateLessonRangeWithSet<
-  T extends { id: string } & Record<string, unknown>,
->(shift: T & { lessonRange?: unknown }) {
-  const lessonRange = await findLessonRangeWithSet(shift.id);
-
-  return {
-    ...shift,
-    lessonRange: lessonRange
-      ? {
-          id: lessonRange.id,
-          shiftId: lessonRange.shiftId,
-          startPeriod: lessonRange.startPeriod,
-          endPeriod: lessonRange.endPeriod,
-          timetableSetId: lessonRange.timetableSetId,
-        }
-      : null,
-  };
 }
 
 export async function GET(_: Request, context: Context) {
@@ -88,8 +56,7 @@ export async function GET(_: Request, context: Context) {
       return jsonError("シフトが見つかりません", 404);
     }
 
-    const hydrated = await hydrateLessonRangeWithSet(shift);
-    return NextResponse.json({ data: hydrated });
+    return NextResponse.json({ data: shift });
   } catch (error) {
     console.error("GET /api/shifts/:id failed", error);
     return jsonError("シフト取得に失敗しました", 500);
@@ -139,29 +106,20 @@ export async function PUT(request: Request, context: Context) {
       });
 
       if (built.lessonRange) {
-        const lessonRows = await tx.$queryRaw<Array<{ id: string }>>`
-          SELECT "id"
-          FROM "ShiftLessonRange"
-          WHERE "shiftId" = ${id}
-          LIMIT 1
-        `;
-
-        if (lessonRows[0]) {
-          await tx.$executeRaw`
-            UPDATE "ShiftLessonRange"
-            SET "timetableSetId" = ${built.lessonRange.timetableSetId},
-                "startPeriod" = ${built.lessonRange.startPeriod},
-                "endPeriod" = ${built.lessonRange.endPeriod}
-            WHERE "shiftId" = ${id}
-          `;
-        } else {
-          await tx.$executeRaw`
-            INSERT INTO "ShiftLessonRange"
-              ("id", "shiftId", "timetableSetId", "startPeriod", "endPeriod")
-            VALUES
-              (${randomUUID()}, ${id}, ${built.lessonRange.timetableSetId}, ${built.lessonRange.startPeriod}, ${built.lessonRange.endPeriod})
-          `;
-        }
+        await tx.shiftLessonRange.upsert({
+          where: { shiftId: id },
+          update: {
+            timetableSetId: built.lessonRange.timetableSetId,
+            startPeriod: built.lessonRange.startPeriod,
+            endPeriod: built.lessonRange.endPeriod,
+          },
+          create: {
+            shiftId: id,
+            timetableSetId: built.lessonRange.timetableSetId,
+            startPeriod: built.lessonRange.startPeriod,
+            endPeriod: built.lessonRange.endPeriod,
+          },
+        });
       } else {
         await tx.shiftLessonRange.deleteMany({ where: { shiftId: id } });
       }
@@ -170,7 +128,14 @@ export async function PUT(request: Request, context: Context) {
         where: { id: shift.id },
         include: {
           lessonRange: true,
-          workplace: true,
+          workplace: {
+            select: {
+              id: true,
+              name: true,
+              color: true,
+              type: true,
+            },
+          },
         },
       });
     });
@@ -189,21 +154,9 @@ export async function PUT(request: Request, context: Context) {
       });
     }
 
-    const latest = updated
-      ? await prisma.shift.findUnique({
-          where: { id: updated.id },
-          include: {
-            lessonRange: true,
-            workplace: true,
-          },
-        })
-      : null;
-
-    const hydrated = latest ? await hydrateLessonRangeWithSet(latest) : null;
-
     return NextResponse.json({
-      data: hydrated,
-      syncStatus: hydrated ? "pending" : null,
+      data: updated,
+      syncStatus: updated ? "pending" : null,
     });
   } catch (error) {
     console.error("PUT /api/shifts/:id failed", error);
@@ -243,10 +196,7 @@ export async function DELETE(request: Request, context: Context) {
       return jsonError("このシフトを削除する権限がありません", 403);
     }
 
-    await prisma.$transaction(async (tx) => {
-      await tx.shiftLessonRange.deleteMany({ where: { shiftId: id } });
-      await tx.shift.delete({ where: { id } });
-    });
+    await prisma.shift.delete({ where: { id } });
 
     after(async () => {
       try {

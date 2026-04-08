@@ -11,6 +11,8 @@ import {
   buildShiftData,
   type BuiltShiftData,
   lessonRangeSchema,
+  type LessonTimeRangeResolver,
+  resolveLessonTimeRangeFromRows,
   ShiftValidationError,
   type ShiftInput,
 } from "../_shared";
@@ -45,6 +47,111 @@ type CreatedShift = {
   id: string;
 };
 
+type BulkShiftItem = z.infer<typeof bulkShiftItemSchema>;
+
+async function createBulkLessonTimeRangeResolver(
+  workplaceId: string,
+  shifts: BulkShiftItem[],
+): Promise<LessonTimeRangeResolver | undefined> {
+  const timetableSetIds = Array.from(
+    new Set(
+      shifts
+        .filter(
+          (
+            shift,
+          ): shift is BulkShiftItem & {
+            lessonRange: { timetableSetId: string };
+          } => shift.shiftType === "LESSON" && shift.lessonRange !== undefined,
+        )
+        .map((shift) => shift.lessonRange.timetableSetId),
+    ),
+  );
+
+  if (timetableSetIds.length === 0) {
+    return undefined;
+  }
+
+  const [ownedSets, timetableRows] = await Promise.all([
+    prisma.timetableSet.findMany({
+      where: {
+        id: { in: timetableSetIds },
+        workplaceId,
+      },
+      select: {
+        id: true,
+      },
+    }),
+    prisma.timetable.findMany({
+      where: {
+        timetableSetId: {
+          in: timetableSetIds,
+        },
+      },
+      select: {
+        timetableSetId: true,
+        period: true,
+        startTime: true,
+        endTime: true,
+      },
+      orderBy: [{ timetableSetId: "asc" }, { period: "asc" }],
+    }),
+  ]);
+
+  const ownedSetIds = new Set(ownedSets.map((set) => set.id));
+  const periodMapBySetId = new Map<
+    string,
+    Map<number, { period: number; startTime: Date; endTime: Date }>
+  >();
+
+  for (const row of timetableRows) {
+    if (!ownedSetIds.has(row.timetableSetId)) {
+      continue;
+    }
+
+    const periods = periodMapBySetId.get(row.timetableSetId) ?? new Map();
+    periods.set(row.period, {
+      period: row.period,
+      startTime: row.startTime,
+      endTime: row.endTime,
+    });
+    periodMapBySetId.set(row.timetableSetId, periods);
+  }
+
+  return async (resolverWorkplaceId, lessonRange) => {
+    if (resolverWorkplaceId !== workplaceId) {
+      throw new ShiftValidationError("選択した時間割セットが見つかりません");
+    }
+
+    if (!ownedSetIds.has(lessonRange.timetableSetId)) {
+      throw new ShiftValidationError("選択した時間割セットが見つかりません");
+    }
+
+    const periodMap = periodMapBySetId.get(lessonRange.timetableSetId);
+    if (!periodMap) {
+      throw new ShiftValidationError("指定コマ範囲の時間割が不足しています");
+    }
+
+    const timetables: Array<{
+      period: number;
+      startTime: Date;
+      endTime: Date;
+    }> = [];
+    for (
+      let period = lessonRange.startPeriod;
+      period <= lessonRange.endPeriod;
+      period += 1
+    ) {
+      const row = periodMap.get(period);
+      if (!row) {
+        throw new ShiftValidationError("指定コマ範囲の時間割が不足しています");
+      }
+      timetables.push(row);
+    }
+
+    return resolveLessonTimeRangeFromRows(lessonRange, timetables);
+  };
+}
+
 async function createShiftsInTransaction(
   builtItems: BuiltShiftData[],
 ): Promise<CreatedShift[]> {
@@ -76,13 +183,16 @@ async function createShiftsInTransaction(
   await prisma.$transaction(async (tx) => {
     await tx.shift.createMany({ data: shiftRows });
 
-    for (const row of lessonRangeRows) {
-      await tx.$executeRaw`
-        INSERT INTO "ShiftLessonRange"
-          ("id", "shiftId", "timetableSetId", "startPeriod", "endPeriod")
-        VALUES
-          (${randomUUID()}, ${row.shiftId}, ${row.timetableSetId}, ${row.startPeriod}, ${row.endPeriod})
-      `;
+    if (lessonRangeRows.length > 0) {
+      await tx.shiftLessonRange.createMany({
+        data: lessonRangeRows.map((row) => ({
+          id: randomUUID(),
+          shiftId: row.shiftId,
+          timetableSetId: row.timetableSetId,
+          startPeriod: row.startPeriod,
+          endPeriod: row.endPeriod,
+        })),
+      });
     }
   });
 
@@ -110,6 +220,10 @@ export async function POST(request: Request) {
     }
 
     const builtItems: BuiltShiftData[] = [];
+    const lessonTimeRangeResolver = await createBulkLessonTimeRangeResolver(
+      body.data.workplaceId,
+      body.data.shifts,
+    );
 
     for (let index = 0; index < body.data.shifts.length; index += 1) {
       const item = body.data.shifts[index];
@@ -121,6 +235,9 @@ export async function POST(request: Request) {
             workplaceId: body.data.workplaceId,
           },
           workplaceResult.workplace.type,
+          {
+            lessonTimeRangeResolver,
+          },
         );
 
         builtItems.push(built);
@@ -150,7 +267,14 @@ export async function POST(request: Request) {
             },
             include: {
               lessonRange: true,
-              workplace: true,
+              workplace: {
+                select: {
+                  id: true,
+                  name: true,
+                  color: true,
+                  type: true,
+                },
+              },
             },
             orderBy: [{ date: "asc" }, { startTime: "asc" }],
           })

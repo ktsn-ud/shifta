@@ -29,31 +29,26 @@ export async function POST(request: Request) {
       return jsonError("ログイン中ユーザー以外は作成できません", 403);
     }
 
-    const existingUser = await prisma.user.findUnique({
+    const user = await prisma.user.upsert({
       where: { email: targetEmail },
-    });
-
-    if (existingUser) {
-      const user = await prisma.user.update({
-        where: { id: existingUser.id },
-        data: {
-          name: body.data.name ?? existingUser.name,
-          image: body.data.image ?? existingUser.image,
-        },
-      });
-
-      return NextResponse.json({ data: user, created: false });
-    }
-
-    const user = await prisma.user.create({
-      data: {
+      update: {
+        ...(body.data.name !== undefined ? { name: body.data.name } : {}),
+        ...(body.data.image !== undefined ? { image: body.data.image } : {}),
+        // Keep the old API contract (`created`) while collapsing to one query.
+        updatedAt: new Date(),
+      },
+      create: {
         email: targetEmail,
         name: body.data.name ?? null,
         image: body.data.image ?? null,
       },
     });
 
-    return NextResponse.json({ data: user, created: true }, { status: 201 });
+    const created = user.createdAt.getTime() === user.updatedAt.getTime();
+    return NextResponse.json(
+      { data: user, created },
+      { status: created ? 201 : 200 },
+    );
   } catch (error) {
     console.error("POST /api/users failed", error);
     return jsonError("ユーザー作成に失敗しました", 500);

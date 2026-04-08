@@ -1,4 +1,5 @@
 import { NextResponse } from "next/server";
+import { type Prisma } from "@/lib/generated/prisma/client";
 import { z } from "zod";
 import { requireCurrentUser } from "@/lib/api/current-user";
 import {
@@ -79,18 +80,30 @@ function normalizePayrollRule(
   };
 }
 
-function isOverlapping(
-  startA: Date,
-  endA: Date | null,
-  startB: Date,
-  endB: Date | null,
-): boolean {
-  const startATime = startA.getTime();
-  const startBTime = startB.getTime();
-  const endATime = endA ? endA.getTime() : Number.POSITIVE_INFINITY;
-  const endBTime = endB ? endB.getTime() : Number.POSITIVE_INFINITY;
-
-  return startATime < endBTime && startBTime < endATime;
+function buildOverlappingPayrollRuleWhere(
+  workplaceId: string,
+  normalized: NormalizedPayrollRule,
+  excludeId?: string,
+): Prisma.PayrollRuleWhereInput {
+  return {
+    workplaceId,
+    ...(excludeId ? { id: { not: excludeId } } : {}),
+    ...(normalized.endDate
+      ? {
+          startDate: {
+            lt: normalized.endDate,
+          },
+        }
+      : {}),
+    OR: [
+      { endDate: null },
+      {
+        endDate: {
+          gt: normalized.startDate,
+        },
+      },
+    ],
+  };
 }
 
 async function findOverlappingRules(
@@ -98,26 +111,12 @@ async function findOverlappingRules(
   normalized: NormalizedPayrollRule,
   excludeId?: string,
 ) {
-  const rules = await prisma.payrollRule.findMany({
-    where: {
-      workplaceId,
-      ...(excludeId ? { id: { not: excludeId } } : {}),
-    },
+  return prisma.payrollRule.findMany({
+    where: buildOverlappingPayrollRuleWhere(workplaceId, normalized, excludeId),
     select: {
       id: true,
-      startDate: true,
-      endDate: true,
     },
   });
-
-  return rules.filter((rule) =>
-    isOverlapping(
-      normalized.startDate,
-      normalized.endDate,
-      rule.startDate,
-      rule.endDate,
-    ),
-  );
 }
 
 function validateByWorkplaceType(
