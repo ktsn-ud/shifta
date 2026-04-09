@@ -22,6 +22,7 @@ import {
 import { Input } from "@/components/ui/input";
 import { SpinnerPanel } from "@/components/ui/spinner";
 import { messages, toErrorMessage } from "@/lib/messages";
+import { resolveUserFacingErrorFromResponse } from "@/lib/user-facing-error";
 
 const timeRegex = /^([01]\d|2[0-3]):([0-5]\d)$/;
 
@@ -150,16 +151,8 @@ async function readApiErrorMessage(
   response: Response,
   fallback: string,
 ): Promise<string> {
-  try {
-    const payload = (await response.json()) as { error?: unknown };
-    if (typeof payload.error === "string" && payload.error.length > 0) {
-      return payload.error;
-    }
-  } catch {
-    return fallback;
-  }
-
-  return fallback;
+  const resolved = await resolveUserFacingErrorFromResponse(response, fallback);
+  return resolved.message;
 }
 
 function toTimeOnly(value: string): string {

@@ -14,6 +14,7 @@ import {
 } from "@/components/ui/card";
 import { CALENDAR_SETUP_SKIP_COOKIE } from "@/lib/google-calendar/constants";
 import { messages } from "@/lib/messages";
+import { resolveUserFacingErrorFromResponse } from "@/lib/user-facing-error";
 
 export default function CalendarSetupPage() {
   const router = useRouter();
@@ -43,22 +44,23 @@ export default function CalendarSetupPage() {
         return;
       }
 
-      const payload = (await response.json()) as {
-        error?: string;
-      };
-
-      setErrorMessage(
-        payload.error ?? "Googleカレンダーの初期設定に失敗しました",
+      const resolved = await resolveUserFacingErrorFromResponse(
+        response,
+        messages.error.calendarInitializeFailed,
       );
+
+      setErrorMessage(resolved.message);
       toast.error(messages.error.calendarInitializeFailed, {
-        description: payload.error ?? "しばらくしてから再度お試しください。",
+        description: resolved.message,
         duration: 6000,
       });
     } catch (error) {
       console.error("calendar initialization failed", error);
-      setErrorMessage("Googleカレンダーの初期設定に失敗しました");
+      const message =
+        "Googleカレンダーの初期設定に失敗しました。通信環境を確認し、時間をおいてから再実行してください。";
+      setErrorMessage(message);
       toast.error(messages.error.calendarInitializeFailed, {
-        description: messages.error.network,
+        description: message,
         duration: 6000,
       });
     } finally {

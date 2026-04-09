@@ -30,6 +30,7 @@ import {
   TableRow,
 } from "@/components/ui/table";
 import { messages, toErrorMessage } from "@/lib/messages";
+import { resolveUserFacingErrorFromResponse } from "@/lib/user-facing-error";
 
 const workplaceResponseSchema = z.object({
   data: z.object({
@@ -81,16 +82,8 @@ async function readApiErrorMessage(
   response: Response,
   fallback: string,
 ): Promise<string> {
-  try {
-    const payload = (await response.json()) as { error?: unknown };
-    if (typeof payload.error === "string" && payload.error.length > 0) {
-      return payload.error;
-    }
-  } catch {
-    return fallback;
-  }
-
-  return fallback;
+  const resolved = await resolveUserFacingErrorFromResponse(response, fallback);
+  return resolved.message;
 }
 
 function toTimeOnly(value: string): string {
@@ -207,9 +200,7 @@ export function TimetableList({
         setWorkplace(null);
         setTimetableSets([]);
         setErrorMessage(
-          error instanceof Error
-            ? error.message
-            : "時間割一覧の取得に失敗しました。",
+          toErrorMessage(error, "時間割一覧の取得に失敗しました。"),
         );
       } finally {
         if (abortController.signal.aborted === false) {

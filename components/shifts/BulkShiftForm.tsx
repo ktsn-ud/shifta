@@ -46,6 +46,7 @@ import {
 } from "@/lib/google-calendar/clientSync";
 import { CALENDAR_SETUP_PATH } from "@/lib/google-calendar/constants";
 import { messages, toErrorMessage } from "@/lib/messages";
+import { resolveUserFacingErrorFromResponse } from "@/lib/user-facing-error";
 import { cn } from "@/lib/utils";
 
 const LAST_WORKPLACE_ID_KEY = "shifta:last-workplace-id";
@@ -775,20 +776,18 @@ export function BulkShiftForm() {
         );
 
         if (response.ok === false) {
-          const payload = (await response.json().catch(() => null)) as {
-            error?: string;
-            details?: {
-              code?: string;
-            };
-          } | null;
+          const resolved = await resolveUserFacingErrorFromResponse(
+            response,
+            "Google予定の取得に失敗しました。",
+          );
 
-          if (payload?.details?.code === "READ_SCOPE_MISSING") {
+          if (resolved.code === "READ_SCOPE_MISSING") {
             throw new Error(
               "Google予定を表示するには、再ログインして権限を再同意してください。",
             );
           }
 
-          throw new Error(payload?.error ?? "Google予定の取得に失敗しました。");
+          throw new Error(resolved.message);
         }
 
         const payload = parseGoogleCalendarEventsResponse(

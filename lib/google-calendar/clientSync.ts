@@ -1,4 +1,9 @@
 import { requiresCalendarSetupBySyncErrorCode } from "./syncErrors";
+import {
+  buildActionableErrorMessage,
+  classifyApiErrorKind,
+  parseApiErrorMeta,
+} from "@/lib/user-facing-error";
 
 export type ParsedGoogleSyncFailure = {
   message: string;
@@ -47,9 +52,14 @@ export function parseGoogleSyncFailureFromPayload(
     return null;
   }
 
-  const message = getString(sync.errorMessage) ?? fallbackMessage;
   const errorCode = getString(sync.errorCode);
   const requiresCalendarSetup = getBoolean(sync.requiresCalendarSetup);
+  const kind = classifyApiErrorKind({
+    status: 502,
+    code: errorCode,
+    requiresCalendarSetup,
+  });
+  const message = buildActionableErrorMessage(fallbackMessage, kind);
 
   return buildSyncFailure(message, errorCode, requiresCalendarSetup);
 }
@@ -58,20 +68,9 @@ export async function readGoogleSyncFailureFromErrorResponse(
   response: Response,
   fallbackMessage: string,
 ): Promise<ParsedGoogleSyncFailure> {
-  try {
-    const payload = (await response.json()) as unknown;
-    const parsedPayload = toRecord(payload);
-    const details = toRecord(parsedPayload?.details);
+  const meta = await parseApiErrorMeta(response);
+  const kind = classifyApiErrorKind(meta);
+  const message = buildActionableErrorMessage(fallbackMessage, kind);
 
-    const message =
-      getString(details?.detail) ??
-      getString(parsedPayload?.error) ??
-      fallbackMessage;
-    const errorCode = getString(details?.code);
-    const requiresCalendarSetup = getBoolean(details?.requiresCalendarSetup);
-
-    return buildSyncFailure(message, errorCode, requiresCalendarSetup);
-  } catch {
-    return buildSyncFailure(fallbackMessage, null, false);
-  }
+  return buildSyncFailure(message, meta.code, meta.requiresCalendarSetup);
 }

@@ -31,6 +31,7 @@ import {
 } from "@/components/ui/table";
 import { dateKeyFromApiDate } from "@/lib/calendar/date";
 import { messages, toErrorMessage } from "@/lib/messages";
+import { resolveUserFacingErrorFromResponse } from "@/lib/user-facing-error";
 
 const workplaceResponseSchema = z.object({
   data: z.object({
@@ -81,16 +82,8 @@ async function readApiErrorMessage(
   response: Response,
   fallback: string,
 ): Promise<string> {
-  try {
-    const payload = (await response.json()) as { error?: unknown };
-    if (typeof payload.error === "string" && payload.error.length > 0) {
-      return payload.error;
-    }
-  } catch {
-    return fallback;
-  }
-
-  return fallback;
+  const resolved = await resolveUserFacingErrorFromResponse(response, fallback);
+  return resolved.message;
 }
 
 function toNumber(value: string | number | null): number | null {
@@ -245,9 +238,7 @@ export function PayrollRuleList({
         setWorkplace(null);
         setRules([]);
         setErrorMessage(
-          error instanceof Error
-            ? error.message
-            : "給与ルール一覧の取得に失敗しました。",
+          toErrorMessage(error, "給与ルール一覧の取得に失敗しました。"),
         );
       } finally {
         if (abortController.signal.aborted === false) {

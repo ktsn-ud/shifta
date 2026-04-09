@@ -18,6 +18,10 @@ import { RadioGroup, RadioGroupItem } from "@/components/ui/radio-group";
 import { dateKeyFromApiDate } from "@/lib/calendar/date";
 import { formatHolidayType, formatWorkplaceType } from "@/lib/enum-labels";
 import { messages, toErrorMessage } from "@/lib/messages";
+import {
+  buildActionableErrorMessage,
+  classifyApiErrorKind,
+} from "@/lib/user-facing-error";
 
 const timeRegex = /^([01]\d|2[0-3]):([0-5]\d)$/;
 
@@ -210,13 +214,15 @@ async function parseApiError(
   response: Response,
   fallback: string,
 ): Promise<ParsedApiError> {
+  let fieldErrors: Record<string, string> = {};
+  let code: string | null = null;
+  let requiresCalendarSetup = false;
+
   try {
     const payload = (await response.json()) as {
-      error?: unknown;
       details?: unknown;
     };
 
-    const fieldErrors: Record<string, string> = {};
     if (
       payload.details &&
       typeof payload.details === "object" &&
@@ -240,23 +246,28 @@ async function parseApiError(
         });
       }
     }
-
-    if (typeof payload.error === "string" && payload.error.length > 0) {
-      return {
-        message: payload.error,
-        fieldErrors,
-      };
+    if (payload.details && typeof payload.details === "object") {
+      const detailsRecord = payload.details as Record<string, unknown>;
+      if (typeof detailsRecord.code === "string") {
+        code = detailsRecord.code;
+      }
+      if (detailsRecord.requiresCalendarSetup === true) {
+        requiresCalendarSetup = true;
+      }
     }
   } catch {
-    return {
-      message: fallback,
-      fieldErrors: {},
-    };
+    fieldErrors = {};
   }
 
+  const kind = classifyApiErrorKind({
+    status: response.status,
+    code,
+    requiresCalendarSetup,
+  });
+
   return {
-    message: fallback,
-    fieldErrors: {},
+    message: buildActionableErrorMessage(fallback, kind),
+    fieldErrors,
   };
 }
 
@@ -446,10 +457,7 @@ export function PayrollRuleForm({
 
         console.error("failed to fetch payroll rule form data", error);
         setErrors({
-          form:
-            error instanceof Error
-              ? error.message
-              : "給与ルール情報の取得に失敗しました。",
+          form: toErrorMessage(error, "給与ルール情報の取得に失敗しました。"),
         });
       } finally {
         if (abortController.signal.aborted === false) {

@@ -40,6 +40,7 @@ import {
 } from "@/lib/google-calendar/clientSync";
 import { CALENDAR_SETUP_PATH } from "@/lib/google-calendar/constants";
 import { messages, toErrorMessage } from "@/lib/messages";
+import { resolveUserFacingErrorFromResponse } from "@/lib/user-facing-error";
 
 const LAST_WORKPLACE_ID_KEY = "shifta:last-workplace-id";
 const DATE_ONLY_REGEX = /^\d{4}-\d{2}-\d{2}$/;
@@ -552,8 +553,11 @@ export function ShiftForm({
         });
 
         if (response.ok === false) {
-          const payload = (await response.json()) as { error?: string };
-          throw new Error(payload.error ?? "シフトの取得に失敗しました");
+          const resolved = await resolveUserFacingErrorFromResponse(
+            response,
+            "シフトの取得に失敗しました。",
+          );
+          throw new Error(resolved.message);
         }
 
         const shift = parseShiftDetailResponse(
@@ -586,10 +590,7 @@ export function ShiftForm({
 
         console.error("failed to fetch shift", error);
         setErrors({
-          form:
-            error instanceof Error
-              ? error.message
-              : "シフトの取得に失敗しました。",
+          form: toErrorMessage(error, "シフトの取得に失敗しました。"),
         });
       } finally {
         if (abortController.signal.aborted === false) {
