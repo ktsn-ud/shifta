@@ -137,9 +137,19 @@ export function SummaryPageClient({
   }, [initialStartDate]);
 
   const [periodMode, setPeriodMode] = useState<PeriodMode>("month");
-  const [monthValue, setMonthValue] = useState(toMonthInputValue(initialMonth));
-  const [customStartDate, setCustomStartDate] = useState(initialStartDate);
-  const [customEndDate, setCustomEndDate] = useState(initialEndDate);
+  const [draftMonthValue, setDraftMonthValue] = useState(
+    toMonthInputValue(initialMonth),
+  );
+  const [appliedMonthValue, setAppliedMonthValue] = useState(
+    toMonthInputValue(initialMonth),
+  );
+  const [draftCustomStartDate, setDraftCustomStartDate] =
+    useState(initialStartDate);
+  const [draftCustomEndDate, setDraftCustomEndDate] = useState(initialEndDate);
+  const [appliedCustomStartDate, setAppliedCustomStartDate] =
+    useState(initialStartDate);
+  const [appliedCustomEndDate, setAppliedCustomEndDate] =
+    useState(initialEndDate);
   const [summary, setSummary] = useState<PayrollSummaryResult | null>(
     initialSummary,
   );
@@ -147,9 +157,30 @@ export function SummaryPageClient({
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
   const currentMonthValue = toMonthInputValue(startOfMonth(new Date()));
 
+  const applyMonthValue = (nextValue: string) => {
+    if (fromMonthInputValue(nextValue) === null) {
+      return;
+    }
+
+    setAppliedMonthValue(nextValue);
+  };
+
+  const applyCustomPeriod = (nextStartDate: string, nextEndDate: string) => {
+    setAppliedCustomStartDate(nextStartDate);
+    setAppliedCustomEndDate(nextEndDate);
+  };
+  const canApplyMonth =
+    fromMonthInputValue(draftMonthValue) !== null &&
+    draftMonthValue !== appliedMonthValue;
+  const canApplyCustom =
+    Boolean(draftCustomStartDate) &&
+    Boolean(draftCustomEndDate) &&
+    (draftCustomStartDate !== appliedCustomStartDate ||
+      draftCustomEndDate !== appliedCustomEndDate);
+
   const targetPeriod = useMemo(() => {
     if (periodMode === "month") {
-      const monthDate = fromMonthInputValue(monthValue) ?? initialMonth;
+      const monthDate = fromMonthInputValue(appliedMonthValue) ?? initialMonth;
       return {
         startDate: toDateOnlyString(startOfMonth(monthDate)),
         endDate: toDateOnlyString(endOfMonth(monthDate)),
@@ -157,10 +188,16 @@ export function SummaryPageClient({
     }
 
     return {
-      startDate: customStartDate,
-      endDate: customEndDate,
+      startDate: appliedCustomStartDate,
+      endDate: appliedCustomEndDate,
     };
-  }, [customEndDate, customStartDate, initialMonth, monthValue, periodMode]);
+  }, [
+    appliedCustomEndDate,
+    appliedCustomStartDate,
+    appliedMonthValue,
+    initialMonth,
+    periodMode,
+  ]);
 
   const previousDiff = useMemo(() => {
     if (!summary) {
@@ -172,7 +209,8 @@ export function SummaryPageClient({
 
   const handleBackToCurrentMonth = () => {
     setPeriodMode("month");
-    setMonthValue(currentMonthValue);
+    setDraftMonthValue(currentMonthValue);
+    setAppliedMonthValue(currentMonthValue);
   };
 
   useEffect(() => {
@@ -324,38 +362,82 @@ export function SummaryPageClient({
               size="sm"
               onClick={handleBackToCurrentMonth}
               disabled={
-                periodMode === "month" && monthValue === currentMonthValue
+                periodMode === "month" &&
+                appliedMonthValue === currentMonthValue
               }
             >
               今月に戻る
             </Button>
 
             {periodMode === "month" ? (
-              <Input
-                type="month"
-                value={monthValue}
-                onChange={(event) => setMonthValue(event.currentTarget.value)}
-                className="w-44"
-              />
+              <div className="flex flex-wrap items-center gap-2">
+                <Input
+                  type="month"
+                  value={draftMonthValue}
+                  onKeyDown={(event) => {
+                    if (event.key === "Enter") {
+                      applyMonthValue(draftMonthValue);
+                    }
+                  }}
+                  onChange={(event) => {
+                    setDraftMonthValue(event.currentTarget.value);
+                  }}
+                  className="w-44"
+                />
+                <Button
+                  type="button"
+                  size="sm"
+                  onClick={() => applyMonthValue(draftMonthValue)}
+                  disabled={!canApplyMonth}
+                >
+                  適用
+                </Button>
+              </div>
             ) : (
               <div className="flex flex-wrap items-center gap-2">
                 <Input
                   type="date"
-                  value={customStartDate}
-                  onChange={(event) =>
-                    setCustomStartDate(event.currentTarget.value)
-                  }
+                  value={draftCustomStartDate}
+                  onKeyDown={(event) => {
+                    if (event.key === "Enter") {
+                      applyCustomPeriod(
+                        draftCustomStartDate,
+                        draftCustomEndDate,
+                      );
+                    }
+                  }}
+                  onChange={(event) => {
+                    setDraftCustomStartDate(event.currentTarget.value);
+                  }}
                   className="w-44"
                 />
                 <span className="text-sm text-muted-foreground">〜</span>
                 <Input
                   type="date"
-                  value={customEndDate}
-                  onChange={(event) =>
-                    setCustomEndDate(event.currentTarget.value)
-                  }
+                  value={draftCustomEndDate}
+                  onKeyDown={(event) => {
+                    if (event.key === "Enter") {
+                      applyCustomPeriod(
+                        draftCustomStartDate,
+                        draftCustomEndDate,
+                      );
+                    }
+                  }}
+                  onChange={(event) => {
+                    setDraftCustomEndDate(event.currentTarget.value);
+                  }}
                   className="w-44"
                 />
+                <Button
+                  type="button"
+                  size="sm"
+                  onClick={() =>
+                    applyCustomPeriod(draftCustomStartDate, draftCustomEndDate)
+                  }
+                  disabled={!canApplyCustom}
+                >
+                  適用
+                </Button>
               </div>
             )}
           </div>
