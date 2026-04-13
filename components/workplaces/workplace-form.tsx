@@ -22,9 +22,12 @@ import { resolveUserFacingErrorFromResponse } from "@/lib/user-facing-error";
 
 const colorRegex = /^#[0-9A-Fa-f]{6}$/;
 const timeRegex = /^([01]\d|2[0-3]):([0-5]\d)$/;
+const PAYROLL_DAY_MIN = 1;
+const PAYROLL_DAY_MAX = 31;
 
 type WorkplaceType = "GENERAL" | "CRAM_SCHOOL";
 type HolidayType = "NONE" | "WEEKEND" | "HOLIDAY" | "WEEKEND_HOLIDAY";
+type ClosingDayType = "DAY_OF_MONTH" | "END_OF_MONTH";
 type WorkplaceFormMode = "create" | "edit";
 
 type WorkplaceFormProps = {
@@ -36,6 +39,9 @@ type FormValues = {
   name: string;
   type: WorkplaceType;
   color: string;
+  closingDayType: ClosingDayType;
+  closingDay: string;
+  payday: string;
 };
 
 type InitialRuleValues = {
@@ -58,6 +64,9 @@ type WorkplaceDetail = {
   name: string;
   type: WorkplaceType;
   color: string;
+  closingDayType: ClosingDayType;
+  closingDay: number | null;
+  payday: number;
 };
 
 function isRecord(value: unknown): value is Record<string, unknown> {
@@ -66,6 +75,10 @@ function isRecord(value: unknown): value is Record<string, unknown> {
 
 function isWorkplaceType(value: unknown): value is WorkplaceType {
   return value === "GENERAL" || value === "CRAM_SCHOOL";
+}
+
+function isClosingDayType(value: unknown): value is ClosingDayType {
+  return value === "DAY_OF_MONTH" || value === "END_OF_MONTH";
 }
 
 function parseWorkplaceDetailResponse(
@@ -80,7 +93,10 @@ function parseWorkplaceDetailResponse(
     typeof data.id !== "string" ||
     typeof data.name !== "string" ||
     !isWorkplaceType(data.type) ||
-    typeof data.color !== "string"
+    typeof data.color !== "string" ||
+    !isClosingDayType(data.closingDayType) ||
+    (typeof data.closingDay !== "number" && data.closingDay !== null) ||
+    typeof data.payday !== "number"
   ) {
     return null;
   }
@@ -90,6 +106,9 @@ function parseWorkplaceDetailResponse(
     name: data.name,
     type: data.type,
     color: data.color,
+    closingDayType: data.closingDayType,
+    closingDay: data.closingDay,
+    payday: data.payday,
   };
 }
 
@@ -118,6 +137,35 @@ function validate(
 
   if (colorRegex.test(values.color) === false) {
     errors.color = "色はHEX形式(#RRGGBB)で入力してください。";
+  }
+
+  const payday = Number(values.payday);
+  if (
+    values.payday.length === 0 ||
+    Number.isInteger(payday) === false ||
+    payday < PAYROLL_DAY_MIN ||
+    payday > PAYROLL_DAY_MAX
+  ) {
+    errors.payday = "給料日は1〜31の整数で入力してください。";
+  }
+
+  if (values.closingDayType === "DAY_OF_MONTH") {
+    const closingDay = Number(values.closingDay);
+
+    if (
+      values.closingDay.length === 0 ||
+      Number.isInteger(closingDay) === false ||
+      closingDay < PAYROLL_DAY_MIN ||
+      closingDay > PAYROLL_DAY_MAX
+    ) {
+      errors.closingDay = "締日は1〜31の整数で入力してください。";
+    } else if (
+      errors.payday === undefined &&
+      Number.isInteger(payday) &&
+      closingDay === payday
+    ) {
+      errors.closingDay = "締日と給料日は同日に設定できません。";
+    }
   }
 
   if (isEdit || createInitialRule === false) {
@@ -205,6 +253,9 @@ export function WorkplaceForm({ mode, workplaceId }: WorkplaceFormProps) {
     name: "",
     type: "GENERAL",
     color: "#3B82F6",
+    closingDayType: "END_OF_MONTH",
+    closingDay: "",
+    payday: "25",
   });
   const [errors, setErrors] = useState<FormErrors>({});
   const [isLoading, setIsLoading] = useState(isEdit);
@@ -271,6 +322,10 @@ export function WorkplaceForm({ mode, workplaceId }: WorkplaceFormProps) {
           name: workplace.name,
           type: workplace.type,
           color: workplace.color,
+          closingDayType: workplace.closingDayType,
+          closingDay:
+            workplace.closingDay === null ? "" : String(workplace.closingDay),
+          payday: String(workplace.payday),
         });
       } catch (error) {
         if (abortController.signal.aborted) {
@@ -324,6 +379,9 @@ export function WorkplaceForm({ mode, workplaceId }: WorkplaceFormProps) {
         name: string;
         type: WorkplaceType;
         color: string;
+        closingDayType: ClosingDayType;
+        closingDay: number | null;
+        payday: number;
         initialPayrollRule?: {
           startDate: string;
           endDate: string | null;
@@ -340,6 +398,12 @@ export function WorkplaceForm({ mode, workplaceId }: WorkplaceFormProps) {
         name: values.name.trim(),
         type: values.type,
         color: values.color.toUpperCase(),
+        closingDayType: values.closingDayType,
+        closingDay:
+          values.closingDayType === "END_OF_MONTH"
+            ? null
+            : Number(values.closingDay),
+        payday: Number(values.payday),
       };
 
       if (!isEdit && createInitialRule) {
@@ -433,7 +497,7 @@ export function WorkplaceForm({ mode, workplaceId }: WorkplaceFormProps) {
       <header className="space-y-1">
         <h2 className="text-xl font-semibold">{pageTitle}</h2>
         <p className="text-sm text-muted-foreground">
-          勤務先名・タイプ・表示色を設定します。
+          勤務先名・タイプ・表示色・締日・給料日を設定します。
         </p>
       </header>
 
@@ -522,6 +586,107 @@ export function WorkplaceForm({ mode, workplaceId }: WorkplaceFormProps) {
               </div>
               <FieldDescription>HEX形式（例: #3B82F6）</FieldDescription>
               <FormErrorMessage message={errors.color} />
+            </FieldContent>
+          </Field>
+
+          <Field data-invalid={Boolean(errors.closingDayType)}>
+            <FieldLabel>締日設定</FieldLabel>
+            <FieldContent>
+              <RadioGroup
+                value={values.closingDayType}
+                onValueChange={(value) => {
+                  setValues((current) => ({
+                    ...current,
+                    closingDayType: value as ClosingDayType,
+                    closingDay:
+                      value === "END_OF_MONTH" ? "" : current.closingDay,
+                  }));
+                }}
+              >
+                <Field orientation="horizontal">
+                  <RadioGroupItem
+                    id="workplace-closing-day-end"
+                    value="END_OF_MONTH"
+                  />
+                  <FieldLabel htmlFor="workplace-closing-day-end">
+                    月末締め
+                  </FieldLabel>
+                </Field>
+                <Field orientation="horizontal">
+                  <RadioGroupItem
+                    id="workplace-closing-day-day"
+                    value="DAY_OF_MONTH"
+                  />
+                  <FieldLabel htmlFor="workplace-closing-day-day">
+                    日付指定
+                  </FieldLabel>
+                </Field>
+              </RadioGroup>
+              <FieldDescription>
+                月末締めを選択すると、締日は毎月の末日になります。
+              </FieldDescription>
+              <FormErrorMessage message={errors.closingDayType} />
+            </FieldContent>
+          </Field>
+
+          {values.closingDayType === "DAY_OF_MONTH" ? (
+            <Field data-invalid={Boolean(errors.closingDay)}>
+              <FieldLabel htmlFor="workplace-closing-day">締日</FieldLabel>
+              <FieldContent>
+                <div className="flex items-center gap-2">
+                  <Input
+                    id="workplace-closing-day"
+                    type="number"
+                    min={PAYROLL_DAY_MIN}
+                    max={PAYROLL_DAY_MAX}
+                    step="1"
+                    value={values.closingDay}
+                    onChange={(event) => {
+                      const next = event.currentTarget.value;
+                      setValues((current) => ({
+                        ...current,
+                        closingDay: next,
+                      }));
+                    }}
+                    className="max-w-20"
+                  />
+                  <span className="shrink-0 text-sm text-muted-foreground">
+                    日
+                  </span>
+                </div>
+                <FieldDescription>
+                  1〜31の整数で入力してください。
+                </FieldDescription>
+                <FormErrorMessage message={errors.closingDay} />
+              </FieldContent>
+            </Field>
+          ) : null}
+
+          <Field data-invalid={Boolean(errors.payday)}>
+            <FieldLabel htmlFor="workplace-payday">給料日</FieldLabel>
+            <FieldContent>
+              <div className="flex items-center gap-2">
+                <Input
+                  id="workplace-payday"
+                  type="number"
+                  min={PAYROLL_DAY_MIN}
+                  max={PAYROLL_DAY_MAX}
+                  step="1"
+                  value={values.payday}
+                  onChange={(event) => {
+                    const next = event.currentTarget.value;
+                    setValues((current) => ({ ...current, payday: next }));
+                  }}
+                  className="max-w-20"
+                />
+                <span className="shrink-0 text-sm text-muted-foreground">
+                  日
+                </span>
+              </div>
+              <FieldDescription>
+                1〜31の整数で入力してください。
+              </FieldDescription>
+              <FormErrorMessage message={errors.payday} />
             </FieldContent>
           </Field>
 

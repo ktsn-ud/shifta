@@ -74,6 +74,11 @@ enum WorkplaceType {
   CRAM_SCHOOL
 }
 
+enum ClosingDayType {
+  DAY_OF_MONTH
+  END_OF_MONTH
+}
+
 enum ShiftType {
   NORMAL
   LESSON
@@ -87,16 +92,19 @@ enum HolidayType {
 }
 
 model Workplace {
-  id           String        @id @default(cuid())
-  userId       String
-  name         String
-  type         WorkplaceType
-  color        String
-  createdAt    DateTime      @default(now())
-  user         User          @relation(fields: [userId], references: [id], onDelete: Cascade)
-  payrollRules PayrollRule[]
-  timetableSets TimetableSet[]
-  shifts       Shift[]
+  id             String         @id @default(cuid())
+  userId         String
+  name           String
+  type           WorkplaceType
+  color          String
+  closingDayType ClosingDayType @default(END_OF_MONTH)
+  closingDay     Int?
+  payday         Int            @default(25)
+  createdAt      DateTime       @default(now())
+  user           User           @relation(fields: [userId], references: [id], onDelete: Cascade)
+  payrollRules   PayrollRule[]
+  timetableSets  TimetableSet[]
+  shifts         Shift[]
 
   @@index([userId])
 }
