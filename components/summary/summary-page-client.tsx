@@ -356,6 +356,10 @@ export function SummaryPageClient({
             >
               カスタム期間
             </button>
+            <span
+              aria-hidden="true"
+              className="hidden h-6 w-px bg-border md:inline-block"
+            />
             <Button
               type="button"
               variant="outline"
