@@ -15,6 +15,7 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
   procps \
   ca-certificates \
   socat \
+  bubblewrap \
   && rm -rf /var/lib/apt/lists/*
 
 # corepack を有効化し、pnpm をビルド時に取得しておく
