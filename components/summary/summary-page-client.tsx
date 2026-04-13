@@ -139,14 +139,6 @@ export function SummaryPageClient({
     return parsed ? formatMonthLabel(parsed) : appliedMonthValue;
   }, [appliedMonthValue]);
 
-  const previousDiff = useMemo(() => {
-    if (!summary) {
-      return null;
-    }
-
-    return summary.totalWage - summary.previousMonthWage;
-  }, [summary]);
-
   const applyMonthValue = (nextValue: string) => {
     if (fromMonthInputValue(nextValue) === null) {
       return;
@@ -348,27 +340,13 @@ export function SummaryPageClient({
           <div className="grid gap-4 lg:grid-cols-3">
             <Card size="sm">
               <CardHeader>
-                <CardTitle>前月合計</CardTitle>
-                <CardDescription>前月支給分との比較</CardDescription>
+                <CardTitle>確定済み支給額</CardTitle>
+                <CardDescription>
+                  当月支給分のうち確定済みシフト分
+                </CardDescription>
               </CardHeader>
-              <CardContent className="space-y-1">
-                <p className="text-2xl font-semibold">
-                  {formatCurrency(summary.previousMonthWage)}
-                </p>
-                <p className="text-sm text-muted-foreground">
-                  前月比:{" "}
-                  <span
-                    className={
-                      previousDiff !== null && previousDiff < 0
-                        ? "text-destructive"
-                        : "text-emerald-700"
-                    }
-                  >
-                    {previousDiff === null
-                      ? "-"
-                      : `${previousDiff > 0 ? "+" : ""}${formatCurrency(previousDiff)}`}
-                  </span>
-                </p>
+              <CardContent className="text-2xl font-semibold">
+                {formatCurrency(summary.confirmedShiftWage)}
               </CardContent>
             </Card>
             <Card size="sm">

@@ -27,7 +27,7 @@ export type PayrollSummaryResult = {
   totalNightHours: number;
   totalOvertimeHours: number;
   byWorkplace: PayrollSummaryByWorkplace[];
-  previousMonthWage: number;
+  confirmedShiftWage: number;
   currentMonthCumulative: number;
   yearlyTotal: number;
 };
@@ -43,6 +43,7 @@ type WorkplaceWithPayrollCycle = {
 
 type WorkplacePeriodSummary = {
   wage: number;
+  confirmedWage: number;
   workHours: number;
   nightHours: number;
   overtimeHours: number;
@@ -63,12 +64,6 @@ type ShiftWithSummaryRelations = Prisma.ShiftGetPayload<{
 
 function startOfMonth(date: Date): Date {
   return new Date(Date.UTC(date.getUTCFullYear(), date.getUTCMonth(), 1));
-}
-
-function shiftMonth(date: Date, monthOffset: number): Date {
-  return new Date(
-    Date.UTC(date.getUTCFullYear(), date.getUTCMonth() + monthOffset, 1),
-  );
 }
 
 function toMonthKey(date: Date): string {
@@ -126,6 +121,7 @@ function summarizeWorkplaceByPeriod(
 ): WorkplacePeriodSummary {
   const shifts = shiftsByWorkplace.get(workplaceId) ?? [];
   let wage = 0;
+  let confirmedWage = 0;
   let workHours = 0;
   let nightHours = 0;
   let overtimeHours = 0;
@@ -142,6 +138,9 @@ function summarizeWorkplaceByPeriod(
 
     const result = calculateShiftPayrollResult(shift, rulesByWorkplace);
     wage += result.totalWage;
+    if (shift.isConfirmed) {
+      confirmedWage += result.totalWage;
+    }
     workHours += result.workHours;
     nightHours += result.nightHours;
     overtimeHours += result.overtimeHours;
@@ -149,6 +148,7 @@ function summarizeWorkplaceByPeriod(
 
   return {
     wage,
+    confirmedWage,
     workHours,
     nightHours,
     overtimeHours,
@@ -160,11 +160,9 @@ export async function getPayrollSummaryForUser(
   month: Date,
 ): Promise<PayrollSummaryResult> {
   const selectedMonth = startOfMonth(month);
-  const previousMonth = shiftMonth(selectedMonth, -1);
   const monthsInYear = listMonthsInYear(selectedMonth);
   const selectedMonthIndex = selectedMonth.getUTCMonth();
   const selectedMonthKey = toMonthKey(selectedMonth);
-  const previousMonthKey = toMonthKey(previousMonth);
 
   const workplaces = await prisma.workplace.findMany({
     where: { userId },
@@ -186,14 +184,13 @@ export async function getPayrollSummaryForUser(
       totalNightHours: 0,
       totalOvertimeHours: 0,
       byWorkplace: [],
-      previousMonthWage: 0,
+      confirmedShiftWage: 0,
       currentMonthCumulative: 0,
       yearlyTotal: 0,
     };
   }
 
   const monthTargets = new Map<string, Date>();
-  monthTargets.set(previousMonthKey, previousMonth);
   for (const yearMonth of monthsInYear) {
     monthTargets.set(toMonthKey(yearMonth), yearMonth);
   }
@@ -299,6 +296,7 @@ export async function getPayrollSummaryForUser(
 
   const byWorkplace: PayrollSummaryByWorkplace[] = [];
   let totalWage = 0;
+  let totalConfirmedWage = 0;
   let totalWorkHours = 0;
   let totalNightHours = 0;
   let totalOvertimeHours = 0;
@@ -312,6 +310,7 @@ export async function getPayrollSummaryForUser(
 
     const summarized = getWorkplaceMonthSummary(workplace, selectedMonthKey);
     totalWage += summarized.wage;
+    totalConfirmedWage += summarized.confirmedWage;
     totalWorkHours += summarized.workHours;
     totalNightHours += summarized.nightHours;
     totalOvertimeHours += summarized.overtimeHours;
@@ -350,9 +349,7 @@ export async function getPayrollSummaryForUser(
     totalNightHours: roundHours(totalNightHours),
     totalOvertimeHours: roundHours(totalOvertimeHours),
     byWorkplace: byWorkplace.sort((left, right) => right.wage - left.wage),
-    previousMonthWage: roundCurrency(
-      monthlyTotalWage.get(previousMonthKey) ?? 0,
-    ),
+    confirmedShiftWage: roundCurrency(totalConfirmedWage),
     currentMonthCumulative: roundCurrency(currentMonthCumulative),
     yearlyTotal: roundCurrency(yearlyTotal),
   };
