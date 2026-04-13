@@ -26,23 +26,18 @@ import {
   TableRow,
 } from "@/components/ui/table";
 import {
-  dateFromDateKey,
-  endOfMonth,
+  formatMonthLabel,
   fromMonthInputValue,
   startOfMonth,
-  toDateOnlyString,
   toMonthInputValue,
 } from "@/lib/calendar/date";
 import { toErrorMessage } from "@/lib/messages";
 import { type PayrollSummaryResult } from "@/lib/payroll/summary";
 
-type PeriodMode = "month" | "custom";
-
 type SummaryPageClientProps = {
   currentUserId: string;
   initialSummary: PayrollSummaryResult;
-  initialStartDate: string;
-  initialEndDate: string;
+  initialMonth: string;
 };
 
 const SUMMARY_CACHE_TTL_MS = 5 * 60 * 1000;
@@ -73,12 +68,8 @@ function formatHours(value: number): string {
   return `${value.toFixed(2)} 時間`;
 }
 
-function toSummaryCacheKey(
-  userKey: string,
-  startDate: string,
-  endDate: string,
-): string {
-  return `${userKey}:${startDate}:${endDate}`;
+function toSummaryCacheKey(userKey: string, month: string): string {
+  return `${userKey}:${month}`;
 }
 
 function readSummaryCache(cacheKey: string): PayrollSummaryResult | null {
@@ -112,7 +103,7 @@ export function SummaryPageLoadingSkeleton() {
         <div>
           <h2 className="text-xl font-semibold">給与サマリー</h2>
           <p className="mt-1 text-sm text-muted-foreground">
-            期間別の概算給与と勤務時間を確認できます。
+            支給月別の概算給与と勤務時間を確認できます。
           </p>
         </div>
       </header>
@@ -128,28 +119,10 @@ export function SummaryPageLoadingSkeleton() {
 export function SummaryPageClient({
   currentUserId,
   initialSummary,
-  initialStartDate,
-  initialEndDate,
+  initialMonth,
 }: SummaryPageClientProps) {
-  const initialMonth = useMemo(() => {
-    const parsed = dateFromDateKey(initialStartDate);
-    return startOfMonth(parsed ?? new Date());
-  }, [initialStartDate]);
-
-  const [periodMode, setPeriodMode] = useState<PeriodMode>("month");
-  const [draftMonthValue, setDraftMonthValue] = useState(
-    toMonthInputValue(initialMonth),
-  );
-  const [appliedMonthValue, setAppliedMonthValue] = useState(
-    toMonthInputValue(initialMonth),
-  );
-  const [draftCustomStartDate, setDraftCustomStartDate] =
-    useState(initialStartDate);
-  const [draftCustomEndDate, setDraftCustomEndDate] = useState(initialEndDate);
-  const [appliedCustomStartDate, setAppliedCustomStartDate] =
-    useState(initialStartDate);
-  const [appliedCustomEndDate, setAppliedCustomEndDate] =
-    useState(initialEndDate);
+  const [draftMonthValue, setDraftMonthValue] = useState(initialMonth);
+  const [appliedMonthValue, setAppliedMonthValue] = useState(initialMonth);
   const [summary, setSummary] = useState<PayrollSummaryResult | null>(
     initialSummary,
   );
@@ -157,47 +130,14 @@ export function SummaryPageClient({
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
   const currentMonthValue = toMonthInputValue(startOfMonth(new Date()));
 
-  const applyMonthValue = (nextValue: string) => {
-    if (fromMonthInputValue(nextValue) === null) {
-      return;
-    }
-
-    setAppliedMonthValue(nextValue);
-  };
-
-  const applyCustomPeriod = (nextStartDate: string, nextEndDate: string) => {
-    setAppliedCustomStartDate(nextStartDate);
-    setAppliedCustomEndDate(nextEndDate);
-  };
   const canApplyMonth =
     fromMonthInputValue(draftMonthValue) !== null &&
     draftMonthValue !== appliedMonthValue;
-  const canApplyCustom =
-    Boolean(draftCustomStartDate) &&
-    Boolean(draftCustomEndDate) &&
-    (draftCustomStartDate !== appliedCustomStartDate ||
-      draftCustomEndDate !== appliedCustomEndDate);
 
-  const targetPeriod = useMemo(() => {
-    if (periodMode === "month") {
-      const monthDate = fromMonthInputValue(appliedMonthValue) ?? initialMonth;
-      return {
-        startDate: toDateOnlyString(startOfMonth(monthDate)),
-        endDate: toDateOnlyString(endOfMonth(monthDate)),
-      };
-    }
-
-    return {
-      startDate: appliedCustomStartDate,
-      endDate: appliedCustomEndDate,
-    };
-  }, [
-    appliedCustomEndDate,
-    appliedCustomStartDate,
-    appliedMonthValue,
-    initialMonth,
-    periodMode,
-  ]);
+  const selectedMonthLabel = useMemo(() => {
+    const parsed = fromMonthInputValue(appliedMonthValue);
+    return parsed ? formatMonthLabel(parsed) : appliedMonthValue;
+  }, [appliedMonthValue]);
 
   const previousDiff = useMemo(() => {
     if (!summary) {
@@ -207,33 +147,30 @@ export function SummaryPageClient({
     return summary.totalWage - summary.previousMonthWage;
   }, [summary]);
 
+  const applyMonthValue = (nextValue: string) => {
+    if (fromMonthInputValue(nextValue) === null) {
+      return;
+    }
+
+    setAppliedMonthValue(nextValue);
+  };
+
   const handleBackToCurrentMonth = () => {
-    setPeriodMode("month");
     setDraftMonthValue(currentMonthValue);
     setAppliedMonthValue(currentMonthValue);
   };
 
   useEffect(() => {
-    if (!targetPeriod.startDate || !targetPeriod.endDate) {
+    if (fromMonthInputValue(appliedMonthValue) === null) {
       setSummary(null);
+      setErrorMessage("月は YYYY-MM 形式で指定してください。");
       setIsLoading(false);
       return;
     }
 
-    if (targetPeriod.startDate > targetPeriod.endDate) {
-      setSummary(null);
-      setIsLoading(false);
-      setErrorMessage("開始日は終了日以前で指定してください。");
-      return;
-    }
-
-    const matchesInitialPeriod =
-      targetPeriod.startDate === initialStartDate &&
-      targetPeriod.endDate === initialEndDate;
-
-    if (matchesInitialPeriod) {
+    if (appliedMonthValue === initialMonth) {
       writeSummaryCache(
-        toSummaryCacheKey(currentUserId, initialStartDate, initialEndDate),
+        toSummaryCacheKey(currentUserId, initialMonth),
         initialSummary,
       );
       setErrorMessage(null);
@@ -242,11 +179,7 @@ export function SummaryPageClient({
       return;
     }
 
-    const cacheKey = toSummaryCacheKey(
-      currentUserId,
-      targetPeriod.startDate,
-      targetPeriod.endDate,
-    );
+    const cacheKey = toSummaryCacheKey(currentUserId, appliedMonthValue);
     const cachedSummary = readSummaryCache(cacheKey);
     if (cachedSummary) {
       setErrorMessage(null);
@@ -263,8 +196,7 @@ export function SummaryPageClient({
 
       try {
         const params = new URLSearchParams({
-          startDate: targetPeriod.startDate,
-          endDate: targetPeriod.endDate,
+          month: appliedMonthValue,
         });
 
         const response = await fetch(
@@ -313,14 +245,7 @@ export function SummaryPageClient({
     return () => {
       abortController.abort();
     };
-  }, [
-    currentUserId,
-    initialEndDate,
-    initialStartDate,
-    initialSummary,
-    targetPeriod.endDate,
-    targetPeriod.startDate,
-  ]);
+  }, [appliedMonthValue, currentUserId, initialMonth, initialSummary]);
 
   return (
     <section className="space-y-6 p-4 md:p-6">
@@ -328,122 +253,42 @@ export function SummaryPageClient({
         <div>
           <h2 className="text-xl font-semibold">給与サマリー</h2>
           <p className="mt-1 text-sm text-muted-foreground">
-            期間別の概算給与と勤務時間を確認できます。
+            支給月別の概算給与と勤務時間を確認できます。
           </p>
         </div>
 
         {!isLoading ? (
           <div className="flex flex-wrap items-center gap-2">
-            <button
-              type="button"
-              className={`rounded-md border px-3 py-1 text-sm ${
-                periodMode === "month"
-                  ? "border-primary bg-primary text-primary-foreground"
-                  : "border-border bg-background"
-              }`}
-              onClick={() => setPeriodMode("month")}
-            >
-              月選択
-            </button>
-            <button
-              type="button"
-              className={`rounded-md border px-3 py-1 text-sm ${
-                periodMode === "custom"
-                  ? "border-primary bg-primary text-primary-foreground"
-                  : "border-border bg-background"
-              }`}
-              onClick={() => setPeriodMode("custom")}
-            >
-              カスタム期間
-            </button>
-            <span
-              aria-hidden="true"
-              className="hidden h-6 w-px bg-border md:inline-block"
-            />
             <Button
               type="button"
               variant="outline"
               size="sm"
               onClick={handleBackToCurrentMonth}
-              disabled={
-                periodMode === "month" &&
-                appliedMonthValue === currentMonthValue
-              }
+              disabled={appliedMonthValue === currentMonthValue}
             >
               今月に戻る
             </Button>
-
-            {periodMode === "month" ? (
-              <div className="flex flex-wrap items-center gap-2">
-                <Input
-                  type="month"
-                  value={draftMonthValue}
-                  onKeyDown={(event) => {
-                    if (event.key === "Enter") {
-                      applyMonthValue(draftMonthValue);
-                    }
-                  }}
-                  onChange={(event) => {
-                    setDraftMonthValue(event.currentTarget.value);
-                  }}
-                  className="w-44"
-                />
-                <Button
-                  type="button"
-                  size="sm"
-                  onClick={() => applyMonthValue(draftMonthValue)}
-                  disabled={!canApplyMonth}
-                >
-                  適用
-                </Button>
-              </div>
-            ) : (
-              <div className="flex flex-wrap items-center gap-2">
-                <Input
-                  type="date"
-                  value={draftCustomStartDate}
-                  onKeyDown={(event) => {
-                    if (event.key === "Enter") {
-                      applyCustomPeriod(
-                        draftCustomStartDate,
-                        draftCustomEndDate,
-                      );
-                    }
-                  }}
-                  onChange={(event) => {
-                    setDraftCustomStartDate(event.currentTarget.value);
-                  }}
-                  className="w-44"
-                />
-                <span className="text-sm text-muted-foreground">〜</span>
-                <Input
-                  type="date"
-                  value={draftCustomEndDate}
-                  onKeyDown={(event) => {
-                    if (event.key === "Enter") {
-                      applyCustomPeriod(
-                        draftCustomStartDate,
-                        draftCustomEndDate,
-                      );
-                    }
-                  }}
-                  onChange={(event) => {
-                    setDraftCustomEndDate(event.currentTarget.value);
-                  }}
-                  className="w-44"
-                />
-                <Button
-                  type="button"
-                  size="sm"
-                  onClick={() =>
-                    applyCustomPeriod(draftCustomStartDate, draftCustomEndDate)
-                  }
-                  disabled={!canApplyCustom}
-                >
-                  適用
-                </Button>
-              </div>
-            )}
+            <Input
+              type="month"
+              value={draftMonthValue}
+              onKeyDown={(event) => {
+                if (event.key === "Enter") {
+                  applyMonthValue(draftMonthValue);
+                }
+              }}
+              onChange={(event) => {
+                setDraftMonthValue(event.currentTarget.value);
+              }}
+              className="w-44"
+            />
+            <Button
+              type="button"
+              size="sm"
+              onClick={() => applyMonthValue(draftMonthValue)}
+              disabled={!canApplyMonth}
+            >
+              適用
+            </Button>
           </div>
         ) : null}
       </header>
@@ -465,9 +310,7 @@ export function SummaryPageClient({
             <Card size="sm">
               <CardHeader>
                 <CardTitle>概算給与</CardTitle>
-                <CardDescription>
-                  {targetPeriod.startDate} 〜 {targetPeriod.endDate}
-                </CardDescription>
+                <CardDescription>{selectedMonthLabel}支給分</CardDescription>
               </CardHeader>
               <CardContent className="text-2xl font-semibold">
                 {formatCurrency(summary.totalWage)}
@@ -506,7 +349,7 @@ export function SummaryPageClient({
             <Card size="sm">
               <CardHeader>
                 <CardTitle>前月合計</CardTitle>
-                <CardDescription>前月同時期との比較</CardDescription>
+                <CardDescription>前月支給分との比較</CardDescription>
               </CardHeader>
               <CardContent className="space-y-1">
                 <p className="text-2xl font-semibold">
@@ -530,8 +373,8 @@ export function SummaryPageClient({
             </Card>
             <Card size="sm">
               <CardHeader>
-                <CardTitle>当月累計</CardTitle>
-                <CardDescription>1月からの累計</CardDescription>
+                <CardTitle>年内受取累計（選択月まで）</CardTitle>
+                <CardDescription>1月から選択月までの支給合計</CardDescription>
               </CardHeader>
               <CardContent className="text-2xl font-semibold">
                 {formatCurrency(summary.currentMonthCumulative)}
@@ -539,8 +382,8 @@ export function SummaryPageClient({
             </Card>
             <Card size="sm">
               <CardHeader>
-                <CardTitle>年間累計</CardTitle>
-                <CardDescription>年初からの累計</CardDescription>
+                <CardTitle>年間受取見込（1月〜12月）</CardTitle>
+                <CardDescription>当年1月から12月までの支給見込</CardDescription>
               </CardHeader>
               <CardContent className="text-2xl font-semibold">
                 {formatCurrency(summary.yearlyTotal)}
@@ -552,7 +395,7 @@ export function SummaryPageClient({
             <Card>
               <CardHeader>
                 <CardTitle>勤務先別給与</CardTitle>
-                <CardDescription>期間内の給与内訳グラフ</CardDescription>
+                <CardDescription>選択月支給分の給与内訳グラフ</CardDescription>
               </CardHeader>
               <CardContent>
                 <ChartContainer

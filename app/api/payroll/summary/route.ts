@@ -1,26 +1,19 @@
 import { NextResponse } from "next/server";
 import { z } from "zod";
 import { requireCurrentUser } from "@/lib/api/current-user";
-import { DATE_ONLY_REGEX, parseDateOnly } from "@/lib/api/date-time";
+import { parseDateOnly } from "@/lib/api/date-time";
 import { jsonError } from "@/lib/api/http";
 import { getPayrollSummaryForUser } from "@/lib/payroll/summary";
 
+const MONTH_REGEX = /^\d{4}-(0[1-9]|1[0-2])$/;
+
 const summaryQuerySchema = z
   .object({
-    startDate: z
+    month: z
       .string()
-      .regex(DATE_ONLY_REGEX, "startDate は YYYY-MM-DD形式で入力してください"),
-    endDate: z
-      .string()
-      .regex(DATE_ONLY_REGEX, "endDate は YYYY-MM-DD形式で入力してください"),
+      .regex(MONTH_REGEX, "month は YYYY-MM形式で入力してください"),
   })
-  .refine(
-    (value) => parseDateOnly(value.startDate) <= parseDateOnly(value.endDate),
-    {
-      message: "startDate は endDate 以下で指定してください",
-      path: ["startDate"],
-    },
-  );
+  .strict();
 
 export async function GET(request: Request) {
   try {
@@ -31,8 +24,7 @@ export async function GET(request: Request) {
 
     const url = new URL(request.url);
     const query = summaryQuerySchema.safeParse({
-      startDate: url.searchParams.get("startDate"),
-      endDate: url.searchParams.get("endDate"),
+      month: url.searchParams.get("month"),
     });
 
     if (!query.success) {
@@ -43,12 +35,9 @@ export async function GET(request: Request) {
       );
     }
 
-    const startDate = parseDateOnly(query.data.startDate);
-    const endDate = parseDateOnly(query.data.endDate);
     const summary = await getPayrollSummaryForUser(
       current.user.id,
-      startDate,
-      endDate,
+      parseDateOnly(`${query.data.month}-01`),
     );
 
     return NextResponse.json(summary);

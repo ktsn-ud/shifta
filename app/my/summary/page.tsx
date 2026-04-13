@@ -6,11 +6,7 @@ import {
 } from "@/components/summary/summary-page-client";
 import { requireCurrentUser } from "@/lib/api/current-user";
 import { parseDateOnly } from "@/lib/api/date-time";
-import {
-  endOfMonth,
-  startOfMonth,
-  toDateOnlyString,
-} from "@/lib/calendar/date";
+import { startOfMonth, toMonthInputValue } from "@/lib/calendar/date";
 import { getPayrollSummaryForUser } from "@/lib/payroll/summary";
 
 function SummaryPageFallback() {
@@ -23,22 +19,18 @@ async function SummaryPageContent() {
     redirect("/login");
   }
 
-  const initialMonth = startOfMonth(new Date());
-  const initialStartDate = toDateOnlyString(initialMonth);
-  const initialEndDate = toDateOnlyString(endOfMonth(initialMonth));
+  const initialMonth = toMonthInputValue(startOfMonth(new Date()));
 
   const initialSummary = await getPayrollSummaryForUser(
     current.user.id,
-    parseDateOnly(initialStartDate),
-    parseDateOnly(initialEndDate),
+    parseDateOnly(`${initialMonth}-01`),
   );
 
   return (
     <SummaryPageClient
       currentUserId={current.user.id}
       initialSummary={initialSummary}
-      initialStartDate={initialStartDate}
-      initialEndDate={initialEndDate}
+      initialMonth={initialMonth}
     />
   );
 }

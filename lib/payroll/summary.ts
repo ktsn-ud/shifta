@@ -20,31 +20,12 @@ export type PayrollSummaryResult = {
   yearlyTotal: number;
 };
 
-function shiftMonthClamped(date: Date, monthOffset: number): Date {
-  const year = date.getUTCFullYear();
-  const month = date.getUTCMonth() + monthOffset;
-  const day = date.getUTCDate();
-
-  const firstDateInTargetMonth = new Date(Date.UTC(year, month, 1));
-  const lastDay = new Date(
-    Date.UTC(
-      firstDateInTargetMonth.getUTCFullYear(),
-      firstDateInTargetMonth.getUTCMonth() + 1,
-      0,
-    ),
-  ).getUTCDate();
-
-  return new Date(
-    Date.UTC(
-      firstDateInTargetMonth.getUTCFullYear(),
-      firstDateInTargetMonth.getUTCMonth(),
-      Math.min(day, lastDay),
-    ),
-  );
-}
-
 function startOfYear(date: Date): Date {
   return new Date(Date.UTC(date.getUTCFullYear(), 0, 1));
+}
+
+function endOfYear(date: Date): Date {
+  return new Date(Date.UTC(date.getUTCFullYear(), 11, 31));
 }
 
 function startOfMonth(date: Date): Date {
@@ -55,40 +36,30 @@ function endOfMonth(date: Date): Date {
   return new Date(Date.UTC(date.getUTCFullYear(), date.getUTCMonth() + 1, 0));
 }
 
-function isFullMonthRange(startDate: Date, endDate: Date): boolean {
-  return (
-    startDate.getUTCDate() === 1 &&
-    startDate.getUTCFullYear() === endDate.getUTCFullYear() &&
-    startDate.getUTCMonth() === endDate.getUTCMonth() &&
-    endDate.getUTCDate() === endOfMonth(startDate).getUTCDate()
+function shiftMonth(date: Date, monthOffset: number): Date {
+  return new Date(
+    Date.UTC(date.getUTCFullYear(), date.getUTCMonth() + monthOffset, 1),
   );
 }
 
 export async function getPayrollSummaryForUser(
   userId: string,
-  startDate: Date,
-  endDate: Date,
+  month: Date,
 ): Promise<PayrollSummaryResult> {
-  const previousMonthTarget = shiftMonthClamped(startDate, -1);
-  const previousStartDate = isFullMonthRange(startDate, endDate)
-    ? startOfMonth(previousMonthTarget)
-    : shiftMonthClamped(startDate, -1);
-  const previousEndDate = isFullMonthRange(startDate, endDate)
-    ? endOfMonth(previousMonthTarget)
-    : shiftMonthClamped(endDate, -1);
-  const cumulativeStartDate = startOfYear(endDate);
-
-  const fetchStartDate =
-    previousStartDate < cumulativeStartDate
-      ? previousStartDate
-      : cumulativeStartDate;
+  const selectedMonthStartDate = startOfMonth(month);
+  const selectedMonthEndDate = endOfMonth(month);
+  const previousMonthDate = shiftMonth(selectedMonthStartDate, -1);
+  const previousStartDate = startOfMonth(previousMonthDate);
+  const previousEndDate = endOfMonth(previousMonthDate);
+  const cumulativeStartDate = startOfYear(selectedMonthStartDate);
+  const yearlyEndDate = endOfYear(selectedMonthStartDate);
 
   const shifts = await prisma.shift.findMany({
     where: {
       workplace: { userId },
       date: {
-        gte: fetchStartDate,
-        lte: endDate,
+        gte: previousStartDate,
+        lte: yearlyEndDate,
       },
     },
     include: {
@@ -122,8 +93,8 @@ export async function getPayrollSummaryForUser(
   const currentSummary = summarizeByPeriod(
     shifts,
     payrollRules,
-    startDate,
-    endDate,
+    selectedMonthStartDate,
+    selectedMonthEndDate,
   );
   const previousSummary = summarizeByPeriod(
     shifts,
@@ -135,13 +106,19 @@ export async function getPayrollSummaryForUser(
     shifts,
     payrollRules,
     cumulativeStartDate,
-    endDate,
+    selectedMonthEndDate,
+  );
+  const yearlySummary = summarizeByPeriod(
+    shifts,
+    payrollRules,
+    cumulativeStartDate,
+    yearlyEndDate,
   );
 
   return {
     ...currentSummary,
     previousMonthWage: previousSummary.totalWage,
     currentMonthCumulative: cumulativeSummary.totalWage,
-    yearlyTotal: cumulativeSummary.totalWage,
+    yearlyTotal: yearlySummary.totalWage,
   };
 }
