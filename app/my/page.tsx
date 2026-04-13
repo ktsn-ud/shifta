@@ -51,9 +51,9 @@ function resolveInitialMonth(monthParam: string | string[] | undefined): Date {
   return startOfMonth(parsedMonth ?? new Date());
 }
 
-function resolveNextPaymentMonthDate(): Date {
-  const nextMonth = addMonths(startOfMonth(new Date()), 1);
-  return parseDateOnly(`${toMonthInputValue(nextMonth)}-01`);
+function resolveNextPaymentMonthDate(baseMonth: Date): Date {
+  const nextPaymentMonth = addMonths(startOfMonth(baseMonth), 1);
+  return parseDateOnly(`${toMonthInputValue(nextPaymentMonth)}-01`);
 }
 
 async function getMonthShiftsWithEstimate(
@@ -196,7 +196,10 @@ async function DashboardPageContent({ month }: { month: Date }) {
   ] = await Promise.all([
     getMonthShiftsWithEstimate(current.user.id, startDate, endDate),
     getUnconfirmedShiftCount(current.user.id),
-    getPayrollSummaryForUser(current.user.id, resolveNextPaymentMonthDate()),
+    getPayrollSummaryForUser(
+      current.user.id,
+      resolveNextPaymentMonthDate(month),
+    ),
   ]);
 
   return (
