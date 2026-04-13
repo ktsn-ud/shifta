@@ -7,10 +7,12 @@ import {
 import { requireCurrentUser } from "@/lib/api/current-user";
 import { parseDateOnly } from "@/lib/api/date-time";
 import {
+  addMonths,
   endOfMonth,
   fromMonthInputValue,
   startOfMonth,
   toDateOnlyString,
+  toMonthInputValue,
 } from "@/lib/calendar/date";
 import { type MonthShift } from "@/hooks/use-month-shifts";
 import { type Prisma } from "@/lib/generated/prisma/client";
@@ -19,6 +21,7 @@ import {
   findApplicablePayrollRule,
   groupPayrollRulesByWorkplace,
 } from "@/lib/payroll/summarizeByPeriod";
+import { getPayrollSummaryForUser } from "@/lib/payroll/summary";
 import { calculateWorkedMinutes } from "@/lib/payroll/estimate";
 import { prisma } from "@/lib/prisma";
 
@@ -46,6 +49,11 @@ function resolveInitialMonth(monthParam: string | string[] | undefined): Date {
 
   const parsedMonth = fromMonthInputValue(monthParam);
   return startOfMonth(parsedMonth ?? new Date());
+}
+
+function resolveNextPaymentMonthDate(): Date {
+  const nextMonth = addMonths(startOfMonth(new Date()), 1);
+  return parseDateOnly(`${toMonthInputValue(nextMonth)}-01`);
 }
 
 async function getMonthShiftsWithEstimate(
@@ -181,9 +189,14 @@ async function DashboardPageContent({ month }: { month: Date }) {
 
   const startDate = toDateOnlyString(startOfMonth(month));
   const endDate = toDateOnlyString(endOfMonth(month));
-  const [initialMonthShifts, initialUnconfirmedShiftCount] = await Promise.all([
+  const [
+    initialMonthShifts,
+    initialUnconfirmedShiftCount,
+    nextMonthPaymentSummary,
+  ] = await Promise.all([
     getMonthShiftsWithEstimate(current.user.id, startDate, endDate),
     getUnconfirmedShiftCount(current.user.id),
+    getPayrollSummaryForUser(current.user.id, resolveNextPaymentMonthDate()),
   ]);
 
   return (
@@ -193,6 +206,7 @@ async function DashboardPageContent({ month }: { month: Date }) {
       initialMonthStartDate={startDate}
       initialMonthEndDate={endDate}
       initialUnconfirmedShiftCount={initialUnconfirmedShiftCount}
+      nextMonthPaymentAmount={nextMonthPaymentSummary.totalWage}
     />
   );
 }

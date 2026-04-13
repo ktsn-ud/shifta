@@ -46,6 +46,7 @@ type DashboardPageClientProps = {
   initialMonthStartDate: string;
   initialMonthEndDate: string;
   initialUnconfirmedShiftCount: number;
+  nextMonthPaymentAmount: number;
 };
 
 function formatCurrency(value: number): string {
@@ -94,6 +95,7 @@ export function DashboardPageClient({
   initialMonthStartDate,
   initialMonthEndDate,
   initialUnconfirmedShiftCount,
+  nextMonthPaymentAmount,
 }: DashboardPageClientProps) {
   const router = useRouter();
   const searchParams = useSearchParams();
@@ -371,11 +373,11 @@ export function DashboardPageClient({
         <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
           <Card size="sm">
             <CardHeader>
-              <CardTitle>{summaryPeriodLabel}の概算給与</CardTitle>
-              <CardDescription>シフト一覧から算出した暫定値</CardDescription>
+              <CardTitle>来月の支給額</CardTitle>
+              <CardDescription>来月に受け取る見込み額</CardDescription>
             </CardHeader>
             <CardContent className="text-2xl font-semibold">
-              {formatCurrency(summary.totalEstimatedPay)}
+              {formatCurrency(nextMonthPaymentAmount)}
             </CardContent>
           </Card>
 
