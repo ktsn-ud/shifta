@@ -11,6 +11,20 @@ import { jsonError, parseJsonBody } from "@/lib/api/http";
 import { prisma } from "@/lib/prisma";
 
 const colorRegex = /^#[0-9A-Fa-f]{6}$/;
+const PAYROLL_DAY_MIN = 1;
+const PAYROLL_DAY_MAX = 31;
+
+const workplacePayrollCycleBaseSchema = z.object({
+  closingDayType: z.enum(["DAY_OF_MONTH", "END_OF_MONTH"]),
+  closingDay: z.coerce
+    .number()
+    .int()
+    .min(PAYROLL_DAY_MIN)
+    .max(PAYROLL_DAY_MAX)
+    .nullable()
+    .optional(),
+  payday: z.coerce.number().int().min(PAYROLL_DAY_MIN).max(PAYROLL_DAY_MAX),
+});
 
 const createInitialPayrollRuleSchema = z
   .object({
@@ -40,9 +54,43 @@ const createWorkplaceSchema = z
     name: z.string().trim().min(1).max(50),
     type: z.enum(["GENERAL", "CRAM_SCHOOL"]),
     color: z.string().regex(colorRegex, "HEX形式(#RRGGBB)で入力してください"),
+    closingDayType: workplacePayrollCycleBaseSchema.shape.closingDayType,
+    closingDay: workplacePayrollCycleBaseSchema.shape.closingDay,
+    payday: workplacePayrollCycleBaseSchema.shape.payday,
     initialPayrollRule: createInitialPayrollRuleSchema.optional(),
   })
-  .strict();
+  .strict()
+  .superRefine((value, ctx) => {
+    if (value.closingDayType === "DAY_OF_MONTH" && value.closingDay == null) {
+      ctx.addIssue({
+        code: z.ZodIssueCode.custom,
+        path: ["closingDay"],
+        message: "日付指定のとき締日は必須です",
+      });
+      return;
+    }
+
+    if (value.closingDayType === "END_OF_MONTH" && value.closingDay != null) {
+      ctx.addIssue({
+        code: z.ZodIssueCode.custom,
+        path: ["closingDay"],
+        message: "月末締めのとき締日は null で指定してください",
+      });
+      return;
+    }
+
+    if (
+      value.closingDayType === "DAY_OF_MONTH" &&
+      value.closingDay != null &&
+      value.closingDay === value.payday
+    ) {
+      ctx.addIssue({
+        code: z.ZodIssueCode.custom,
+        path: ["closingDay"],
+        message: "締日と給料日を同日に設定することはできません",
+      });
+    }
+  });
 
 type NormalizedInitialPayrollRule = {
   startDate: Date;
@@ -140,6 +188,12 @@ export async function POST(request: Request) {
           name: body.data.name,
           type: body.data.type,
           color: body.data.color,
+          closingDayType: body.data.closingDayType,
+          closingDay:
+            body.data.closingDayType === "END_OF_MONTH"
+              ? null
+              : body.data.closingDay,
+          payday: body.data.payday,
         },
       });
 
