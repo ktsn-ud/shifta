@@ -9,6 +9,8 @@ import {
 import { prisma } from "@/lib/prisma";
 
 const colorRegex = /^#[0-9A-Fa-f]{6}$/;
+const PAYROLL_DAY_MIN = 1;
+const PAYROLL_DAY_MAX = 31;
 
 type Context = {
   params: Promise<{ workplaceId: string }>;
@@ -21,6 +23,20 @@ const updateWorkplaceSchema = z
     color: z
       .string()
       .regex(colorRegex, "HEX形式(#RRGGBB)で入力してください")
+      .optional(),
+    closingDayType: z.enum(["DAY_OF_MONTH", "END_OF_MONTH"]).optional(),
+    closingDay: z.coerce
+      .number()
+      .int()
+      .min(PAYROLL_DAY_MIN)
+      .max(PAYROLL_DAY_MAX)
+      .nullable()
+      .optional(),
+    payday: z.coerce
+      .number()
+      .int()
+      .min(PAYROLL_DAY_MIN)
+      .max(PAYROLL_DAY_MAX)
       .optional(),
   })
   .strict()
@@ -94,9 +110,45 @@ export async function PUT(request: Request, context: Context) {
       return body.response;
     }
 
+    const hasClosingDay = Object.prototype.hasOwnProperty.call(
+      body.data,
+      "closingDay",
+    );
+    const nextClosingDayType =
+      body.data.closingDayType ?? existing.closingDayType;
+    const nextClosingDay = hasClosingDay
+      ? (body.data.closingDay ?? null)
+      : existing.closingDay;
+    const nextPayday = body.data.payday ?? existing.payday;
+
+    if (
+      nextClosingDayType === "END_OF_MONTH" &&
+      hasClosingDay &&
+      body.data.closingDay !== null
+    ) {
+      return jsonError("月末締めのとき締日は null で指定してください", 400);
+    }
+
+    if (nextClosingDayType === "DAY_OF_MONTH" && nextClosingDay === null) {
+      return jsonError("日付指定のとき締日は必須です", 400);
+    }
+
+    if (
+      nextClosingDayType === "DAY_OF_MONTH" &&
+      nextClosingDay === nextPayday
+    ) {
+      return jsonError("締日と給料日を同日に設定することはできません", 400);
+    }
+
     const workplace = await prisma.workplace.update({
       where: { id: workplaceId },
-      data: body.data,
+      data: {
+        ...body.data,
+        closingDayType: nextClosingDayType,
+        closingDay:
+          nextClosingDayType === "END_OF_MONTH" ? null : nextClosingDay,
+        payday: nextPayday,
+      },
     });
 
     return NextResponse.json({ data: workplace });
