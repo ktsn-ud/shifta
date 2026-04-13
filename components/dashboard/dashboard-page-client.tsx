@@ -49,12 +49,28 @@ type DashboardPageClientProps = {
   nextMonthPaymentAmount: number;
 };
 
+const NEXT_PAYMENT_CACHE_TTL_MS = 5 * 60 * 1000;
+
+type NextPaymentCacheEntry = {
+  amount: number;
+  expiresAt: number;
+};
+
+const nextPaymentCache = new Map<string, NextPaymentCacheEntry>();
+
 function formatCurrency(value: number): string {
   return new Intl.NumberFormat("ja-JP", {
     style: "currency",
     currency: "JPY",
     maximumFractionDigits: 0,
   }).format(value);
+}
+
+function formatCalendarMonthLabel(month: Date): string {
+  const now = new Date();
+  const isSameYear = month.getFullYear() === now.getFullYear();
+  const monthLabel = `${month.getMonth() + 1}月`;
+  return isSameYear ? monthLabel : `${month.getFullYear()}年${monthLabel}`;
 }
 
 function formatSummaryPeriodLabel(month: Date): string {
@@ -68,6 +84,41 @@ function formatSummaryPeriodLabel(month: Date): string {
 
   const monthLabel = `${month.getMonth() + 1}月`;
   return isSameYear ? monthLabel : `${month.getFullYear()}年${monthLabel}`;
+}
+
+function toNextPaymentCacheKey(userKey: string, paymentMonth: string): string {
+  return `${userKey}:${paymentMonth}`;
+}
+
+function readNextPaymentCache(cacheKey: string): number | null {
+  const cached = nextPaymentCache.get(cacheKey);
+  if (!cached) {
+    return null;
+  }
+
+  if (cached.expiresAt <= Date.now()) {
+    nextPaymentCache.delete(cacheKey);
+    return null;
+  }
+
+  return cached.amount;
+}
+
+function writeNextPaymentCache(cacheKey: string, amount: number): void {
+  nextPaymentCache.set(cacheKey, {
+    amount,
+    expiresAt: Date.now() + NEXT_PAYMENT_CACHE_TTL_MS,
+  });
+}
+
+function isPayrollSummaryResponse(
+  value: unknown,
+): value is { totalWage: number } {
+  return (
+    typeof value === "object" &&
+    value !== null &&
+    typeof (value as { totalWage?: unknown }).totalWage === "number"
+  );
 }
 
 export function DashboardPageLoadingSkeleton() {
@@ -105,6 +156,10 @@ export function DashboardPageClient({
   });
   const [selectedDate, setSelectedDate] = useState(() => new Date());
   const [modalOpen, setModalOpen] = useState(false);
+  const [nextPaymentAmount, setNextPaymentAmount] = useState(
+    nextMonthPaymentAmount,
+  );
+  const [isNextPaymentLoading, setIsNextPaymentLoading] = useState(false);
   const now = new Date();
   const isCurrentMonth =
     month.getFullYear() === now.getFullYear() &&
@@ -133,6 +188,11 @@ export function DashboardPageClient({
     () => formatSummaryPeriodLabel(month),
     [month],
   );
+  const nextPaymentMonthValue = useMemo(
+    () => toMonthInputValue(addMonths(month, 1)),
+    [month],
+  );
+  const nextPaymentMonthDate = useMemo(() => addMonths(month, 1), [month]);
   const selectedDateKey = toDateKey(selectedDate);
   const selectedDateShifts = shiftsByDate.get(selectedDateKey) ?? [];
   const failedShiftIds = useMemo(() => {
@@ -179,6 +239,85 @@ export function DashboardPageClient({
       return isSameMonth ? current : monthFromQuery;
     });
   }, [monthFromQuery]);
+
+  useEffect(() => {
+    const initialMonthDate = startOfMonth(
+      dateFromDateKey(initialMonthStartDate) ?? new Date(),
+    );
+    const isInitialMonth =
+      month.getFullYear() === initialMonthDate.getFullYear() &&
+      month.getMonth() === initialMonthDate.getMonth();
+
+    const cacheKey = toNextPaymentCacheKey(
+      currentUserId,
+      nextPaymentMonthValue,
+    );
+    if (isInitialMonth) {
+      writeNextPaymentCache(cacheKey, nextMonthPaymentAmount);
+      setNextPaymentAmount(nextMonthPaymentAmount);
+      setIsNextPaymentLoading(false);
+      return;
+    }
+
+    const cachedAmount = readNextPaymentCache(cacheKey);
+    if (cachedAmount !== null) {
+      setNextPaymentAmount(cachedAmount);
+      setIsNextPaymentLoading(false);
+      return;
+    }
+
+    const abortController = new AbortController();
+    async function fetchNextPaymentAmount() {
+      setIsNextPaymentLoading(true);
+
+      try {
+        const params = new URLSearchParams({
+          month: nextPaymentMonthValue,
+        });
+
+        const response = await fetch(
+          `/api/payroll/summary?${params.toString()}`,
+          {
+            signal: abortController.signal,
+          },
+        );
+
+        if (response.ok === false) {
+          throw new Error("PAYROLL_SUMMARY_FETCH_FAILED");
+        }
+
+        const payload = (await response.json()) as unknown;
+        if (!isPayrollSummaryResponse(payload)) {
+          throw new Error("PAYROLL_SUMMARY_RESPONSE_INVALID");
+        }
+
+        writeNextPaymentCache(cacheKey, payload.totalWage);
+        setNextPaymentAmount(payload.totalWage);
+      } catch (error) {
+        if (abortController.signal.aborted) {
+          return;
+        }
+
+        console.error("failed to fetch next payment amount", error);
+      } finally {
+        if (abortController.signal.aborted === false) {
+          setIsNextPaymentLoading(false);
+        }
+      }
+    }
+
+    void fetchNextPaymentAmount();
+
+    return () => {
+      abortController.abort();
+    };
+  }, [
+    currentUserId,
+    initialMonthStartDate,
+    month,
+    nextMonthPaymentAmount,
+    nextPaymentMonthValue,
+  ]);
 
   const handleCreateShift = (date: Date) => {
     const dateString = toDateKey(date);
@@ -373,11 +512,16 @@ export function DashboardPageClient({
         <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
           <Card size="sm">
             <CardHeader>
-              <CardTitle>来月の支給額</CardTitle>
-              <CardDescription>来月に受け取る見込み額</CardDescription>
+              <CardTitle>翌月支給額</CardTitle>
+              <CardDescription>
+                {formatCalendarMonthLabel(nextPaymentMonthDate)}
+                に受け取る見込み額
+              </CardDescription>
             </CardHeader>
             <CardContent className="text-2xl font-semibold">
-              {formatCurrency(nextMonthPaymentAmount)}
+              {isNextPaymentLoading
+                ? "読み込み中..."
+                : formatCurrency(nextPaymentAmount)}
             </CardContent>
           </Card>
 
