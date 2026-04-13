@@ -446,6 +446,7 @@ export function SummaryPageClient({
                   <TableHeader>
                     <TableRow>
                       <TableHead>勤務先</TableHead>
+                      <TableHead>対象期間</TableHead>
                       <TableHead className="text-right">勤務時間</TableHead>
                       <TableHead className="text-right">給与</TableHead>
                     </TableRow>
@@ -463,6 +464,9 @@ export function SummaryPageClient({
                               {item.workplaceName}
                             </span>
                           </TableCell>
+                          <TableCell>
+                            {item.periodStartDate} 〜 {item.periodEndDate}
+                          </TableCell>
                           <TableCell className="text-right">
                             {formatHours(item.workHours)}
                           </TableCell>
@@ -473,7 +477,7 @@ export function SummaryPageClient({
                       ))
                     ) : (
                       <TableRow>
-                        <TableCell colSpan={3} className="h-20 text-center">
+                        <TableCell colSpan={4} className="h-20 text-center">
                           対象期間のシフトはありません
                         </TableCell>
                       </TableRow>
