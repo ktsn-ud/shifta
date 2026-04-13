@@ -122,7 +122,7 @@ export async function PUT(request: Request, context: Context) {
     const nextPayday = body.data.payday ?? existing.payday;
 
     if (
-      body.data.closingDayType === "END_OF_MONTH" &&
+      nextClosingDayType === "END_OF_MONTH" &&
       hasClosingDay &&
       body.data.closingDay !== null
     ) {

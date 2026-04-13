@@ -52,13 +52,6 @@ type WorkplacePeriodSummary = {
 type ShiftWithSummaryRelations = Prisma.ShiftGetPayload<{
   include: {
     lessonRange: true;
-    workplace: {
-      select: {
-        id: true;
-        name: true;
-        color: true;
-      };
-    };
   };
 }>;
 
@@ -120,6 +113,8 @@ function summarizeWorkplaceByPeriod(
   rulesByWorkplace: PayrollRulesByWorkplace,
 ): WorkplacePeriodSummary {
   const shifts = shiftsByWorkplace.get(workplaceId) ?? [];
+  const periodStartTime = period.periodStartDate.getTime();
+  const periodEndTime = period.periodEndDate.getTime();
   let wage = 0;
   let confirmedWage = 0;
   let workHours = 0;
@@ -128,12 +123,12 @@ function summarizeWorkplaceByPeriod(
 
   for (const shift of shifts) {
     const shiftTime = shift.date.getTime();
-    if (shiftTime < period.periodStartDate.getTime()) {
+    if (shiftTime < periodStartTime) {
       continue;
     }
 
-    if (shiftTime > period.periodEndDate.getTime()) {
-      continue;
+    if (shiftTime > periodEndTime) {
+      break;
     }
 
     const result = calculateShiftPayrollResult(shift, rulesByWorkplace);
@@ -235,13 +230,6 @@ export async function getPayrollSummaryForUser(
     },
     include: {
       lessonRange: true,
-      workplace: {
-        select: {
-          id: true,
-          name: true,
-          color: true,
-        },
-      },
     },
     orderBy: [{ date: "asc" }, { startTime: "asc" }],
   });
@@ -251,6 +239,19 @@ export async function getPayrollSummaryForUser(
       workplaceId: {
         in: workplaces.map((workplace) => workplace.id),
       },
+      startDate: {
+        lte: fetchEndDate,
+      },
+      OR: [
+        {
+          endDate: null,
+        },
+        {
+          endDate: {
+            gt: fetchStartDate,
+          },
+        },
+      ],
     },
     orderBy: [{ workplaceId: "asc" }, { startDate: "asc" }],
   });
