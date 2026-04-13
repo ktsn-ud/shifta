@@ -1,5 +1,6 @@
 import { randomUUID } from "node:crypto";
 import { after, NextResponse } from "next/server";
+import { revalidatePath } from "next/cache";
 import { z } from "zod";
 import { requireCurrentUser } from "@/lib/api/current-user";
 import { DATE_ONLY_REGEX, TIME_ONLY_REGEX } from "@/lib/api/date-time";
@@ -303,6 +304,8 @@ export async function POST(request: Request) {
         });
       }
     });
+
+    revalidatePath("/my");
 
     return NextResponse.json(
       {

@@ -45,6 +45,7 @@ import {
   readGoogleSyncFailureFromErrorResponse,
 } from "@/lib/google-calendar/clientSync";
 import { CALENDAR_SETUP_PATH } from "@/lib/google-calendar/constants";
+import { clearMonthShiftsCache } from "@/hooks/use-month-shifts";
 import { messages, toErrorMessage } from "@/lib/messages";
 import { resolveUserFacingErrorFromResponse } from "@/lib/user-facing-error";
 import { cn } from "@/lib/utils";
@@ -1409,6 +1410,7 @@ export function BulkShiftForm() {
           return;
         }
 
+        clearMonthShiftsCache();
         router.push("/my");
         return;
       }
@@ -1419,6 +1421,7 @@ export function BulkShiftForm() {
           ? "Google Calendar 同期はバックグラウンドで実行中です。"
           : undefined,
       });
+      clearMonthShiftsCache();
       router.push("/my");
     } catch (error) {
       console.error("failed to submit bulk shifts", error);
