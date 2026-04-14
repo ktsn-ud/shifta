@@ -222,3 +222,31 @@
 ### 10.3 最終判定
 
 - `M1` ベースでは、対象3ルートの JS バンドルサイズは **増加していない**（差分 0）。
+
+## 11. experimental-analyze 指標での直接比較（2026-04-14）
+
+### 11.1 比較指標（E1）
+
+- `E1`: `experimental-analyze` が出力する各ルート `analyze.data` について、
+  `output_files` が `[client-fs]/_next/static/chunks/*.js` の `chunk_parts.compressed_size` 合計
+
+### 11.2 比較手順
+
+1. 削減前コミット（`deedea1`）の対象6ファイル内容へ一時的に戻す
+2. `rm -rf .next/diagnostics`
+3. `pnpm next experimental-analyze --output`
+4. E1 を集計
+5. 現在のHEADへ復元し、同じ手順で E1 を再集計
+
+### 11.3 E1 比較結果（Before: 削減前, After: 現在）
+
+| Route                                        |    Before |     After |      Diff |  Diff % |
+| -------------------------------------------- | --------: | --------: | --------: | ------: |
+| `/my/workplaces`                             | 509,626 B | 417,171 B | -92,455 B | -18.14% |
+| `/my/workplaces/[workplaceId]/payroll-rules` | 510,091 B | 417,653 B | -92,438 B | -18.12% |
+| `/my/workplaces/[workplaceId]/timetables`    | 509,477 B | 417,110 B | -92,367 B | -18.13% |
+
+### 11.4 最終評価（E1基準）
+
+- `experimental-analyze` の直接指標（E1）では、`zod` 削減により対象3ルートで
+  **約 92KB（約18%）のクライアントJS圧縮サイズ削減** が確認できた。
