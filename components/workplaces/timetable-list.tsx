@@ -3,7 +3,6 @@
 import Link from "next/link";
 import { useEffect, useMemo, useState } from "react";
 import { toast } from "sonner";
-import { z } from "zod";
 import { Button, buttonVariants } from "@/components/ui/button";
 import {
   Card,
@@ -32,39 +31,6 @@ import {
 import { messages, toErrorMessage } from "@/lib/messages";
 import { resolveUserFacingErrorFromResponse } from "@/lib/user-facing-error";
 
-const workplaceResponseSchema = z.object({
-  data: z.object({
-    id: z.string(),
-    name: z.string(),
-    type: z.enum(["GENERAL", "CRAM_SCHOOL"]),
-    color: z.string(),
-  }),
-});
-
-const timetableItemSchema = z.object({
-  id: z.string(),
-  timetableSetId: z.string(),
-  period: z.number().int().positive(),
-  startTime: z.string(),
-  endTime: z.string(),
-  startTimeLabel: z.string().optional(),
-  endTimeLabel: z.string().optional(),
-});
-
-const timetableSetSchema = z.object({
-  id: z.string(),
-  workplaceId: z.string(),
-  name: z.string(),
-  sortOrder: z.number().int(),
-  createdAt: z.string(),
-  updatedAt: z.string(),
-  items: z.array(timetableItemSchema),
-});
-
-const timetableListResponseSchema = z.object({
-  data: z.array(timetableSetSchema),
-});
-
 type TimetableListProps = {
   workplaceId: string;
   initialWorkplace?: {
@@ -76,7 +42,184 @@ type TimetableListProps = {
   initialTimetables?: TimetableSet[];
 };
 
-type TimetableSet = z.infer<typeof timetableSetSchema>;
+type WorkplaceType = "GENERAL" | "CRAM_SCHOOL";
+
+type WorkplaceResponse = {
+  data: {
+    id: string;
+    name: string;
+    type: WorkplaceType;
+    color: string;
+  };
+};
+
+type TimetableItem = {
+  id: string;
+  timetableSetId: string;
+  period: number;
+  startTime: string;
+  endTime: string;
+  startTimeLabel?: string;
+  endTimeLabel?: string;
+};
+
+type TimetableSet = {
+  id: string;
+  workplaceId: string;
+  name: string;
+  sortOrder: number;
+  createdAt: string;
+  updatedAt: string;
+  items: TimetableItem[];
+};
+
+type TimetableListResponse = {
+  data: TimetableSet[];
+};
+
+const WORKPLACE_TYPES: WorkplaceType[] = ["GENERAL", "CRAM_SCHOOL"];
+
+function isRecord(value: unknown): value is Record<string, unknown> {
+  return typeof value === "object" && value !== null;
+}
+
+function isWorkplaceType(value: unknown): value is WorkplaceType {
+  return (
+    typeof value === "string" &&
+    WORKPLACE_TYPES.includes(value as WorkplaceType)
+  );
+}
+
+function isPositiveInteger(value: unknown): value is number {
+  return typeof value === "number" && Number.isInteger(value) && value > 0;
+}
+
+function isInteger(value: unknown): value is number {
+  return typeof value === "number" && Number.isInteger(value);
+}
+
+function parseWorkplaceResponse(value: unknown): WorkplaceResponse | null {
+  if (!isRecord(value) || !isRecord(value.data)) {
+    return null;
+  }
+
+  if (
+    typeof value.data.id !== "string" ||
+    typeof value.data.name !== "string" ||
+    !isWorkplaceType(value.data.type) ||
+    typeof value.data.color !== "string"
+  ) {
+    return null;
+  }
+
+  return {
+    data: {
+      id: value.data.id,
+      name: value.data.name,
+      type: value.data.type,
+      color: value.data.color,
+    },
+  };
+}
+
+function parseTimetableItem(value: unknown): TimetableItem | null {
+  if (!isRecord(value)) {
+    return null;
+  }
+
+  if (
+    typeof value.id !== "string" ||
+    typeof value.timetableSetId !== "string" ||
+    !isPositiveInteger(value.period) ||
+    typeof value.startTime !== "string" ||
+    typeof value.endTime !== "string"
+  ) {
+    return null;
+  }
+
+  if (
+    value.startTimeLabel !== undefined &&
+    typeof value.startTimeLabel !== "string"
+  ) {
+    return null;
+  }
+
+  if (
+    value.endTimeLabel !== undefined &&
+    typeof value.endTimeLabel !== "string"
+  ) {
+    return null;
+  }
+
+  return {
+    id: value.id,
+    timetableSetId: value.timetableSetId,
+    period: value.period,
+    startTime: value.startTime,
+    endTime: value.endTime,
+    ...(value.startTimeLabel !== undefined
+      ? { startTimeLabel: value.startTimeLabel }
+      : {}),
+    ...(value.endTimeLabel !== undefined
+      ? { endTimeLabel: value.endTimeLabel }
+      : {}),
+  };
+}
+
+function parseTimetableSet(value: unknown): TimetableSet | null {
+  if (!isRecord(value) || !Array.isArray(value.items)) {
+    return null;
+  }
+
+  if (
+    typeof value.id !== "string" ||
+    typeof value.workplaceId !== "string" ||
+    typeof value.name !== "string" ||
+    !isInteger(value.sortOrder) ||
+    typeof value.createdAt !== "string" ||
+    typeof value.updatedAt !== "string"
+  ) {
+    return null;
+  }
+
+  const items: TimetableItem[] = [];
+  for (const item of value.items) {
+    const parsed = parseTimetableItem(item);
+    if (!parsed) {
+      return null;
+    }
+    items.push(parsed);
+  }
+
+  return {
+    id: value.id,
+    workplaceId: value.workplaceId,
+    name: value.name,
+    sortOrder: value.sortOrder,
+    createdAt: value.createdAt,
+    updatedAt: value.updatedAt,
+    items,
+  };
+}
+
+function parseTimetableListResponse(
+  value: unknown,
+): TimetableListResponse | null {
+  if (!isRecord(value) || !Array.isArray(value.data)) {
+    return null;
+  }
+
+  const sets: TimetableSet[] = [];
+  for (const item of value.data) {
+    const parsed = parseTimetableSet(item);
+    if (!parsed) {
+      return null;
+    }
+    sets.push(parsed);
+  }
+
+  return { data: sets };
+}
 
 async function readApiErrorMessage(
   response: Response,
@@ -107,7 +250,7 @@ export function TimetableList({
   const [workplace, setWorkplace] = useState<{
     id: string;
     name: string;
-    type: "GENERAL" | "CRAM_SCHOOL";
+    type: WorkplaceType;
     color: string;
   } | null>(() => initialWorkplace ?? null);
   const [timetableSets, setTimetableSets] = useState<TimetableSet[]>(
@@ -154,16 +297,16 @@ export function TimetableList({
           );
         }
 
-        const parsedWorkplace = workplaceResponseSchema.safeParse(
+        const parsedWorkplace = parseWorkplaceResponse(
           (await workplaceResponse.json()) as unknown,
         );
-        if (parsedWorkplace.success === false) {
+        if (!parsedWorkplace) {
           throw new Error("勤務先情報レスポンスの形式が不正です。");
         }
 
-        setWorkplace(parsedWorkplace.data.data);
+        setWorkplace(parsedWorkplace.data);
 
-        if (parsedWorkplace.data.data.type !== "CRAM_SCHOOL") {
+        if (parsedWorkplace.data.type !== "CRAM_SCHOOL") {
           setTimetableSets([]);
           return;
         }
@@ -183,14 +326,14 @@ export function TimetableList({
           );
         }
 
-        const parsedTimetables = timetableListResponseSchema.safeParse(
+        const parsedTimetables = parseTimetableListResponse(
           (await timetableResponse.json()) as unknown,
         );
-        if (parsedTimetables.success === false) {
+        if (!parsedTimetables) {
           throw new Error("時間割一覧レスポンスの形式が不正です。");
         }
 
-        setTimetableSets(parsedTimetables.data.data);
+        setTimetableSets(parsedTimetables.data);
       } catch (error) {
         if (abortController.signal.aborted) {
           return;

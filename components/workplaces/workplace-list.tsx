@@ -3,7 +3,6 @@
 import Link from "next/link";
 import { useEffect, useMemo, useState } from "react";
 import { toast } from "sonner";
-import { z } from "zod";
 import { Button, buttonVariants } from "@/components/ui/button";
 import {
   Card,
@@ -33,39 +32,156 @@ import { formatWorkplaceType } from "@/lib/enum-labels";
 import { messages, toErrorMessage } from "@/lib/messages";
 import { resolveUserFacingErrorFromResponse } from "@/lib/user-facing-error";
 
-const workplaceSchema = z.object({
-  id: z.string(),
-  name: z.string(),
-  type: z.enum(["GENERAL", "CRAM_SCHOOL"]),
-  color: z.string(),
-  _count: z.object({
-    shifts: z.number().int().nonnegative(),
-    payrollRules: z.number().int().nonnegative(),
-    timetableSets: z.number().int().nonnegative(),
-  }),
-});
+type WorkplaceType = "GENERAL" | "CRAM_SCHOOL";
 
-const workplaceListResponseSchema = z.object({
-  data: z.array(workplaceSchema),
-});
+type RelatedCounts = {
+  shifts: number;
+  payrollRules: number;
+  timetableSets: number;
+};
 
-const workplaceDeleteResponseSchema = z.object({
-  data: z.object({
-    id: z.string(),
-    deleted: z.boolean(),
-    relatedCounts: z.object({
-      shifts: z.number().int().nonnegative(),
-      payrollRules: z.number().int().nonnegative(),
-      timetableSets: z.number().int().nonnegative(),
-    }),
-  }),
-  warning: z.string().nullable().optional(),
-});
+type Workplace = {
+  id: string;
+  name: string;
+  type: WorkplaceType;
+  color: string;
+  _count: RelatedCounts;
+};
 
-type Workplace = z.infer<typeof workplaceSchema>;
+type WorkplaceListResponse = {
+  data: Workplace[];
+};
+
+type WorkplaceDeleteResponse = {
+  data: {
+    id: string;
+    deleted: boolean;
+    relatedCounts: RelatedCounts;
+  };
+  warning?: string | null;
+};
+
 type WorkplaceListProps = {
   initialWorkplaces?: Workplace[];
 };
+
+const WORKPLACE_TYPES: WorkplaceType[] = ["GENERAL", "CRAM_SCHOOL"];
+
+function isRecord(value: unknown): value is Record<string, unknown> {
+  return typeof value === "object" && value !== null;
+}
+
+function isWorkplaceType(value: unknown): value is WorkplaceType {
+  return (
+    typeof value === "string" &&
+    WORKPLACE_TYPES.includes(value as WorkplaceType)
+  );
+}
+
+function isNonNegativeInteger(value: unknown): value is number {
+  return typeof value === "number" && Number.isInteger(value) && value >= 0;
+}
+
+function parseRelatedCounts(value: unknown): RelatedCounts | null {
+  if (!isRecord(value)) {
+    return null;
+  }
+
+  if (
+    !isNonNegativeInteger(value.shifts) ||
+    !isNonNegativeInteger(value.payrollRules) ||
+    !isNonNegativeInteger(value.timetableSets)
+  ) {
+    return null;
+  }
+
+  return {
+    shifts: value.shifts,
+    payrollRules: value.payrollRules,
+    timetableSets: value.timetableSets,
+  };
+}
+
+function parseWorkplace(value: unknown): Workplace | null {
+  if (!isRecord(value)) {
+    return null;
+  }
+
+  if (
+    typeof value.id !== "string" ||
+    typeof value.name !== "string" ||
+    !isWorkplaceType(value.type) ||
+    typeof value.color !== "string"
+  ) {
+    return null;
+  }
+
+  const relatedCounts = parseRelatedCounts(value._count);
+  if (!relatedCounts) {
+    return null;
+  }
+
+  return {
+    id: value.id,
+    name: value.name,
+    type: value.type,
+    color: value.color,
+    _count: relatedCounts,
+  };
+}
+
+function parseWorkplaceListResponse(
+  value: unknown,
+): WorkplaceListResponse | null {
+  if (!isRecord(value) || !Array.isArray(value.data)) {
+    return null;
+  }
+
+  const workplaces: Workplace[] = [];
+  for (const item of value.data) {
+    const workplace = parseWorkplace(item);
+    if (!workplace) {
+      return null;
+    }
+    workplaces.push(workplace);
+  }
+
+  return { data: workplaces };
+}
+
+function parseWorkplaceDeleteResponse(
+  value: unknown,
+): WorkplaceDeleteResponse | null {
+  if (!isRecord(value) || !isRecord(value.data)) {
+    return null;
+  }
+
+  const relatedCounts = parseRelatedCounts(value.data.relatedCounts);
+  if (
+    typeof value.data.id !== "string" ||
+    typeof value.data.deleted !== "boolean" ||
+    !relatedCounts
+  ) {
+    return null;
+  }
+
+  if (
+    value.warning !== undefined &&
+    value.warning !== null &&
+    typeof value.warning !== "string"
+  ) {
+    return null;
+  }
+
+  return {
+    data: {
+      id: value.data.id,
+      deleted: value.data.deleted,
+      relatedCounts,
+    },
+    ...(value.warning !== undefined ? { warning: value.warning } : {}),
+  };
+}
 
 async function readApiErrorMessage(
   response: Response,
@@ -119,14 +235,14 @@ export function WorkplaceList({ initialWorkplaces }: WorkplaceListProps) {
           );
         }
 
-        const parsed = workplaceListResponseSchema.safeParse(
+        const parsed = parseWorkplaceListResponse(
           (await response.json()) as unknown,
         );
-        if (parsed.success === false) {
+        if (!parsed) {
           throw new Error("勤務先一覧レスポンスの形式が不正です。");
         }
 
-        setWorkplaces(parsed.data.data);
+        setWorkplaces(parsed.data);
       } catch (error) {
         if (abortController.signal.aborted) {
           return;
@@ -171,10 +287,10 @@ export function WorkplaceList({ initialWorkplaces }: WorkplaceListProps) {
         );
       }
 
-      const parsed = workplaceDeleteResponseSchema.safeParse(
+      const parsed = parseWorkplaceDeleteResponse(
         (await response.json()) as unknown,
       );
-      if (parsed.success === false) {
+      if (!parsed) {
         throw new Error("勤務先削除レスポンスの形式が不正です。");
       }
 
@@ -182,13 +298,13 @@ export function WorkplaceList({ initialWorkplaces }: WorkplaceListProps) {
         current.filter((workplace) => workplace.id !== deletingTarget.id),
       );
 
-      if (parsed.data.warning) {
+      if (parsed.warning) {
         toast.warning(messages.success.workplaceDeleted, {
-          description: parsed.data.warning,
+          description: parsed.warning,
           duration: 6000,
         });
         setInfoMessage(
-          `${deletingTarget.name} を削除しました。${parsed.data.warning}`,
+          `${deletingTarget.name} を削除しました。${parsed.warning}`,
         );
       } else {
         toast.success(messages.success.workplaceDeleted, {

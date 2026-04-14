@@ -3,7 +3,6 @@
 import Link from "next/link";
 import { useEffect, useMemo, useState } from "react";
 import { toast } from "sonner";
-import { z } from "zod";
 import { Button, buttonVariants } from "@/components/ui/button";
 import {
   Card,
@@ -33,36 +32,6 @@ import { dateKeyFromApiDate } from "@/lib/calendar/date";
 import { messages, toErrorMessage } from "@/lib/messages";
 import { resolveUserFacingErrorFromResponse } from "@/lib/user-facing-error";
 
-const workplaceResponseSchema = z.object({
-  data: z.object({
-    id: z.string(),
-    name: z.string(),
-    type: z.enum(["GENERAL", "CRAM_SCHOOL"]),
-    color: z.string(),
-  }),
-});
-
-const numericValueSchema = z.union([z.number(), z.string()]);
-
-const payrollRuleSchema = z.object({
-  id: z.string(),
-  workplaceId: z.string(),
-  startDate: z.string(),
-  endDate: z.string().nullable(),
-  baseHourlyWage: numericValueSchema,
-  holidayHourlyWage: numericValueSchema.nullable(),
-  nightMultiplier: numericValueSchema,
-  overtimeMultiplier: numericValueSchema,
-  nightStart: z.string(),
-  nightEnd: z.string(),
-  dailyOvertimeThreshold: numericValueSchema,
-  holidayType: z.enum(["NONE", "WEEKEND", "HOLIDAY", "WEEKEND_HOLIDAY"]),
-});
-
-const payrollRuleListResponseSchema = z.object({
-  data: z.array(payrollRuleSchema),
-});
-
 type PayrollRuleListProps = {
   workplaceId: string;
   initialWorkplace?: {
@@ -76,7 +45,147 @@ type PayrollRuleListProps = {
 };
 
 type WorkplaceType = "GENERAL" | "CRAM_SCHOOL";
-type PayrollRule = z.infer<typeof payrollRuleSchema>;
+type HolidayType = "NONE" | "WEEKEND" | "HOLIDAY" | "WEEKEND_HOLIDAY";
+type NumericValue = number | string;
+
+type WorkplaceResponse = {
+  data: {
+    id: string;
+    name: string;
+    type: WorkplaceType;
+    color: string;
+  };
+};
+
+type PayrollRule = {
+  id: string;
+  workplaceId: string;
+  startDate: string;
+  endDate: string | null;
+  baseHourlyWage: NumericValue;
+  holidayHourlyWage: NumericValue | null;
+  nightMultiplier: NumericValue;
+  overtimeMultiplier: NumericValue;
+  nightStart: string;
+  nightEnd: string;
+  dailyOvertimeThreshold: NumericValue;
+  holidayType: HolidayType;
+};
+
+type PayrollRuleListResponse = {
+  data: PayrollRule[];
+};
+
+const WORKPLACE_TYPES: WorkplaceType[] = ["GENERAL", "CRAM_SCHOOL"];
+const HOLIDAY_TYPES: HolidayType[] = [
+  "NONE",
+  "WEEKEND",
+  "HOLIDAY",
+  "WEEKEND_HOLIDAY",
+];
+
+function isRecord(value: unknown): value is Record<string, unknown> {
+  return typeof value === "object" && value !== null;
+}
+
+function isWorkplaceType(value: unknown): value is WorkplaceType {
+  return (
+    typeof value === "string" &&
+    WORKPLACE_TYPES.includes(value as WorkplaceType)
+  );
+}
+
+function isHolidayType(value: unknown): value is HolidayType {
+  return (
+    typeof value === "string" && HOLIDAY_TYPES.includes(value as HolidayType)
+  );
+}
+
+function isNumericValue(value: unknown): value is NumericValue {
+  return typeof value === "number" || typeof value === "string";
+}
+
+function parseWorkplaceResponse(value: unknown): WorkplaceResponse | null {
+  if (!isRecord(value) || !isRecord(value.data)) {
+    return null;
+  }
+
+  if (
+    typeof value.data.id !== "string" ||
+    typeof value.data.name !== "string" ||
+    !isWorkplaceType(value.data.type) ||
+    typeof value.data.color !== "string"
+  ) {
+    return null;
+  }
+
+  return {
+    data: {
+      id: value.data.id,
+      name: value.data.name,
+      type: value.data.type,
+      color: value.data.color,
+    },
+  };
+}
+
+function parsePayrollRule(value: unknown): PayrollRule | null {
+  if (!isRecord(value)) {
+    return null;
+  }
+
+  if (
+    typeof value.id !== "string" ||
+    typeof value.workplaceId !== "string" ||
+    typeof value.startDate !== "string" ||
+    (value.endDate !== null && typeof value.endDate !== "string") ||
+    !isNumericValue(value.baseHourlyWage) ||
+    (value.holidayHourlyWage !== null &&
+      !isNumericValue(value.holidayHourlyWage)) ||
+    !isNumericValue(value.nightMultiplier) ||
+    !isNumericValue(value.overtimeMultiplier) ||
+    typeof value.nightStart !== "string" ||
+    typeof value.nightEnd !== "string" ||
+    !isNumericValue(value.dailyOvertimeThreshold) ||
+    !isHolidayType(value.holidayType)
+  ) {
+    return null;
+  }
+
+  return {
+    id: value.id,
+    workplaceId: value.workplaceId,
+    startDate: value.startDate,
+    endDate: value.endDate,
+    baseHourlyWage: value.baseHourlyWage,
+    holidayHourlyWage: value.holidayHourlyWage,
+    nightMultiplier: value.nightMultiplier,
+    overtimeMultiplier: value.overtimeMultiplier,
+    nightStart: value.nightStart,
+    nightEnd: value.nightEnd,
+    dailyOvertimeThreshold: value.dailyOvertimeThreshold,
+    holidayType: value.holidayType,
+  };
+}
+
+function parsePayrollRuleListResponse(
+  value: unknown,
+): PayrollRuleListResponse | null {
+  if (!isRecord(value) || !Array.isArray(value.data)) {
+    return null;
+  }
+
+  const rules: PayrollRule[] = [];
+  for (const item of value.data) {
+    const parsed = parsePayrollRule(item);
+    if (!parsed) {
+      return null;
+    }
+    rules.push(parsed);
+  }
+
+  return { data: rules };
+}
 
 async function readApiErrorMessage(
   response: Response,
@@ -213,22 +322,22 @@ export function PayrollRuleList({
           );
         }
 
-        const parsedWorkplace = workplaceResponseSchema.safeParse(
+        const parsedWorkplace = parseWorkplaceResponse(
           (await workplaceResponse.json()) as unknown,
         );
-        if (parsedWorkplace.success === false) {
+        if (!parsedWorkplace) {
           throw new Error("勤務先情報レスポンスの形式が不正です。");
         }
 
-        const parsedRules = payrollRuleListResponseSchema.safeParse(
+        const parsedRules = parsePayrollRuleListResponse(
           (await rulesResponse.json()) as unknown,
         );
-        if (parsedRules.success === false) {
+        if (!parsedRules) {
           throw new Error("給与ルール一覧レスポンスの形式が不正です。");
         }
 
-        setWorkplace(parsedWorkplace.data.data);
-        setRules(parsedRules.data.data);
+        setWorkplace(parsedWorkplace.data);
+        setRules(parsedRules.data);
       } catch (error) {
         if (abortController.signal.aborted) {
           return;
