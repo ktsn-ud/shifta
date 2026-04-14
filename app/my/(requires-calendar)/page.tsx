@@ -21,7 +21,7 @@ import {
   findApplicablePayrollRule,
   groupPayrollRulesByWorkplace,
 } from "@/lib/payroll/summarizeByPeriod";
-import { getPayrollSummaryForUser } from "@/lib/payroll/summary";
+import { getPayrollTotalWageForUserByMonth } from "@/lib/payroll/summary";
 import { calculateWorkedMinutes } from "@/lib/payroll/estimate";
 import { prisma } from "@/lib/prisma";
 
@@ -192,11 +192,11 @@ async function DashboardPageContent({ month }: { month: Date }) {
   const [
     initialMonthShifts,
     initialUnconfirmedShiftCount,
-    nextMonthPaymentSummary,
+    nextMonthPaymentAmount,
   ] = await Promise.all([
     getMonthShiftsWithEstimate(current.user.id, startDate, endDate),
     getUnconfirmedShiftCount(current.user.id),
-    getPayrollSummaryForUser(
+    getPayrollTotalWageForUserByMonth(
       current.user.id,
       resolveNextPaymentMonthDate(month),
     ),
@@ -209,7 +209,7 @@ async function DashboardPageContent({ month }: { month: Date }) {
       initialMonthStartDate={startDate}
       initialMonthEndDate={endDate}
       initialUnconfirmedShiftCount={initialUnconfirmedShiftCount}
-      nextMonthPaymentAmount={nextMonthPaymentSummary.totalWage}
+      nextMonthPaymentAmount={nextMonthPaymentAmount}
     />
   );
 }

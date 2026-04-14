@@ -1,19 +1,31 @@
 "use client";
 
 import { useCallback, useMemo, useState } from "react";
-import { z } from "zod";
 
 type FieldErrors<T extends Record<string, unknown>> = Partial<
   Record<keyof T, string>
 >;
 
+type ValidationIssue = {
+  path: Array<string | number>;
+  message: string;
+};
+
+type ValidationResult<TValues> =
+  | { success: true; data: TValues }
+  | { success: false; issues: ValidationIssue[] };
+
+type FormValidator<TValues extends Record<string, unknown>> = (
+  values: TValues,
+) => ValidationResult<TValues>;
+
 type FormOptions<TValues extends Record<string, unknown>> = {
-  schema: z.ZodType<TValues>;
+  validator: FormValidator<TValues>;
   initialValues: TValues;
 };
 
 export function useFormWithValidation<TValues extends Record<string, unknown>>({
-  schema,
+  validator,
   initialValues,
 }: FormOptions<TValues>) {
   type Values = TValues;
@@ -39,7 +51,7 @@ export function useFormWithValidation<TValues extends Record<string, unknown>>({
   );
 
   const validate = useCallback(() => {
-    const parsed = schema.safeParse(values);
+    const parsed = validator(values);
 
     if (parsed.success) {
       setErrors({});
@@ -47,7 +59,7 @@ export function useFormWithValidation<TValues extends Record<string, unknown>>({
     }
 
     const nextErrors: FieldErrors<FormValues> = {};
-    for (const issue of parsed.error.issues) {
+    for (const issue of parsed.issues) {
       const field = issue.path[0];
       if (typeof field === "string") {
         const nextErrorsRecord = nextErrors as Record<string, string>;
@@ -59,7 +71,7 @@ export function useFormWithValidation<TValues extends Record<string, unknown>>({
 
     setErrors(nextErrors);
     return { success: false as const, errors: nextErrors };
-  }, [schema, values]);
+  }, [validator, values]);
 
   const handleSubmit = useCallback(
     (

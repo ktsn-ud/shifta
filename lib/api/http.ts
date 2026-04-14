@@ -1,5 +1,22 @@
 import { NextResponse } from "next/server";
-import { z } from "zod";
+
+type SchemaValidationSuccess<T> = {
+  success: true;
+  data: T;
+};
+
+type SchemaValidationFailure = {
+  success: false;
+  error: {
+    flatten: () => unknown;
+  };
+};
+
+type SchemaValidator<T> = {
+  safeParse: (
+    input: unknown,
+  ) => SchemaValidationSuccess<T> | SchemaValidationFailure;
+};
 
 const SAFE_METHODS = new Set(["GET", "HEAD", "OPTIONS"]);
 
@@ -44,7 +61,7 @@ export function verifyMutationRequest(request: Request): NextResponse | null {
 
 export async function parseJsonBody<T>(
   request: Request,
-  schema: z.ZodType<T>,
+  schema: SchemaValidator<T>,
 ): Promise<
   { success: true; data: T } | { success: false; response: NextResponse }
 > {
