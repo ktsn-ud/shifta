@@ -196,3 +196,29 @@
   `experimental-analyze` の内部出力（`analyze.data`）は一致しないケースがある。
 - 今回、診断出力をクリアしたうえで `analyze.data` を直接解析した結果では、
   **クライアント側 `zod` は実質的に除去済み** と判断できる。
+
+## 10. 比較指標の統一と最終比較（2026-04-14）
+
+### 10.1 正式な比較指標
+
+本タスクの「削減前後比較」は、以下の単一指標で統一する。
+
+- `M1`: `page_client-reference-manifest.js` の `entryJSFiles` に含まれる
+  `static/chunks/*.js` を `gzip` した合計バイト数（ルート単位）
+
+採用理由:
+
+- 削減前（第3章）と削減後（第8章）で同一条件の値が揃っており、時系列比較が可能なため。
+- `analyze.data` の `compressed_size` は内部表現であり、`M1` と混在比較しない。
+
+### 10.2 M1での再比較結果
+
+| Route                                        | M1 Before |  M1 After | Diff | Diff % |
+| -------------------------------------------- | --------: | --------: | ---: | -----: |
+| `/my/workplaces`                             | 195,924 B | 195,924 B |  0 B |  0.00% |
+| `/my/workplaces/[workplaceId]/payroll-rules` | 196,377 B | 196,377 B |  0 B |  0.00% |
+| `/my/workplaces/[workplaceId]/timetables`    | 195,889 B | 195,889 B |  0 B |  0.00% |
+
+### 10.3 最終判定
+
+- `M1` ベースでは、対象3ルートの JS バンドルサイズは **増加していない**（差分 0）。
