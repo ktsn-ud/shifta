@@ -166,3 +166,33 @@
 ### 8.5 残課題
 
 - `zod` チャンク残存の厳密な依存元を特定するには、`experimental-analyze` のモジュール依存データ起点で追加分析が必要。
+
+## 9. キャッシュ影響を除外した再分析（2026-04-14）
+
+### 9.1 実施内容
+
+- `rm -rf .next/diagnostics` を実行して診断出力を明示的にクリア。
+- その後、`pnpm next experimental-analyze --output` を再実行。
+- `data/my/workplaces/**/analyze.data` の `source -> output_file(chunk)` 対応を解析し、`zod` 寄与を再評価。
+
+### 9.2 解析結果
+
+- 対象3ルート（`/my/workplaces` 系）の `analyze.data` において、クライアントチャンクへ寄与する `zod` 系ソースは **0件**。
+- 非APIの `analyze.data` 全体を横断しても、クライアントチャンクへの `zod` 寄与は **0件**。
+
+### 9.3 対象3ルートの再計測（analyze.data集計）
+
+`compressed_size` の集計値（client JS 合計）:
+
+| Route                                        | Client JS Compressed Total | `zod` 寄与 |
+| -------------------------------------------- | -------------------------: | ---------: |
+| `/my/workplaces`                             |                  417,171 B |        0 B |
+| `/my/workplaces/[workplaceId]/payroll-rules` |                  417,653 B |        0 B |
+| `/my/workplaces/[workplaceId]/timetables`    |                  417,110 B |        0 B |
+
+### 9.4 解釈
+
+- 第8章で参照した `page_client-reference-manifest.js` ベースのチャンク名と、
+  `experimental-analyze` の内部出力（`analyze.data`）は一致しないケースがある。
+- 今回、診断出力をクリアしたうえで `analyze.data` を直接解析した結果では、
+  **クライアント側 `zod` は実質的に除去済み** と判断できる。
