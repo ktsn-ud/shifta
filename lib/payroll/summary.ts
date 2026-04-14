@@ -150,6 +150,110 @@ function summarizeWorkplaceByPeriod(
   };
 }
 
+export async function getPayrollTotalWageForUserByMonth(
+  userId: string,
+  month: Date,
+): Promise<number> {
+  const selectedMonth = startOfMonth(month);
+
+  const workplaces = await prisma.workplace.findMany({
+    where: { userId },
+    select: {
+      id: true,
+      name: true,
+      color: true,
+      closingDayType: true,
+      closingDay: true,
+      payday: true,
+    },
+  });
+
+  if (workplaces.length === 0) {
+    return 0;
+  }
+
+  let fetchStartDate: Date | null = null;
+  let fetchEndDate: Date | null = null;
+  const periodByWorkplace = new Map<string, PayrollPeriod>();
+
+  for (const workplace of workplaces) {
+    const period = resolvePayrollPeriodForMonth(selectedMonth, {
+      closingDayType: workplace.closingDayType,
+      closingDay: workplace.closingDay,
+      payday: workplace.payday,
+    });
+    periodByWorkplace.set(workplace.id, period);
+
+    if (!fetchStartDate || period.periodStartDate < fetchStartDate) {
+      fetchStartDate = period.periodStartDate;
+    }
+
+    if (!fetchEndDate || period.periodEndDate > fetchEndDate) {
+      fetchEndDate = period.periodEndDate;
+    }
+  }
+
+  if (!fetchStartDate || !fetchEndDate) {
+    throw new Error("PAYROLL_PERIOD_NOT_FOUND");
+  }
+
+  const shifts = await prisma.shift.findMany({
+    where: {
+      workplace: { userId },
+      date: {
+        gte: fetchStartDate,
+        lte: fetchEndDate,
+      },
+    },
+    include: {
+      lessonRange: true,
+    },
+    orderBy: [{ date: "asc" }, { startTime: "asc" }],
+  });
+
+  const payrollRules = await prisma.payrollRule.findMany({
+    where: {
+      workplaceId: {
+        in: workplaces.map((workplace) => workplace.id),
+      },
+      startDate: {
+        lte: fetchEndDate,
+      },
+      OR: [
+        {
+          endDate: null,
+        },
+        {
+          endDate: {
+            gt: fetchStartDate,
+          },
+        },
+      ],
+    },
+    orderBy: [{ workplaceId: "asc" }, { startDate: "asc" }],
+  });
+
+  const rulesByWorkplace = groupPayrollRulesByWorkplace(payrollRules);
+  const shiftsByWorkplace = groupShiftsByWorkplace(shifts);
+
+  let totalWage = 0;
+  for (const workplace of workplaces) {
+    const period = periodByWorkplace.get(workplace.id);
+    if (!period) {
+      throw new Error(`PAYROLL_PERIOD_NOT_FOUND: ${workplace.id}`);
+    }
+
+    totalWage += summarizeWorkplaceByPeriod(
+      workplace.id,
+      period,
+      shiftsByWorkplace,
+      rulesByWorkplace,
+    ).wage;
+  }
+
+  return roundCurrency(totalWage);
+}
+
 export async function getPayrollSummaryForUser(
   userId: string,
   month: Date,

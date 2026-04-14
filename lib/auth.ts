@@ -1,11 +1,7 @@
 import NextAuth from "next-auth";
 import Google from "next-auth/providers/google";
 import { PrismaAdapter } from "@auth/prisma-adapter";
-import {
-  CALENDAR_SETUP_PATH,
-  CALENDAR_SETUP_SKIP_COOKIE,
-  GOOGLE_CALENDAR_OAUTH_SCOPES,
-} from "@/lib/google-calendar/constants";
+import { GOOGLE_CALENDAR_OAUTH_SCOPES } from "@/lib/google-calendar/constants";
 import { prisma } from "@/lib/prisma";
 import { encryptOAuthToken } from "@/lib/security/oauth-token-crypto";
 
@@ -138,34 +134,6 @@ export const { handlers, auth, signIn, signOut } = NextAuth({
 
       if (!isLoggedIn && !isLoginPage) {
         return Response.redirect(new URL("/login", request.url)); // Redirect to login page
-      }
-
-      const isMyRoute = pathname.startsWith("/my");
-      if (isLoggedIn && isMyRoute) {
-        const isCalendarSetupPage = pathname === CALENDAR_SETUP_PATH;
-        const skipSetup =
-          request.cookies.get(CALENDAR_SETUP_SKIP_COOKIE)?.value === "1";
-
-        if (!skipSetup) {
-          const email = auth?.user?.email;
-          if (email) {
-            const currentUser = await prisma.user.findUnique({
-              where: { email },
-              select: { calendarId: true },
-            });
-
-            const hasCalendar = Boolean(currentUser?.calendarId);
-            if (!hasCalendar && !isCalendarSetupPage) {
-              return Response.redirect(
-                new URL(CALENDAR_SETUP_PATH, request.url),
-              );
-            }
-
-            if (hasCalendar && isCalendarSetupPage) {
-              return Response.redirect(new URL("/my", request.url));
-            }
-          }
-        }
       }
 
       return true; // Allow access to the requested page

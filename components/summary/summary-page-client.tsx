@@ -1,7 +1,7 @@
 "use client";
 
+import dynamic from "next/dynamic";
 import { useEffect, useMemo, useState } from "react";
-import { Bar, BarChart, CartesianGrid, XAxis, YAxis } from "recharts";
 import {
   Card,
   CardContent,
@@ -9,11 +9,6 @@ import {
   CardHeader,
   CardTitle,
 } from "@/components/ui/card";
-import {
-  ChartContainer,
-  ChartTooltip,
-  ChartTooltipContent,
-} from "@/components/ui/chart";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { SpinnerPanel } from "@/components/ui/spinner";
@@ -49,12 +44,18 @@ type SummaryCacheEntry = {
 
 const summaryCache = new Map<string, SummaryCacheEntry>();
 
-const chartConfig = {
-  wage: {
-    label: "給与",
-    color: "var(--chart-1)",
+const WorkplaceWageChart = dynamic(
+  () =>
+    import("@/components/summary/workplace-wage-chart").then(
+      (mod) => mod.WorkplaceWageChart,
+    ),
+  {
+    ssr: false,
+    loading: () => (
+      <SpinnerPanel className="h-[280px]" label="グラフを読み込み中..." />
+    ),
   },
-} as const;
+);
 
 function formatCurrency(value: number): string {
   return new Intl.NumberFormat("ja-JP", {
@@ -376,41 +377,7 @@ export function SummaryPageClient({
                 <CardDescription>選択月支給分の給与内訳グラフ</CardDescription>
               </CardHeader>
               <CardContent>
-                <ChartContainer
-                  config={chartConfig}
-                  className="h-[280px] w-full"
-                >
-                  <BarChart data={summary.byWorkplace}>
-                    <CartesianGrid vertical={false} />
-                    <XAxis
-                      dataKey="workplaceName"
-                      tickLine={false}
-                      axisLine={false}
-                      tickMargin={8}
-                    />
-                    <YAxis
-                      tickLine={false}
-                      axisLine={false}
-                      tickFormatter={(value: number) =>
-                        new Intl.NumberFormat("ja-JP", {
-                          maximumFractionDigits: 0,
-                        }).format(value)
-                      }
-                    />
-                    <ChartTooltip
-                      cursor={false}
-                      content={
-                        <ChartTooltipContent
-                          formatter={(value) => [
-                            formatCurrency(Number(value)),
-                            "給与",
-                          ]}
-                        />
-                      }
-                    />
-                    <Bar dataKey="wage" fill="var(--color-wage)" radius={4} />
-                  </BarChart>
-                </ChartContainer>
+                <WorkplaceWageChart byWorkplace={summary.byWorkplace} />
               </CardContent>
             </Card>
 
