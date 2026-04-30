@@ -7,12 +7,10 @@ import {
 import { requireCurrentUser } from "@/lib/api/current-user";
 import { parseDateOnly } from "@/lib/api/date-time";
 import {
-  addMonths,
   endOfMonth,
   fromMonthInputValue,
   startOfMonth,
   toDateOnlyString,
-  toMonthInputValue,
 } from "@/lib/calendar/date";
 import { type MonthShift } from "@/hooks/use-month-shifts";
 import { type Prisma } from "@/lib/generated/prisma/client";
@@ -21,7 +19,6 @@ import {
   findApplicablePayrollRule,
   groupPayrollRulesByWorkplace,
 } from "@/lib/payroll/summarizeByPeriod";
-import { getPayrollTotalWageForUserByMonth } from "@/lib/payroll/summary";
 import { calculateWorkedMinutes } from "@/lib/payroll/estimate";
 import { prisma } from "@/lib/prisma";
 
@@ -51,19 +48,20 @@ function resolveInitialMonth(monthParam: string | string[] | undefined): Date {
   return startOfMonth(parsedMonth ?? new Date());
 }
 
-function resolveNextPaymentMonthDate(baseMonth: Date): Date {
-  const nextPaymentMonth = addMonths(startOfMonth(baseMonth), 1);
-  return parseDateOnly(`${toMonthInputValue(nextPaymentMonth)}-01`);
-}
-
 async function getMonthShiftsWithEstimate(
-  userId: string,
+  workplaceIds: string[],
   startDate: string,
   endDate: string,
 ): Promise<MonthShift[]> {
+  if (workplaceIds.length === 0) {
+    return [];
+  }
+
   const shifts = await prisma.shift.findMany({
     where: {
-      workplace: { userId },
+      workplaceId: {
+        in: workplaceIds,
+      },
       date: {
         gte: parseDateOnly(startDate),
         lte: parseDateOnly(endDate),
@@ -80,13 +78,13 @@ async function getMonthShiftsWithEstimate(
     return [];
   }
 
-  const workplaceIds = Array.from(
+  const relatedWorkplaceIds = Array.from(
     new Set(shifts.map((shift) => shift.workplaceId)),
   );
   const payrollRules = await prisma.payrollRule.findMany({
     where: {
       workplaceId: {
-        in: workplaceIds,
+        in: relatedWorkplaceIds,
       },
     },
     orderBy: [{ workplaceId: "asc" }, { startDate: "desc" }],
@@ -167,11 +165,25 @@ async function getMonthShiftsWithEstimate(
   });
 }
 
-async function getUnconfirmedShiftCount(userId: string): Promise<number> {
+async function getUserWorkplaceIds(userId: string): Promise<string[]> {
+  const workplaces = await prisma.workplace.findMany({
+    where: { userId },
+    select: { id: true },
+  });
+  return workplaces.map((workplace) => workplace.id);
+}
+
+async function getUnconfirmedShiftCount(
+  workplaceIds: string[],
+): Promise<number> {
+  if (workplaceIds.length === 0) {
+    return 0;
+  }
+
   return prisma.shift.count({
     where: {
-      workplace: {
-        userId,
+      workplaceId: {
+        in: workplaceIds,
       },
       date: {
         lte: startOfUtcDay(new Date()),
@@ -189,17 +201,10 @@ async function DashboardPageContent({ month }: { month: Date }) {
 
   const startDate = toDateOnlyString(startOfMonth(month));
   const endDate = toDateOnlyString(endOfMonth(month));
-  const [
-    initialMonthShifts,
-    initialUnconfirmedShiftCount,
-    nextMonthPaymentAmount,
-  ] = await Promise.all([
-    getMonthShiftsWithEstimate(current.user.id, startDate, endDate),
-    getUnconfirmedShiftCount(current.user.id),
-    getPayrollTotalWageForUserByMonth(
-      current.user.id,
-      resolveNextPaymentMonthDate(month),
-    ),
+  const workplaceIds = await getUserWorkplaceIds(current.user.id);
+  const [initialMonthShifts, initialUnconfirmedShiftCount] = await Promise.all([
+    getMonthShiftsWithEstimate(workplaceIds, startDate, endDate),
+    getUnconfirmedShiftCount(workplaceIds),
   ]);
 
   return (
@@ -209,7 +214,7 @@ async function DashboardPageContent({ month }: { month: Date }) {
       initialMonthStartDate={startDate}
       initialMonthEndDate={endDate}
       initialUnconfirmedShiftCount={initialUnconfirmedShiftCount}
-      nextMonthPaymentAmount={nextMonthPaymentAmount}
+      nextMonthPaymentAmount={null}
     />
   );
 }

@@ -46,7 +46,7 @@ type DashboardPageClientProps = {
   initialMonthStartDate: string;
   initialMonthEndDate: string;
   initialUnconfirmedShiftCount: number;
-  nextMonthPaymentAmount: number;
+  nextMonthPaymentAmount: number | null;
 };
 
 const NEXT_PAYMENT_CACHE_TTL_MS = 5 * 60 * 1000;
@@ -253,10 +253,12 @@ export function DashboardPageClient({
       nextPaymentMonthValue,
     );
     if (isInitialMonth) {
-      writeNextPaymentCache(cacheKey, nextMonthPaymentAmount);
-      setNextPaymentAmount(nextMonthPaymentAmount);
-      setIsNextPaymentLoading(false);
-      return;
+      if (nextMonthPaymentAmount !== null) {
+        writeNextPaymentCache(cacheKey, nextMonthPaymentAmount);
+        setNextPaymentAmount(nextMonthPaymentAmount);
+        setIsNextPaymentLoading(false);
+        return;
+      }
     }
 
     const cachedAmount = readNextPaymentCache(cacheKey);
@@ -519,7 +521,7 @@ export function DashboardPageClient({
               </CardDescription>
             </CardHeader>
             <CardContent className="text-2xl font-semibold">
-              {isNextPaymentLoading
+              {isNextPaymentLoading || nextPaymentAmount === null
                 ? "読み込み中..."
                 : formatCurrency(nextPaymentAmount)}
             </CardContent>

@@ -171,6 +171,7 @@ export async function getPayrollTotalWageForUserByMonth(
   if (workplaces.length === 0) {
     return 0;
   }
+  const workplaceIds = workplaces.map((workplace) => workplace.id);
 
   let fetchStartDate: Date | null = null;
   let fetchEndDate: Date | null = null;
@@ -199,7 +200,9 @@ export async function getPayrollTotalWageForUserByMonth(
 
   const shifts = await prisma.shift.findMany({
     where: {
-      workplace: { userId },
+      workplaceId: {
+        in: workplaceIds,
+      },
       date: {
         gte: fetchStartDate,
         lte: fetchEndDate,
@@ -214,7 +217,7 @@ export async function getPayrollTotalWageForUserByMonth(
   const payrollRules = await prisma.payrollRule.findMany({
     where: {
       workplaceId: {
-        in: workplaces.map((workplace) => workplace.id),
+        in: workplaceIds,
       },
       startDate: {
         lte: fetchEndDate,
@@ -288,6 +291,7 @@ export async function getPayrollSummaryForUser(
       yearlyTotal: 0,
     };
   }
+  const workplaceIds = workplaces.map((workplace) => workplace.id);
 
   const monthTargets = new Map<string, Date>();
   for (const yearMonth of monthsInYear) {
@@ -326,7 +330,9 @@ export async function getPayrollSummaryForUser(
 
   const shifts = await prisma.shift.findMany({
     where: {
-      workplace: { userId },
+      workplaceId: {
+        in: workplaceIds,
+      },
       date: {
         gte: fetchStartDate,
         lte: fetchEndDate,
@@ -341,7 +347,7 @@ export async function getPayrollSummaryForUser(
   const payrollRules = await prisma.payrollRule.findMany({
     where: {
       workplaceId: {
-        in: workplaces.map((workplace) => workplace.id),
+        in: workplaceIds,
       },
       startDate: {
         lte: fetchEndDate,

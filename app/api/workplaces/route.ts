@@ -234,11 +234,37 @@ export async function POST(request: Request) {
   }
 }
 
-export async function GET() {
+function shouldIncludeCounts(request: Request): boolean {
+  const { searchParams } = new URL(request.url);
+  const includeCountsParam = searchParams.get("includeCounts");
+  if (includeCountsParam === null) {
+    return true;
+  }
+
+  return includeCountsParam !== "false";
+}
+
+export async function GET(request: Request) {
   try {
     const current = await requireCurrentUser();
     if ("response" in current) {
       return current.response;
+    }
+
+    const includeCounts = shouldIncludeCounts(request);
+    if (includeCounts === false) {
+      const workplaces = await prisma.workplace.findMany({
+        where: { userId: current.user.id },
+        select: {
+          id: true,
+          name: true,
+          color: true,
+          type: true,
+        },
+        orderBy: { createdAt: "desc" },
+      });
+
+      return NextResponse.json({ data: workplaces });
     }
 
     const workplaces = await prisma.workplace.findMany({
