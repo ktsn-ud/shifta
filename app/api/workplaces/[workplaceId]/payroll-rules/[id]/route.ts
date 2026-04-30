@@ -2,12 +2,7 @@ import { NextResponse } from "next/server";
 import { type Prisma } from "@/lib/generated/prisma/client";
 import { z } from "zod";
 import { requireCurrentUser } from "@/lib/api/current-user";
-import {
-  parseDateOnly,
-  parseTimeOnly,
-  DATE_ONLY_REGEX,
-  TIME_ONLY_REGEX,
-} from "@/lib/api/date-time";
+import { parseDateOnly, DATE_ONLY_REGEX } from "@/lib/api/date-time";
 import {
   jsonError,
   parseJsonBody,
@@ -27,13 +22,9 @@ const payrollRuleSchema = z
       .nullable()
       .optional(),
     baseHourlyWage: z.coerce.number().positive(),
-    holidayHourlyWage: z.coerce.number().positive().nullable().optional(),
-    nightMultiplier: z.coerce.number().min(1),
-    overtimeMultiplier: z.coerce.number().min(1),
-    nightStart: z
-      .string()
-      .regex(TIME_ONLY_REGEX, "HH:MM形式で入力してください"),
-    nightEnd: z.string().regex(TIME_ONLY_REGEX, "HH:MM形式で入力してください"),
+    holidayAllowanceHourly: z.coerce.number().min(0).optional().default(0),
+    nightPremiumRate: z.coerce.number().min(0),
+    overtimePremiumRate: z.coerce.number().min(0),
     dailyOvertimeThreshold: z.coerce.number().positive(),
     holidayType: z.enum(["NONE", "WEEKEND", "HOLIDAY", "WEEKEND_HOLIDAY"]),
   })
@@ -47,11 +38,9 @@ type NormalizedPayrollRule = {
   startDate: Date;
   endDate: Date | null;
   baseHourlyWage: number;
-  holidayHourlyWage: number | null;
-  nightMultiplier: number;
-  overtimeMultiplier: number;
-  nightStart: Date;
-  nightEnd: Date;
+  holidayAllowanceHourly: number;
+  nightPremiumRate: number;
+  overtimePremiumRate: number;
   dailyOvertimeThreshold: number;
   holidayType: "NONE" | "WEEKEND" | "HOLIDAY" | "WEEKEND_HOLIDAY";
 };
@@ -70,11 +59,9 @@ function normalizePayrollRule(
     startDate,
     endDate,
     baseHourlyWage: input.baseHourlyWage,
-    holidayHourlyWage: input.holidayHourlyWage ?? null,
-    nightMultiplier: input.nightMultiplier,
-    overtimeMultiplier: input.overtimeMultiplier,
-    nightStart: parseTimeOnly(input.nightStart),
-    nightEnd: parseTimeOnly(input.nightEnd),
+    holidayAllowanceHourly: input.holidayAllowanceHourly,
+    nightPremiumRate: input.nightPremiumRate,
+    overtimePremiumRate: input.overtimePremiumRate,
     dailyOvertimeThreshold: input.dailyOvertimeThreshold,
     holidayType: input.holidayType,
   };
@@ -206,7 +193,7 @@ export async function PUT(request: Request, context: Context) {
           400,
         );
       }
-      return jsonError("日付または時刻の形式が不正です", 400);
+      return jsonError("日付の形式が不正です", 400);
     }
 
     const typeValidationError = validateByWorkplaceType(
@@ -225,14 +212,9 @@ export async function PUT(request: Request, context: Context) {
         startDate: normalized.startDate,
         endDate: normalized.endDate,
         baseHourlyWage: normalized.baseHourlyWage.toString(),
-        holidayHourlyWage:
-          normalized.holidayHourlyWage === null
-            ? null
-            : normalized.holidayHourlyWage.toString(),
-        nightMultiplier: normalized.nightMultiplier.toString(),
-        overtimeMultiplier: normalized.overtimeMultiplier.toString(),
-        nightStart: normalized.nightStart,
-        nightEnd: normalized.nightEnd,
+        holidayAllowanceHourly: normalized.holidayAllowanceHourly.toString(),
+        nightPremiumRate: normalized.nightPremiumRate.toString(),
+        overtimePremiumRate: normalized.overtimePremiumRate.toString(),
         dailyOvertimeThreshold: normalized.dailyOvertimeThreshold.toString(),
         holidayType: normalized.holidayType,
       },
