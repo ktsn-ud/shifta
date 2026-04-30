@@ -208,30 +208,7 @@ export async function GET(request: Request) {
       orderBy: [{ date: "desc" }, { startTime: "desc" }],
     });
 
-    if (query.data.includeEstimate !== "true") {
-      return NextResponse.json({ data: shifts });
-    }
-
-    const workplaceIds = Array.from(
-      new Set(shifts.map((shift) => shift.workplaceId)),
-    );
-
-    if (workplaceIds.length === 0) {
-      return NextResponse.json({ data: [] });
-    }
-
-    const payrollRules = await prisma.payrollRule.findMany({
-      where: {
-        workplaceId: {
-          in: workplaceIds,
-        },
-      },
-      orderBy: [{ workplaceId: "asc" }, { startDate: "desc" }],
-    });
-
-    const rulesByWorkplace = groupPayrollRulesByWorkplace(payrollRules);
-
-    const withEstimate = shifts.map((shift) => {
+    const shiftsWithWorkedMinutes = shifts.map((shift) => {
       const normalizedShiftType =
         shift.shiftType === "LESSON" ? "LESSON" : "NORMAL";
       const workedMinutes = calculateWorkedMinutes({
@@ -253,6 +230,38 @@ export async function GET(request: Request) {
             }
           : null,
       });
+
+      return {
+        ...shift,
+        workedMinutes,
+        estimatedPay: null as number | null,
+      };
+    });
+
+    if (query.data.includeEstimate !== "true") {
+      return NextResponse.json({ data: shiftsWithWorkedMinutes });
+    }
+
+    const workplaceIds = Array.from(
+      new Set(shiftsWithWorkedMinutes.map((shift) => shift.workplaceId)),
+    );
+
+    if (workplaceIds.length === 0) {
+      return NextResponse.json({ data: [] });
+    }
+
+    const payrollRules = await prisma.payrollRule.findMany({
+      where: {
+        workplaceId: {
+          in: workplaceIds,
+        },
+      },
+      orderBy: [{ workplaceId: "asc" }, { startDate: "desc" }],
+    });
+
+    const rulesByWorkplace = groupPayrollRulesByWorkplace(payrollRules);
+
+    const withEstimate = shiftsWithWorkedMinutes.map((shift) => {
       const selectedRule = findApplicablePayrollRule(
         rulesByWorkplace,
         shift.workplaceId,
@@ -264,7 +273,6 @@ export async function GET(request: Request) {
 
       return {
         ...shift,
-        workedMinutes,
         estimatedPay,
       };
     });

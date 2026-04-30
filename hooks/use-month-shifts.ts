@@ -60,6 +60,7 @@ type UseMonthShiftsOptions = {
   initialShifts?: MonthShift[];
   initialStartDate?: string;
   initialEndDate?: string;
+  deferEstimate?: boolean;
 };
 
 function isShiftListResponse(value: unknown): value is ShiftListResponse {
@@ -201,8 +202,13 @@ export function summarizeShifts(shifts: MonthShift[]): ShiftSummary {
 }
 
 export function useMonthShifts(month: Date, options: UseMonthShiftsOptions) {
-  const { cacheUserKey, initialShifts, initialStartDate, initialEndDate } =
-    options;
+  const {
+    cacheUserKey,
+    initialShifts,
+    initialStartDate,
+    initialEndDate,
+    deferEstimate = false,
+  } = options;
   const hasInitialData =
     Array.isArray(initialShifts) &&
     typeof initialStartDate === "string" &&
@@ -263,7 +269,7 @@ export function useMonthShifts(month: Date, options: UseMonthShiftsOptions) {
         const params = new URLSearchParams({
           startDate,
           endDate,
-          includeEstimate: "true",
+          includeEstimate: deferEstimate ? "false" : "true",
         });
 
         const response = await fetch(`/api/shifts?${params.toString()}`, {
@@ -288,6 +294,83 @@ export function useMonthShifts(month: Date, options: UseMonthShiftsOptions) {
 
         setShifts(normalized);
         writeMonthShiftsCache(cacheKey, normalized);
+
+        if (!deferEstimate) {
+          return;
+        }
+
+        async function fetchEstimatedPayInBackground() {
+          try {
+            const estimateParams = new URLSearchParams({
+              startDate,
+              endDate,
+              includeEstimate: "true",
+            });
+
+            const estimateResponse = await fetch(
+              `/api/shifts?${estimateParams.toString()}`,
+              {
+                signal: abortController.signal,
+              },
+            );
+
+            if (estimateResponse.ok === false) {
+              throw new Error("SHIFT_ESTIMATE_FETCH_FAILED");
+            }
+
+            const estimatePayload = (await estimateResponse.json()) as unknown;
+            const isValidEstimatePayload =
+              isShiftListResponse(estimatePayload) &&
+              Array.isArray(estimatePayload.data);
+
+            if (isValidEstimatePayload === false) {
+              throw new Error("SHIFT_ESTIMATE_RESPONSE_INVALID");
+            }
+
+            const normalizedWithEstimate = estimatePayload.data
+              .map((shift) => normalizeMonthShift(shift))
+              .filter((shift): shift is MonthShift => shift !== null);
+
+            if (abortController.signal.aborted) {
+              return;
+            }
+
+            const estimatedPayByShiftId = new Map(
+              normalizedWithEstimate.map((shift) => [
+                shift.id,
+                shift.estimatedPay,
+              ]),
+            );
+
+            setShifts((current) =>
+              current.map((shift) => {
+                const estimatedPay = estimatedPayByShiftId.get(shift.id);
+
+                if (
+                  estimatedPay === undefined ||
+                  shift.estimatedPay === estimatedPay
+                ) {
+                  return shift;
+                }
+
+                return {
+                  ...shift,
+                  estimatedPay,
+                };
+              }),
+            );
+
+            writeMonthShiftsCache(cacheKey, normalizedWithEstimate);
+          } catch (error) {
+            if (abortController.signal.aborted) {
+              return;
+            }
+
+            console.error("useMonthShifts estimate fetch failed", error);
+          }
+        }
+
+        void fetchEstimatedPayInBackground();
       } catch (error) {
         if (abortController.signal.aborted) {
           return;
@@ -317,6 +400,7 @@ export function useMonthShifts(month: Date, options: UseMonthShiftsOptions) {
     initialEndDate,
     initialShifts,
     initialStartDate,
+    deferEstimate,
     reloadCount,
     startDate,
   ]);

@@ -170,6 +170,7 @@ export function DashboardPageClient({
     initialShifts: initialMonthShifts,
     initialStartDate: initialMonthStartDate,
     initialEndDate: initialMonthEndDate,
+    deferEstimate: true,
   });
 
   const shiftsByDate = useMemo(() => {
