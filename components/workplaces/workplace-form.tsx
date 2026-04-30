@@ -21,7 +21,6 @@ import { messages, toErrorMessage } from "@/lib/messages";
 import { resolveUserFacingErrorFromResponse } from "@/lib/user-facing-error";
 
 const colorRegex = /^#[0-9A-Fa-f]{6}$/;
-const timeRegex = /^([01]\d|2[0-3]):([0-5]\d)$/;
 const PAYROLL_DAY_MIN = 1;
 const PAYROLL_DAY_MAX = 31;
 
@@ -48,12 +47,10 @@ type InitialRuleValues = {
   startDate: string;
   endDate: string;
   baseHourlyWage: string;
-  holidayHourlyWage: string;
-  nightMultiplier: string;
-  overtimeMultiplier: string;
+  holidayAllowanceHourly: string;
+  nightPremiumRate: string;
+  overtimePremiumRate: string;
   dailyOvertimeThreshold: string;
-  nightStart: string;
-  nightEnd: string;
   holidayType: HolidayType;
 };
 
@@ -194,34 +191,37 @@ function validate(
     errors.baseHourlyWage = "基本時給は正の数で入力してください。";
   }
 
-  if (initialRuleValues.holidayHourlyWage) {
-    const holidayHourlyWage = Number(initialRuleValues.holidayHourlyWage);
+  if (initialRuleValues.holidayAllowanceHourly) {
+    const holidayAllowanceHourly = Number(
+      initialRuleValues.holidayAllowanceHourly,
+    );
     if (
-      Number.isFinite(holidayHourlyWage) === false ||
-      holidayHourlyWage <= 0
+      Number.isFinite(holidayAllowanceHourly) === false ||
+      holidayAllowanceHourly < 0
     ) {
-      errors.holidayHourlyWage = "休日時給は正の数で入力してください。";
+      errors.holidayAllowanceHourly =
+        "休日手当（円/時）は0以上で入力してください。";
     }
   }
 
-  const nightMultiplier = Number(initialRuleValues.nightMultiplier);
+  const nightPremiumRate = Number(initialRuleValues.nightPremiumRate);
   if (
-    !initialRuleValues.nightMultiplier ||
-    Number.isFinite(nightMultiplier) === false
+    !initialRuleValues.nightPremiumRate ||
+    Number.isFinite(nightPremiumRate) === false
   ) {
-    errors.nightMultiplier = "深夜割増率は必須です。";
-  } else if (nightMultiplier < 1) {
-    errors.nightMultiplier = "深夜割増率は1.0以上で入力してください。";
+    errors.nightPremiumRate = "深夜割増率は必須です。";
+  } else if (nightPremiumRate < 0) {
+    errors.nightPremiumRate = "深夜割増率は0以上で入力してください。";
   }
 
-  const overtimeMultiplier = Number(initialRuleValues.overtimeMultiplier);
+  const overtimePremiumRate = Number(initialRuleValues.overtimePremiumRate);
   if (
-    !initialRuleValues.overtimeMultiplier ||
-    Number.isFinite(overtimeMultiplier) === false
+    !initialRuleValues.overtimePremiumRate ||
+    Number.isFinite(overtimePremiumRate) === false
   ) {
-    errors.overtimeMultiplier = "残業割増率は必須です。";
-  } else if (overtimeMultiplier < 1) {
-    errors.overtimeMultiplier = "残業割増率は1.0以上で入力してください。";
+    errors.overtimePremiumRate = "残業割増率は必須です。";
+  } else if (overtimePremiumRate < 0) {
+    errors.overtimePremiumRate = "残業割増率は0以上で入力してください。";
   }
 
   const threshold = Number(initialRuleValues.dailyOvertimeThreshold);
@@ -232,14 +232,6 @@ function validate(
     errors.dailyOvertimeThreshold = "1日所定時間は必須です。";
   } else if (threshold <= 0) {
     errors.dailyOvertimeThreshold = "1日所定時間は正の数で入力してください。";
-  }
-
-  if (timeRegex.test(initialRuleValues.nightStart) === false) {
-    errors.nightStart = "深夜開始時刻はHH:MM形式で入力してください。";
-  }
-
-  if (timeRegex.test(initialRuleValues.nightEnd) === false) {
-    errors.nightEnd = "深夜終了時刻はHH:MM形式で入力してください。";
   }
 
   return errors;
@@ -266,12 +258,10 @@ export function WorkplaceForm({ mode, workplaceId }: WorkplaceFormProps) {
       startDate: toDateOnlyString(new Date()),
       endDate: "",
       baseHourlyWage: "1000",
-      holidayHourlyWage: "",
-      nightMultiplier: "1.25",
-      overtimeMultiplier: "1.25",
+      holidayAllowanceHourly: "0",
+      nightPremiumRate: "0.25",
+      overtimePremiumRate: "0.25",
       dailyOvertimeThreshold: "8",
-      nightStart: "22:00",
-      nightEnd: "05:00",
       holidayType: "NONE",
     }),
   );
@@ -386,11 +376,9 @@ export function WorkplaceForm({ mode, workplaceId }: WorkplaceFormProps) {
           startDate: string;
           endDate: string | null;
           baseHourlyWage: number;
-          holidayHourlyWage: number | null;
-          nightMultiplier: number;
-          overtimeMultiplier: number;
-          nightStart: string;
-          nightEnd: string;
+          holidayAllowanceHourly: number;
+          nightPremiumRate: number;
+          overtimePremiumRate: number;
           dailyOvertimeThreshold: number;
           holidayType: HolidayType;
         };
@@ -411,13 +399,11 @@ export function WorkplaceForm({ mode, workplaceId }: WorkplaceFormProps) {
           startDate: initialRuleValues.startDate,
           endDate: initialRuleValues.endDate ? initialRuleValues.endDate : null,
           baseHourlyWage: Number(initialRuleValues.baseHourlyWage),
-          holidayHourlyWage: initialRuleValues.holidayHourlyWage
-            ? Number(initialRuleValues.holidayHourlyWage)
-            : null,
-          nightMultiplier: Number(initialRuleValues.nightMultiplier),
-          overtimeMultiplier: Number(initialRuleValues.overtimeMultiplier),
-          nightStart: initialRuleValues.nightStart,
-          nightEnd: initialRuleValues.nightEnd,
+          holidayAllowanceHourly: initialRuleValues.holidayAllowanceHourly
+            ? Number(initialRuleValues.holidayAllowanceHourly)
+            : 0,
+          nightPremiumRate: Number(initialRuleValues.nightPremiumRate),
+          overtimePremiumRate: Number(initialRuleValues.overtimePremiumRate),
           dailyOvertimeThreshold: Number(
             initialRuleValues.dailyOvertimeThreshold,
           ),
@@ -788,9 +774,9 @@ export function WorkplaceForm({ mode, workplaceId }: WorkplaceFormProps) {
                     </FieldContent>
                   </Field>
 
-                  <Field data-invalid={Boolean(errors.holidayHourlyWage)}>
+                  <Field data-invalid={Boolean(errors.holidayAllowanceHourly)}>
                     <FieldLabel htmlFor="initial-rule-holiday-hourly-wage">
-                      休日時給
+                      休日手当（時間あたり）
                     </FieldLabel>
                     <FieldContent>
                       <div className="flex items-center gap-2">
@@ -799,12 +785,12 @@ export function WorkplaceForm({ mode, workplaceId }: WorkplaceFormProps) {
                           type="number"
                           min="0"
                           step="10"
-                          value={initialRuleValues.holidayHourlyWage}
+                          value={initialRuleValues.holidayAllowanceHourly}
                           onChange={(event) => {
                             const nextValue = event.currentTarget.value;
                             setInitialRuleValues((current) => ({
                               ...current,
-                              holidayHourlyWage: nextValue,
+                              holidayAllowanceHourly: nextValue,
                             }));
                           }}
                           className="max-w-20"
@@ -814,13 +800,15 @@ export function WorkplaceForm({ mode, workplaceId }: WorkplaceFormProps) {
                         </span>
                       </div>
                       <FieldDescription>
-                        空欄の場合、基本時給と同等として扱います。
+                        休日勤務時間に対して加算する手当です。
                       </FieldDescription>
-                      <FormErrorMessage message={errors.holidayHourlyWage} />
+                      <FormErrorMessage
+                        message={errors.holidayAllowanceHourly}
+                      />
                     </FieldContent>
                   </Field>
 
-                  <Field data-invalid={Boolean(errors.nightMultiplier)}>
+                  <Field data-invalid={Boolean(errors.nightPremiumRate)}>
                     <FieldLabel htmlFor="initial-rule-night-multiplier">
                       深夜割増率
                     </FieldLabel>
@@ -829,52 +817,56 @@ export function WorkplaceForm({ mode, workplaceId }: WorkplaceFormProps) {
                         <Input
                           id="initial-rule-night-multiplier"
                           type="number"
-                          min="1"
+                          min="0"
                           step="0.01"
-                          value={initialRuleValues.nightMultiplier}
+                          value={initialRuleValues.nightPremiumRate}
                           onChange={(event) => {
                             const nextValue = event.currentTarget.value;
                             setInitialRuleValues((current) => ({
                               ...current,
-                              nightMultiplier: nextValue,
+                              nightPremiumRate: nextValue,
                             }));
                           }}
                           className="max-w-20"
                         />
                         <span className="shrink-0 text-sm text-muted-foreground">
-                          倍
+                          率
                         </span>
                       </div>
-                      <FormErrorMessage message={errors.nightMultiplier} />
+                      <FieldDescription>例: 0.25 = 25%</FieldDescription>
+                      <FormErrorMessage message={errors.nightPremiumRate} />
                     </FieldContent>
                   </Field>
 
-                  <Field data-invalid={Boolean(errors.overtimeMultiplier)}>
+                  <Field data-invalid={Boolean(errors.overtimePremiumRate)}>
                     <FieldLabel htmlFor="initial-rule-overtime-multiplier">
-                      残業割増率
+                      所定時間外割増率（保留）
                     </FieldLabel>
                     <FieldContent>
                       <div className="flex items-center gap-2">
                         <Input
                           id="initial-rule-overtime-multiplier"
                           type="number"
-                          min="1"
+                          min="0"
                           step="0.01"
-                          value={initialRuleValues.overtimeMultiplier}
+                          value={initialRuleValues.overtimePremiumRate}
                           onChange={(event) => {
                             const nextValue = event.currentTarget.value;
                             setInitialRuleValues((current) => ({
                               ...current,
-                              overtimeMultiplier: nextValue,
+                              overtimePremiumRate: nextValue,
                             }));
                           }}
                           className="max-w-20"
                         />
                         <span className="shrink-0 text-sm text-muted-foreground">
-                          倍
+                          率
                         </span>
                       </div>
-                      <FormErrorMessage message={errors.overtimeMultiplier} />
+                      <FieldDescription>
+                        将来拡張のため保持します（現時点の計算では未使用）。
+                      </FieldDescription>
+                      <FormErrorMessage message={errors.overtimePremiumRate} />
                     </FieldContent>
                   </Field>
 
@@ -909,47 +901,12 @@ export function WorkplaceForm({ mode, workplaceId }: WorkplaceFormProps) {
                     </FieldContent>
                   </Field>
 
-                  <Field data-invalid={Boolean(errors.nightStart)}>
-                    <FieldLabel htmlFor="initial-rule-night-start">
-                      深夜開始時刻
-                    </FieldLabel>
+                  <Field>
+                    <FieldLabel>深夜時間帯</FieldLabel>
                     <FieldContent>
-                      <Input
-                        id="initial-rule-night-start"
-                        type="time"
-                        value={initialRuleValues.nightStart}
-                        onChange={(event) => {
-                          const nextValue = event.currentTarget.value;
-                          setInitialRuleValues((current) => ({
-                            ...current,
-                            nightStart: nextValue,
-                          }));
-                        }}
-                        className="max-w-24"
-                      />
-                      <FormErrorMessage message={errors.nightStart} />
-                    </FieldContent>
-                  </Field>
-
-                  <Field data-invalid={Boolean(errors.nightEnd)}>
-                    <FieldLabel htmlFor="initial-rule-night-end">
-                      深夜終了時刻
-                    </FieldLabel>
-                    <FieldContent>
-                      <Input
-                        id="initial-rule-night-end"
-                        type="time"
-                        value={initialRuleValues.nightEnd}
-                        onChange={(event) => {
-                          const nextValue = event.currentTarget.value;
-                          setInitialRuleValues((current) => ({
-                            ...current,
-                            nightEnd: nextValue,
-                          }));
-                        }}
-                        className="max-w-24"
-                      />
-                      <FormErrorMessage message={errors.nightEnd} />
+                      <FieldDescription>
+                        深夜時間帯は 22:00〜05:00 で固定です。
+                      </FieldDescription>
                     </FieldContent>
                   </Field>
 

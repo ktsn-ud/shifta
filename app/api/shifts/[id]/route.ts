@@ -1,4 +1,5 @@
 import { after, NextResponse } from "next/server";
+import { revalidatePath } from "next/cache";
 import { requireCurrentUser } from "@/lib/api/current-user";
 import {
   jsonError,
@@ -20,6 +21,15 @@ import {
 type Context = {
   params: Promise<{ id: string }>;
 };
+
+function revalidateShiftRelatedPaths(): void {
+  revalidatePath("/my");
+  revalidatePath("/my/shifts/list");
+  revalidatePath("/my/shifts/confirm");
+  revalidatePath("/my/summary");
+  revalidatePath("/my/payroll-details/monthly");
+  revalidatePath("/my/payroll-details/workplace-yearly");
+}
 
 async function findOwnedShift(shiftId: string, userId: string) {
   return prisma.shift.findFirst({
@@ -154,6 +164,8 @@ export async function PUT(request: Request, context: Context) {
       });
     }
 
+    revalidateShiftRelatedPaths();
+
     return NextResponse.json({
       data: updated,
       syncStatus: updated ? "pending" : null,
@@ -197,6 +209,8 @@ export async function DELETE(request: Request, context: Context) {
     }
 
     await prisma.shift.delete({ where: { id } });
+
+    revalidateShiftRelatedPaths();
 
     after(async () => {
       try {

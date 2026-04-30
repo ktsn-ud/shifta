@@ -2,6 +2,12 @@
 
 import { useCallback, useEffect, useMemo, useState } from "react";
 import {
+  clearMonthShiftsCache,
+  deleteMonthShiftsCache,
+  readMonthShiftsCache,
+  writeMonthShiftsCache,
+} from "@/lib/client-cache/month-shifts-cache";
+import {
   endOfMonth,
   startOfMonth,
   toDateOnlyString,
@@ -9,13 +15,6 @@ import {
 import { toUserFacingMessage } from "@/lib/user-facing-error";
 
 const MONTH_SHIFTS_CACHE_TTL_MS = 5 * 60 * 1000;
-
-type MonthShiftsCacheEntry = {
-  expiresAt: number;
-  shifts: MonthShift[];
-};
-
-const monthShiftsCache = new Map<string, MonthShiftsCacheEntry>();
 
 type MonthShift = {
   id: string;
@@ -60,6 +59,7 @@ type UseMonthShiftsOptions = {
   initialShifts?: MonthShift[];
   initialStartDate?: string;
   initialEndDate?: string;
+  deferEstimate?: boolean;
 };
 
 function isShiftListResponse(value: unknown): value is ShiftListResponse {
@@ -76,30 +76,6 @@ function toMonthShiftsCacheKey(
   endDate: string,
 ): string {
   return `${userKey}:${startDate}:${endDate}`;
-}
-
-function readMonthShiftsCache(
-  cacheKey: string,
-  now: number = Date.now(),
-): MonthShift[] | null {
-  const cached = monthShiftsCache.get(cacheKey);
-  if (!cached) {
-    return null;
-  }
-
-  if (cached.expiresAt <= now) {
-    monthShiftsCache.delete(cacheKey);
-    return null;
-  }
-
-  return cached.shifts;
-}
-
-function writeMonthShiftsCache(cacheKey: string, shifts: MonthShift[]): void {
-  monthShiftsCache.set(cacheKey, {
-    shifts,
-    expiresAt: Date.now() + MONTH_SHIFTS_CACHE_TTL_MS,
-  });
 }
 
 function normalizeMonthShift(raw: unknown): MonthShift | null {
@@ -178,9 +154,7 @@ function normalizeMonthShift(raw: unknown): MonthShift | null {
   };
 }
 
-export function clearMonthShiftsCache(): void {
-  monthShiftsCache.clear();
-}
+export { clearMonthShiftsCache };
 
 export function summarizeShifts(shifts: MonthShift[]): ShiftSummary {
   return shifts.reduce<ShiftSummary>(
@@ -201,8 +175,13 @@ export function summarizeShifts(shifts: MonthShift[]): ShiftSummary {
 }
 
 export function useMonthShifts(month: Date, options: UseMonthShiftsOptions) {
-  const { cacheUserKey, initialShifts, initialStartDate, initialEndDate } =
-    options;
+  const {
+    cacheUserKey,
+    initialShifts,
+    initialStartDate,
+    initialEndDate,
+    deferEstimate = false,
+  } = options;
   const hasInitialData =
     Array.isArray(initialShifts) &&
     typeof initialStartDate === "string" &&
@@ -224,7 +203,7 @@ export function useMonthShifts(month: Date, options: UseMonthShiftsOptions) {
   );
 
   const reload = useCallback(() => {
-    monthShiftsCache.delete(cacheKey);
+    deleteMonthShiftsCache(cacheKey);
     setReloadCount((current) => current + 1);
   }, [cacheKey]);
 
@@ -236,7 +215,11 @@ export function useMonthShifts(month: Date, options: UseMonthShiftsOptions) {
       initialEndDate === endDate;
 
     if (canUseInitialData) {
-      writeMonthShiftsCache(cacheKey, initialShifts ?? []);
+      writeMonthShiftsCache(
+        cacheKey,
+        initialShifts ?? [],
+        MONTH_SHIFTS_CACHE_TTL_MS,
+      );
       setErrorMessage(null);
       setShifts(initialShifts ?? []);
       setIsLoading(false);
@@ -244,7 +227,7 @@ export function useMonthShifts(month: Date, options: UseMonthShiftsOptions) {
     }
 
     if (reloadCount === 0) {
-      const cachedShifts = readMonthShiftsCache(cacheKey);
+      const cachedShifts = readMonthShiftsCache<MonthShift>(cacheKey);
       if (cachedShifts) {
         setErrorMessage(null);
         setShifts(cachedShifts);
@@ -263,7 +246,7 @@ export function useMonthShifts(month: Date, options: UseMonthShiftsOptions) {
         const params = new URLSearchParams({
           startDate,
           endDate,
-          includeEstimate: "true",
+          includeEstimate: deferEstimate ? "false" : "true",
         });
 
         const response = await fetch(`/api/shifts?${params.toString()}`, {
@@ -287,7 +270,88 @@ export function useMonthShifts(month: Date, options: UseMonthShiftsOptions) {
           .filter((shift): shift is MonthShift => shift !== null);
 
         setShifts(normalized);
-        writeMonthShiftsCache(cacheKey, normalized);
+        writeMonthShiftsCache(cacheKey, normalized, MONTH_SHIFTS_CACHE_TTL_MS);
+
+        if (!deferEstimate) {
+          return;
+        }
+
+        async function fetchEstimatedPayInBackground() {
+          try {
+            const estimateParams = new URLSearchParams({
+              startDate,
+              endDate,
+              includeEstimate: "true",
+            });
+
+            const estimateResponse = await fetch(
+              `/api/shifts?${estimateParams.toString()}`,
+              {
+                signal: abortController.signal,
+              },
+            );
+
+            if (estimateResponse.ok === false) {
+              throw new Error("SHIFT_ESTIMATE_FETCH_FAILED");
+            }
+
+            const estimatePayload = (await estimateResponse.json()) as unknown;
+            const isValidEstimatePayload =
+              isShiftListResponse(estimatePayload) &&
+              Array.isArray(estimatePayload.data);
+
+            if (isValidEstimatePayload === false) {
+              throw new Error("SHIFT_ESTIMATE_RESPONSE_INVALID");
+            }
+
+            const normalizedWithEstimate = estimatePayload.data
+              .map((shift) => normalizeMonthShift(shift))
+              .filter((shift): shift is MonthShift => shift !== null);
+
+            if (abortController.signal.aborted) {
+              return;
+            }
+
+            const estimatedPayByShiftId = new Map(
+              normalizedWithEstimate.map((shift) => [
+                shift.id,
+                shift.estimatedPay,
+              ]),
+            );
+
+            setShifts((current) =>
+              current.map((shift) => {
+                const estimatedPay = estimatedPayByShiftId.get(shift.id);
+
+                if (
+                  estimatedPay === undefined ||
+                  shift.estimatedPay === estimatedPay
+                ) {
+                  return shift;
+                }
+
+                return {
+                  ...shift,
+                  estimatedPay,
+                };
+              }),
+            );
+
+            writeMonthShiftsCache(
+              cacheKey,
+              normalizedWithEstimate,
+              MONTH_SHIFTS_CACHE_TTL_MS,
+            );
+          } catch (error) {
+            if (abortController.signal.aborted) {
+              return;
+            }
+
+            console.error("useMonthShifts estimate fetch failed", error);
+          }
+        }
+
+        void fetchEstimatedPayInBackground();
       } catch (error) {
         if (abortController.signal.aborted) {
           return;
@@ -317,6 +381,7 @@ export function useMonthShifts(month: Date, options: UseMonthShiftsOptions) {
     initialEndDate,
     initialShifts,
     initialStartDate,
+    deferEstimate,
     reloadCount,
     startDate,
   ]);

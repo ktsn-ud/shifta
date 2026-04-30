@@ -1,5 +1,6 @@
 import { type Prisma } from "@/lib/generated/prisma/client";
 import { after, NextResponse } from "next/server";
+import { revalidatePath } from "next/cache";
 import { z } from "zod";
 import { requireCurrentUser } from "@/lib/api/current-user";
 import { DATE_ONLY_REGEX, parseDateOnly } from "@/lib/api/date-time";
@@ -53,6 +54,15 @@ const shiftBulkDeleteSchema = z
     shiftIds: z.array(z.string().min(1)).min(1).max(100),
   })
   .strict();
+
+function revalidateShiftRelatedPaths(): void {
+  revalidatePath("/my");
+  revalidatePath("/my/shifts/list");
+  revalidatePath("/my/shifts/confirm");
+  revalidatePath("/my/summary");
+  revalidatePath("/my/payroll-details/monthly");
+  revalidatePath("/my/payroll-details/workplace-yearly");
+}
 
 export async function POST(request: Request) {
   try {
@@ -125,6 +135,8 @@ export async function POST(request: Request) {
         }
       });
     }
+
+    revalidateShiftRelatedPaths();
 
     return NextResponse.json(
       {
@@ -208,30 +220,7 @@ export async function GET(request: Request) {
       orderBy: [{ date: "desc" }, { startTime: "desc" }],
     });
 
-    if (query.data.includeEstimate !== "true") {
-      return NextResponse.json({ data: shifts });
-    }
-
-    const workplaceIds = Array.from(
-      new Set(shifts.map((shift) => shift.workplaceId)),
-    );
-
-    if (workplaceIds.length === 0) {
-      return NextResponse.json({ data: [] });
-    }
-
-    const payrollRules = await prisma.payrollRule.findMany({
-      where: {
-        workplaceId: {
-          in: workplaceIds,
-        },
-      },
-      orderBy: [{ workplaceId: "asc" }, { startDate: "desc" }],
-    });
-
-    const rulesByWorkplace = groupPayrollRulesByWorkplace(payrollRules);
-
-    const withEstimate = shifts.map((shift) => {
+    const shiftsWithWorkedMinutes = shifts.map((shift) => {
       const normalizedShiftType =
         shift.shiftType === "LESSON" ? "LESSON" : "NORMAL";
       const workedMinutes = calculateWorkedMinutes({
@@ -253,6 +242,38 @@ export async function GET(request: Request) {
             }
           : null,
       });
+
+      return {
+        ...shift,
+        workedMinutes,
+        estimatedPay: null as number | null,
+      };
+    });
+
+    if (query.data.includeEstimate !== "true") {
+      return NextResponse.json({ data: shiftsWithWorkedMinutes });
+    }
+
+    const workplaceIds = Array.from(
+      new Set(shiftsWithWorkedMinutes.map((shift) => shift.workplaceId)),
+    );
+
+    if (workplaceIds.length === 0) {
+      return NextResponse.json({ data: [] });
+    }
+
+    const payrollRules = await prisma.payrollRule.findMany({
+      where: {
+        workplaceId: {
+          in: workplaceIds,
+        },
+      },
+      orderBy: [{ workplaceId: "asc" }, { startDate: "desc" }],
+    });
+
+    const rulesByWorkplace = groupPayrollRulesByWorkplace(payrollRules);
+
+    const withEstimate = shiftsWithWorkedMinutes.map((shift) => {
       const selectedRule = findApplicablePayrollRule(
         rulesByWorkplace,
         shift.workplaceId,
@@ -264,7 +285,6 @@ export async function GET(request: Request) {
 
       return {
         ...shift,
-        workedMinutes,
         estimatedPay,
       };
     });
@@ -337,6 +357,8 @@ export async function DELETE(request: Request) {
         throw new Error("SHIFT_BULK_DELETE_CONFLICT");
       }
     });
+
+    revalidateShiftRelatedPaths();
 
     after(async () => {
       const results = await Promise.allSettled(

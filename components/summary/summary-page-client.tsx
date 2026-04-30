@@ -3,6 +3,10 @@
 import dynamic from "next/dynamic";
 import { useEffect, useMemo, useState } from "react";
 import {
+  readSummaryCache,
+  writeSummaryCache,
+} from "@/lib/client-cache/summary-cache";
+import {
   Card,
   CardContent,
   CardDescription,
@@ -37,13 +41,6 @@ type SummaryPageClientProps = {
 
 const SUMMARY_CACHE_TTL_MS = 5 * 60 * 1000;
 
-type SummaryCacheEntry = {
-  expiresAt: number;
-  summary: PayrollSummaryResult;
-};
-
-const summaryCache = new Map<string, SummaryCacheEntry>();
-
 const WorkplaceWageChart = dynamic(
   () =>
     import("@/components/summary/workplace-wage-chart").then(
@@ -71,30 +68,6 @@ function formatHours(value: number): string {
 
 function toSummaryCacheKey(userKey: string, month: string): string {
   return `${userKey}:${month}`;
-}
-
-function readSummaryCache(cacheKey: string): PayrollSummaryResult | null {
-  const cached = summaryCache.get(cacheKey);
-  if (!cached) {
-    return null;
-  }
-
-  if (cached.expiresAt <= Date.now()) {
-    summaryCache.delete(cacheKey);
-    return null;
-  }
-
-  return cached.summary;
-}
-
-function writeSummaryCache(
-  cacheKey: string,
-  summary: PayrollSummaryResult,
-): void {
-  summaryCache.set(cacheKey, {
-    summary,
-    expiresAt: Date.now() + SUMMARY_CACHE_TTL_MS,
-  });
 }
 
 export function SummaryPageLoadingSkeleton() {
@@ -165,6 +138,7 @@ export function SummaryPageClient({
       writeSummaryCache(
         toSummaryCacheKey(currentUserId, initialMonth),
         initialSummary,
+        SUMMARY_CACHE_TTL_MS,
       );
       setErrorMessage(null);
       setSummary(initialSummary);
@@ -173,7 +147,7 @@ export function SummaryPageClient({
     }
 
     const cacheKey = toSummaryCacheKey(currentUserId, appliedMonthValue);
-    const cachedSummary = readSummaryCache(cacheKey);
+    const cachedSummary = readSummaryCache<PayrollSummaryResult>(cacheKey);
     if (cachedSummary) {
       setErrorMessage(null);
       setSummary(cachedSummary);
@@ -196,6 +170,7 @@ export function SummaryPageClient({
           `/api/payroll/summary?${params.toString()}`,
           {
             signal: abortController.signal,
+            cache: "no-store",
           },
         );
 
@@ -214,7 +189,7 @@ export function SummaryPageClient({
         }
 
         const parsedSummary = payload as PayrollSummaryResult;
-        writeSummaryCache(cacheKey, parsedSummary);
+        writeSummaryCache(cacheKey, parsedSummary, SUMMARY_CACHE_TTL_MS);
         setSummary(parsedSummary);
       } catch (error) {
         if (abortController.signal.aborted) {

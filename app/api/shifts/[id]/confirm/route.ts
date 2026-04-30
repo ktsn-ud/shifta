@@ -1,4 +1,5 @@
 import { after, NextResponse } from "next/server";
+import { revalidatePath } from "next/cache";
 import { z } from "zod";
 import { requireCurrentUser } from "@/lib/api/current-user";
 import { TIME_ONLY_REGEX, toMinutes } from "@/lib/api/date-time";
@@ -42,6 +43,15 @@ function parseTimeOnly(value: string): Date {
   const [hour, minute] = value.split(":");
 
   return new Date(Date.UTC(1970, 0, 1, Number(hour), Number(minute), 0));
+}
+
+function revalidateShiftRelatedPaths(): void {
+  revalidatePath("/my");
+  revalidatePath("/my/shifts/list");
+  revalidatePath("/my/shifts/confirm");
+  revalidatePath("/my/summary");
+  revalidatePath("/my/payroll-details/monthly");
+  revalidatePath("/my/payroll-details/workplace-yearly");
 }
 
 export async function PATCH(request: Request, context: Context) {
@@ -93,6 +103,8 @@ export async function PATCH(request: Request, context: Context) {
         isConfirmed: true,
       },
     });
+
+    revalidateShiftRelatedPaths();
 
     after(async () => {
       try {

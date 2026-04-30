@@ -39,6 +39,7 @@ import {
   readGoogleSyncFailureFromErrorResponse,
 } from "@/lib/google-calendar/clientSync";
 import { CALENDAR_SETUP_PATH } from "@/lib/google-calendar/constants";
+import { clearShiftDerivedCaches } from "@/lib/client-cache/shift-derived-cache";
 import { messages, toErrorMessage } from "@/lib/messages";
 import { resolveUserFacingErrorFromResponse } from "@/lib/user-facing-error";
 
@@ -1136,6 +1137,7 @@ export function ShiftForm({
           return;
         }
 
+        clearShiftDerivedCaches();
         router.push(returnPath);
         return;
       }
@@ -1149,6 +1151,7 @@ export function ShiftForm({
           description: `${form.date} ${validation.candidateTimes.startTime} - ${validation.candidateTimes.endTime}`,
         },
       );
+      clearShiftDerivedCaches();
       router.push(returnPath);
     } catch (error) {
       console.error("failed to save shift", error);

@@ -1,6 +1,10 @@
 "use client";
 
 import { useEffect, useMemo, useState } from "react";
+import {
+  readPayrollDetailsMonthlyCache,
+  writePayrollDetailsMonthlyCache,
+} from "@/lib/client-cache/payroll-details-cache";
 import { Input } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
 import {
@@ -13,10 +17,7 @@ import {
 import { SpinnerPanel } from "@/components/ui/spinner";
 import { PayrollDetailsViewSwitch } from "@/components/payroll-details/payroll-details-view-switch";
 import { ValueFrame } from "@/components/payroll-details/value-frame";
-import {
-  formatCurrency,
-  formatRate,
-} from "@/components/payroll-details/format";
+import { formatCurrency } from "@/components/payroll-details/format";
 import {
   formatMonthLabel,
   fromMonthInputValue,
@@ -34,41 +35,8 @@ type PayrollDetailsMonthlyPageClientProps = {
 
 const MONTHLY_CACHE_TTL_MS = 5 * 60 * 1000;
 
-type MonthlyCacheEntry = {
-  expiresAt: number;
-  details: PayrollDetailsMonthlyResult;
-};
-
-const monthlyCache = new Map<string, MonthlyCacheEntry>();
-
 function toMonthlyCacheKey(userId: string, month: string): string {
   return `${userId}:${month}`;
-}
-
-function readMonthlyCache(
-  cacheKey: string,
-): PayrollDetailsMonthlyResult | null {
-  const cached = monthlyCache.get(cacheKey);
-  if (!cached) {
-    return null;
-  }
-
-  if (cached.expiresAt <= Date.now()) {
-    monthlyCache.delete(cacheKey);
-    return null;
-  }
-
-  return cached.details;
-}
-
-function writeMonthlyCache(
-  cacheKey: string,
-  details: PayrollDetailsMonthlyResult,
-): void {
-  monthlyCache.set(cacheKey, {
-    details,
-    expiresAt: Date.now() + MONTHLY_CACHE_TTL_MS,
-  });
 }
 
 export function PayrollDetailsMonthlyPageLoadingSkeleton() {
@@ -137,9 +105,10 @@ export function PayrollDetailsMonthlyPageClient({
     }
 
     if (appliedMonthValue === initialMonth) {
-      writeMonthlyCache(
+      writePayrollDetailsMonthlyCache(
         toMonthlyCacheKey(currentUserId, initialMonth),
         initialDetails,
+        MONTHLY_CACHE_TTL_MS,
       );
       setErrorMessage(null);
       setDetails(initialDetails);
@@ -148,7 +117,8 @@ export function PayrollDetailsMonthlyPageClient({
     }
 
     const cacheKey = toMonthlyCacheKey(currentUserId, appliedMonthValue);
-    const cached = readMonthlyCache(cacheKey);
+    const cached =
+      readPayrollDetailsMonthlyCache<PayrollDetailsMonthlyResult>(cacheKey);
     if (cached) {
       setErrorMessage(null);
       setDetails(cached);
@@ -168,6 +138,7 @@ export function PayrollDetailsMonthlyPageClient({
           `/api/payroll/details/monthly?${params.toString()}`,
           {
             signal: abortController.signal,
+            cache: "no-store",
           },
         );
 
@@ -187,7 +158,7 @@ export function PayrollDetailsMonthlyPageClient({
         }
 
         const parsed = payload as PayrollDetailsMonthlyResult;
-        writeMonthlyCache(cacheKey, parsed);
+        writePayrollDetailsMonthlyCache(cacheKey, parsed, MONTHLY_CACHE_TTL_MS);
         setDetails(parsed);
       } catch (error) {
         if (abortController.signal.aborted) {
@@ -405,11 +376,13 @@ export function PayrollDetailsMonthlyPageClient({
                         />
                         <span>×</span>
                         <ValueFrame
-                          label="適用時給"
+                          label="休日手当(円/時)"
                           value={
-                            item.effectiveHolidayHourlyWage === null
+                            item.effectiveHolidayAllowanceHourly === null
                               ? "-"
-                              : formatCurrency(item.effectiveHolidayHourlyWage)
+                              : formatCurrency(
+                                  item.effectiveHolidayAllowanceHourly,
+                                )
                           }
                           tone="neutral"
                         />
@@ -432,18 +405,12 @@ export function PayrollDetailsMonthlyPageClient({
                         />
                         <span>×</span>
                         <ValueFrame
-                          label="適用時給"
+                          label="深夜時給(割増込)"
                           value={
                             item.effectiveNightHourlyWage === null
                               ? "-"
                               : formatCurrency(item.effectiveNightHourlyWage)
                           }
-                          tone="neutral"
-                        />
-                        <span>×</span>
-                        <ValueFrame
-                          label="深夜割増率 - 1"
-                          value={formatRate(item.effectiveNightPremiumRate)}
                           tone="neutral"
                         />
                       </div>
@@ -454,39 +421,6 @@ export function PayrollDetailsMonthlyPageClient({
                         label="深夜勤務金額"
                         value={formatCurrency(item.nightWage)}
                         tone="night"
-                        emphasis="strong"
-                      />
-
-                      <div className="flex items-center gap-2 justify-self-start whitespace-nowrap">
-                        <ValueFrame
-                          label="残業時間"
-                          value={item.overtimeDuration}
-                          tone="overtime"
-                        />
-                        <span>×</span>
-                        <ValueFrame
-                          label="適用時給"
-                          value={
-                            item.effectiveOvertimeHourlyWage === null
-                              ? "-"
-                              : formatCurrency(item.effectiveOvertimeHourlyWage)
-                          }
-                          tone="neutral"
-                        />
-                        <span>×</span>
-                        <ValueFrame
-                          label="残業割増率"
-                          value={formatRate(item.effectiveOvertimeMultiplier)}
-                          tone="neutral"
-                        />
-                      </div>
-                      <span className="font-medium text-muted-foreground">
-                        =
-                      </span>
-                      <ValueFrame
-                        label="残業金額"
-                        value={formatCurrency(item.overtimeWage)}
-                        tone="overtime"
                         emphasis="strong"
                       />
 

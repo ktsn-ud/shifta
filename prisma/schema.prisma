@@ -115,11 +115,9 @@ model PayrollRule {
   startDate              DateTime    @db.Date
   endDate                DateTime?   @db.Date
   baseHourlyWage         Decimal     @db.Decimal(10, 2)
-  holidayHourlyWage      Decimal?    @db.Decimal(10, 2)
-  nightMultiplier        Decimal     @db.Decimal(4, 2)
-  overtimeMultiplier     Decimal     @db.Decimal(4, 2)
-  nightStart             DateTime    @db.Time(0)
-  nightEnd               DateTime    @db.Time(0)
+  holidayAllowanceHourly Decimal     @default(0) @db.Decimal(10, 2)
+  nightPremiumRate       Decimal     @default(0.25) @db.Decimal(4, 2)
+  overtimePremiumRate    Decimal     @default(0.25) @db.Decimal(4, 2)
   dailyOvertimeThreshold Decimal     @db.Decimal(5, 2)
   holidayType            HolidayType
   workplace              Workplace   @relation(fields: [workplaceId], references: [id], onDelete: Cascade)

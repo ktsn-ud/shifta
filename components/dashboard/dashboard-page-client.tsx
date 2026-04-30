@@ -8,6 +8,11 @@ import {
   RefreshCwIcon,
 } from "lucide-react";
 import { toast } from "sonner";
+import {
+  readNextPaymentCache,
+  writeNextPaymentCache,
+} from "@/lib/client-cache/next-payment-cache";
+import { clearShiftDerivedCaches } from "@/lib/client-cache/shift-derived-cache";
 import { MonthCalendar } from "@/components/calendar/MonthCalendar";
 import { ShiftListModal } from "@/components/calendar/ShiftListModal";
 import { Button } from "@/components/ui/button";
@@ -51,13 +56,6 @@ type DashboardPageClientProps = {
 
 const NEXT_PAYMENT_CACHE_TTL_MS = 5 * 60 * 1000;
 
-type NextPaymentCacheEntry = {
-  amount: number;
-  expiresAt: number;
-};
-
-const nextPaymentCache = new Map<string, NextPaymentCacheEntry>();
-
 function formatCurrency(value: number): string {
   return new Intl.NumberFormat("ja-JP", {
     style: "currency",
@@ -88,27 +86,6 @@ function formatSummaryPeriodLabel(month: Date): string {
 
 function toNextPaymentCacheKey(userKey: string, paymentMonth: string): string {
   return `${userKey}:${paymentMonth}`;
-}
-
-function readNextPaymentCache(cacheKey: string): number | null {
-  const cached = nextPaymentCache.get(cacheKey);
-  if (!cached) {
-    return null;
-  }
-
-  if (cached.expiresAt <= Date.now()) {
-    nextPaymentCache.delete(cacheKey);
-    return null;
-  }
-
-  return cached.amount;
-}
-
-function writeNextPaymentCache(cacheKey: string, amount: number): void {
-  nextPaymentCache.set(cacheKey, {
-    amount,
-    expiresAt: Date.now() + NEXT_PAYMENT_CACHE_TTL_MS,
-  });
 }
 
 function isPayrollSummaryResponse(
@@ -170,6 +147,7 @@ export function DashboardPageClient({
     initialShifts: initialMonthShifts,
     initialStartDate: initialMonthStartDate,
     initialEndDate: initialMonthEndDate,
+    deferEstimate: true,
   });
 
   const shiftsByDate = useMemo(() => {
@@ -254,7 +232,11 @@ export function DashboardPageClient({
     );
     if (isInitialMonth) {
       if (nextMonthPaymentAmount !== null) {
-        writeNextPaymentCache(cacheKey, nextMonthPaymentAmount);
+        writeNextPaymentCache(
+          cacheKey,
+          nextMonthPaymentAmount,
+          NEXT_PAYMENT_CACHE_TTL_MS,
+        );
         setNextPaymentAmount(nextMonthPaymentAmount);
         setIsNextPaymentLoading(false);
         return;
@@ -281,6 +263,7 @@ export function DashboardPageClient({
           `/api/payroll/summary?${params.toString()}`,
           {
             signal: abortController.signal,
+            cache: "no-store",
           },
         );
 
@@ -293,7 +276,11 @@ export function DashboardPageClient({
           throw new Error("PAYROLL_SUMMARY_RESPONSE_INVALID");
         }
 
-        writeNextPaymentCache(cacheKey, payload.totalWage);
+        writeNextPaymentCache(
+          cacheKey,
+          payload.totalWage,
+          NEXT_PAYMENT_CACHE_TTL_MS,
+        );
         setNextPaymentAmount(payload.totalWage);
       } catch (error) {
         if (abortController.signal.aborted) {
@@ -604,6 +591,7 @@ export function DashboardPageClient({
             messages.error.calendarSyncFailed,
           );
 
+          clearShiftDerivedCaches();
           await reload();
 
           if (syncFailure) {

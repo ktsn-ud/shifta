@@ -1,6 +1,10 @@
 "use client";
 
 import { useEffect, useMemo, useState } from "react";
+import {
+  readPayrollDetailsYearlyCache,
+  writePayrollDetailsYearlyCache,
+} from "@/lib/client-cache/payroll-details-cache";
 import { Input } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
 import {
@@ -34,41 +38,8 @@ const YEARLY_CACHE_TTL_MS = 5 * 60 * 1000;
 const MIN_YEAR = 2000;
 const MAX_YEAR = 2100;
 
-type YearlyCacheEntry = {
-  expiresAt: number;
-  details: PayrollDetailsWorkplaceYearlyResult;
-};
-
-const yearlyCache = new Map<string, YearlyCacheEntry>();
-
 function toYearlyCacheKey(userId: string, year: number): string {
   return `${userId}:${year}`;
-}
-
-function readYearlyCache(
-  cacheKey: string,
-): PayrollDetailsWorkplaceYearlyResult | null {
-  const cached = yearlyCache.get(cacheKey);
-  if (!cached) {
-    return null;
-  }
-
-  if (cached.expiresAt <= Date.now()) {
-    yearlyCache.delete(cacheKey);
-    return null;
-  }
-
-  return cached.details;
-}
-
-function writeYearlyCache(
-  cacheKey: string,
-  details: PayrollDetailsWorkplaceYearlyResult,
-): void {
-  yearlyCache.set(cacheKey, {
-    details,
-    expiresAt: Date.now() + YEARLY_CACHE_TTL_MS,
-  });
 }
 
 function isValidYearInput(value: string): boolean {
@@ -164,9 +135,10 @@ export function PayrollDetailsWorkplaceYearlyPageClient({
     }
 
     if (nextYear === initialYear) {
-      writeYearlyCache(
+      writePayrollDetailsYearlyCache(
         toYearlyCacheKey(currentUserId, initialYear),
         initialDetails,
+        YEARLY_CACHE_TTL_MS,
       );
       setErrorMessage(null);
       setDetails(initialDetails);
@@ -175,7 +147,10 @@ export function PayrollDetailsWorkplaceYearlyPageClient({
     }
 
     const cacheKey = toYearlyCacheKey(currentUserId, nextYear);
-    const cached = readYearlyCache(cacheKey);
+    const cached =
+      readPayrollDetailsYearlyCache<PayrollDetailsWorkplaceYearlyResult>(
+        cacheKey,
+      );
     if (cached) {
       setErrorMessage(null);
       setDetails(cached);
@@ -195,6 +170,7 @@ export function PayrollDetailsWorkplaceYearlyPageClient({
           `/api/payroll/details/workplace-yearly?${params.toString()}`,
           {
             signal: abortController.signal,
+            cache: "no-store",
           },
         );
 
@@ -213,7 +189,7 @@ export function PayrollDetailsWorkplaceYearlyPageClient({
         }
 
         const parsed = payload as PayrollDetailsWorkplaceYearlyResult;
-        writeYearlyCache(cacheKey, parsed);
+        writePayrollDetailsYearlyCache(cacheKey, parsed, YEARLY_CACHE_TTL_MS);
         setDetails(parsed);
       } catch (error) {
         if (abortController.signal.aborted) {
@@ -408,7 +384,6 @@ export function PayrollDetailsWorkplaceYearlyPageClient({
                           <TableHead className="text-right">
                             深夜勤務金額
                           </TableHead>
-                          <TableHead className="text-right">残業金額</TableHead>
                           <TableHead className="text-right">月合計</TableHead>
                         </TableRow>
                       </TableHeader>
@@ -444,9 +419,6 @@ export function PayrollDetailsWorkplaceYearlyPageClient({
                             </TableCell>
                             <TableCell className="text-right">
                               {formatCurrency(month.nightWage)}
-                            </TableCell>
-                            <TableCell className="text-right">
-                              {formatCurrency(month.overtimeWage)}
                             </TableCell>
                             <TableCell className="bg-muted text-right font-medium">
                               {formatCurrency(month.totalWage)}

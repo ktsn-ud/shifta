@@ -50,6 +50,15 @@ type CreatedShift = {
 
 type BulkShiftItem = z.infer<typeof bulkShiftItemSchema>;
 
+function revalidateShiftRelatedPaths(): void {
+  revalidatePath("/my");
+  revalidatePath("/my/shifts/list");
+  revalidatePath("/my/shifts/confirm");
+  revalidatePath("/my/summary");
+  revalidatePath("/my/payroll-details/monthly");
+  revalidatePath("/my/payroll-details/workplace-yearly");
+}
+
 async function createBulkLessonTimeRangeResolver(
   workplaceId: string,
   shifts: BulkShiftItem[],
@@ -305,7 +314,7 @@ export async function POST(request: Request) {
       }
     });
 
-    revalidatePath("/my");
+    revalidateShiftRelatedPaths();
 
     return NextResponse.json(
       {

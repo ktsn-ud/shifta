@@ -40,7 +40,11 @@ export async function GET(request: Request) {
       parseDateOnly(`${query.data.month}-01`),
     );
 
-    return NextResponse.json(summary);
+    return NextResponse.json(summary, {
+      headers: {
+        "Cache-Control": "private, no-store, no-cache, must-revalidate",
+      },
+    });
   } catch (error) {
     console.error("GET /api/payroll/summary failed", error);
     return jsonError("給与集計の取得に失敗しました", 500);
