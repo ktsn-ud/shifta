@@ -263,6 +263,7 @@ export function DashboardPageClient({
           `/api/payroll/summary?${params.toString()}`,
           {
             signal: abortController.signal,
+            cache: "no-store",
           },
         );
 
