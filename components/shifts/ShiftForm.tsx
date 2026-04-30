@@ -486,7 +486,7 @@ export function ShiftForm({
       setIsWorkplaceLoading(true);
 
       try {
-        const response = await fetch("/api/workplaces", {
+        const response = await fetch("/api/workplaces?includeCounts=false", {
           signal: abortController.signal,
           cache: "no-store",
         });
