@@ -1,21 +1,79 @@
-import { PayrollDetailsViewSwitch } from "@/components/payroll-details/payroll-details-view-switch";
+import { Suspense } from "react";
+import { redirect } from "next/navigation";
+import {
+  PayrollDetailsWorkplaceYearlyPageClient,
+  PayrollDetailsWorkplaceYearlyPageLoadingSkeleton,
+} from "@/components/payroll-details/payroll-details-workplace-yearly-page-client";
+import { requireCurrentUser } from "@/lib/api/current-user";
+import { getPayrollDetailsWorkplaceYearlyForUser } from "@/lib/payroll/details";
 
-export default function PayrollDetailsWorkplaceYearlyPage() {
+type PayrollDetailsWorkplaceYearlyPageSearchParams = {
+  year?: string | string[];
+};
+
+type PayrollDetailsWorkplaceYearlyPageProps = {
+  searchParams?:
+    | PayrollDetailsWorkplaceYearlyPageSearchParams
+    | Promise<PayrollDetailsWorkplaceYearlyPageSearchParams>;
+};
+
+const MIN_YEAR = 2000;
+const MAX_YEAR = 2100;
+
+function resolveInitialYear(yearParam: string | string[] | undefined): number {
+  const currentYear = new Date().getFullYear();
+
+  if (typeof yearParam !== "string") {
+    return currentYear;
+  }
+
+  if (!/^\d{4}$/.test(yearParam)) {
+    return currentYear;
+  }
+
+  const year = Number(yearParam);
+  if (!Number.isInteger(year) || year < MIN_YEAR || year > MAX_YEAR) {
+    return currentYear;
+  }
+
+  return year;
+}
+
+function WorkplaceYearlyPageFallback() {
+  return <PayrollDetailsWorkplaceYearlyPageLoadingSkeleton />;
+}
+
+async function WorkplaceYearlyPageContent({ year }: { year: number }) {
+  const current = await requireCurrentUser();
+  if ("response" in current) {
+    redirect("/login");
+  }
+
+  const initialDetails = await getPayrollDetailsWorkplaceYearlyForUser(
+    current.user.id,
+    year,
+  );
+
   return (
-    <section className="space-y-6 p-4 md:p-6">
-      <header className="space-y-3">
-        <div>
-          <h2 className="text-xl font-semibold">給与詳細（勤務先毎表示）</h2>
-          <p className="mt-1 text-sm text-muted-foreground">
-            勤務先毎表示の本実装は次のコミットで追加します。
-          </p>
-        </div>
-        <PayrollDetailsViewSwitch
-          mode="workplace-yearly"
-          monthlyHref="/my/payroll-details/monthly"
-          workplaceYearlyHref="/my/payroll-details/workplace-yearly"
-        />
-      </header>
-    </section>
+    <PayrollDetailsWorkplaceYearlyPageClient
+      currentUserId={current.user.id}
+      initialYear={year}
+      initialDetails={initialDetails}
+    />
+  );
+}
+
+export default async function PayrollDetailsWorkplaceYearlyPage({
+  searchParams,
+}: PayrollDetailsWorkplaceYearlyPageProps) {
+  const resolvedSearchParams = searchParams
+    ? await searchParams
+    : ({} as PayrollDetailsWorkplaceYearlyPageSearchParams);
+  const year = resolveInitialYear(resolvedSearchParams.year);
+
+  return (
+    <Suspense fallback={<WorkplaceYearlyPageFallback />}>
+      <WorkplaceYearlyPageContent year={year} />
+    </Suspense>
   );
 }
