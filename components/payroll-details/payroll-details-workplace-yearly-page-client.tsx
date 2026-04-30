@@ -338,18 +338,18 @@ export function PayrollDetailsWorkplaceYearlyPageClient({
                       </Card>
                       <Card size="sm">
                         <CardHeader>
-                          <CardTitle>年間 休日勤務金額</CardTitle>
-                        </CardHeader>
-                        <CardContent className="text-xl font-semibold">
-                          {formatCurrency(workplace.yearlyTotals.holidayWage)}
-                        </CardContent>
-                      </Card>
-                      <Card size="sm">
-                        <CardHeader>
                           <CardTitle>年間 深夜勤務金額</CardTitle>
                         </CardHeader>
                         <CardContent className="text-xl font-semibold">
                           {formatCurrency(workplace.yearlyTotals.nightWage)}
+                        </CardContent>
+                      </Card>
+                      <Card size="sm">
+                        <CardHeader>
+                          <CardTitle>年間 休日勤務金額</CardTitle>
+                        </CardHeader>
+                        <CardContent className="text-xl font-semibold">
+                          {formatCurrency(workplace.yearlyTotals.holidayWage)}
                         </CardContent>
                       </Card>
                     </div>
@@ -370,19 +370,19 @@ export function PayrollDetailsWorkplaceYearlyPageClient({
                             基本勤務時間
                           </TableHead>
                           <TableHead className="text-right">
-                            休日勤務時間
+                            深夜勤務時間
                           </TableHead>
                           <TableHead className="border-r text-right">
-                            深夜勤務時間
+                            休日勤務時間
                           </TableHead>
                           <TableHead className="text-right">
                             基本勤務金額
                           </TableHead>
                           <TableHead className="text-right">
-                            休日勤務金額
+                            深夜勤務金額
                           </TableHead>
                           <TableHead className="text-right">
-                            深夜勤務金額
+                            休日勤務金額
                           </TableHead>
                           <TableHead className="text-right">月合計</TableHead>
                         </TableRow>
@@ -406,19 +406,19 @@ export function PayrollDetailsWorkplaceYearlyPageClient({
                               {month.baseDuration}
                             </TableCell>
                             <TableCell className="text-right">
-                              {month.holidayDuration}
+                              {month.nightDuration}
                             </TableCell>
                             <TableCell className="border-r text-right">
-                              {month.nightDuration}
+                              {month.holidayDuration}
                             </TableCell>
                             <TableCell className="text-right">
                               {formatCurrency(month.baseWage)}
                             </TableCell>
                             <TableCell className="text-right">
-                              {formatCurrency(month.holidayWage)}
+                              {formatCurrency(month.nightWage)}
                             </TableCell>
                             <TableCell className="text-right">
-                              {formatCurrency(month.nightWage)}
+                              {formatCurrency(month.holidayWage)}
                             </TableCell>
                             <TableCell className="bg-muted text-right font-medium">
                               {formatCurrency(month.totalWage)}

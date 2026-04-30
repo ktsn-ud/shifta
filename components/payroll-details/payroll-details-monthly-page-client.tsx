@@ -289,18 +289,6 @@ export function PayrollDetailsMonthlyPageClient({
             </Card>
             <Card size="sm">
               <CardHeader>
-                <CardTitle>休日勤務</CardTitle>
-                <CardDescription>時間 / 金額</CardDescription>
-              </CardHeader>
-              <CardContent className="space-y-1">
-                <p className="text-base font-semibold">
-                  {details.totals.holidayDuration} /{" "}
-                  {formatCurrency(details.totals.holidayWage)}
-                </p>
-              </CardContent>
-            </Card>
-            <Card size="sm">
-              <CardHeader>
                 <CardTitle>深夜勤務</CardTitle>
                 <CardDescription>時間 / 金額</CardDescription>
               </CardHeader>
@@ -308,6 +296,18 @@ export function PayrollDetailsMonthlyPageClient({
                 <p className="text-base font-semibold">
                   {details.totals.nightDuration} /{" "}
                   {formatCurrency(details.totals.nightWage)}
+                </p>
+              </CardContent>
+            </Card>
+            <Card size="sm">
+              <CardHeader>
+                <CardTitle>休日勤務</CardTitle>
+                <CardDescription>時間 / 金額</CardDescription>
+              </CardHeader>
+              <CardContent className="space-y-1">
+                <p className="text-base font-semibold">
+                  {details.totals.holidayDuration} /{" "}
+                  {formatCurrency(details.totals.holidayWage)}
                 </p>
               </CardContent>
             </Card>
@@ -370,6 +370,33 @@ export function PayrollDetailsMonthlyPageClient({
 
                       <div className="flex items-center gap-2 justify-self-start whitespace-nowrap">
                         <ValueFrame
+                          label="深夜勤務時間"
+                          value={item.nightDuration}
+                          tone="night"
+                        />
+                        <span>×</span>
+                        <ValueFrame
+                          label="深夜時給(割増込)"
+                          value={
+                            item.effectiveNightHourlyWage === null
+                              ? "-"
+                              : formatCurrency(item.effectiveNightHourlyWage)
+                          }
+                          tone="neutral"
+                        />
+                      </div>
+                      <span className="font-medium text-muted-foreground">
+                        =
+                      </span>
+                      <ValueFrame
+                        label="深夜勤務金額"
+                        value={formatCurrency(item.nightWage)}
+                        tone="night"
+                        emphasis="strong"
+                      />
+
+                      <div className="flex items-center gap-2 justify-self-start whitespace-nowrap">
+                        <ValueFrame
                           label="休日勤務時間"
                           value={item.holidayDuration}
                           tone="holiday"
@@ -394,33 +421,6 @@ export function PayrollDetailsMonthlyPageClient({
                         label="休日勤務金額"
                         value={formatCurrency(item.holidayWage)}
                         tone="holiday"
-                        emphasis="strong"
-                      />
-
-                      <div className="flex items-center gap-2 justify-self-start whitespace-nowrap">
-                        <ValueFrame
-                          label="深夜勤務時間"
-                          value={item.nightDuration}
-                          tone="night"
-                        />
-                        <span>×</span>
-                        <ValueFrame
-                          label="深夜時給(割増込)"
-                          value={
-                            item.effectiveNightHourlyWage === null
-                              ? "-"
-                              : formatCurrency(item.effectiveNightHourlyWage)
-                          }
-                          tone="neutral"
-                        />
-                      </div>
-                      <span className="font-medium text-muted-foreground">
-                        =
-                      </span>
-                      <ValueFrame
-                        label="深夜勤務金額"
-                        value={formatCurrency(item.nightWage)}
-                        tone="night"
                         emphasis="strong"
                       />
 
