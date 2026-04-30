@@ -10,14 +10,6 @@ import {
   CardHeader,
   CardTitle,
 } from "@/components/ui/card";
-import {
-  Table,
-  TableBody,
-  TableCell,
-  TableHead,
-  TableHeader,
-  TableRow,
-} from "@/components/ui/table";
 import { SpinnerPanel } from "@/components/ui/spinner";
 import { PayrollDetailsViewSwitch } from "@/components/payroll-details/payroll-details-view-switch";
 import { ValueFrame } from "@/components/payroll-details/value-frame";
@@ -233,7 +225,7 @@ export function PayrollDetailsMonthlyPageClient({
         <div>
           <h2 className="text-xl font-semibold">給与詳細（月毎表示）</h2>
           <p className="mt-1 text-sm text-muted-foreground">
-            {selectedMonthLabel}支給分の内訳と計算根拠を確認できます。
+            {selectedMonthLabel}支給分の内訳を確認できます。
           </p>
         </div>
 
@@ -363,84 +355,6 @@ export function PayrollDetailsMonthlyPageClient({
           <Card>
             <CardHeader>
               <CardTitle>勤務先別内訳</CardTitle>
-              <CardDescription>
-                対象期間ごとの勤務時間内訳（基本/休日/深夜）と金額内訳
-              </CardDescription>
-            </CardHeader>
-            <CardContent>
-              <div className="overflow-x-auto">
-                <Table>
-                  <TableHeader>
-                    <TableRow>
-                      <TableHead>勤務先</TableHead>
-                      <TableHead>対象期間</TableHead>
-                      <TableHead className="text-right">総勤務時間</TableHead>
-                      <TableHead className="text-right">基本勤務時間</TableHead>
-                      <TableHead className="text-right">休日勤務時間</TableHead>
-                      <TableHead className="text-right">深夜勤務時間</TableHead>
-                      <TableHead className="text-right">基本勤務金額</TableHead>
-                      <TableHead className="text-right">休日勤務金額</TableHead>
-                      <TableHead className="text-right">深夜勤務金額</TableHead>
-                      <TableHead className="text-right">残業金額</TableHead>
-                      <TableHead className="text-right">合計金額</TableHead>
-                    </TableRow>
-                  </TableHeader>
-                  <TableBody>
-                    {details.byWorkplace.map((item) => (
-                      <TableRow key={item.workplaceId}>
-                        <TableCell>
-                          <span className="inline-flex items-center gap-2">
-                            <span
-                              className="h-2.5 w-2.5 rounded-full"
-                              style={{ backgroundColor: item.workplaceColor }}
-                            />
-                            {item.workplaceName}
-                          </span>
-                        </TableCell>
-                        <TableCell>
-                          {item.periodStartDate} 〜 {item.periodEndDate}
-                        </TableCell>
-                        <TableCell className="text-right">
-                          {item.workDuration}
-                        </TableCell>
-                        <TableCell className="text-right">
-                          {item.baseDuration}
-                        </TableCell>
-                        <TableCell className="text-right">
-                          {item.holidayDuration}
-                        </TableCell>
-                        <TableCell className="text-right">
-                          {item.nightDuration}
-                        </TableCell>
-                        <TableCell className="text-right">
-                          {formatCurrency(item.baseWage)}
-                        </TableCell>
-                        <TableCell className="text-right">
-                          {formatCurrency(item.holidayWage)}
-                        </TableCell>
-                        <TableCell className="text-right">
-                          {formatCurrency(item.nightWage)}
-                        </TableCell>
-                        <TableCell className="text-right">
-                          {formatCurrency(item.overtimeWage)}
-                        </TableCell>
-                        <TableCell className="text-right font-medium">
-                          {formatCurrency(item.totalWage)}
-                        </TableCell>
-                      </TableRow>
-                    ))}
-                  </TableBody>
-                </Table>
-              </div>
-            </CardContent>
-          </Card>
-
-          <Card>
-            <CardHeader>
-              <CardTitle>計算根拠（勤務先集計ベース）</CardTitle>
-              <CardDescription>
-                ラベル付き値枠で計算式を表示し、合計の算出根拠を確認できます。
-              </CardDescription>
             </CardHeader>
             <CardContent className="space-y-4">
               {details.byWorkplace.map((item) => (
@@ -456,8 +370,8 @@ export function PayrollDetailsMonthlyPageClient({
                   </div>
 
                   <div className="space-y-2 text-xs">
-                    <div className="grid grid-cols-[minmax(0,1fr)_auto_auto] items-center gap-x-1 gap-y-2">
-                      <div className="flex flex-wrap items-center gap-2 justify-self-end">
+                    <div className="inline-grid grid-cols-[max-content_auto_max-content] items-center gap-x-1 gap-y-2">
+                      <div className="flex flex-wrap items-center gap-2 justify-self-start">
                         <ValueFrame
                           label="基本勤務時間"
                           value={item.baseDuration}
@@ -484,7 +398,7 @@ export function PayrollDetailsMonthlyPageClient({
                         emphasis="strong"
                       />
 
-                      <div className="flex flex-wrap items-center gap-2 justify-self-end">
+                      <div className="flex flex-wrap items-center gap-2 justify-self-start">
                         <ValueFrame
                           label="休日勤務時間"
                           value={item.holidayDuration}
@@ -511,7 +425,7 @@ export function PayrollDetailsMonthlyPageClient({
                         emphasis="strong"
                       />
 
-                      <div className="flex flex-wrap items-center gap-2 justify-self-end">
+                      <div className="flex flex-wrap items-center gap-2 justify-self-start">
                         <ValueFrame
                           label="深夜勤務時間"
                           value={item.nightDuration}
@@ -544,7 +458,7 @@ export function PayrollDetailsMonthlyPageClient({
                         emphasis="strong"
                       />
 
-                      <div className="flex flex-wrap items-center gap-2 justify-self-end">
+                      <div className="flex flex-wrap items-center gap-2 justify-self-start">
                         <ValueFrame
                           label="残業時間"
                           value={item.overtimeDuration}
@@ -577,7 +491,15 @@ export function PayrollDetailsMonthlyPageClient({
                         emphasis="strong"
                       />
 
-                      <div />
+                      <div className="w-full justify-self-stretch space-y-2">
+                        <div className="border-t border-foreground/30" />
+                        <ValueFrame
+                          label="総勤務時間"
+                          value={item.workDuration}
+                          tone="neutral"
+                          emphasis="strong"
+                        />
+                      </div>
                       <div />
                       <div className="space-y-2">
                         <div className="border-t border-foreground/30" />
