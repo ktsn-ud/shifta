@@ -74,12 +74,16 @@ describe("calculateLessonShiftWage", () => {
 
     expect(result).toEqual({
       totalWage: 3667,
-      dayWage: 3667,
+      baseWage: 3667,
+      holidayWage: 0,
       overtimeWage: 0,
       nightWage: 0,
       workHours: 3.33,
+      baseHours: 3.33,
+      holidayHours: 0,
       overtimeHours: 0,
       nightHours: 0,
+      dayWage: 3667,
       lessonCount: 3,
     });
   });

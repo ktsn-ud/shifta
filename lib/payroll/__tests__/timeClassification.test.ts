@@ -14,34 +14,19 @@ function date(value: string): Date {
 
 describe("calculateNightHours", () => {
   it("日跨ぎ夜勤の深夜時間を計算できる", () => {
-    const result = calculateNightHours(
-      time("22:00"),
-      time("05:00"),
-      time("22:00"),
-      time("05:00"),
-    );
+    const result = calculateNightHours(time("22:00"), time("05:00"));
 
     expect(result).toBe(7);
   });
 
   it("一部重複のみの深夜時間を計算できる", () => {
-    const result = calculateNightHours(
-      time("21:00"),
-      time("23:00"),
-      time("22:00"),
-      time("05:00"),
-    );
+    const result = calculateNightHours(time("21:00"), time("23:00"));
 
     expect(result).toBe(1);
   });
 
   it("重複がない場合は0を返す", () => {
-    const result = calculateNightHours(
-      time("10:00"),
-      time("18:00"),
-      time("22:00"),
-      time("05:00"),
-    );
+    const result = calculateNightHours(time("10:00"), time("18:00"));
 
     expect(result).toBe(0);
   });

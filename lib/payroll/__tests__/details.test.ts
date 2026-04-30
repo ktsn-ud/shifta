@@ -45,8 +45,8 @@ function createRule(overrides: Partial<PayrollRule> = {}): PayrollRule {
     endDate: null,
     baseHourlyWage: new Prisma.Decimal(1100),
     holidayHourlyWage: new Prisma.Decimal(1500),
-    nightMultiplier: new Prisma.Decimal(1.25),
-    overtimeMultiplier: new Prisma.Decimal(1.5),
+    nightMultiplier: new Prisma.Decimal(0.25),
+    overtimeMultiplier: new Prisma.Decimal(0.5),
     nightStart: time("22:00"),
     nightEnd: time("05:00"),
     dailyOvertimeThreshold: new Prisma.Decimal(8),
@@ -56,7 +56,7 @@ function createRule(overrides: Partial<PayrollRule> = {}): PayrollRule {
 }
 
 describe("summarizeWorkplacePayrollDetailsByPeriod", () => {
-  it("基本/休日/深夜/残業の内訳と時間表示を算出できる", () => {
+  it("基本/休日手当/深夜の内訳と時間表示を算出できる", () => {
     const shifts = [
       createShift({
         id: "weekday-1",
@@ -98,26 +98,23 @@ describe("summarizeWorkplacePayrollDetailsByPeriod", () => {
 
     expect(result).toEqual({
       totalWorkHours: 22,
-      baseHours: 16,
+      baseHours: 15,
       holidayHours: 6,
       nightHours: 7,
       overtimeHours: 1,
-      totalWage: 30175,
-      baseWage: 17600,
+      totalWage: 35125,
+      baseWage: 16500,
       holidayWage: 9000,
-      nightWage: 1925,
-      overtimeWage: 1650,
+      nightWage: 9625,
       workDuration: "22:00",
-      baseDuration: "16:00",
+      baseDuration: "15:00",
       holidayDuration: "6:00",
       nightDuration: "7:00",
       overtimeDuration: "1:00",
       effectiveBaseHourlyWage: 1100,
-      effectiveHolidayHourlyWage: 1500,
-      effectiveNightHourlyWage: 1100,
-      effectiveOvertimeHourlyWage: 1100,
+      effectiveHolidayAllowanceHourly: 1500,
+      effectiveNightHourlyWage: 1375,
       effectiveNightPremiumRate: 0.25,
-      effectiveOvertimeMultiplier: 1.5,
     });
   });
 
@@ -140,18 +137,15 @@ describe("summarizeWorkplacePayrollDetailsByPeriod", () => {
       baseWage: 0,
       holidayWage: 0,
       nightWage: 0,
-      overtimeWage: 0,
       workDuration: "0:00",
       baseDuration: "0:00",
       holidayDuration: "0:00",
       nightDuration: "0:00",
       overtimeDuration: "0:00",
       effectiveBaseHourlyWage: null,
-      effectiveHolidayHourlyWage: null,
+      effectiveHolidayAllowanceHourly: null,
       effectiveNightHourlyWage: null,
-      effectiveOvertimeHourlyWage: null,
       effectiveNightPremiumRate: null,
-      effectiveOvertimeMultiplier: null,
     });
   });
 });

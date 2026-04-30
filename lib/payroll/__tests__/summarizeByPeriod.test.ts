@@ -20,9 +20,9 @@ function createRule(overrides: Partial<PayrollRule> = {}): PayrollRule {
     startDate: date("2026-01-01"),
     endDate: null,
     baseHourlyWage: new Prisma.Decimal(1100),
-    holidayHourlyWage: new Prisma.Decimal(1200),
-    nightMultiplier: new Prisma.Decimal(1.25),
-    overtimeMultiplier: new Prisma.Decimal(1.5),
+    holidayHourlyWage: new Prisma.Decimal(300),
+    nightMultiplier: new Prisma.Decimal(0.25),
+    overtimeMultiplier: new Prisma.Decimal(0.25),
     nightStart: time("22:00"),
     nightEnd: time("05:00"),
     dailyOvertimeThreshold: new Prisma.Decimal(8),
@@ -70,9 +70,9 @@ describe("summarizeByPeriod", () => {
         id: "rule-2",
         workplaceId: "workplace-2",
         baseHourlyWage: new Prisma.Decimal(1000),
-        holidayHourlyWage: new Prisma.Decimal(1000),
-        nightMultiplier: new Prisma.Decimal(1),
-        overtimeMultiplier: new Prisma.Decimal(1),
+        holidayHourlyWage: new Prisma.Decimal(0),
+        nightMultiplier: new Prisma.Decimal(0),
+        overtimeMultiplier: new Prisma.Decimal(0),
         dailyOvertimeThreshold: new Prisma.Decimal(8),
         holidayType: "NONE",
       }),
@@ -119,7 +119,7 @@ describe("summarizeByPeriod", () => {
     );
 
     expect(result).toEqual({
-      totalWage: 20783,
+      totalWage: 21921,
       totalWorkHours: 16.83,
       totalNightHours: 6.5,
       totalOvertimeHours: 0,
@@ -128,7 +128,7 @@ describe("summarizeByPeriod", () => {
           workplaceId: "workplace-1",
           workplaceName: "勤務先A",
           workplaceColor: "#FF5733",
-          wage: 17450,
+          wage: 18588,
           workHours: 13.5,
         },
         {

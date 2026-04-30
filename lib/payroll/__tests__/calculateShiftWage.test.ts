@@ -36,9 +36,9 @@ function createRule(overrides: Partial<PayrollRule> = {}): PayrollRule {
     startDate: date("2026-01-01"),
     endDate: null,
     baseHourlyWage: new Prisma.Decimal(1100),
-    holidayHourlyWage: new Prisma.Decimal(1200),
-    nightMultiplier: new Prisma.Decimal(1.25),
-    overtimeMultiplier: new Prisma.Decimal(1.5),
+    holidayHourlyWage: new Prisma.Decimal(300),
+    nightMultiplier: new Prisma.Decimal(0.25),
+    overtimeMultiplier: new Prisma.Decimal(0.25),
     nightStart: time("22:00"),
     nightEnd: time("05:00"),
     dailyOvertimeThreshold: new Prisma.Decimal(8),
@@ -56,12 +56,16 @@ describe("calculateOtherShiftWage", () => {
 
     expect(result).toEqual({
       totalWage: 7700,
-      dayWage: 7700,
+      baseWage: 7700,
+      holidayWage: 0,
       overtimeWage: 0,
       nightWage: 0,
       workHours: 7,
+      baseHours: 7,
+      holidayHours: 0,
       overtimeHours: 0,
       nightHours: 0,
+      dayWage: 7700,
     });
   });
 
@@ -78,13 +82,17 @@ describe("calculateOtherShiftWage", () => {
     const result = calculateOtherShiftWage(shift, rule);
 
     expect(result).toEqual({
-      totalWage: 9750,
-      dayWage: 7800,
+      totalWage: 10888,
+      baseWage: 0,
+      holidayWage: 1950,
       overtimeWage: 0,
-      nightWage: 1950,
+      nightWage: 8938,
       workHours: 6.5,
+      baseHours: 0,
+      holidayHours: 6.5,
       overtimeHours: 0,
       nightHours: 6.5,
+      dayWage: 0,
     });
   });
 
@@ -100,9 +108,11 @@ describe("calculateOtherShiftWage", () => {
 
     const result = calculateOtherShiftWage(shift, rule);
 
-    expect(result.totalWage).toBe(14300);
+    expect(result.totalWage).toBe(11000);
+    expect(result.baseWage).toBe(11000);
+    expect(result.holidayWage).toBe(0);
     expect(result.dayWage).toBe(11000);
-    expect(result.overtimeWage).toBe(3300);
+    expect(result.overtimeWage).toBe(0);
     expect(result.overtimeHours).toBe(2);
   });
 
@@ -116,8 +126,10 @@ describe("calculateOtherShiftWage", () => {
 
     const result = calculateOtherShiftWage(shift, rule);
 
-    expect(result.totalWage).toBe(8400);
-    expect(result.dayWage).toBe(8400);
+    expect(result.totalWage).toBe(9800);
+    expect(result.baseWage).toBe(7700);
+    expect(result.holidayWage).toBe(2100);
+    expect(result.dayWage).toBe(7700);
     expect(result.overtimeWage).toBe(0);
     expect(result.nightWage).toBe(0);
   });
@@ -130,12 +142,16 @@ describe("calculateOtherShiftWage", () => {
 
     expect(result).toEqual({
       totalWage: 7700,
-      dayWage: 7700,
+      baseWage: 7700,
+      holidayWage: 0,
       overtimeWage: 0,
       nightWage: 0,
       workHours: 7,
+      baseHours: 7,
+      holidayHours: 0,
       overtimeHours: 0,
       nightHours: 0,
+      dayWage: 7700,
     });
   });
 });
