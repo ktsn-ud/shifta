@@ -458,8 +458,8 @@ export function PayrollRuleList({
                 <TableRow>
                   <TableHead>適用期間</TableHead>
                   <TableHead>基本時給</TableHead>
-                  <TableHead>休日手当(円/時)</TableHead>
                   <TableHead>深夜割増率</TableHead>
+                  <TableHead>休日手当(円/時)</TableHead>
                   <TableHead>所定時間外割増率</TableHead>
                   <TableHead className="text-right">操作</TableHead>
                 </TableRow>
@@ -481,10 +481,10 @@ export function PayrollRuleList({
                       <TableCell>
                         {formatCurrency(rule.baseHourlyWage)}
                       </TableCell>
+                      <TableCell>{formatRate(rule.nightPremiumRate)}</TableCell>
                       <TableCell>
                         {formatCurrency(rule.holidayAllowanceHourly)}
                       </TableCell>
-                      <TableCell>{formatRate(rule.nightPremiumRate)}</TableCell>
                       <TableCell>
                         {formatRate(rule.overtimePremiumRate)}
                       </TableCell>

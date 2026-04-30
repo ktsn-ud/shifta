@@ -774,6 +774,36 @@ export function WorkplaceForm({ mode, workplaceId }: WorkplaceFormProps) {
                     </FieldContent>
                   </Field>
 
+                  <Field data-invalid={Boolean(errors.nightPremiumRate)}>
+                    <FieldLabel htmlFor="initial-rule-night-multiplier">
+                      深夜割増率
+                    </FieldLabel>
+                    <FieldContent>
+                      <div className="flex items-center gap-2">
+                        <Input
+                          id="initial-rule-night-multiplier"
+                          type="number"
+                          min="0"
+                          step="0.01"
+                          value={initialRuleValues.nightPremiumRate}
+                          onChange={(event) => {
+                            const nextValue = event.currentTarget.value;
+                            setInitialRuleValues((current) => ({
+                              ...current,
+                              nightPremiumRate: nextValue,
+                            }));
+                          }}
+                          className="max-w-20"
+                        />
+                        <span className="shrink-0 text-sm text-muted-foreground">
+                          率
+                        </span>
+                      </div>
+                      <FieldDescription>例: 0.25 = 25%</FieldDescription>
+                      <FormErrorMessage message={errors.nightPremiumRate} />
+                    </FieldContent>
+                  </Field>
+
                   <Field data-invalid={Boolean(errors.holidayAllowanceHourly)}>
                     <FieldLabel htmlFor="initial-rule-holiday-hourly-wage">
                       休日手当（時間あたり）
@@ -805,36 +835,6 @@ export function WorkplaceForm({ mode, workplaceId }: WorkplaceFormProps) {
                       <FormErrorMessage
                         message={errors.holidayAllowanceHourly}
                       />
-                    </FieldContent>
-                  </Field>
-
-                  <Field data-invalid={Boolean(errors.nightPremiumRate)}>
-                    <FieldLabel htmlFor="initial-rule-night-multiplier">
-                      深夜割増率
-                    </FieldLabel>
-                    <FieldContent>
-                      <div className="flex items-center gap-2">
-                        <Input
-                          id="initial-rule-night-multiplier"
-                          type="number"
-                          min="0"
-                          step="0.01"
-                          value={initialRuleValues.nightPremiumRate}
-                          onChange={(event) => {
-                            const nextValue = event.currentTarget.value;
-                            setInitialRuleValues((current) => ({
-                              ...current,
-                              nightPremiumRate: nextValue,
-                            }));
-                          }}
-                          className="max-w-20"
-                        />
-                        <span className="shrink-0 text-sm text-muted-foreground">
-                          率
-                        </span>
-                      </div>
-                      <FieldDescription>例: 0.25 = 25%</FieldDescription>
-                      <FormErrorMessage message={errors.nightPremiumRate} />
                     </FieldContent>
                   </Field>
 

@@ -641,6 +641,34 @@ export function PayrollRuleForm({
             </FieldContent>
           </Field>
 
+          <Field data-invalid={Boolean(errors.nightPremiumRate)}>
+            <FieldLabel htmlFor="night-premium-rate">深夜割増率</FieldLabel>
+            <FieldContent>
+              <div className="flex items-center gap-2">
+                <Input
+                  id="night-premium-rate"
+                  type="number"
+                  min="0"
+                  step="0.01"
+                  value={values.nightPremiumRate}
+                  onChange={(event) => {
+                    const nextValue = event.currentTarget.value;
+                    setValues((current) => ({
+                      ...current,
+                      nightPremiumRate: nextValue,
+                    }));
+                  }}
+                  className="max-w-24"
+                />
+                <span className="shrink-0 text-sm text-muted-foreground">
+                  率
+                </span>
+              </div>
+              <FieldDescription>例: 0.25 = 25%</FieldDescription>
+              <FormErrorMessage message={errors.nightPremiumRate} />
+            </FieldContent>
+          </Field>
+
           <Field data-invalid={Boolean(errors.holidayAllowanceHourly)}>
             <FieldLabel htmlFor="holiday-allowance-hourly">
               休日手当（時間あたり）
@@ -670,34 +698,6 @@ export function PayrollRuleForm({
                 休日勤務時間に対して加算する手当です。
               </FieldDescription>
               <FormErrorMessage message={errors.holidayAllowanceHourly} />
-            </FieldContent>
-          </Field>
-
-          <Field data-invalid={Boolean(errors.nightPremiumRate)}>
-            <FieldLabel htmlFor="night-premium-rate">深夜割増率</FieldLabel>
-            <FieldContent>
-              <div className="flex items-center gap-2">
-                <Input
-                  id="night-premium-rate"
-                  type="number"
-                  min="0"
-                  step="0.01"
-                  value={values.nightPremiumRate}
-                  onChange={(event) => {
-                    const nextValue = event.currentTarget.value;
-                    setValues((current) => ({
-                      ...current,
-                      nightPremiumRate: nextValue,
-                    }));
-                  }}
-                  className="max-w-24"
-                />
-                <span className="shrink-0 text-sm text-muted-foreground">
-                  率
-                </span>
-              </div>
-              <FieldDescription>例: 0.25 = 25%</FieldDescription>
-              <FormErrorMessage message={errors.nightPremiumRate} />
             </FieldContent>
           </Field>
 
