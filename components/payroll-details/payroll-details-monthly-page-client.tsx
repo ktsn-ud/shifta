@@ -542,7 +542,7 @@ export function PayrollDetailsMonthlyPageClient({
                       />
                       <span>×</span>
                       <ValueFrame
-                        label="nightMultiplier - 1"
+                        label="深夜割増率 - 1"
                         value={formatRate(item.effectiveNightPremiumRate)}
                       />
                       <span>=</span>
@@ -568,7 +568,7 @@ export function PayrollDetailsMonthlyPageClient({
                       />
                       <span>×</span>
                       <ValueFrame
-                        label="overtimeMultiplier"
+                        label="残業割増率"
                         value={formatRate(item.effectiveOvertimeMultiplier)}
                       />
                       <span>=</span>
