@@ -369,9 +369,9 @@ export function PayrollDetailsMonthlyPageClient({
                     </p>
                   </div>
 
-                  <div className="space-y-2 text-xs">
-                    <div className="inline-grid grid-cols-[max-content_auto_max-content] items-center gap-x-1 gap-y-2">
-                      <div className="flex flex-wrap items-center gap-2 justify-self-start">
+                  <div className="overflow-x-auto">
+                    <div className="inline-grid w-max grid-cols-[max-content_auto_max-content] items-center gap-x-1 gap-y-2 text-xs">
+                      <div className="flex items-center gap-2 justify-self-start whitespace-nowrap">
                         <ValueFrame
                           label="基本勤務時間"
                           value={item.baseDuration}
@@ -398,7 +398,7 @@ export function PayrollDetailsMonthlyPageClient({
                         emphasis="strong"
                       />
 
-                      <div className="flex flex-wrap items-center gap-2 justify-self-start">
+                      <div className="flex items-center gap-2 justify-self-start whitespace-nowrap">
                         <ValueFrame
                           label="休日勤務時間"
                           value={item.holidayDuration}
@@ -425,7 +425,7 @@ export function PayrollDetailsMonthlyPageClient({
                         emphasis="strong"
                       />
 
-                      <div className="flex flex-wrap items-center gap-2 justify-self-start">
+                      <div className="flex items-center gap-2 justify-self-start whitespace-nowrap">
                         <ValueFrame
                           label="深夜勤務時間"
                           value={item.nightDuration}
@@ -458,7 +458,7 @@ export function PayrollDetailsMonthlyPageClient({
                         emphasis="strong"
                       />
 
-                      <div className="flex flex-wrap items-center gap-2 justify-self-start">
+                      <div className="flex items-center gap-2 justify-self-start whitespace-nowrap">
                         <ValueFrame
                           label="残業時間"
                           value={item.overtimeDuration}
