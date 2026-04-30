@@ -1,6 +1,10 @@
 "use client";
 
 import { useEffect, useMemo, useState } from "react";
+import {
+  readPayrollDetailsMonthlyCache,
+  writePayrollDetailsMonthlyCache,
+} from "@/lib/client-cache/payroll-details-cache";
 import { Input } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
 import {
@@ -31,41 +35,8 @@ type PayrollDetailsMonthlyPageClientProps = {
 
 const MONTHLY_CACHE_TTL_MS = 5 * 60 * 1000;
 
-type MonthlyCacheEntry = {
-  expiresAt: number;
-  details: PayrollDetailsMonthlyResult;
-};
-
-const monthlyCache = new Map<string, MonthlyCacheEntry>();
-
 function toMonthlyCacheKey(userId: string, month: string): string {
   return `${userId}:${month}`;
-}
-
-function readMonthlyCache(
-  cacheKey: string,
-): PayrollDetailsMonthlyResult | null {
-  const cached = monthlyCache.get(cacheKey);
-  if (!cached) {
-    return null;
-  }
-
-  if (cached.expiresAt <= Date.now()) {
-    monthlyCache.delete(cacheKey);
-    return null;
-  }
-
-  return cached.details;
-}
-
-function writeMonthlyCache(
-  cacheKey: string,
-  details: PayrollDetailsMonthlyResult,
-): void {
-  monthlyCache.set(cacheKey, {
-    details,
-    expiresAt: Date.now() + MONTHLY_CACHE_TTL_MS,
-  });
 }
 
 export function PayrollDetailsMonthlyPageLoadingSkeleton() {
@@ -134,9 +105,10 @@ export function PayrollDetailsMonthlyPageClient({
     }
 
     if (appliedMonthValue === initialMonth) {
-      writeMonthlyCache(
+      writePayrollDetailsMonthlyCache(
         toMonthlyCacheKey(currentUserId, initialMonth),
         initialDetails,
+        MONTHLY_CACHE_TTL_MS,
       );
       setErrorMessage(null);
       setDetails(initialDetails);
@@ -145,7 +117,8 @@ export function PayrollDetailsMonthlyPageClient({
     }
 
     const cacheKey = toMonthlyCacheKey(currentUserId, appliedMonthValue);
-    const cached = readMonthlyCache(cacheKey);
+    const cached =
+      readPayrollDetailsMonthlyCache<PayrollDetailsMonthlyResult>(cacheKey);
     if (cached) {
       setErrorMessage(null);
       setDetails(cached);
@@ -184,7 +157,7 @@ export function PayrollDetailsMonthlyPageClient({
         }
 
         const parsed = payload as PayrollDetailsMonthlyResult;
-        writeMonthlyCache(cacheKey, parsed);
+        writePayrollDetailsMonthlyCache(cacheKey, parsed, MONTHLY_CACHE_TTL_MS);
         setDetails(parsed);
       } catch (error) {
         if (abortController.signal.aborted) {

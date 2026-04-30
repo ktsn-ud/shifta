@@ -38,6 +38,7 @@ import {
   startOfMonth,
   toMonthInputValue,
 } from "@/lib/calendar/date";
+import { clearShiftDerivedCaches } from "@/lib/client-cache/shift-derived-cache";
 import { messages, toErrorMessage } from "@/lib/messages";
 import { formatShiftWorkplaceLabel } from "@/lib/shifts/format";
 import { resolveUserFacingErrorFromResponse } from "@/lib/user-facing-error";
@@ -373,6 +374,7 @@ export function ShiftListPageClient({
 
       setSelectedShiftIds(new Set());
       setDeleteDialogOpen(false);
+      clearShiftDerivedCaches();
       await reload();
 
       toast.success(messages.success.shiftDeleted, {

@@ -1,5 +1,6 @@
 import { type Prisma } from "@/lib/generated/prisma/client";
 import { after, NextResponse } from "next/server";
+import { revalidatePath } from "next/cache";
 import { z } from "zod";
 import { requireCurrentUser } from "@/lib/api/current-user";
 import { DATE_ONLY_REGEX, parseDateOnly } from "@/lib/api/date-time";
@@ -53,6 +54,15 @@ const shiftBulkDeleteSchema = z
     shiftIds: z.array(z.string().min(1)).min(1).max(100),
   })
   .strict();
+
+function revalidateShiftRelatedPaths(): void {
+  revalidatePath("/my");
+  revalidatePath("/my/shifts/list");
+  revalidatePath("/my/shifts/confirm");
+  revalidatePath("/my/summary");
+  revalidatePath("/my/payroll-details/monthly");
+  revalidatePath("/my/payroll-details/workplace-yearly");
+}
 
 export async function POST(request: Request) {
   try {
@@ -125,6 +135,8 @@ export async function POST(request: Request) {
         }
       });
     }
+
+    revalidateShiftRelatedPaths();
 
     return NextResponse.json(
       {
@@ -345,6 +357,8 @@ export async function DELETE(request: Request) {
         throw new Error("SHIFT_BULK_DELETE_CONFLICT");
       }
     });
+
+    revalidateShiftRelatedPaths();
 
     after(async () => {
       const results = await Promise.allSettled(

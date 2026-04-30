@@ -5,6 +5,7 @@ import { useRouter } from "next/navigation";
 import { CheckIcon } from "lucide-react";
 import { toast } from "sonner";
 import { TIME_ONLY_REGEX, toMinutes } from "@/lib/api/date-time";
+import { clearShiftDerivedCaches } from "@/lib/client-cache/shift-derived-cache";
 import {
   parseGoogleSyncFailureFromPayload,
   readGoogleSyncFailureFromErrorResponse,
@@ -132,6 +133,7 @@ export function ConfirmShiftCard({
         messages.error.calendarSyncFailed,
       );
 
+      clearShiftDerivedCaches();
       await onActionCompleted?.();
 
       if (syncFailure) {
