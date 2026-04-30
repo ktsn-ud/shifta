@@ -6,6 +6,13 @@ import prettier from "eslint-config-prettier/flat";
 const eslintConfig = defineConfig([
   ...nextVitals,
   ...nextTs,
+  {
+    rules: {
+      // 現在のフォーム/フェッチ実装は effect 内 state 更新を前提としており、
+      // 一律適用すると挙動変更リスクの高い大規模改修が必要になるため段階移行とする。
+      "react-hooks/set-state-in-effect": "off",
+    },
+  },
   // Override default ignores of eslint-config-next.
   globalIgnores([
     // Default ignores of eslint-config-next:
