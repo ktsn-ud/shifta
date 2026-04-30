@@ -15,7 +15,6 @@ import { PayrollDetailsViewSwitch } from "@/components/payroll-details/payroll-d
 import { ValueFrame } from "@/components/payroll-details/value-frame";
 import {
   formatCurrency,
-  formatHoursDecimal,
   formatRate,
 } from "@/components/payroll-details/format";
 import {
@@ -308,9 +307,6 @@ export function PayrollDetailsMonthlyPageClient({
               <CardContent className="space-y-1">
                 <p className="text-2xl font-semibold">
                   {details.totals.workDuration}
-                </p>
-                <p className="text-xs text-muted-foreground">
-                  {formatHoursDecimal(details.totals.totalWorkHours)}
                 </p>
               </CardContent>
             </Card>
