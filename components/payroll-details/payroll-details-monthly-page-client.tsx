@@ -351,6 +351,7 @@ export function PayrollDetailsMonthlyPageClient({
           <Card>
             <CardHeader>
               <CardTitle>勤務先別内訳</CardTitle>
+              <CardDescription>図は横スクロールが可能です。</CardDescription>
             </CardHeader>
             <CardContent className="space-y-4">
               {details.byWorkplace.map((item) => (
@@ -358,8 +359,16 @@ export function PayrollDetailsMonthlyPageClient({
                   key={`${item.workplaceId}-formula`}
                   className="space-y-3 rounded-lg border p-3"
                 >
-                  <div className="flex flex-wrap items-center justify-between gap-2">
-                    <p className="font-medium">{item.workplaceName}</p>
+                  <div className="flex flex-wrap items-center gap-8">
+                    <p className="font-medium">
+                      <span className="inline-flex items-center gap-2">
+                        <span
+                          className="h-2.5 w-2.5 rounded-full"
+                          style={{ backgroundColor: item.workplaceColor }}
+                        />
+                        {item.workplaceName}
+                      </span>
+                    </p>
                     <p className="text-xs text-muted-foreground">
                       {item.periodStartDate} 〜 {item.periodEndDate}
                     </p>
