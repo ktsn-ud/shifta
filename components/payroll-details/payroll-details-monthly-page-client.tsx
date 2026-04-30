@@ -455,127 +455,139 @@ export function PayrollDetailsMonthlyPageClient({
                     </p>
                   </div>
 
-                  <div className="flex flex-wrap items-center gap-2 text-xs">
-                    <ValueFrame
-                      label="基本勤務金額"
-                      value={formatCurrency(item.baseWage)}
-                    />
-                    <span>+</span>
-                    <ValueFrame
-                      label="休日勤務金額"
-                      value={formatCurrency(item.holidayWage)}
-                    />
-                    <span>+</span>
-                    <ValueFrame
-                      label="深夜勤務金額"
-                      value={formatCurrency(item.nightWage)}
-                    />
-                    <span>+</span>
-                    <ValueFrame
-                      label="残業金額"
-                      value={formatCurrency(item.overtimeWage)}
-                    />
-                    <span>=</span>
-                    <ValueFrame
-                      label="合計"
-                      value={formatCurrency(item.totalWage)}
-                      className="bg-primary/5"
-                    />
-                  </div>
-
                   <div className="space-y-2 text-xs">
-                    <div className="flex flex-wrap items-center gap-2">
-                      <ValueFrame
-                        label="基本勤務時間"
-                        value={item.baseDuration}
-                      />
-                      <span>×</span>
-                      <ValueFrame
-                        label="適用時給"
-                        value={
-                          item.effectiveBaseHourlyWage === null
-                            ? "-"
-                            : formatCurrency(item.effectiveBaseHourlyWage)
-                        }
-                      />
-                      <span>=</span>
+                    <div className="grid grid-cols-[minmax(0,1fr)_auto_auto] items-center gap-x-1 gap-y-2">
+                      <div className="flex flex-wrap items-center gap-2 justify-self-end">
+                        <ValueFrame
+                          label="基本勤務時間"
+                          value={item.baseDuration}
+                          tone="base"
+                        />
+                        <span>×</span>
+                        <ValueFrame
+                          label="適用時給"
+                          value={
+                            item.effectiveBaseHourlyWage === null
+                              ? "-"
+                              : formatCurrency(item.effectiveBaseHourlyWage)
+                          }
+                          tone="neutral"
+                        />
+                      </div>
+                      <span className="font-medium text-muted-foreground">
+                        =
+                      </span>
                       <ValueFrame
                         label="基本勤務金額"
                         value={formatCurrency(item.baseWage)}
+                        tone="base"
+                        emphasis="strong"
                       />
-                    </div>
 
-                    <div className="flex flex-wrap items-center gap-2">
-                      <ValueFrame
-                        label="休日勤務時間"
-                        value={item.holidayDuration}
-                      />
-                      <span>×</span>
-                      <ValueFrame
-                        label="適用時給"
-                        value={
-                          item.effectiveHolidayHourlyWage === null
-                            ? "-"
-                            : formatCurrency(item.effectiveHolidayHourlyWage)
-                        }
-                      />
-                      <span>=</span>
+                      <div className="flex flex-wrap items-center gap-2 justify-self-end">
+                        <ValueFrame
+                          label="休日勤務時間"
+                          value={item.holidayDuration}
+                          tone="holiday"
+                        />
+                        <span>×</span>
+                        <ValueFrame
+                          label="適用時給"
+                          value={
+                            item.effectiveHolidayHourlyWage === null
+                              ? "-"
+                              : formatCurrency(item.effectiveHolidayHourlyWage)
+                          }
+                          tone="neutral"
+                        />
+                      </div>
+                      <span className="font-medium text-muted-foreground">
+                        =
+                      </span>
                       <ValueFrame
                         label="休日勤務金額"
                         value={formatCurrency(item.holidayWage)}
+                        tone="holiday"
+                        emphasis="strong"
                       />
-                    </div>
 
-                    <div className="flex flex-wrap items-center gap-2">
-                      <ValueFrame
-                        label="深夜勤務時間"
-                        value={item.nightDuration}
-                      />
-                      <span>×</span>
-                      <ValueFrame
-                        label="適用時給"
-                        value={
-                          item.effectiveNightHourlyWage === null
-                            ? "-"
-                            : formatCurrency(item.effectiveNightHourlyWage)
-                        }
-                      />
-                      <span>×</span>
-                      <ValueFrame
-                        label="深夜割増率 - 1"
-                        value={formatRate(item.effectiveNightPremiumRate)}
-                      />
-                      <span>=</span>
+                      <div className="flex flex-wrap items-center gap-2 justify-self-end">
+                        <ValueFrame
+                          label="深夜勤務時間"
+                          value={item.nightDuration}
+                          tone="night"
+                        />
+                        <span>×</span>
+                        <ValueFrame
+                          label="適用時給"
+                          value={
+                            item.effectiveNightHourlyWage === null
+                              ? "-"
+                              : formatCurrency(item.effectiveNightHourlyWage)
+                          }
+                          tone="neutral"
+                        />
+                        <span>×</span>
+                        <ValueFrame
+                          label="深夜割増率 - 1"
+                          value={formatRate(item.effectiveNightPremiumRate)}
+                          tone="neutral"
+                        />
+                      </div>
+                      <span className="font-medium text-muted-foreground">
+                        =
+                      </span>
                       <ValueFrame
                         label="深夜勤務金額"
                         value={formatCurrency(item.nightWage)}
+                        tone="night"
+                        emphasis="strong"
                       />
-                    </div>
 
-                    <div className="flex flex-wrap items-center gap-2">
-                      <ValueFrame
-                        label="残業時間"
-                        value={item.overtimeDuration}
-                      />
-                      <span>×</span>
-                      <ValueFrame
-                        label="適用時給"
-                        value={
-                          item.effectiveOvertimeHourlyWage === null
-                            ? "-"
-                            : formatCurrency(item.effectiveOvertimeHourlyWage)
-                        }
-                      />
-                      <span>×</span>
-                      <ValueFrame
-                        label="残業割増率"
-                        value={formatRate(item.effectiveOvertimeMultiplier)}
-                      />
-                      <span>=</span>
+                      <div className="flex flex-wrap items-center gap-2 justify-self-end">
+                        <ValueFrame
+                          label="残業時間"
+                          value={item.overtimeDuration}
+                          tone="overtime"
+                        />
+                        <span>×</span>
+                        <ValueFrame
+                          label="適用時給"
+                          value={
+                            item.effectiveOvertimeHourlyWage === null
+                              ? "-"
+                              : formatCurrency(item.effectiveOvertimeHourlyWage)
+                          }
+                          tone="neutral"
+                        />
+                        <span>×</span>
+                        <ValueFrame
+                          label="残業割増率"
+                          value={formatRate(item.effectiveOvertimeMultiplier)}
+                          tone="neutral"
+                        />
+                      </div>
+                      <span className="font-medium text-muted-foreground">
+                        =
+                      </span>
                       <ValueFrame
                         label="残業金額"
                         value={formatCurrency(item.overtimeWage)}
+                        tone="overtime"
+                        emphasis="strong"
                       />
+
+                      <div />
+                      <div />
+                      <div className="space-y-2">
+                        <div className="border-t border-foreground/30" />
+                        <ValueFrame
+                          label="合計"
+                          value={formatCurrency(item.totalWage)}
+                          tone="total"
+                          emphasis="strong"
+                        />
+                      </div>
                     </div>
                   </div>
                 </div>
