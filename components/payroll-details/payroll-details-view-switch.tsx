@@ -4,33 +4,24 @@ import { Button } from "@/components/ui/button";
 type PayrollDetailsViewMode = "monthly" | "workplace-yearly";
 
 type PayrollDetailsViewSwitchProps = {
-  mode: PayrollDetailsViewMode;
-  monthlyHref: string;
-  workplaceYearlyHref: string;
+  currentMode: PayrollDetailsViewMode;
+  href: string;
 };
 
 export function PayrollDetailsViewSwitch({
-  mode,
-  monthlyHref,
-  workplaceYearlyHref,
+  currentMode,
+  href,
 }: PayrollDetailsViewSwitchProps) {
   return (
     <div className="flex flex-wrap items-center gap-2">
       <Button
         type="button"
-        variant={mode === "monthly" ? "default" : "outline"}
         size="sm"
-        render={<Link href={monthlyHref} prefetch={false} />}
+        render={<Link href={href} prefetch={false} />}
       >
-        月毎表示
-      </Button>
-      <Button
-        type="button"
-        variant={mode === "workplace-yearly" ? "default" : "outline"}
-        size="sm"
-        render={<Link href={workplaceYearlyHref} prefetch={false} />}
-      >
-        勤務先毎表示
+        {currentMode === "monthly"
+          ? "勤務先別表示へ切り替え"
+          : "月別表示へ切り替え"}
       </Button>
     </div>
   );

@@ -71,10 +71,6 @@ function writeMonthlyCache(
   });
 }
 
-function toYearFromMonth(month: string): string {
-  return month.slice(0, 4);
-}
-
 export function PayrollDetailsMonthlyPageLoadingSkeleton() {
   return (
     <section className="space-y-6 p-4 md:p-6">
@@ -117,8 +113,7 @@ export function PayrollDetailsMonthlyPageClient({
       (workplace) => workplace.totalWorkHours > 0 || workplace.totalWage > 0,
     ) ?? false;
 
-  const monthlyHref = `/my/payroll-details/monthly?month=${appliedMonthValue}`;
-  const workplaceYearlyHref = `/my/payroll-details/workplace-yearly?year=${toYearFromMonth(appliedMonthValue)}`;
+  const workplaceYearlyHref = "/my/payroll-details/workplace-yearly";
 
   const applyMonthValue = (nextValue: string) => {
     if (fromMonthInputValue(nextValue) === null) {
@@ -229,9 +224,8 @@ export function PayrollDetailsMonthlyPageClient({
         </div>
 
         <PayrollDetailsViewSwitch
-          mode="monthly"
-          monthlyHref={monthlyHref}
-          workplaceYearlyHref={workplaceYearlyHref}
+          currentMode="monthly"
+          href={workplaceYearlyHref}
         />
 
         {!isLoading ? (

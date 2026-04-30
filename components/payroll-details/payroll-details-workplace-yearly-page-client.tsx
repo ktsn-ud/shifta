@@ -139,8 +139,7 @@ export function PayrollDetailsWorkplaceYearlyPageClient({
       ),
     ) ?? false;
 
-  const monthlyHref = `/my/payroll-details/monthly?month=${appliedYearValue}-01`;
-  const workplaceYearlyHref = `/my/payroll-details/workplace-yearly?year=${appliedYearValue}`;
+  const monthlyHref = "/my/payroll-details/monthly";
 
   const applyYearValue = (nextValue: string) => {
     if (!isValidYearInput(nextValue)) {
@@ -258,9 +257,8 @@ export function PayrollDetailsWorkplaceYearlyPageClient({
         </div>
 
         <PayrollDetailsViewSwitch
-          mode="workplace-yearly"
-          monthlyHref={monthlyHref}
-          workplaceYearlyHref={workplaceYearlyHref}
+          currentMode="workplace-yearly"
+          href={monthlyHref}
         />
 
         {!isLoading ? (
