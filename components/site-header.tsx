@@ -54,6 +54,20 @@ function buildBreadcrumbs(pathname: string): Crumb[] {
     return [root, { title: "給与サマリー" }];
   }
 
+  if (section === "payroll-details") {
+    const subSection = segments[2];
+
+    if (subSection === "workplace-yearly") {
+      return [root, { title: "給与詳細" }, { title: "勤務先毎表示" }];
+    }
+
+    if (subSection === "monthly" || subSection === undefined) {
+      return [root, { title: "給与詳細" }, { title: "月毎表示" }];
+    }
+
+    return [root, { title: "給与詳細" }];
+  }
+
   if (section === "calendar-setup") {
     return [root, { title: "カレンダー設定" }];
   }
