@@ -15,6 +15,9 @@ import {
   SidebarMenu,
   SidebarMenuButton,
   SidebarMenuItem,
+  SidebarMenuSub,
+  SidebarMenuSubButton,
+  SidebarMenuSubItem,
   useSidebar,
 } from "@/components/ui/sidebar";
 import {
@@ -36,6 +39,10 @@ type NavItem = {
   title: string;
   href: string;
   icon: React.ReactNode;
+  subItems?: Array<{
+    title: string;
+    href: string;
+  }>;
 };
 
 const mainNavItems: NavItem[] = [
@@ -54,6 +61,15 @@ const mainNavItems: NavItem[] = [
     title: "給与サマリー",
     href: "/my/summary",
     icon: <WalletCardsIcon />,
+  },
+  {
+    title: "給与詳細",
+    href: "/my/payroll-details",
+    icon: <WalletCardsIcon />,
+    subItems: [
+      { title: "月毎表示", href: "/my/payroll-details/monthly" },
+      { title: "勤務先毎表示", href: "/my/payroll-details/workplace-yearly" },
+    ],
   },
   {
     title: "勤務先管理",
@@ -119,6 +135,23 @@ export function AppSidebar({
                     {item.icon}
                     <span>{item.title}</span>
                   </SidebarMenuButton>
+                  {item.subItems && item.subItems.length > 0 ? (
+                    <SidebarMenuSub>
+                      {item.subItems.map((subItem) => (
+                        <SidebarMenuSubItem key={subItem.href}>
+                          <SidebarMenuSubButton
+                            isActive={isActivePath(pathname, subItem.href)}
+                            render={
+                              <Link href={subItem.href} prefetch={false} />
+                            }
+                            onClick={handleMenuItemClick}
+                          >
+                            <span>{subItem.title}</span>
+                          </SidebarMenuSubButton>
+                        </SidebarMenuSubItem>
+                      ))}
+                    </SidebarMenuSub>
+                  ) : null}
                 </SidebarMenuItem>
               ))}
             </SidebarMenu>
