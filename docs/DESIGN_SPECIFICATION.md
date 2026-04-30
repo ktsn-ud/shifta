@@ -19,6 +19,12 @@
 - 給与計算根拠の可視化、および月毎/勤務先毎の詳細表示に関する最新仕様は以下を参照すること。
 - 参照先: `docs/DESIGN_SPECIFICATION_PAYROLL_DETAIL_V1_2026-04-30.md`
 
+## 重要: 給与計算V2とPrisma実行体制について（2026-04-30）
+
+- 給与計算ロジックの最新仕様は `docs/PAYROLL_CALCULATION_SPEC_V2_20260430.md` を正本として参照すること。
+- 実装途中で `prisma migrate` / `prisma generate` が必要になった場合は、その時点で実装を一旦停止する。
+- 停止時に必要コマンドを明示し、ユーザー実行後に実装を再開する。
+
 ---
 
 # 1. システム概要
@@ -180,21 +186,19 @@ Browser (React UI) → Next.js Routes → Prisma ORM → Neon DB
 
 **ルール選択ロジック**: `startDate ≤ shift.date < endDate` を満たすルール中、`startDate` が最新（最大）のものを選択。同一勤務先内では適用期間の重複を許さない。
 
-| 属性                   | 型      | 説明                                           |
-| ---------------------- | ------- | ---------------------------------------------- |
-| id                     | UUID    | ルールの一意識別子                             |
-| workplaceId            | UUID    | 勤務先ID（外部キー）                           |
-| startDate              | date    | ルール適用開始日                               |
-| endDate                | date?   | ルール適用終了日（NULLの場合は現在有効）       |
-| baseHourlyWage         | number  | 基本時給（円、小数2位まで。NORMAL/OTHER型用）  |
-| perLessonWage          | number? | コマ給（円、小数2位まで。LESSON型用）          |
-| holidayHourlyWage      | number? | 休日時給（NULLの場合は baseHourlyWage と同じ） |
-| nightMultiplier        | number  | 深夜割増率（例：1.25）                         |
-| dailyOvertimeThreshold | number  | 1日の所定時間（超過分が残業対象）              |
-| overtimeMultiplier     | number  | 残業割増率（例：1.5）                          |
-| nightStart             | time    | 深夜開始時刻（HH:MM、例：22:00）               |
-| nightEnd               | time    | 深夜終了時刻（HH:MM、例：05:00）               |
-| holidayType            | enum    | 休日判定タイプ                                 |
+| 属性                   | 型      | 説明                                          |
+| ---------------------- | ------- | --------------------------------------------- |
+| id                     | UUID    | ルールの一意識別子                            |
+| workplaceId            | UUID    | 勤務先ID（外部キー）                          |
+| startDate              | date    | ルール適用開始日                              |
+| endDate                | date?   | ルール適用終了日（NULLの場合は現在有効）      |
+| baseHourlyWage         | number  | 基本時給（円、小数2位まで。NORMAL/OTHER型用） |
+| perLessonWage          | number? | コマ給（円、小数2位まで。LESSON型用）         |
+| holidayAllowanceHourly | number  | 休日手当（円/時の加算手当。デフォルト0）      |
+| nightPremiumRate       | number  | 深夜割増率（例：0.25 = 25%）                  |
+| dailyOvertimeThreshold | number  | 1日の所定時間（超過分が残業対象）             |
+| overtimePremiumRate    | number  | 残業割増率（将来拡張。例：0.25 = 25%）        |
+| holidayType            | enum    | 休日判定タイプ                                |
 
 **制約条件**
 
@@ -202,8 +206,8 @@ Browser (React UI) → Next.js Routes → Prisma ORM → Neon DB
 - endDate は NULLか startDate より後
 - baseHourlyWage > 0
 - perLessonWage > 0
-- nightMultiplier ≥ 1.0
-- overtimeMultiplier ≥ 1.0
+- nightPremiumRate ≥ 0
+- overtimePremiumRate ≥ 0
 - dailyOvertimeThreshold > 0（時間、実数可）
 
 **holidayType の説明**
@@ -217,13 +221,13 @@ Browser (React UI) → Next.js Routes → Prisma ORM → Neon DB
 
 勤務先「コンビニA」:
 
-- Rule 1: 2026-01-01 ～ 2026-03-31、baseHourlyWage=1100、nightMultiplier=1.25
-- Rule 2: 2026-04-01 ～ NULL、baseHourlyWage=1150、nightMultiplier=1.25
+- Rule 1: 2026-01-01 ～ 2026-03-31、baseHourlyWage=1100、nightPremiumRate=0.25
+- Rule 2: 2026-04-01 ～ NULL、baseHourlyWage=1150、nightPremiumRate=0.25
 
 勤務先「塾B」（CRAM_SCHOOL）:
 
-- Rule 1: 2026-01-01 ～ 2026-03-31、perLessonWage=2000、nightMultiplier=1.0
-- Rule 2: 2026-04-01 ～ NULL、perLessonWage=2500、nightMultiplier=1.0
+- Rule 1: 2026-01-01 ～ 2026-03-31、perLessonWage=2000、nightPremiumRate=0.0
+- Rule 2: 2026-04-01 ～ NULL、perLessonWage=2500、nightPremiumRate=0.0
 
 ---
 
@@ -505,8 +509,8 @@ Browser (React UI) → Next.js Routes → Prisma ORM → Neon DB
 | 項目 | 説明 |
 | -------------- | ----------------------------------------- |
 | 総勤務時間 | 期間内の全シフトの実勤務時間合計 |
-| 深夜勤務時間 | 期間内の深夜帯（nightStart ～ nightEnd）勤務時間 |
-| 残業時間 | 期間内のシフトで dailyOvertimeThreshold を超過した時間 |
+| 深夜勤務時間 | 期間内の深夜帯（22:00 ～ 05:00）勤務時間 |
+| 残業時間 | 期間内のシフトで dailyOvertimeThreshold を超過した時間（将来拡張の参考値） |
 | 概算給与 | 期間内の全シフト給与合計 |
 
 ### 6.2.2 勤務先別内訳
@@ -565,7 +569,7 @@ Google Calendar 側で シフトのイベントを編集しても、アプリに
 
 **対象**
 
-- **NORMAL/OTHER型**: 基本時給、休日時給、深夜割増、1日所定時間外（残業）
+- **NORMAL/OTHER型**: 基本給、休日手当（時間あたり加算）、深夜割増
 - **LESSON型**: コマ給（perLessonWage）
 
 **非対象（MVP では未対応）**
@@ -582,7 +586,7 @@ Google Calendar 側で シフトのイベントを編集しても、アプリに
 1. 対象期間内のすべての Shift を取得
 2. Shift ごとに該当する PayrollRule を時系列で確定
 3. Shift ごとに以下を計算：
-   - **NORMAL/OTHER型**: 実勤務時間、深夜帯勤務時間、残業時間を分類し、給与を計算
+   - **NORMAL/OTHER型**: 実勤務時間、深夜帯勤務時間、休日時間を分類し、給与を計算
    - **LESSON型**: コマ数（endPeriod - startPeriod + 1）と perLessonWage を用いて給与を計算
 4. 期間合計を集計
 
@@ -600,43 +604,44 @@ H_total = (endTime - startTime - breakMinutes) / 60 [時間]
 
 **深夜帯勤務時間（H_night）**
 
-- nightStart ～ nightEnd の時間帯に該当する勤務時間
-- 例：nightStart=22:00, nightEnd=05:00 の場合
+- 22:00 ～ 05:00 の時間帯に該当する勤務時間（固定）
+- 例：22:00 ～ 05:00 の場合
   - 22:00 ～ 24:00（2時間）と 00:00 ～ 05:00（5時間）の合計
   - 翌日にまたがる場合は合算
 
-**日中勤務時間（H_day）**
+**基本時間（H_base）**
 
 ```
-H_day = H_total - H_night
+H_base = H_total - H_night
 ```
 
-**残業時間（H_overtime）**
+**休日時間（H_holiday）**
 
 ```
-H_overtime = max(0, H_total - dailyOvertimeThreshold)
+H_holiday = 休日判定に合致する日の場合 H_total、それ以外は 0
 ```
 
 ### 8.3.2 給与計算
 
 **NORMAL/OTHER型のシフト（1シフト分）**
 
-基本賃金（該当する休日判定）
+基本前提
 
-- holidayType に基づいて、その日が休日か判定
-- 休日 → holidayHourlyWage（NULLなら baseHourlyWage）
-- 平日 → baseHourlyWage
+- 休日判定は `holidayType` に基づく
+- 深夜割増率は `nightPremiumRate`（0以上）
+- 休日手当は `holidayAllowanceHourly`（円/時、0以上）
 
 ```
-日中勤務給 = H_day × baseHourlyWage
+基本支給 = H_base × baseHourlyWage
 
-残業給 = H_overtime × baseHourlyWage × overtimeMultiplier
+深夜支給 = H_night × baseHourlyWage × (1 + nightPremiumRate)
 
-深夜割増給 = H_night × baseHourlyWage × (nightMultiplier - 1)
-(nightMultiplier は 1.25 などの倍率。1.25 なら 25% 増)
+休日支給 = H_holiday × holidayAllowanceHourly
 
-シフト合計給 = 日中勤務給 + 残業給 + 深夜割増給
+シフト合計給 = round(基本支給) + round(深夜支給) + round(休日支給)
 ```
+
+※ `overtimePremiumRate` は将来拡張用に保持するが、現時点のV2計算では使用しない。
 
 **LESSON型のシフト（1シフト分）**
 
@@ -648,7 +653,7 @@ H_overtime = max(0, H_total - dailyOvertimeThreshold)
 
 **補足**
 
-- NORMAL/OTHER型で深夜時間帯に残業がある場合は、さらに複雑だが MVP 段階では単純化
+- 休日時間は基本時間・深夜時間とは独立に扱う（休日夜勤では深夜支給と休日支給の両方が発生）
 - 詳細なルールは実装時に業務ロジックで定義
 
 ---
@@ -663,17 +668,21 @@ H_overtime = max(0, H_total - dailyOvertimeThreshold)
 - 日付：2026-03-20（金、平日）
 - 時間：10:00 ～ 18:00
 - 休憩：60分
-- PayrollRule：baseHourlyWage=1100, nightStart=22:00, nightEnd=05:00, dailyOvertimeThreshold=8
+- PayrollRule：baseHourlyWage=1100, nightPremiumRate=0.25, holidayAllowanceHourly=0
 
 **計算**
 
 ```
 H_total = (18:00 - 10:00 - 60) / 60 = 7 時間
 H_night = 0（深夜帯なし）
-H_day = 7 時間
-H_overtime = max(0, 7 - 8) = 0 時間
+H_base = 7 時間
+H_holiday = 0 時間
 
-給与 = 7 × 1100 = 7,700 円
+基本支給 = 7 × 1100 = 7,700 円
+深夜支給 = 0 円
+休日支給 = 0 円
+
+給与 = 7,700 円
 ```
 
 ### 例2：夜勤シフト（NORMAL シフト、深夜帯含む）
@@ -684,19 +693,21 @@ H_overtime = max(0, 7 - 8) = 0 時間
 - 日付：2026-03-21（土、休日判定で WEEKEND）
 - 時間：22:00 ～ 翌05:00
 - 休憩：30分
-- PayrollRule：baseHourlyWage=1100, holidayHourlyWage=1200, nightMultiplier=1.25, nightStart=22:00, nightEnd=05:00, dailyOvertimeThreshold=8, holidayType=WEEKEND
+- PayrollRule：baseHourlyWage=1100, holidayAllowanceHourly=100, nightPremiumRate=0.25, holidayType=WEEKEND
 
 **計算**
 
 ```
 H_total = (05:00 (次日) - 22:00 - 30) / 60 = 6.5 時間
 H_night = 6.5 時間（全て深夜帯）
-H_day = 0 時間
+H_base = 0 時間
+H_holiday = 6.5 時間
 
-日付が「土曜」なので休日判定 → holidayHourlyWage = 1200
+基本支給 = 0 × 1100 = 0 円
+深夜支給 = 6.5 × 1100 × 1.25 = 8,937.5 円 → 8,938 円
+休日支給 = 6.5 × 100 = 650 円
 
-給与 = 6.5 × 1200 × 1.25 = 9,750 円
-( = 6.5 × 1200（基本） + 6.5 × 1200 × 0.25（深夜割増）)
+給与 = 8,938 + 650 = 9,588 円
 ```
 
 ### 例3：塾の授業（LESSON シフト）
@@ -736,13 +747,13 @@ H_day = 0 時間
 
 ### 8.5.2 集計項目
 
-| 項目         | 説明                               |
-| ------------ | ---------------------------------- |
-| 総勤務時間   | 期間内の全シフトの H_total 合計    |
-| 深夜勤務時間 | 期間内の全シフトの H_night 合計    |
-| 残業時間     | 期間内の全シフトの H_overtime 合計 |
-| 概算給与     | 期間内の給与合計                   |
-| 勤務先別内訳 | 勤務先ごとの給与・時間             |
+| 項目         | 説明                                               |
+| ------------ | -------------------------------------------------- |
+| 総勤務時間   | 期間内の全シフトの H_total 合計                    |
+| 深夜勤務時間 | 期間内の全シフトの H_night 合計                    |
+| 残業時間     | 期間内の全シフトの超過時間合計（将来拡張の参考値） |
+| 概算給与     | 期間内の給与合計                                   |
+| 勤務先別内訳 | 勤務先ごとの給与・時間                             |
 
 ### 8.5.3 副表示
 
@@ -983,24 +994,23 @@ H_day = 0 時間
 
 **フォーム定義**
 
-| フィールド   | 型     | 必須 | 仕様                                                      |
-| ------------ | ------ | ---- | --------------------------------------------------------- |
-| 開始日       | DATE   | ○    | YYYY-MM-DD 形式                                           |
-| 終了日       | DATE   | ~    | 空白 = 現在有効; NULLの場合、開始日より後                 |
-| 基本時給     | NUMBER | ◆    | GENERAL型のみ; 正の実数; 小数2位まで                      |
-| コマ給       | NUMBER | ◆    | CRAM_SCHOOL型のみ; 正の実数; 小数2位まで                  |
-| 休日時給     | NUMBER | ~    | GENERAL型のみ; 空白 = 基本時給と同じ                      |
-| 深夜割増率   | NUMBER | ◆    | GENERAL型のみ; ≥ 1.0; 例：1.25                            |
-| 残業割増率   | NUMBER | ◆    | GENERAL型のみ; ≥ 1.0; 例：1.5                             |
-| 1日所定時間  | NUMBER | ◆    | GENERAL型のみ; 正の実数; 例：8.0                          |
-| 深夜開始時刻 | TIME   | ◆    | GENERAL型のみ; HH:MM                                      |
-| 深夜終了時刻 | TIME   | ◆    | GENERAL型のみ; HH:MM                                      |
-| 休日判定     | RADIO  | ◆    | GENERAL型のみ; NONE / WEEKEND / HOLIDAY / WEEKEND_HOLIDAY |
+| フィールド      | 型     | 必須 | 仕様                                                       |
+| --------------- | ------ | ---- | ---------------------------------------------------------- |
+| 開始日          | DATE   | ○    | YYYY-MM-DD 形式                                            |
+| 終了日          | DATE   | ~    | 空白 = 現在有効; NULLの場合、開始日より後                  |
+| 基本時給        | NUMBER | ◆    | GENERAL型のみ; 正の実数; 小数2位まで                       |
+| コマ給          | NUMBER | ◆    | CRAM_SCHOOL型のみ; 正の実数; 小数2位まで                   |
+| 休日手当(円/時) | NUMBER | ◆    | GENERAL型のみ; 0以上; デフォルト0                          |
+| 深夜割増率      | NUMBER | ◆    | GENERAL型のみ; 0以上; 例：0.25                             |
+| 残業割増率      | NUMBER | ~    | GENERAL型のみ; 0以上; 将来拡張（現時点の給与計算では保留） |
+| 1日所定時間     | NUMBER | ◆    | GENERAL型のみ; 正の実数; 例：8.0                           |
+| 休日判定        | RADIO  | ◆    | GENERAL型のみ; NONE / WEEKEND / HOLIDAY / WEEKEND_HOLIDAY  |
 
 **説明**
 
 - **◆ 条件付き必須**: 勤務先の種類（type）に応じて表示・必須が変わる
-  - **GENERAL型**: `基本時給`、`深夜割増率`、`残業割増率`、`1日所定時間`、`深夜開始時刻`、`深夜終了時刻`、`休日判定` は必須。`コマ給` は非表示
+  - **GENERAL型**: `基本時給`、`休日手当(円/時)`、`深夜割増率`、`1日所定時間`、`休日判定` は必須。`コマ給` は非表示
+  - 深夜時間帯は `22:00-05:00` 固定のため入力項目は持たない
   - **CRAM_SCHOOL型**: `コマ給` は必須。その他時給関連フィールドは非表示（施設内でLESSON型のため）
 
 ---
