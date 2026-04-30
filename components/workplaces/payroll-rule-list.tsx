@@ -63,11 +63,9 @@ type PayrollRule = {
   startDate: string;
   endDate: string | null;
   baseHourlyWage: NumericValue;
-  holidayHourlyWage: NumericValue | null;
-  nightMultiplier: NumericValue;
-  overtimeMultiplier: NumericValue;
-  nightStart: string;
-  nightEnd: string;
+  holidayAllowanceHourly: NumericValue;
+  nightPremiumRate: NumericValue;
+  overtimePremiumRate: NumericValue;
   dailyOvertimeThreshold: NumericValue;
   holidayType: HolidayType;
 };
@@ -140,12 +138,9 @@ function parsePayrollRule(value: unknown): PayrollRule | null {
     typeof value.startDate !== "string" ||
     (value.endDate !== null && typeof value.endDate !== "string") ||
     !isNumericValue(value.baseHourlyWage) ||
-    (value.holidayHourlyWage !== null &&
-      !isNumericValue(value.holidayHourlyWage)) ||
-    !isNumericValue(value.nightMultiplier) ||
-    !isNumericValue(value.overtimeMultiplier) ||
-    typeof value.nightStart !== "string" ||
-    typeof value.nightEnd !== "string" ||
+    !isNumericValue(value.holidayAllowanceHourly) ||
+    !isNumericValue(value.nightPremiumRate) ||
+    !isNumericValue(value.overtimePremiumRate) ||
     !isNumericValue(value.dailyOvertimeThreshold) ||
     !isHolidayType(value.holidayType)
   ) {
@@ -158,11 +153,9 @@ function parsePayrollRule(value: unknown): PayrollRule | null {
     startDate: value.startDate,
     endDate: value.endDate,
     baseHourlyWage: value.baseHourlyWage,
-    holidayHourlyWage: value.holidayHourlyWage,
-    nightMultiplier: value.nightMultiplier,
-    overtimeMultiplier: value.overtimeMultiplier,
-    nightStart: value.nightStart,
-    nightEnd: value.nightEnd,
+    holidayAllowanceHourly: value.holidayAllowanceHourly,
+    nightPremiumRate: value.nightPremiumRate,
+    overtimePremiumRate: value.overtimePremiumRate,
     dailyOvertimeThreshold: value.dailyOvertimeThreshold,
     holidayType: value.holidayType,
   };
@@ -243,13 +236,13 @@ function formatDate(value: string | null, shiftDays = 0): string {
   return `${shiftedYear}-${shiftedMonth}-${shiftedDay}`;
 }
 
-function formatMultiplier(value: string | number): string {
+function formatRate(value: string | number): string {
   const numeric = toNumber(value);
   if (numeric === null) {
     return "-";
   }
 
-  return `${numeric.toFixed(2)}x`;
+  return `${(numeric * 100).toFixed(2)}%`;
 }
 
 export function PayrollRuleList({
@@ -458,22 +451,23 @@ export function PayrollRuleList({
         </CardHeader>
         <CardContent>
           {isLoading ? (
-            <TableLoadingSkeleton rows={5} columns={5} />
+            <TableLoadingSkeleton rows={5} columns={6} />
           ) : (
             <Table>
               <TableHeader>
                 <TableRow>
                   <TableHead>適用期間</TableHead>
                   <TableHead>基本時給</TableHead>
-                  <TableHead>深夜倍率</TableHead>
-                  <TableHead>残業倍率</TableHead>
+                  <TableHead>休日手当(円/時)</TableHead>
+                  <TableHead>深夜割増率</TableHead>
+                  <TableHead>所定時間外割増率</TableHead>
                   <TableHead className="text-right">操作</TableHead>
                 </TableRow>
               </TableHeader>
               <TableBody>
                 {rules.length === 0 ? (
                   <TableRow>
-                    <TableCell colSpan={5} className="h-16 text-center">
+                    <TableCell colSpan={6} className="h-16 text-center">
                       給与ルールがありません。
                     </TableCell>
                   </TableRow>
@@ -488,10 +482,11 @@ export function PayrollRuleList({
                         {formatCurrency(rule.baseHourlyWage)}
                       </TableCell>
                       <TableCell>
-                        {formatMultiplier(rule.nightMultiplier)}
+                        {formatCurrency(rule.holidayAllowanceHourly)}
                       </TableCell>
+                      <TableCell>{formatRate(rule.nightPremiumRate)}</TableCell>
                       <TableCell>
-                        {formatMultiplier(rule.overtimeMultiplier)}
+                        {formatRate(rule.overtimePremiumRate)}
                       </TableCell>
                       <TableCell>
                         <div className="flex justify-end gap-2">
