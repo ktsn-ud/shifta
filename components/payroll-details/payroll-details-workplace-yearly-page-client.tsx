@@ -170,6 +170,7 @@ export function PayrollDetailsWorkplaceYearlyPageClient({
           `/api/payroll/details/workplace-yearly?${params.toString()}`,
           {
             signal: abortController.signal,
+            cache: "no-store",
           },
         );
 

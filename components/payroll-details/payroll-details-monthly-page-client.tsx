@@ -138,6 +138,7 @@ export function PayrollDetailsMonthlyPageClient({
           `/api/payroll/details/monthly?${params.toString()}`,
           {
             signal: abortController.signal,
+            cache: "no-store",
           },
         );
 

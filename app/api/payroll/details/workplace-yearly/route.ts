@@ -47,7 +47,11 @@ export async function GET(request: Request) {
       query.data.year,
     );
 
-    return NextResponse.json(yearly);
+    return NextResponse.json(yearly, {
+      headers: {
+        "Cache-Control": "private, no-store, no-cache, must-revalidate",
+      },
+    });
   } catch (error) {
     console.error("GET /api/payroll/details/workplace-yearly failed", error);
     return jsonError("給与詳細（勤務先毎）の取得に失敗しました", 500);
