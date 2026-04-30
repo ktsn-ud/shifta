@@ -88,6 +88,15 @@ function toYearNumber(value: string): number | null {
   return Number(value);
 }
 
+function formatDateWithoutYear(date: string): string {
+  const [year, month, day] = date.split("-");
+  if (!year || !month || !day) {
+    return date;
+  }
+
+  return `${month}/${day}`;
+}
+
 export function PayrollDetailsWorkplaceYearlyPageLoadingSkeleton() {
   return (
     <section className="space-y-6 p-4 md:p-6">
@@ -414,7 +423,8 @@ export function PayrollDetailsWorkplaceYearlyPageClient({
                               {month.month}月
                             </TableCell>
                             <TableCell className="border-r">
-                              {month.periodStartDate} 〜 {month.periodEndDate}
+                              {formatDateWithoutYear(month.periodStartDate)} 〜{" "}
+                              {formatDateWithoutYear(month.periodEndDate)}
                             </TableCell>
                             <TableCell className="bg-muted text-right font-medium">
                               {month.workDuration}
