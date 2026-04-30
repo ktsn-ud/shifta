@@ -13,10 +13,7 @@ import {
 import { SpinnerPanel } from "@/components/ui/spinner";
 import { PayrollDetailsViewSwitch } from "@/components/payroll-details/payroll-details-view-switch";
 import { ValueFrame } from "@/components/payroll-details/value-frame";
-import {
-  formatCurrency,
-  formatRate,
-} from "@/components/payroll-details/format";
+import { formatCurrency } from "@/components/payroll-details/format";
 import {
   formatMonthLabel,
   fromMonthInputValue,
@@ -405,11 +402,13 @@ export function PayrollDetailsMonthlyPageClient({
                         />
                         <span>×</span>
                         <ValueFrame
-                          label="適用時給"
+                          label="休日手当(円/時)"
                           value={
-                            item.effectiveHolidayHourlyWage === null
+                            item.effectiveHolidayAllowanceHourly === null
                               ? "-"
-                              : formatCurrency(item.effectiveHolidayHourlyWage)
+                              : formatCurrency(
+                                  item.effectiveHolidayAllowanceHourly,
+                                )
                           }
                           tone="neutral"
                         />
@@ -432,18 +431,12 @@ export function PayrollDetailsMonthlyPageClient({
                         />
                         <span>×</span>
                         <ValueFrame
-                          label="適用時給"
+                          label="深夜時給(割増込)"
                           value={
                             item.effectiveNightHourlyWage === null
                               ? "-"
                               : formatCurrency(item.effectiveNightHourlyWage)
                           }
-                          tone="neutral"
-                        />
-                        <span>×</span>
-                        <ValueFrame
-                          label="深夜割増率 - 1"
-                          value={formatRate(item.effectiveNightPremiumRate)}
                           tone="neutral"
                         />
                       </div>
@@ -454,39 +447,6 @@ export function PayrollDetailsMonthlyPageClient({
                         label="深夜勤務金額"
                         value={formatCurrency(item.nightWage)}
                         tone="night"
-                        emphasis="strong"
-                      />
-
-                      <div className="flex items-center gap-2 justify-self-start whitespace-nowrap">
-                        <ValueFrame
-                          label="残業時間"
-                          value={item.overtimeDuration}
-                          tone="overtime"
-                        />
-                        <span>×</span>
-                        <ValueFrame
-                          label="適用時給"
-                          value={
-                            item.effectiveOvertimeHourlyWage === null
-                              ? "-"
-                              : formatCurrency(item.effectiveOvertimeHourlyWage)
-                          }
-                          tone="neutral"
-                        />
-                        <span>×</span>
-                        <ValueFrame
-                          label="残業割増率"
-                          value={formatRate(item.effectiveOvertimeMultiplier)}
-                          tone="neutral"
-                        />
-                      </div>
-                      <span className="font-medium text-muted-foreground">
-                        =
-                      </span>
-                      <ValueFrame
-                        label="残業金額"
-                        value={formatCurrency(item.overtimeWage)}
-                        tone="overtime"
                         emphasis="strong"
                       />
 

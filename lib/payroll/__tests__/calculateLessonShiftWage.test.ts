@@ -53,11 +53,9 @@ function createRule(overrides: Partial<PayrollRule> = {}): PayrollRule {
     startDate: date("2026-01-01"),
     endDate: null,
     baseHourlyWage: new Prisma.Decimal(1100),
-    holidayHourlyWage: new Prisma.Decimal(1200),
-    nightMultiplier: new Prisma.Decimal(1.0),
-    overtimeMultiplier: new Prisma.Decimal(1.0),
-    nightStart: time("22:00"),
-    nightEnd: time("05:00"),
+    holidayAllowanceHourly: new Prisma.Decimal(1200),
+    nightPremiumRate: new Prisma.Decimal(1.0),
+    overtimePremiumRate: new Prisma.Decimal(1.0),
     dailyOvertimeThreshold: new Prisma.Decimal(8),
     holidayType: "NONE",
     ...overrides,
@@ -74,12 +72,16 @@ describe("calculateLessonShiftWage", () => {
 
     expect(result).toEqual({
       totalWage: 3667,
-      dayWage: 3667,
+      baseWage: 3667,
+      holidayWage: 0,
       overtimeWage: 0,
       nightWage: 0,
       workHours: 3.33,
+      baseHours: 3.33,
+      holidayHours: 0,
       overtimeHours: 0,
       nightHours: 0,
+      dayWage: 3667,
       lessonCount: 3,
     });
   });

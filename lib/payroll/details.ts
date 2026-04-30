@@ -10,7 +10,6 @@ import {
   type ClosingDayType,
   type PayrollPeriod,
 } from "@/lib/payroll/pay-period";
-import { isHolidayDate } from "@/lib/payroll/timeClassification";
 import { prisma } from "@/lib/prisma";
 
 type ShiftWithPayrollRelations = Prisma.ShiftGetPayload<{
@@ -38,11 +37,9 @@ type PayrollBreakdownAccumulator = {
   baseWage: number;
   holidayWage: number;
   nightWage: number;
-  overtimeWage: number;
   baseHoursWageBase: number;
-  holidayHoursWageBase: number;
+  holidayHoursAllowanceBase: number;
   nightHoursWageBase: number;
-  overtimeHoursWageBase: number;
 };
 
 type PayrollBreakdownDisplay = {
@@ -55,18 +52,15 @@ type PayrollBreakdownDisplay = {
   baseWage: number;
   holidayWage: number;
   nightWage: number;
-  overtimeWage: number;
   workDuration: string;
   baseDuration: string;
   holidayDuration: string;
   nightDuration: string;
   overtimeDuration: string;
   effectiveBaseHourlyWage: number | null;
-  effectiveHolidayHourlyWage: number | null;
+  effectiveHolidayAllowanceHourly: number | null;
   effectiveNightHourlyWage: number | null;
-  effectiveOvertimeHourlyWage: number | null;
   effectiveNightPremiumRate: number | null;
-  effectiveOvertimeMultiplier: number | null;
 };
 
 type PayrollMonthlyByWorkplace = {
@@ -161,11 +155,9 @@ function createEmptyBreakdownAccumulator(): PayrollBreakdownAccumulator {
     baseWage: 0,
     holidayWage: 0,
     nightWage: 0,
-    overtimeWage: 0,
     baseHoursWageBase: 0,
-    holidayHoursWageBase: 0,
+    holidayHoursAllowanceBase: 0,
     nightHoursWageBase: 0,
-    overtimeHoursWageBase: 0,
   };
 }
 
@@ -198,6 +190,19 @@ function toEffectiveRate(
 function toBreakdownDisplay(
   summary: PayrollBreakdownAccumulator,
 ): PayrollBreakdownDisplay {
+  const effectiveNightHourlyWage = toEffectiveRate(
+    summary.nightHours,
+    summary.nightWage,
+  );
+  const effectiveNightPremiumRateRaw = toEffectiveRate(
+    summary.nightHoursWageBase,
+    summary.nightWage,
+  );
+  const effectiveNightPremiumRate =
+    effectiveNightPremiumRateRaw === null
+      ? null
+      : effectiveNightPremiumRateRaw - 1;
+
   return {
     totalWorkHours: roundHours(summary.totalWorkHours),
     baseHours: roundHours(summary.baseHours),
@@ -208,7 +213,6 @@ function toBreakdownDisplay(
     baseWage: roundCurrency(summary.baseWage),
     holidayWage: roundCurrency(summary.holidayWage),
     nightWage: roundCurrency(summary.nightWage),
-    overtimeWage: roundCurrency(summary.overtimeWage),
     workDuration: formatDurationHours(summary.totalWorkHours),
     baseDuration: formatDurationHours(summary.baseHours),
     holidayDuration: formatDurationHours(summary.holidayHours),
@@ -218,26 +222,18 @@ function toBreakdownDisplay(
       summary.baseHours,
       summary.baseHoursWageBase,
     ),
-    effectiveHolidayHourlyWage: toEffectiveRate(
+    effectiveHolidayAllowanceHourly: toEffectiveRate(
       summary.holidayHours,
-      summary.holidayHoursWageBase,
+      summary.holidayHoursAllowanceBase,
     ),
-    effectiveNightHourlyWage: toEffectiveRate(
-      summary.nightHours,
-      summary.nightHoursWageBase,
-    ),
-    effectiveOvertimeHourlyWage: toEffectiveRate(
-      summary.overtimeHours,
-      summary.overtimeHoursWageBase,
-    ),
-    effectiveNightPremiumRate: toEffectiveRate(
-      summary.nightHoursWageBase,
-      summary.nightWage,
-    ),
-    effectiveOvertimeMultiplier: toEffectiveRate(
-      summary.overtimeHoursWageBase,
-      summary.overtimeWage,
-    ),
+    effectiveNightHourlyWage:
+      effectiveNightHourlyWage === null
+        ? null
+        : Math.round(effectiveNightHourlyWage * 10000) / 10000,
+    effectiveNightPremiumRate:
+      effectiveNightPremiumRate === null
+        ? null
+        : Math.round(effectiveNightPremiumRate * 10000) / 10000,
   };
 }
 
@@ -254,11 +250,9 @@ function mergeBreakdowns(
   target.baseWage += source.baseWage;
   target.holidayWage += source.holidayWage;
   target.nightWage += source.nightWage;
-  target.overtimeWage += source.overtimeWage;
   target.baseHoursWageBase += source.baseHoursWageBase;
-  target.holidayHoursWageBase += source.holidayHoursWageBase;
+  target.holidayHoursAllowanceBase += source.holidayHoursAllowanceBase;
   target.nightHoursWageBase += source.nightHoursWageBase;
-  target.overtimeHoursWageBase += source.overtimeHoursWageBase;
 }
 
 function groupShiftsByWorkplace(
@@ -275,21 +269,30 @@ function groupShiftsByWorkplace(
   return grouped;
 }
 
-function resolveHourlyWage(
-  shift: ShiftWithPayrollRelations,
-  rule: {
-    baseHourlyWage: number | string | { toString: () => string };
-    holidayHourlyWage: number | string | { toString: () => string } | null;
-    holidayType: "NONE" | "WEEKEND" | "HOLIDAY" | "WEEKEND_HOLIDAY";
-  },
+function readRuleDecimal(
+  rule: PayrollRule,
+  keys: string[],
+  fallback = 0,
 ): number {
-  const baseHourlyWage = decimalToNumber(rule.baseHourlyWage);
-
-  if (isHolidayDate(shift.date, rule.holidayType)) {
-    return decimalToNumber(rule.holidayHourlyWage, baseHourlyWage);
+  const record = rule as unknown as Record<string, unknown>;
+  for (const key of keys) {
+    const value = record[key];
+    if (
+      typeof value === "number" ||
+      typeof value === "string" ||
+      (typeof value === "object" &&
+        value !== null &&
+        "toString" in value &&
+        typeof (value as { toString: unknown }).toString === "function")
+    ) {
+      return decimalToNumber(
+        value as number | string | { toString: () => string },
+        fallback,
+      );
+    }
   }
 
-  return baseHourlyWage;
+  return fallback;
 }
 
 function summarizeWorkplaceByPeriod(
@@ -326,31 +329,26 @@ function summarizeWorkplaceByPeriod(
     }
 
     const result = calculateShiftPayrollResultByRule(shift, rule);
-    const hourlyWage = resolveHourlyWage(shift, {
-      baseHourlyWage: rule.baseHourlyWage,
-      holidayHourlyWage: rule.holidayHourlyWage,
-      holidayType: rule.holidayType,
-    });
-    const isHolidayShift = isHolidayDate(shift.date, rule.holidayType);
+    const baseHourlyWage = decimalToNumber(rule.baseHourlyWage);
+    const holidayAllowanceHourly = readRuleDecimal(
+      rule,
+      ["holidayAllowanceHourly", "holidayHourlyWage"],
+      0,
+    );
 
     summary.totalWorkHours += result.workHours;
+    summary.baseHours += result.baseHours;
+    summary.holidayHours += result.holidayHours;
     summary.nightHours += result.nightHours;
     summary.overtimeHours += result.overtimeHours;
     summary.totalWage += result.totalWage;
+    summary.baseWage += result.baseWage;
+    summary.holidayWage += result.holidayWage;
     summary.nightWage += result.nightWage;
-    summary.overtimeWage += result.overtimeWage;
-    summary.nightHoursWageBase += result.nightHours * hourlyWage;
-    summary.overtimeHoursWageBase += result.overtimeHours * hourlyWage;
-
-    if (isHolidayShift) {
-      summary.holidayHours += result.workHours;
-      summary.holidayWage += result.dayWage;
-      summary.holidayHoursWageBase += result.workHours * hourlyWage;
-    } else {
-      summary.baseHours += result.workHours;
-      summary.baseWage += result.dayWage;
-      summary.baseHoursWageBase += result.workHours * hourlyWage;
-    }
+    summary.baseHoursWageBase += result.baseHours * baseHourlyWage;
+    summary.holidayHoursAllowanceBase +=
+      result.holidayHours * holidayAllowanceHourly;
+    summary.nightHoursWageBase += result.nightHours * baseHourlyWage;
   }
 
   return summary;

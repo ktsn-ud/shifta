@@ -2,6 +2,8 @@ import type { HolidayType } from "@/lib/generated/prisma/enums";
 import holidayJp from "@holiday-jp/holiday_jp";
 
 const MINUTES_IN_DAY = 24 * 60;
+const NIGHT_START_MINUTES = 22 * 60;
+const NIGHT_END_MINUTES = 5 * 60;
 
 function toMinutes(time: Date): number {
   return time.getUTCHours() * 60 + time.getUTCMinutes();
@@ -29,27 +31,16 @@ function overlapMinutes(
   return Math.max(0, end - start);
 }
 
-export function calculateNightHours(
-  startTime: Date,
-  endTime: Date,
-  nightStart: Date,
-  nightEnd: Date,
-): number {
+export function calculateNightHours(startTime: Date, endTime: Date): number {
   const shiftStart = toMinutes(startTime);
   const shiftEndRaw = toMinutes(endTime);
   const shiftEnd =
     shiftEndRaw <= shiftStart ? shiftEndRaw + MINUTES_IN_DAY : shiftEndRaw;
 
-  const nightStartMinutes = toMinutes(nightStart);
-  const nightEndMinutes = toMinutes(nightEnd);
-
-  const baseNightIntervals: Array<[number, number]> =
-    nightEndMinutes <= nightStartMinutes
-      ? [
-          [nightStartMinutes, MINUTES_IN_DAY],
-          [0, nightEndMinutes],
-        ]
-      : [[nightStartMinutes, nightEndMinutes]];
+  const baseNightIntervals: Array<[number, number]> = [
+    [0, NIGHT_END_MINUTES],
+    [NIGHT_START_MINUTES, MINUTES_IN_DAY],
+  ];
 
   const extendedIntervals = [
     ...baseNightIntervals,

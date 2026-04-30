@@ -408,7 +408,6 @@ export function PayrollDetailsWorkplaceYearlyPageClient({
                           <TableHead className="text-right">
                             深夜勤務金額
                           </TableHead>
-                          <TableHead className="text-right">残業金額</TableHead>
                           <TableHead className="text-right">月合計</TableHead>
                         </TableRow>
                       </TableHeader>
@@ -444,9 +443,6 @@ export function PayrollDetailsWorkplaceYearlyPageClient({
                             </TableCell>
                             <TableCell className="text-right">
                               {formatCurrency(month.nightWage)}
-                            </TableCell>
-                            <TableCell className="text-right">
-                              {formatCurrency(month.overtimeWage)}
                             </TableCell>
                             <TableCell className="bg-muted text-right font-medium">
                               {formatCurrency(month.totalWage)}
