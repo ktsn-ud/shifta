@@ -1,6 +1,5 @@
 "use client";
 
-import Link from "next/link";
 import { useEffect, useMemo, useState } from "react";
 import { Input } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
@@ -372,96 +371,82 @@ export function PayrollDetailsWorkplaceYearlyPageClient({
                       </Card>
                     </div>
 
-                    <div className="overflow-x-auto">
-                      <Table>
-                        <TableHeader>
-                          <TableRow>
-                            <TableHead>月</TableHead>
-                            <TableHead>支給対象期間</TableHead>
-                            <TableHead className="text-right">
-                              総勤務時間
-                            </TableHead>
-                            <TableHead className="text-right">
-                              基本勤務時間
-                            </TableHead>
-                            <TableHead className="text-right">
-                              休日勤務時間
-                            </TableHead>
-                            <TableHead className="text-right">
-                              深夜勤務時間
-                            </TableHead>
-                            <TableHead className="text-right">
-                              基本勤務金額
-                            </TableHead>
-                            <TableHead className="text-right">
-                              休日勤務金額
-                            </TableHead>
-                            <TableHead className="text-right">
-                              深夜勤務金額
-                            </TableHead>
-                            <TableHead className="text-right">
-                              残業金額
-                            </TableHead>
-                            <TableHead className="text-right">月合計</TableHead>
-                            <TableHead className="text-right">操作</TableHead>
+                    <Table>
+                      <TableHeader>
+                        <TableRow>
+                          <TableHead className="sticky left-0 z-20 border-r bg-card">
+                            月
+                          </TableHead>
+                          <TableHead className="border-r">
+                            支給対象期間
+                          </TableHead>
+                          <TableHead className="text-right">
+                            総勤務時間
+                          </TableHead>
+                          <TableHead className="text-right">
+                            基本勤務時間
+                          </TableHead>
+                          <TableHead className="text-right">
+                            休日勤務時間
+                          </TableHead>
+                          <TableHead className="border-r text-right">
+                            深夜勤務時間
+                          </TableHead>
+                          <TableHead className="text-right">
+                            基本勤務金額
+                          </TableHead>
+                          <TableHead className="text-right">
+                            休日勤務金額
+                          </TableHead>
+                          <TableHead className="text-right">
+                            深夜勤務金額
+                          </TableHead>
+                          <TableHead className="text-right">残業金額</TableHead>
+                          <TableHead className="text-right">月合計</TableHead>
+                        </TableRow>
+                      </TableHeader>
+                      <TableBody>
+                        {workplace.months.map((month) => (
+                          <TableRow
+                            key={`${workplace.workplaceId}-${month.monthKey}`}
+                          >
+                            <TableCell className="sticky left-0 z-10 border-r bg-card">
+                              {month.month}月
+                            </TableCell>
+                            <TableCell className="border-r">
+                              {month.periodStartDate} 〜 {month.periodEndDate}
+                            </TableCell>
+                            <TableCell className="bg-muted text-right font-medium">
+                              {month.workDuration}
+                            </TableCell>
+                            <TableCell className="text-right">
+                              {month.baseDuration}
+                            </TableCell>
+                            <TableCell className="text-right">
+                              {month.holidayDuration}
+                            </TableCell>
+                            <TableCell className="border-r text-right">
+                              {month.nightDuration}
+                            </TableCell>
+                            <TableCell className="text-right">
+                              {formatCurrency(month.baseWage)}
+                            </TableCell>
+                            <TableCell className="text-right">
+                              {formatCurrency(month.holidayWage)}
+                            </TableCell>
+                            <TableCell className="text-right">
+                              {formatCurrency(month.nightWage)}
+                            </TableCell>
+                            <TableCell className="text-right">
+                              {formatCurrency(month.overtimeWage)}
+                            </TableCell>
+                            <TableCell className="bg-muted text-right font-medium">
+                              {formatCurrency(month.totalWage)}
+                            </TableCell>
                           </TableRow>
-                        </TableHeader>
-                        <TableBody>
-                          {workplace.months.map((month) => (
-                            <TableRow
-                              key={`${workplace.workplaceId}-${month.monthKey}`}
-                            >
-                              <TableCell>{month.month}月</TableCell>
-                              <TableCell>
-                                {month.periodStartDate} 〜 {month.periodEndDate}
-                              </TableCell>
-                              <TableCell className="text-right">
-                                {month.workDuration}
-                              </TableCell>
-                              <TableCell className="text-right">
-                                {month.baseDuration}
-                              </TableCell>
-                              <TableCell className="text-right">
-                                {month.holidayDuration}
-                              </TableCell>
-                              <TableCell className="text-right">
-                                {month.nightDuration}
-                              </TableCell>
-                              <TableCell className="text-right">
-                                {formatCurrency(month.baseWage)}
-                              </TableCell>
-                              <TableCell className="text-right">
-                                {formatCurrency(month.holidayWage)}
-                              </TableCell>
-                              <TableCell className="text-right">
-                                {formatCurrency(month.nightWage)}
-                              </TableCell>
-                              <TableCell className="text-right">
-                                {formatCurrency(month.overtimeWage)}
-                              </TableCell>
-                              <TableCell className="text-right font-medium">
-                                {formatCurrency(month.totalWage)}
-                              </TableCell>
-                              <TableCell className="text-right">
-                                <Button
-                                  type="button"
-                                  variant="ghost"
-                                  size="sm"
-                                  render={
-                                    <Link
-                                      href={`/my/payroll-details/monthly?month=${month.monthKey}`}
-                                      prefetch={false}
-                                    />
-                                  }
-                                >
-                                  月毎表示へ
-                                </Button>
-                              </TableCell>
-                            </TableRow>
-                          ))}
-                        </TableBody>
-                      </Table>
-                    </div>
+                        ))}
+                      </TableBody>
+                    </Table>
                   </CardContent>
                 </Card>
               ))}
