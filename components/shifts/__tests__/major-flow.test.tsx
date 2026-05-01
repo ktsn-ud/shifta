@@ -6,6 +6,7 @@ import { WorkplaceForm } from "@/components/workplaces/workplace-form";
 
 const pushMock = jest.fn();
 const refreshMock = jest.fn();
+const WORKPLACE_LIST_URL = "/api/workplaces?includeCounts=false";
 
 jest.mock("next/navigation", () => ({
   useRouter: () => ({
@@ -105,7 +106,7 @@ describe("major flow integration", () => {
 
     fetchMock.mockImplementation(
       async (input: string, init?: { method?: string }) => {
-        if (input === "/api/workplaces") {
+        if (input === WORKPLACE_LIST_URL) {
           return jsonResponse({
             data: [
               {
@@ -227,6 +228,7 @@ describe("major flow integration", () => {
             startTime: "1970-01-01T09:00:00.000Z",
             endTime: "1970-01-01T17:00:00.000Z",
             shiftType: "NORMAL",
+            comment: null,
             estimatedPay: 8000,
             googleSyncStatus: "FAILED",
             googleSyncError: "Insufficient permissions",

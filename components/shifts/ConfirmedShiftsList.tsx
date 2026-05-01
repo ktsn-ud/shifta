@@ -54,6 +54,7 @@ export function ConfirmedShiftsList({ groups }: ConfirmedShiftsListProps) {
               <TableHeader>
                 <TableRow>
                   <TableHead className="font-bold">日付</TableHead>
+                  <TableHead className="font-bold">コメント</TableHead>
                   <TableHead className="font-bold">時間帯</TableHead>
                   <TableHead className="font-bold">給与</TableHead>
                 </TableRow>
@@ -62,6 +63,7 @@ export function ConfirmedShiftsList({ groups }: ConfirmedShiftsListProps) {
                 {group.shifts.map((shift) => (
                   <TableRow key={shift.id}>
                     <TableCell>{shift.date}</TableCell>
+                    <TableCell>{shift.comment ?? "-"}</TableCell>
                     <TableCell>{`${shift.startTime} ～ ${shift.endTime}（実働${formatDurationHours(shift.workDurationHours)}）`}</TableCell>
                     <TableCell>
                       {shift.wage === null ? "-" : formatCurrency(shift.wage)}

@@ -11,6 +11,7 @@ import { BulkShiftForm } from "@/components/shifts/BulkShiftForm";
 const pushMock = jest.fn();
 const refreshMock = jest.fn();
 const BULK_CALENDAR_SELECTION_STORAGE_KEY = "shifta:bulk-calendar-selection";
+const WORKPLACE_LIST_URL = "/api/workplaces?includeCounts=false";
 
 jest.mock("next/navigation", () => ({
   useRouter: () => ({
@@ -82,7 +83,7 @@ describe("bulk shift flow integration", () => {
           });
         }
 
-        if (input === "/api/workplaces") {
+        if (input === WORKPLACE_LIST_URL) {
           return jsonResponse({
             data: [
               {
@@ -121,6 +122,16 @@ describe("bulk shift flow integration", () => {
       ).toHaveTextContent("勤務先A");
     });
 
+    expect(
+      screen.getByText("イベント名プレビュー「勤務先A」"),
+    ).toBeInTheDocument();
+    fireEvent.change(screen.getByLabelText("デフォルトコメント"), {
+      target: { value: "研修" },
+    });
+    expect(
+      screen.getByText("イベント名プレビュー「勤務先A (研修)」"),
+    ).toBeInTheDocument();
+
     await user.click(findEnabledDayButton(20));
     await user.click(findEnabledDayButton(21));
 
@@ -156,6 +167,12 @@ describe("bulk shift flow integration", () => {
     fireEvent.change(within(secondRow).getByLabelText("終了時刻"), {
       target: { value: "20:00" },
     });
+    fireEvent.change(within(secondRow).getByLabelText("コメント"), {
+      target: { value: "棚卸" },
+    });
+    expect(
+      within(secondRow).getByText("イベント名プレビュー「勤務先A (棚卸)」"),
+    ).toBeInTheDocument();
 
     await user.click(screen.getByRole("button", { name: "確定" }));
 
@@ -179,6 +196,7 @@ describe("bulk shift flow integration", () => {
       shifts: Array<{
         date: string;
         shiftType: string;
+        comment: string;
         startTime: string;
         endTime: string;
         breakMinutes: number;
@@ -190,6 +208,7 @@ describe("bulk shift flow integration", () => {
       {
         date: firstDateKey,
         shiftType: "NORMAL",
+        comment: "研修",
         startTime: "10:00",
         endTime: "18:30",
         breakMinutes: 0,
@@ -197,6 +216,7 @@ describe("bulk shift flow integration", () => {
       {
         date: secondDateKey,
         shiftType: "NORMAL",
+        comment: "棚卸",
         startTime: "13:00",
         endTime: "20:00",
         breakMinutes: 0,
@@ -223,7 +243,7 @@ describe("bulk shift flow integration", () => {
           });
         }
 
-        if (input === "/api/workplaces") {
+        if (input === WORKPLACE_LIST_URL) {
           return jsonResponse({
             data: [
               {
@@ -317,7 +337,7 @@ describe("bulk shift flow integration", () => {
         });
       }
 
-      if (input === "/api/workplaces") {
+      if (input === WORKPLACE_LIST_URL) {
         return jsonResponse({
           data: [
             {
@@ -377,7 +397,7 @@ describe("bulk shift flow integration", () => {
         });
       }
 
-      if (input === "/api/workplaces") {
+      if (input === WORKPLACE_LIST_URL) {
         return jsonResponse({
           data: [
             {
@@ -455,7 +475,7 @@ describe("bulk shift flow integration", () => {
         });
       }
 
-      if (input === "/api/workplaces") {
+      if (input === WORKPLACE_LIST_URL) {
         return jsonResponse({
           data: [
             {

@@ -39,6 +39,7 @@ function createUnconfirmedShift(
     date: "2026年3月5日(木)",
     workplaceName: "コンビニA",
     workplaceColor: "#FF5733",
+    comment: null,
     startTime: "10:00",
     endTime: "18:00",
     breakMinutes: 60,
@@ -68,6 +69,7 @@ describe("shift confirm page and card flow", () => {
           {
             id: "shift-2",
             date: "2026年3月6日(金)",
+            comment: null,
             startTime: "09:00",
             endTime: "15:00",
             workDurationHours: 5.5,

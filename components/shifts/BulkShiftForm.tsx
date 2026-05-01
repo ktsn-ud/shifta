@@ -342,6 +342,7 @@ function readPersistedBulkCalendarSelection(): PersistedBulkCalendarSelection | 
 type BulkShiftRow = {
   date: string;
   shiftType: ShiftType;
+  comment: string;
   startTime: string;
   endTime: string;
   breakMinutes: string;
@@ -354,6 +355,7 @@ type BulkDefaults = Omit<BulkShiftRow, "date">;
 
 type RowErrorKey =
   | "shiftType"
+  | "comment"
   | "startTime"
   | "endTime"
   | "breakMinutes"
@@ -379,6 +381,7 @@ type CalendarCell = {
 type NormalShiftPayload = {
   date: string;
   shiftType: "NORMAL";
+  comment: string;
   startTime: string;
   endTime: string;
   breakMinutes: number;
@@ -387,6 +390,7 @@ type NormalShiftPayload = {
 type LessonShiftPayload = {
   date: string;
   shiftType: "LESSON";
+  comment: string;
   breakMinutes: number;
   lessonRange: {
     timetableSetId: string;
@@ -399,6 +403,7 @@ type BulkShiftPayload = NormalShiftPayload | LessonShiftPayload;
 
 const DEFAULT_BULK_VALUES: BulkDefaults = {
   shiftType: "NORMAL",
+  comment: "",
   startTime: "09:00",
   endTime: "18:00",
   breakMinutes: "0",
@@ -411,6 +416,7 @@ function createRow(date: string, defaults: BulkDefaults): BulkShiftRow {
   return {
     date,
     shiftType: defaults.shiftType,
+    comment: defaults.comment,
     startTime: defaults.startTime,
     endTime: defaults.endTime,
     breakMinutes: defaults.breakMinutes,
@@ -515,6 +521,23 @@ function formatShiftTypeForWorkplace(
   }
 
   return formatShiftType(shiftType);
+}
+
+function formatEventNamePreview(
+  workplaceName: string | undefined,
+  comment: string,
+): string {
+  if (!workplaceName) {
+    return "勤務先を選択するとイベント名を確認できます";
+  }
+
+  const trimmedComment = comment.trim();
+  const eventName =
+    trimmedComment.length > 0
+      ? `${workplaceName} (${trimmedComment})`
+      : workplaceName;
+
+  return `イベント名プレビュー「${eventName}」`;
 }
 
 function hasRowErrors(errors: RowErrors): boolean {
@@ -1205,6 +1228,14 @@ export function BulkShiftForm() {
         continue;
       }
 
+      if (row.comment.length > 100) {
+        rowErrors.comment = "コメントは100文字以内で入力してください。";
+      }
+
+      if (/[\r\n]/.test(row.comment)) {
+        rowErrors.comment = "コメントに改行は使用できません。";
+      }
+
       if (row.shiftType === "LESSON") {
         if (selectedWorkplace?.type !== "CRAM_SCHOOL") {
           rowErrors.shiftType =
@@ -1256,6 +1287,7 @@ export function BulkShiftForm() {
           payload.push({
             date: dateKey,
             shiftType: "LESSON",
+            comment: row.comment,
             breakMinutes: 0,
             lessonRange: {
               timetableSetId: row.timetableSetId,
@@ -1292,6 +1324,7 @@ export function BulkShiftForm() {
           payload.push({
             date: dateKey,
             shiftType: row.shiftType,
+            comment: row.comment,
             startTime: row.startTime,
             endTime: row.endTime,
             breakMinutes,
@@ -1828,6 +1861,33 @@ export function BulkShiftForm() {
             )}
           </FieldGroup>
 
+          <Field>
+            <FieldLabel htmlFor="default-comment">
+              デフォルトコメント
+            </FieldLabel>
+            <FieldContent>
+              <Input
+                id="default-comment"
+                value={defaults.comment}
+                onChange={(event) => {
+                  const comment = event.currentTarget.value;
+                  setDefaults((current) => ({
+                    ...current,
+                    comment,
+                  }));
+                }}
+                maxLength={100}
+                placeholder="例: 事務、授業補助、研修"
+              />
+              <FieldDescription>
+                {formatEventNamePreview(
+                  selectedWorkplace?.name,
+                  defaults.comment,
+                )}
+              </FieldDescription>
+            </FieldContent>
+          </Field>
+
           {defaults.shiftType === "LESSON" ? (
             <FieldGroup className="grid gap-4 md:grid-cols-3">
               <Field>
@@ -2206,6 +2266,35 @@ export function BulkShiftForm() {
                         </Field>
                       )}
                     </FieldGroup>
+
+                    <Field
+                      className="mt-4"
+                      data-invalid={Boolean(rowErrors.comment)}
+                    >
+                      <FieldLabel htmlFor={`${row.date}-comment`}>
+                        コメント
+                      </FieldLabel>
+                      <FieldContent>
+                        <Input
+                          id={`${row.date}-comment`}
+                          value={row.comment}
+                          onChange={(event) => {
+                            updateRow(row.date, {
+                              comment: event.currentTarget.value,
+                            });
+                          }}
+                          maxLength={100}
+                          placeholder="例: 事務、授業補助、研修"
+                        />
+                        <FieldDescription>
+                          {formatEventNamePreview(
+                            selectedWorkplace?.name,
+                            row.comment,
+                          )}
+                        </FieldDescription>
+                        <FormErrorMessage message={rowErrors.comment} />
+                      </FieldContent>
+                    </Field>
 
                     {row.shiftType === "LESSON" ? (
                       <FieldGroup className="mt-4 grid gap-4 md:grid-cols-3">

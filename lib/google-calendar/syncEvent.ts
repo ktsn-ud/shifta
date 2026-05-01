@@ -11,6 +11,7 @@ import {
   groupPayrollRulesByWorkplace,
 } from "@/lib/payroll/summarizeByPeriod";
 import { prisma } from "@/lib/prisma";
+import { formatShiftWorkplaceLabel } from "@/lib/shifts/format";
 import { getCalendarClientByUserId } from "./client";
 import { SHIFTA_CALENDAR_TIMEZONE } from "./constants";
 import { GoogleCalendarSyncError, GOOGLE_SYNC_ERROR_CODES } from "./syncErrors";
@@ -169,6 +170,18 @@ function buildEventDateTime(shift: Shift): { start: string; end: string } {
   };
 }
 
+function buildEventSummary(
+  shift: ShiftWithLessonRange,
+  workplace: Workplace,
+): string {
+  return formatShiftWorkplaceLabel({
+    workplaceName: workplace.name,
+    workplaceType: workplace.type,
+    shiftType: shift.shiftType,
+    comment: shift.comment,
+  });
+}
+
 function formatCurrency(value: number | null): string {
   if (value === null) {
     return "--";
@@ -263,6 +276,7 @@ export async function createCalendarEvent(
   }
 
   const eventDateTime = buildEventDateTime(shift);
+  const summary = buildEventSummary(shift, workplace);
   const description = await buildEventDescription(
     shift,
     workplace,
@@ -272,7 +286,7 @@ export async function createCalendarEvent(
   const response = await calendar.events.insert({
     calendarId: user.calendarId,
     requestBody: {
-      summary: workplace.name,
+      summary,
       start: {
         dateTime: eventDateTime.start,
         timeZone: SHIFTA_CALENDAR_TIMEZONE,
@@ -290,6 +304,7 @@ export async function createCalendarEvent(
           workplaceId: workplace.id,
           shiftType: shift.shiftType,
           workplaceName: workplace.name,
+          comment: shift.comment ?? "",
         },
       },
     },
@@ -319,6 +334,7 @@ export async function updateCalendarEvent(
   const calendar = await getCalendarClientByUserId(user.id);
   await assertCalendarExists(calendar, user.calendarId);
   const eventDateTime = buildEventDateTime(shift);
+  const summary = buildEventSummary(shift, workplace);
   const description = await buildEventDescription(shift, workplace);
 
   await assertLinkedGoogleEvent(
@@ -332,7 +348,7 @@ export async function updateCalendarEvent(
     calendarId: user.calendarId,
     eventId: shift.googleEventId,
     requestBody: {
-      summary: workplace.name,
+      summary,
       start: {
         dateTime: eventDateTime.start,
         timeZone: SHIFTA_CALENDAR_TIMEZONE,
@@ -350,6 +366,7 @@ export async function updateCalendarEvent(
           workplaceId: workplace.id,
           shiftType: shift.shiftType,
           workplaceName: workplace.name,
+          comment: shift.comment ?? "",
         },
       },
     },

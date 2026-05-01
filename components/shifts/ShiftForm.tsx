@@ -91,6 +91,7 @@ type ShiftDetail = {
   endTime: string;
   breakMinutes: number;
   shiftType: ShiftType;
+  comment: string | null;
   lessonRange: {
     timetableSetId: string;
     startPeriod: number;
@@ -102,6 +103,7 @@ type FormState = {
   workplaceId: string;
   date: string;
   shiftType: ShiftType;
+  comment: string;
   startTime: string;
   endTime: string;
   breakMinutes: string;
@@ -114,6 +116,7 @@ type FormErrorKey =
   | "workplaceId"
   | "date"
   | "shiftType"
+  | "comment"
   | "startTime"
   | "endTime"
   | "breakMinutes"
@@ -258,6 +261,7 @@ function parseShiftDetailResponse(payload: unknown): ShiftDetail | null {
     typeof data.breakMinutes !== "number" ||
     Number.isInteger(data.breakMinutes) === false ||
     data.breakMinutes < 0 ||
+    (data.comment !== null && typeof data.comment !== "string") ||
     !isShiftType(data.shiftType)
   ) {
     return null;
@@ -296,6 +300,7 @@ function parseShiftDetailResponse(payload: unknown): ShiftDetail | null {
     endTime: data.endTime,
     breakMinutes: data.breakMinutes,
     shiftType: data.shiftType,
+    comment: data.comment,
     lessonRange,
   };
 }
@@ -402,6 +407,23 @@ function formatCramShiftType(type: ShiftType): string {
   return formatShiftType(type);
 }
 
+function formatEventNamePreview(
+  workplaceName: string | undefined,
+  comment: string,
+): string {
+  if (!workplaceName) {
+    return "勤務先を選択するとイベント名を確認できます";
+  }
+
+  const trimmedComment = comment.trim();
+  const eventName =
+    trimmedComment.length > 0
+      ? `${workplaceName} (${trimmedComment})`
+      : workplaceName;
+
+  return `イベント名プレビュー「${eventName}」`;
+}
+
 export function ShiftForm({
   mode,
   shiftId,
@@ -419,6 +441,7 @@ export function ShiftForm({
     workplaceId: "",
     date: defaultDate,
     shiftType: "NORMAL",
+    comment: "",
     startTime: "",
     endTime: "",
     breakMinutes: "0",
@@ -573,6 +596,7 @@ export function ShiftForm({
           workplaceId: shift.workplaceId,
           date: dateKeyFromApiDate(shift.date),
           shiftType: shift.shiftType,
+          comment: shift.comment ?? "",
           startTime: toTimeOnly(shift.startTime),
           endTime: toTimeOnly(shift.endTime),
           breakMinutes: String(shift.breakMinutes),
@@ -638,7 +662,35 @@ export function ShiftForm({
   }, [form.workplaceId, mode, workplaces]);
 
   useEffect(() => {
-    if (!selectedWorkplaceId || selectedWorkplaceType !== "CRAM_SCHOOL") {
+    if (!selectedWorkplaceId) {
+      setTimetableSets([]);
+
+      setForm((current) => {
+        if (
+          current.shiftType === "NORMAL" &&
+          !current.timetableSetId &&
+          !current.startPeriod &&
+          !current.endPeriod
+        ) {
+          return current;
+        }
+
+        return {
+          ...current,
+          shiftType: "NORMAL",
+          timetableSetId: "",
+          startPeriod: "",
+          endPeriod: "",
+        };
+      });
+      return;
+    }
+
+    if (!selectedWorkplace) {
+      return;
+    }
+
+    if (selectedWorkplace.type !== "CRAM_SCHOOL") {
       setTimetableSets([]);
 
       setForm((current) => {
@@ -715,7 +767,7 @@ export function ShiftForm({
     return () => {
       abortController.abort();
     };
-  }, [selectedWorkplaceId, selectedWorkplaceType]);
+  }, [selectedWorkplace, selectedWorkplaceId]);
 
   useEffect(() => {
     if (
@@ -746,6 +798,20 @@ export function ShiftForm({
     setForm((current) => {
       if (current.shiftType !== "LESSON") {
         return current;
+      }
+
+      if (timetableSets.length === 0) {
+        if (
+          !current.timetableSetId &&
+          !current.startPeriod &&
+          !current.endPeriod
+        ) {
+          return current;
+        }
+
+        if (isTimetableLoading || mode === "edit") {
+          return current;
+        }
       }
 
       const nextSetId =
@@ -800,7 +866,13 @@ export function ShiftForm({
         endPeriod: nextEnd,
       };
     });
-  }, [selectedWorkplaceType, timetableSets]);
+  }, [
+    form.shiftType,
+    isTimetableLoading,
+    mode,
+    selectedWorkplaceType,
+    timetableSets,
+  ]);
 
   function updateForm<K extends keyof FormState>(key: K, value: FormState[K]) {
     setForm((current) => ({
@@ -831,6 +903,14 @@ export function ShiftForm({
 
     if (!form.date) {
       nextErrors.date = "ERR_001: 日付は必須項目です";
+    }
+
+    if (form.comment.length > 100) {
+      nextErrors.comment = "コメントは100文字以内で入力してください";
+    }
+
+    if (/[\r\n]/.test(form.comment)) {
+      nextErrors.comment = "コメントに改行は使用できません";
     }
 
     if (form.shiftType === "LESSON") {
@@ -1038,6 +1118,7 @@ export function ShiftForm({
       workplaceId: string;
       date: string;
       shiftType: ShiftType;
+      comment: string;
       startTime?: string;
       endTime?: string;
       breakMinutes: number;
@@ -1050,6 +1131,7 @@ export function ShiftForm({
       workplaceId: form.workplaceId,
       date: form.date,
       shiftType: effectiveShiftType,
+      comment: form.comment,
       breakMinutes:
         effectiveShiftType === "LESSON"
           ? 0
@@ -1172,6 +1254,10 @@ export function ShiftForm({
 
   const showShiftTypeSelector = selectedWorkplaceType === "CRAM_SCHOOL";
   const showLessonFields = showShiftTypeSelector && form.shiftType === "LESSON";
+  const eventNamePreview = formatEventNamePreview(
+    selectedWorkplace?.name,
+    form.comment,
+  );
   const disabled =
     isSubmitting ||
     isWorkplaceLoading ||
@@ -1510,6 +1596,24 @@ export function ShiftForm({
               </FieldContent>
             </Field>
           )}
+
+          <Field data-invalid={Boolean(errors.comment)}>
+            <FieldLabel htmlFor="shift-comment">コメント</FieldLabel>
+            <FieldContent>
+              <Input
+                id="shift-comment"
+                value={form.comment}
+                onChange={(event) =>
+                  updateForm("comment", event.currentTarget.value)
+                }
+                maxLength={100}
+                placeholder="例: 事務、授業補助、研修"
+                disabled={disabled}
+              />
+              <FieldDescription>{eventNamePreview}</FieldDescription>
+              <FormErrorMessage message={errors.comment} />
+            </FieldContent>
+          </Field>
         </FieldGroup>
 
         <div className="flex flex-wrap gap-2">

@@ -56,6 +56,7 @@ export async function GET() {
     return NextResponse.json({
       shifts: shifts.map((shift) => ({
         id: shift.id,
+        comment: shift.comment,
         date: toDateOnlyString(shift.date),
         startTime: toTimeOnlyString(shift.startTime),
         endTime: toTimeOnlyString(shift.endTime),

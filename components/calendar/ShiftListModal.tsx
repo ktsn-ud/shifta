@@ -21,6 +21,7 @@ type ShiftListModalShift = {
   startTime: string;
   endTime: string;
   shiftType: "NORMAL" | "LESSON";
+  comment: string | null;
   googleSyncStatus: "PENDING" | "SUCCESS" | "FAILED";
   googleSyncError: string | null;
   estimatedPay: number | null;
@@ -79,6 +80,7 @@ function formatWorkplaceLabel(shift: ShiftListModalShift): string {
     workplaceName: shift.workplace.name,
     workplaceType: shift.workplace.type ?? "GENERAL",
     shiftType: shift.shiftType,
+    comment: shift.comment,
   });
 }
 
