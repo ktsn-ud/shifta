@@ -31,11 +31,19 @@ export async function POST(request: Request, context: Context) {
 
     return jsonError(
       result.errorMessage,
-      result.requiresCalendarSetup ? 409 : 502,
+      result.requiresSignOut ? 401 : result.requiresCalendarSetup ? 409 : 502,
       {
         code: result.errorCode ?? "GOOGLE_SYNC_FAILED",
         requiresCalendarSetup: result.requiresCalendarSetup,
+        requiresSignOut: result.requiresSignOut,
       },
+      result.requiresSignOut
+        ? {
+            headers: {
+              "Cache-Control": "no-store",
+            },
+          }
+        : undefined,
     );
   } catch (error) {
     console.error("POST /api/shifts/:id/retry-sync failed", error);

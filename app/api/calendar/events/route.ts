@@ -171,7 +171,7 @@ function extractGoogleErrorStatus(error: unknown): number | null {
 }
 
 function mapGoogleAuthErrorStatus(error: GoogleCalendarAuthError): number {
-  if (error.code === "UNAUTHENTICATED") {
+  if (error.code === "UNAUTHENTICATED" || error.code === "TOKEN_EXPIRED") {
     return 401;
   }
 
@@ -180,6 +180,10 @@ function mapGoogleAuthErrorStatus(error: GoogleCalendarAuthError): number {
   }
 
   return 400;
+}
+
+function isTokenExpiredError(error: GoogleCalendarAuthError): boolean {
+  return error.code === "TOKEN_EXPIRED";
 }
 
 function normalizeHexColor(value: string | null | undefined): string | null {
@@ -586,14 +590,28 @@ export async function GET(request: Request) {
     return NextResponse.json({ data: responseData });
   } catch (error) {
     if (error instanceof GoogleCalendarAuthError) {
-      const details =
-        error.code === "READ_SCOPE_MISSING"
+      const details: Record<string, unknown> = {
+        code: error.code,
+      };
+      if (error.code === "READ_SCOPE_MISSING") {
+        details.requiresReconsent = true;
+      }
+      if (isTokenExpiredError(error)) {
+        details.requiresSignOut = true;
+      }
+
+      return jsonError(
+        error.message,
+        mapGoogleAuthErrorStatus(error),
+        details,
+        isTokenExpiredError(error)
           ? {
-              code: error.code,
-              requiresReconsent: true,
+              headers: {
+                "Cache-Control": "no-store",
+              },
             }
-          : undefined;
-      return jsonError(error.message, mapGoogleAuthErrorStatus(error), details);
+          : undefined,
+      );
     }
 
     const googleErrorStatus = extractGoogleErrorStatus(error);

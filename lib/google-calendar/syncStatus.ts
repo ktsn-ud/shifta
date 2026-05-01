@@ -2,8 +2,10 @@ import type { PayrollRule, User } from "@/lib/generated/prisma/client";
 import { prisma } from "@/lib/prisma";
 import {
   GoogleCalendarSyncError,
+  GOOGLE_SYNC_ERROR_CODES,
   type GoogleSyncErrorCode,
   requiresCalendarSetupBySyncErrorCode,
+  requiresSignOutBySyncErrorCode,
 } from "./syncErrors";
 import {
   createCalendarEvent,
@@ -21,6 +23,7 @@ type SyncFailureResult = {
   errorMessage: string;
   errorCode: GoogleSyncErrorCode | null;
   requiresCalendarSetup: boolean;
+  requiresSignOut: boolean;
 };
 
 export type SyncResult =
@@ -47,6 +50,7 @@ type ResolvedSyncError = {
   message: string;
   code: GoogleSyncErrorCode | null;
   requiresCalendarSetup: boolean;
+  requiresSignOut: boolean;
 };
 
 const BULK_SYNC_CONCURRENCY = 3;
@@ -271,6 +275,7 @@ function resolveGoogleSyncError(error: unknown): ResolvedSyncError {
       message: error.message,
       code: error.code,
       requiresCalendarSetup: requiresCalendarSetupBySyncErrorCode(error.code),
+      requiresSignOut: requiresSignOutBySyncErrorCode(error.code),
     };
   }
 
@@ -281,14 +286,16 @@ function resolveGoogleSyncError(error: unknown): ResolvedSyncError {
         "Google Calendar の利用上限に達しました。時間を置いて再試行してください",
       code: null,
       requiresCalendarSetup: false,
+      requiresSignOut: false,
     };
   }
 
   if (status === 401) {
     return {
       message: "Google認証に失敗しました。再ログインしてください",
-      code: null,
+      code: GOOGLE_SYNC_ERROR_CODES.TOKEN_EXPIRED,
       requiresCalendarSetup: false,
+      requiresSignOut: true,
     };
   }
   if (status === 403) {
@@ -296,6 +303,7 @@ function resolveGoogleSyncError(error: unknown): ResolvedSyncError {
       message: "Google Calendar へのアクセス権限が不足しています",
       code: null,
       requiresCalendarSetup: false,
+      requiresSignOut: false,
     };
   }
   if (status === 404) {
@@ -303,6 +311,7 @@ function resolveGoogleSyncError(error: unknown): ResolvedSyncError {
       message: "同期先のGoogle Calendarイベントが見つかりません",
       code: null,
       requiresCalendarSetup: false,
+      requiresSignOut: false,
     };
   }
   if (status === 409) {
@@ -310,6 +319,7 @@ function resolveGoogleSyncError(error: unknown): ResolvedSyncError {
       message: "Google Calendar 上で競合が発生しました。再試行してください",
       code: null,
       requiresCalendarSetup: false,
+      requiresSignOut: false,
     };
   }
   if (typeof status === "number" && status >= 500) {
@@ -317,6 +327,7 @@ function resolveGoogleSyncError(error: unknown): ResolvedSyncError {
       message: "Google Calendar 側で一時的なエラーが発生しました",
       code: null,
       requiresCalendarSetup: false,
+      requiresSignOut: false,
     };
   }
 
@@ -330,6 +341,7 @@ function resolveGoogleSyncError(error: unknown): ResolvedSyncError {
         message: "Google Calendar との通信がタイムアウトしました",
         code: null,
         requiresCalendarSetup: false,
+        requiresSignOut: false,
       };
     }
   }
@@ -338,6 +350,7 @@ function resolveGoogleSyncError(error: unknown): ResolvedSyncError {
     message: "Google Calendar との同期に失敗しました",
     code: null,
     requiresCalendarSetup: false,
+    requiresSignOut: false,
   };
 }
 
@@ -583,6 +596,7 @@ async function runShiftSync(
       errorMessage: syncError.message,
       errorCode: syncError.code,
       requiresCalendarSetup: syncError.requiresCalendarSetup,
+      requiresSignOut: syncError.requiresSignOut,
     };
   }
 }
@@ -692,6 +706,7 @@ export async function syncShiftsAfterBulkCreate(
               errorMessage,
               errorCode: null,
               requiresCalendarSetup: false,
+              requiresSignOut: false,
             };
           }
 
@@ -711,6 +726,7 @@ export async function syncShiftsAfterBulkCreate(
             errorMessage: syncError.message,
             errorCode: syncError.code,
             requiresCalendarSetup: syncError.requiresCalendarSetup,
+            requiresSignOut: syncError.requiresSignOut,
           };
         },
       );
@@ -745,6 +761,7 @@ export async function syncShiftsAfterBulkCreate(
           errorMessage,
           errorCode: null,
           requiresCalendarSetup: false,
+          requiresSignOut: false,
         };
       }
 
@@ -815,6 +832,7 @@ export async function syncShiftsAfterBulkCreate(
           errorMessage: syncError.message,
           errorCode: syncError.code,
           requiresCalendarSetup: syncError.requiresCalendarSetup,
+          requiresSignOut: syncError.requiresSignOut,
         };
       }
     },
@@ -900,6 +918,7 @@ export async function syncShiftDeletion(
       errorMessage: syncError.message,
       errorCode: syncError.code,
       requiresCalendarSetup: syncError.requiresCalendarSetup,
+      requiresSignOut: syncError.requiresSignOut,
     };
   }
 }

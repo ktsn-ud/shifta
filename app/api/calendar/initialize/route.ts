@@ -12,7 +12,7 @@ import { syncShiftsAfterBulkCreate } from "@/lib/google-calendar/syncStatus";
 import { prisma } from "@/lib/prisma";
 
 function mapGoogleAuthErrorStatus(error: GoogleCalendarAuthError): number {
-  if (error.code === "UNAUTHENTICATED") {
+  if (error.code === "UNAUTHENTICATED" || error.code === "TOKEN_EXPIRED") {
     return 401;
   }
 
@@ -21,6 +21,10 @@ function mapGoogleAuthErrorStatus(error: GoogleCalendarAuthError): number {
   }
 
   return 400;
+}
+
+function isTokenExpiredError(error: GoogleCalendarAuthError): boolean {
+  return error.code === "TOKEN_EXPIRED";
 }
 
 export async function POST(request: Request) {
@@ -104,7 +108,23 @@ export async function POST(request: Request) {
     return response;
   } catch (error) {
     if (error instanceof GoogleCalendarAuthError) {
-      return jsonError(error.message, mapGoogleAuthErrorStatus(error));
+      return jsonError(
+        error.message,
+        mapGoogleAuthErrorStatus(error),
+        isTokenExpiredError(error)
+          ? {
+              code: error.code,
+              requiresSignOut: true,
+            }
+          : undefined,
+        isTokenExpiredError(error)
+          ? {
+              headers: {
+                "Cache-Control": "no-store",
+              },
+            }
+          : undefined,
+      );
     }
 
     console.error("POST /api/calendar/initialize failed", error);

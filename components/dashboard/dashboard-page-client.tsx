@@ -39,6 +39,7 @@ import {
 } from "@/lib/google-calendar/clientSync";
 import { CALENDAR_SETUP_PATH } from "@/lib/google-calendar/constants";
 import { messages } from "@/lib/messages";
+import { useGoogleTokenExpiredSignOut } from "@/hooks/use-google-token-expired-signout";
 import {
   type MonthShift,
   summarizeShifts,
@@ -55,6 +56,8 @@ type DashboardPageClientProps = {
 };
 
 const NEXT_PAYMENT_CACHE_TTL_MS = 5 * 60 * 1000;
+const GOOGLE_TOKEN_EXPIRED_DESCRIPTION =
+  "3秒後にログアウトします。再度Googleアカウントでログインしてください。";
 
 function formatCurrency(value: number): string {
   return new Intl.NumberFormat("ja-JP", {
@@ -180,6 +183,8 @@ export function DashboardPageClient({
   }, [shifts]);
   const failedShiftCount = failedShiftIds.length;
   const [isBulkRetrying, setIsBulkRetrying] = useState(false);
+  const { isSignOutScheduled, scheduleSignOut } =
+    useGoogleTokenExpiredSignOut();
   const monthFromQuery = useMemo(() => {
     const rawMonth = searchParams.get("month");
     if (!rawMonth) {
@@ -318,7 +323,7 @@ export function DashboardPageClient({
   };
 
   const handleBulkRetrySync = async () => {
-    if (failedShiftIds.length === 0 || isBulkRetrying) {
+    if (failedShiftIds.length === 0 || isBulkRetrying || isSignOutScheduled) {
       return;
     }
 
@@ -334,6 +339,7 @@ export function DashboardPageClient({
             return {
               ok: true as const,
               requiresCalendarSetup: false,
+              requiresSignOut: false,
             };
           }
 
@@ -345,6 +351,7 @@ export function DashboardPageClient({
           return {
             ok: false as const,
             requiresCalendarSetup: apiError.requiresCalendarSetup,
+            requiresSignOut: apiError.requiresSignOut,
           };
         }),
       );
@@ -362,17 +369,23 @@ export function DashboardPageClient({
             result.status === "fulfilled"
               ? result.value.requiresCalendarSetup
               : false;
+          const requiresSignOut =
+            result.status === "fulfilled"
+              ? result.value.requiresSignOut
+              : false;
 
           return {
             ...acc,
             failureCount: acc.failureCount + 1,
             requiresCalendarSetup: acc.requiresCalendarSetup || requiresSetup,
+            requiresSignOut: acc.requiresSignOut || requiresSignOut,
           };
         },
         {
           successCount: 0,
           failureCount: 0,
           requiresCalendarSetup: false,
+          requiresSignOut: false,
         },
       );
 
@@ -389,6 +402,15 @@ export function DashboardPageClient({
         description: `${summary.successCount}件成功 / ${summary.failureCount}件失敗`,
         duration: 6000,
       });
+
+      if (summary.requiresSignOut) {
+        toast.error("Google 連携の有効期限が切れました", {
+          description: GOOGLE_TOKEN_EXPIRED_DESCRIPTION,
+          duration: 6000,
+        });
+        scheduleSignOut();
+        return;
+      }
 
       if (summary.requiresCalendarSetup) {
         router.push(CALENDAR_SETUP_PATH);
@@ -485,7 +507,7 @@ export function DashboardPageClient({
                 onClick={() => {
                   void handleBulkRetrySync();
                 }}
-                disabled={isBulkRetrying}
+                disabled={isBulkRetrying || isSignOutScheduled}
               >
                 <RefreshCwIcon
                   className={`size-4 ${isBulkRetrying ? "animate-spin" : ""}`}
@@ -573,6 +595,10 @@ export function DashboardPageClient({
           router.push(`/my/shifts/${shiftId}/edit?${params.toString()}`);
         }}
         onDeleteShift={async (shiftId) => {
+          if (isSignOutScheduled) {
+            return;
+          }
+
           const response = await fetch(`/api/shifts/${shiftId}`, {
             method: "DELETE",
           });
@@ -582,6 +608,15 @@ export function DashboardPageClient({
               response,
               "シフトの削除に失敗しました",
             );
+
+            if (apiError.requiresSignOut) {
+              toast.error("Google 連携の有効期限が切れました", {
+                description: GOOGLE_TOKEN_EXPIRED_DESCRIPTION,
+                duration: 6000,
+              });
+              scheduleSignOut();
+              return;
+            }
             throw new Error(apiError.message);
           }
 
@@ -595,6 +630,15 @@ export function DashboardPageClient({
           await reload();
 
           if (syncFailure) {
+            if (syncFailure.requiresSignOut) {
+              toast.error("Google 連携の有効期限が切れました", {
+                description: GOOGLE_TOKEN_EXPIRED_DESCRIPTION,
+                duration: 6000,
+              });
+              scheduleSignOut();
+              return;
+            }
+
             toast.error(messages.error.calendarSyncFailed, {
               description: syncFailure.requiresCalendarSetup
                 ? syncFailure.message
@@ -613,6 +657,10 @@ export function DashboardPageClient({
           toast.success(messages.success.shiftDeleted);
         }}
         onRetrySync={async (shiftId) => {
+          if (isSignOutScheduled) {
+            return;
+          }
+
           const response = await fetch(`/api/shifts/${shiftId}/retry-sync`, {
             method: "POST",
           });
@@ -622,6 +670,15 @@ export function DashboardPageClient({
               response,
               "Google Calendar への再同期に失敗しました",
             );
+
+            if (apiError.requiresSignOut) {
+              toast.error("Google 連携の有効期限が切れました", {
+                description: GOOGLE_TOKEN_EXPIRED_DESCRIPTION,
+                duration: 6000,
+              });
+              scheduleSignOut();
+              return;
+            }
 
             if (apiError.requiresCalendarSetup) {
               router.push(CALENDAR_SETUP_PATH);
