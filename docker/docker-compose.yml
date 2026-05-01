@@ -8,6 +8,7 @@ services:
 
     volumes:
       - ../:/workspace
+      - codex-node-modules:/workspace/node_modules
       - ${HOME}/.codex/auth.json:/home/node/.codex/auth.json
       - ../.env.example:/workspace/.env:ro
 
@@ -22,3 +23,6 @@ services:
 
     stdin_open: true
     tty: true
+
+volumes:
+  codex-node-modules:
