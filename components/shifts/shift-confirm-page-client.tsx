@@ -14,6 +14,7 @@ import { toErrorMessage } from "@/lib/messages";
 type UnconfirmedShiftApiResponse = {
   shifts: Array<{
     id: string;
+    comment: string | null;
     date: string;
     startTime: string;
     endTime: string;
@@ -30,6 +31,7 @@ type UnconfirmedShiftApiResponse = {
 type ConfirmedShiftApiResponse = {
   shifts: Array<{
     id: string;
+    comment: string | null;
     date: string;
     startTime: string;
     endTime: string;
@@ -121,6 +123,7 @@ export function ShiftConfirmPageClient({
           date: formatDateWithWeekday(shift.date),
           workplaceName: shift.workplace.name,
           workplaceColor: shift.workplace.color,
+          comment: shift.comment,
           startTime: shift.startTime,
           endTime: shift.endTime,
           breakMinutes: shift.breakMinutes,
@@ -135,6 +138,7 @@ export function ShiftConfirmPageClient({
           existing.shifts.push({
             id: shift.id,
             date: formatDateWithWeekday(shift.date),
+            comment: shift.comment,
             startTime: shift.startTime,
             endTime: shift.endTime,
             workDurationHours: shift.workDurationHours,
@@ -151,6 +155,7 @@ export function ShiftConfirmPageClient({
             {
               id: shift.id,
               date: formatDateWithWeekday(shift.date),
+              comment: shift.comment,
               startTime: shift.startTime,
               endTime: shift.endTime,
               workDurationHours: shift.workDurationHours,

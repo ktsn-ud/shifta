@@ -137,6 +137,7 @@ async function getShiftConfirmationInitialData(userId: string): Promise<{
     date: formatDateWithWeekday(toDateOnlyString(shift.date)),
     workplaceName: shift.workplace.name,
     workplaceColor: shift.workplace.color,
+    comment: shift.comment,
     startTime: toTimeOnlyString(shift.startTime),
     endTime: toTimeOnlyString(shift.endTime),
     breakMinutes: shift.breakMinutes,
@@ -180,6 +181,7 @@ async function getShiftConfirmationInitialData(userId: string): Promise<{
     const entry = {
       id: shift.id,
       date: formatDateWithWeekday(toDateOnlyString(shift.date)),
+      comment: shift.comment,
       startTime: toTimeOnlyString(shift.startTime),
       endTime: toTimeOnlyString(shift.endTime),
       workDurationHours: workedMinutes / 60,

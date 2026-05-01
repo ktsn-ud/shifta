@@ -3,6 +3,7 @@ export type UnconfirmedShiftItem = {
   date: string;
   workplaceName: string;
   workplaceColor: string;
+  comment: string | null;
   startTime: string;
   endTime: string;
   breakMinutes: number;
@@ -13,6 +14,7 @@ export type ConfirmedShiftItem = {
   date: string;
   startTime: string;
   endTime: string;
+  comment: string | null;
   workDurationHours: number;
   wage: number | null;
 };

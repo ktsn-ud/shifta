@@ -33,6 +33,7 @@ type TestShift = {
   workplaceName: string;
   workplaceType?: "GENERAL" | "CRAM_SCHOOL";
   shiftType?: "NORMAL" | "LESSON";
+  comment?: string | null;
   breakMinutes?: number;
   estimatedPay?: number | null;
 };
@@ -54,6 +55,7 @@ function createShift(value: TestShift) {
     endTime: value.endTime,
     breakMinutes: value.breakMinutes ?? 0,
     shiftType: value.shiftType ?? "NORMAL",
+    comment: value.comment ?? null,
     googleSyncStatus: "SUCCESS" as const,
     googleSyncError: null,
     googleSyncedAt: null,
@@ -175,6 +177,7 @@ describe("ShiftListPageClient", () => {
               startTime: "1970-01-01T09:00:00.000Z",
               endTime: "1970-01-01T17:00:00.000Z",
               workplaceName: "勤務先A",
+              comment: "研修",
             }),
           ],
         });
@@ -186,10 +189,10 @@ describe("ShiftListPageClient", () => {
     renderShiftListPage();
 
     await waitFor(() => {
-      expect(screen.getByText("勤務先A")).toBeInTheDocument();
+      expect(screen.getByText("勤務先A (研修)")).toBeInTheDocument();
     });
 
-    fireEvent.click(screen.getByText("勤務先A"));
+    fireEvent.click(screen.getByText("勤務先A (研修)"));
 
     expect(pushMock).toHaveBeenCalledWith(
       "/my/shifts/shift-1/edit?month=2026-03&returnTo=list",
