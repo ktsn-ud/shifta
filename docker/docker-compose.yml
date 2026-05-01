@@ -12,7 +12,7 @@ services:
       - ${HOME}/.codex/auth.json:/home/node/.codex/auth.json
       - ../.env.example:/workspace/.env:ro
 
-    user: node
+    user: root
     environment:
       HOME: /home/node
       CODEX_HOME: /home/node/.codex
