@@ -1,8 +1,9 @@
 projects = { "/workspace" = { trust_level = "trusted" } }
 
-model = "gpt-5.3-codex"
+model = "gpt-5.5"
 model_reasoning_effort = "high"
 personality = "pragmatic"
+approval_reviewer = "auto_review"
 
 [mcp_servers.next-devtools]
 command = "npx"
