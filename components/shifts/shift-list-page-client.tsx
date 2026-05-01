@@ -173,11 +173,13 @@ function compareShifts(
       workplaceName: left.workplace.name,
       workplaceType: left.workplace.type,
       shiftType: left.shiftType,
+      comment: left.comment,
     });
     const rightWorkplace = formatShiftWorkplaceLabel({
       workplaceName: right.workplace.name,
       workplaceType: right.workplace.type,
       shiftType: right.shiftType,
+      comment: right.comment,
     });
 
     baseCompare = leftWorkplace.localeCompare(rightWorkplace, "ja");
@@ -577,6 +579,7 @@ export function ShiftListPageClient({
                       workplaceName: shift.workplace.name,
                       workplaceType: shift.workplace.type,
                       shiftType: shift.shiftType,
+                      comment: shift.comment,
                     });
                     const isSelected = selectedShiftIds.has(shift.id);
 

@@ -12,6 +12,7 @@ import {
 } from "@/lib/google-calendar/clientSync";
 import { CALENDAR_SETUP_PATH } from "@/lib/google-calendar/constants";
 import { messages, toErrorMessage } from "@/lib/messages";
+import { formatShiftWorkplaceLabel } from "@/lib/shifts/format";
 import type { UnconfirmedShiftItem } from "@/components/shifts/shift-confirmation-types";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
@@ -100,6 +101,10 @@ export function ConfirmShiftCard({
   }, [shift.breakMinutes, shift.endTime, shift.id, shift.startTime]);
 
   const isMutating = isConfirming;
+  const workplaceLabel = formatShiftWorkplaceLabel({
+    workplaceName: shift.workplaceName,
+    comment: shift.comment,
+  });
 
   const handleConfirm = async () => {
     setErrorMessage(null);
@@ -172,7 +177,7 @@ export function ConfirmShiftCard({
               className="size-2.5 shrink-0 rounded-full"
               style={{ backgroundColor: shift.workplaceColor }}
             />
-            <p>{shift.workplaceName}</p>
+            <p>{workplaceLabel}</p>
           </div>
         </div>
       </CardHeader>

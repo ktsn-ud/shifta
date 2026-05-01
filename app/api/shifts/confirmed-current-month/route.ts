@@ -120,6 +120,7 @@ export async function GET() {
 
         return {
           id: shift.id,
+          comment: shift.comment,
           date: toDateOnlyString(shift.date),
           startTime: toTimeOnlyString(shift.startTime),
           endTime: toTimeOnlyString(shift.endTime),

@@ -227,6 +227,7 @@ describe("major flow integration", () => {
             startTime: "1970-01-01T09:00:00.000Z",
             endTime: "1970-01-01T17:00:00.000Z",
             shiftType: "NORMAL",
+            comment: null,
             estimatedPay: 8000,
             googleSyncStatus: "FAILED",
             googleSyncError: "Insufficient permissions",

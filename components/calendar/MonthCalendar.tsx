@@ -15,6 +15,7 @@ import {
   formatMonthLabel,
   toDateKey,
 } from "@/lib/calendar/date";
+import { formatShiftWorkplaceLabel } from "@/lib/shifts/format";
 import { cn } from "@/lib/utils";
 
 const WEEKDAY_LABELS = ["日", "月", "火", "水", "木", "金", "土"] as const;
@@ -27,10 +28,13 @@ type MonthCalendarShift = {
   date: string;
   startTime: string;
   endTime: string;
+  shiftType: "NORMAL" | "LESSON";
+  comment: string | null;
   workplace: {
     id: string;
     name: string;
     color: string;
+    type: "GENERAL" | "CRAM_SCHOOL";
   };
 };
 
@@ -91,6 +95,15 @@ function formatTime(value: string): string {
 
 function formatShiftTime(shift: MonthCalendarShift): string {
   return `${formatTime(shift.startTime)}-${formatTime(shift.endTime)}`;
+}
+
+function formatWorkplaceLabel(shift: MonthCalendarShift): string {
+  return formatShiftWorkplaceLabel({
+    workplaceName: shift.workplace.name,
+    workplaceType: shift.workplace.type,
+    shiftType: shift.shiftType,
+    comment: shift.comment,
+  });
 }
 
 export function MonthCalendar({
@@ -234,7 +247,9 @@ export function MonthCalendar({
                             </span>
                           }
                         />
-                        <TooltipContent>{shift.workplace.name}</TooltipContent>
+                        <TooltipContent>
+                          {formatWorkplaceLabel(shift)}
+                        </TooltipContent>
                       </Tooltip>
                     </li>
                   ))}

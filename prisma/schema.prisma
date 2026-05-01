@@ -127,18 +127,18 @@ model PayrollRule {
 }
 
 model TimetableSet {
-  id               String            @id @default(cuid())
-  workplaceId      String
-  name             String
-  sortOrder        Int               @default(0)
-  createdAt        DateTime          @default(now())
-  updatedAt        DateTime          @updatedAt
-  workplace        Workplace         @relation(fields: [workplaceId], references: [id], onDelete: Cascade)
-  timetables       Timetable[]
+  id                String             @id @default(cuid())
+  workplaceId       String
+  name              String
+  sortOrder         Int                @default(0)
+  createdAt         DateTime           @default(now())
+  updatedAt         DateTime           @updatedAt
+  workplace         Workplace          @relation(fields: [workplaceId], references: [id], onDelete: Cascade)
+  timetables        Timetable[]
   shiftLessonRanges ShiftLessonRange[]
 
-  @@index([workplaceId])
   @@unique([workplaceId, name])
+  @@index([workplaceId])
 }
 
 model Timetable {
@@ -162,6 +162,7 @@ model Shift {
   breakMinutes     Int               @default(0)
   isConfirmed      Boolean           @default(false)
   shiftType        ShiftType
+  comment          String?           @db.VarChar(100)
   googleEventId    String?
   googleSyncStatus String            @default("PENDING")
   googleSyncError  String?
@@ -175,12 +176,12 @@ model Shift {
 
 model ShiftLessonRange {
   id             String       @id @default(cuid())
-  shiftId         String       @unique
-  timetableSetId  String
-  startPeriod     Int
-  endPeriod       Int
-  shift           Shift        @relation(fields: [shiftId], references: [id], onDelete: Cascade)
-  timetableSet    TimetableSet @relation(fields: [timetableSetId], references: [id], onDelete: Restrict)
+  shiftId        String       @unique
+  timetableSetId String
+  startPeriod    Int
+  endPeriod      Int
+  shift          Shift        @relation(fields: [shiftId], references: [id], onDelete: Cascade)
+  timetableSet   TimetableSet @relation(fields: [timetableSetId], references: [id], onDelete: Restrict)
 
   @@index([timetableSetId])
 }

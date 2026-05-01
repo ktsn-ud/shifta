@@ -14,6 +14,7 @@ import {
   lessonRangeSchema,
   type LessonTimeRangeResolver,
   resolveLessonTimeRangeFromRows,
+  shiftCommentSchema,
   ShiftValidationError,
   type ShiftInput,
 } from "../_shared";
@@ -24,6 +25,7 @@ const bulkShiftItemSchema = z
   .object({
     date: z.string().regex(DATE_ONLY_REGEX, "YYYY-MM-DD形式で入力してください"),
     shiftType: z.enum(["NORMAL", "LESSON"]),
+    comment: shiftCommentSchema,
     startTime: z
       .string()
       .regex(TIME_ONLY_REGEX, "HH:MM形式で入力してください")

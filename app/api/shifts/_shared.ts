@@ -33,11 +33,21 @@ export const lessonRangeSchema = z
   })
   .strict();
 
+export const shiftCommentSchema = z
+  .string()
+  .max(100, "コメントは100文字以内で入力してください")
+  .refine((value) => !/[\r\n]/.test(value), {
+    message: "コメントに改行は使用できません",
+  })
+  .nullable()
+  .optional();
+
 export const shiftInputSchema = z
   .object({
     workplaceId: z.string().min(1),
     date: z.string().regex(DATE_ONLY_REGEX, "YYYY-MM-DD形式で入力してください"),
     shiftType: z.enum(["NORMAL", "LESSON"]),
+    comment: shiftCommentSchema,
     startTime: z
       .string()
       .regex(TIME_ONLY_REGEX, "HH:MM形式で入力してください")
@@ -61,6 +71,7 @@ export type BuiltShiftData = {
     endTime: Date;
     breakMinutes: number;
     shiftType: "NORMAL" | "LESSON";
+    comment: string | null;
   };
   lessonRange: {
     timetableSetId: string;
@@ -120,6 +131,11 @@ function validateShiftInput(input: ShiftInput) {
       "startTime と endTime は同じ時刻にできません",
     );
   }
+}
+
+function normalizeShiftComment(comment: ShiftInput["comment"]): string | null {
+  const trimmed = comment?.trim() ?? "";
+  return trimmed.length > 0 ? trimmed : null;
 }
 
 export function resolveLessonTimeRangeFromRows(
@@ -230,6 +246,7 @@ export async function buildShiftData(
   validateShiftInput(input);
 
   const date = parseDateOnly(input.date);
+  const comment = normalizeShiftComment(input.comment);
 
   if (input.shiftType === "LESSON") {
     if (workplaceType !== "CRAM_SCHOOL") {
@@ -258,6 +275,7 @@ export async function buildShiftData(
         endTime: lessonTimes.endTime,
         breakMinutes: lessonTimes.breakMinutes,
         shiftType: input.shiftType,
+        comment,
       },
       lessonRange: {
         timetableSetId: lessonRange.timetableSetId,
@@ -278,6 +296,7 @@ export async function buildShiftData(
       endTime,
       breakMinutes: input.breakMinutes,
       shiftType: input.shiftType,
+      comment,
     },
     lessonRange: null,
   };

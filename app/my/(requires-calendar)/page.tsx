@@ -132,6 +132,7 @@ async function getMonthShiftsWithEstimate(
       endTime: shift.endTime.toISOString(),
       breakMinutes: shift.breakMinutes,
       shiftType: normalizedShiftType,
+      comment: shift.comment,
       googleSyncStatus:
         shift.googleSyncStatus === "SUCCESS" ||
         shift.googleSyncStatus === "FAILED"

@@ -2,17 +2,18 @@ import type { ShiftType, WorkplaceType } from "@/lib/enum-labels";
 
 type ShiftWorkplaceLabelInput = {
   workplaceName: string;
-  workplaceType: WorkplaceType;
-  shiftType: ShiftType;
+  workplaceType?: WorkplaceType;
+  shiftType?: ShiftType;
+  comment?: string | null;
 };
 
 export function formatShiftWorkplaceLabel({
   workplaceName,
-  workplaceType,
-  shiftType,
+  comment,
 }: ShiftWorkplaceLabelInput): string {
-  if (workplaceType === "CRAM_SCHOOL" && shiftType === "NORMAL") {
-    return `${workplaceName}（事務）`;
+  const trimmedComment = comment?.trim() ?? "";
+  if (trimmedComment.length > 0) {
+    return `${workplaceName} (${trimmedComment})`;
   }
 
   return workplaceName;

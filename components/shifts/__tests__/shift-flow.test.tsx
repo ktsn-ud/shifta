@@ -84,6 +84,15 @@ describe("shift flow integration", () => {
     fireEvent.change(screen.getByLabelText("終了時刻"), {
       target: { value: "17:00" },
     });
+    expect(
+      screen.getByText("イベント名プレビュー「勤務先A」"),
+    ).toBeInTheDocument();
+    fireEvent.change(screen.getByLabelText("コメント"), {
+      target: { value: "研修" },
+    });
+    expect(
+      screen.getByText("イベント名プレビュー「勤務先A (研修)」"),
+    ).toBeInTheDocument();
 
     await userEvent.click(screen.getByRole("button", { name: "登録" }));
 
@@ -106,6 +115,7 @@ describe("shift flow integration", () => {
       workplaceId: string;
       date: string;
       shiftType: string;
+      comment: string;
       startTime: string;
       endTime: string;
     };
@@ -114,6 +124,7 @@ describe("shift flow integration", () => {
       workplaceId: "workplace-1",
       date: "2026-03-18",
       shiftType: "NORMAL",
+      comment: "研修",
       startTime: "09:00",
       endTime: "17:00",
     });
@@ -265,6 +276,7 @@ describe("shift flow integration", () => {
               endTime: "1970-01-01T17:00:00.000Z",
               breakMinutes: 45,
               shiftType: "NORMAL",
+              comment: null,
               lessonRange: null,
             },
           });
@@ -359,6 +371,7 @@ describe("shift flow integration", () => {
               endTime: "1970-01-01T17:00:00.000Z",
               breakMinutes: 45,
               shiftType: "NORMAL",
+              comment: null,
               lessonRange: null,
             },
           });
@@ -429,6 +442,7 @@ describe("shift flow integration", () => {
               endTime: "1970-01-01T17:00:00.000Z",
               breakMinutes: 45,
               shiftType: "NORMAL",
+              comment: null,
               lessonRange: null,
             },
           });
@@ -499,6 +513,7 @@ describe("shift flow integration", () => {
               endTime: "1970-01-01T18:40:00.000Z",
               breakMinutes: 0,
               shiftType: "LESSON",
+              comment: null,
               lessonRange: {
                 timetableSetId: "set-normal",
                 startPeriod: 1,
@@ -636,6 +651,7 @@ describe("shift flow integration", () => {
               endTime: "1970-01-01T14:10:00.000Z",
               breakMinutes: 0,
               shiftType: "LESSON",
+              comment: null,
               lessonRange: {
                 timetableSetId: "set-intensive",
                 startPeriod: 2,
@@ -802,6 +818,7 @@ describe("shift flow integration", () => {
               endTime: "1970-01-01T16:20:00.000Z",
               breakMinutes: 0,
               shiftType: "LESSON",
+              comment: null,
               lessonRange: {
                 timetableSetId: "set-intensive",
                 startPeriod: 5,
@@ -961,6 +978,7 @@ describe("shift flow integration", () => {
             startTime: "1970-01-01T09:00:00.000Z",
             endTime: "1970-01-01T17:00:00.000Z",
             shiftType: "NORMAL",
+            comment: null,
             estimatedPay: 8000,
             googleSyncStatus: "SUCCESS",
             googleSyncError: null,
