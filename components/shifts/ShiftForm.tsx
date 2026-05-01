@@ -662,7 +662,35 @@ export function ShiftForm({
   }, [form.workplaceId, mode, workplaces]);
 
   useEffect(() => {
-    if (!selectedWorkplaceId || selectedWorkplaceType !== "CRAM_SCHOOL") {
+    if (!selectedWorkplaceId) {
+      setTimetableSets([]);
+
+      setForm((current) => {
+        if (
+          current.shiftType === "NORMAL" &&
+          !current.timetableSetId &&
+          !current.startPeriod &&
+          !current.endPeriod
+        ) {
+          return current;
+        }
+
+        return {
+          ...current,
+          shiftType: "NORMAL",
+          timetableSetId: "",
+          startPeriod: "",
+          endPeriod: "",
+        };
+      });
+      return;
+    }
+
+    if (!selectedWorkplace) {
+      return;
+    }
+
+    if (selectedWorkplace.type !== "CRAM_SCHOOL") {
       setTimetableSets([]);
 
       setForm((current) => {
@@ -739,7 +767,7 @@ export function ShiftForm({
     return () => {
       abortController.abort();
     };
-  }, [selectedWorkplaceId, selectedWorkplaceType]);
+  }, [selectedWorkplace, selectedWorkplaceId]);
 
   useEffect(() => {
     if (
@@ -770,6 +798,20 @@ export function ShiftForm({
     setForm((current) => {
       if (current.shiftType !== "LESSON") {
         return current;
+      }
+
+      if (timetableSets.length === 0) {
+        if (
+          !current.timetableSetId &&
+          !current.startPeriod &&
+          !current.endPeriod
+        ) {
+          return current;
+        }
+
+        if (isTimetableLoading || mode === "edit") {
+          return current;
+        }
       }
 
       const nextSetId =
@@ -824,7 +866,13 @@ export function ShiftForm({
         endPeriod: nextEnd,
       };
     });
-  }, [selectedWorkplaceType, timetableSets]);
+  }, [
+    form.shiftType,
+    isTimetableLoading,
+    mode,
+    selectedWorkplaceType,
+    timetableSets,
+  ]);
 
   function updateForm<K extends keyof FormState>(key: K, value: FormState[K]) {
     setForm((current) => ({

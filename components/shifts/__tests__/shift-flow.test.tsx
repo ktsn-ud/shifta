@@ -10,6 +10,7 @@ import { ShiftListModal } from "@/components/calendar/ShiftListModal";
 import { ShiftForm } from "@/components/shifts/ShiftForm";
 
 const pushMock = jest.fn();
+const WORKPLACE_LIST_URL = "/api/workplaces?includeCounts=false";
 
 jest.mock("next/navigation", () => ({
   useRouter: () => ({ push: pushMock }),
@@ -47,7 +48,7 @@ describe("shift flow integration", () => {
 
     fetchMock.mockImplementation(
       async (input: string, init?: { method?: string }) => {
-        if (input === "/api/workplaces") {
+        if (input === WORKPLACE_LIST_URL) {
           return jsonResponse({
             data: [
               {
@@ -135,7 +136,7 @@ describe("shift flow integration", () => {
 
     fetchMock.mockImplementation(
       async (input: string, init?: { method?: string }) => {
-        if (input === "/api/workplaces") {
+        if (input === WORKPLACE_LIST_URL) {
           return jsonResponse({
             data: [
               {
@@ -191,7 +192,7 @@ describe("shift flow integration", () => {
 
     fetchMock.mockImplementation(
       async (input: string, init?: { method?: string }) => {
-        if (input === "/api/workplaces") {
+        if (input === WORKPLACE_LIST_URL) {
           return jsonResponse({
             data: [
               {
@@ -253,7 +254,7 @@ describe("shift flow integration", () => {
 
     fetchMock.mockImplementation(
       async (input: string, init?: { method?: string }) => {
-        if (input === "/api/workplaces") {
+        if (input === WORKPLACE_LIST_URL) {
           return jsonResponse({
             data: [
               {
@@ -348,7 +349,7 @@ describe("shift flow integration", () => {
 
     fetchMock.mockImplementation(
       async (input: string, init?: { method?: string }) => {
-        if (input === "/api/workplaces") {
+        if (input === WORKPLACE_LIST_URL) {
           return jsonResponse({
             data: [
               {
@@ -419,7 +420,7 @@ describe("shift flow integration", () => {
 
     fetchMock.mockImplementation(
       async (input: string, init?: { method?: string }) => {
-        if (input === "/api/workplaces") {
+        if (input === WORKPLACE_LIST_URL) {
           return jsonResponse({
             data: [
               {
@@ -499,7 +500,7 @@ describe("shift flow integration", () => {
 
     fetchMock.mockImplementation(
       async (input: string, init?: { method?: string }) => {
-        if (input === "/api/workplaces") {
+        if (input === WORKPLACE_LIST_URL) {
           return workplacesDeferred.promise;
         }
 
@@ -637,7 +638,7 @@ describe("shift flow integration", () => {
 
     fetchMock.mockImplementation(
       async (input: string, init?: { method?: string }) => {
-        if (input === "/api/workplaces") {
+        if (input === WORKPLACE_LIST_URL) {
           return workplacesDeferred.promise;
         }
 
@@ -804,7 +805,7 @@ describe("shift flow integration", () => {
 
     fetchMock.mockImplementation(
       async (input: string, init?: { method?: string }) => {
-        if (input === "/api/workplaces") {
+        if (input === WORKPLACE_LIST_URL) {
           return workplacesDeferred.promise;
         }
 

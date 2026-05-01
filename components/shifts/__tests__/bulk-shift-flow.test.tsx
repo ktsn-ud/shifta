@@ -11,6 +11,7 @@ import { BulkShiftForm } from "@/components/shifts/BulkShiftForm";
 const pushMock = jest.fn();
 const refreshMock = jest.fn();
 const BULK_CALENDAR_SELECTION_STORAGE_KEY = "shifta:bulk-calendar-selection";
+const WORKPLACE_LIST_URL = "/api/workplaces?includeCounts=false";
 
 jest.mock("next/navigation", () => ({
   useRouter: () => ({
@@ -82,7 +83,7 @@ describe("bulk shift flow integration", () => {
           });
         }
 
-        if (input === "/api/workplaces") {
+        if (input === WORKPLACE_LIST_URL) {
           return jsonResponse({
             data: [
               {
@@ -242,7 +243,7 @@ describe("bulk shift flow integration", () => {
           });
         }
 
-        if (input === "/api/workplaces") {
+        if (input === WORKPLACE_LIST_URL) {
           return jsonResponse({
             data: [
               {
@@ -336,7 +337,7 @@ describe("bulk shift flow integration", () => {
         });
       }
 
-      if (input === "/api/workplaces") {
+      if (input === WORKPLACE_LIST_URL) {
         return jsonResponse({
           data: [
             {
@@ -396,7 +397,7 @@ describe("bulk shift flow integration", () => {
         });
       }
 
-      if (input === "/api/workplaces") {
+      if (input === WORKPLACE_LIST_URL) {
         return jsonResponse({
           data: [
             {
@@ -474,7 +475,7 @@ describe("bulk shift flow integration", () => {
         });
       }
 
-      if (input === "/api/workplaces") {
+      if (input === WORKPLACE_LIST_URL) {
         return jsonResponse({
           data: [
             {
