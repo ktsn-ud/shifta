@@ -1,4 +1,7 @@
-import { requiresCalendarSetupBySyncErrorCode } from "./syncErrors";
+import {
+  requiresCalendarSetupBySyncErrorCode,
+  requiresSignOutBySyncErrorCode,
+} from "./syncErrors";
 import {
   buildActionableErrorMessage,
   classifyApiErrorKind,
@@ -9,6 +12,7 @@ export type ParsedGoogleSyncFailure = {
   message: string;
   errorCode: string | null;
   requiresCalendarSetup: boolean;
+  requiresSignOut: boolean;
 };
 
 function toRecord(value: unknown): Record<string, unknown> | null {
@@ -31,6 +35,7 @@ function buildSyncFailure(
   message: string,
   errorCode: string | null,
   requiresCalendarSetup: boolean,
+  requiresSignOut: boolean,
 ): ParsedGoogleSyncFailure {
   return {
     message,
@@ -38,6 +43,8 @@ function buildSyncFailure(
     requiresCalendarSetup:
       requiresCalendarSetup ||
       requiresCalendarSetupBySyncErrorCode(errorCode ?? null),
+    requiresSignOut:
+      requiresSignOut || requiresSignOutBySyncErrorCode(errorCode ?? null),
   };
 }
 
@@ -54,14 +61,21 @@ export function parseGoogleSyncFailureFromPayload(
 
   const errorCode = getString(sync.errorCode);
   const requiresCalendarSetup = getBoolean(sync.requiresCalendarSetup);
+  const requiresSignOut = getBoolean(sync.requiresSignOut);
   const kind = classifyApiErrorKind({
     status: 502,
     code: errorCode,
     requiresCalendarSetup,
+    requiresSignOut,
   });
   const message = buildActionableErrorMessage(fallbackMessage, kind);
 
-  return buildSyncFailure(message, errorCode, requiresCalendarSetup);
+  return buildSyncFailure(
+    message,
+    errorCode,
+    requiresCalendarSetup,
+    requiresSignOut,
+  );
 }
 
 export async function readGoogleSyncFailureFromErrorResponse(
@@ -72,5 +86,10 @@ export async function readGoogleSyncFailureFromErrorResponse(
   const kind = classifyApiErrorKind(meta);
   const message = buildActionableErrorMessage(fallbackMessage, kind);
 
-  return buildSyncFailure(message, meta.code, meta.requiresCalendarSetup);
+  return buildSyncFailure(
+    message,
+    meta.code,
+    meta.requiresCalendarSetup,
+    meta.requiresSignOut,
+  );
 }

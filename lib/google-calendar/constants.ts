@@ -23,3 +23,5 @@ export const SHIFTA_CALENDAR_TIMEZONE = "Asia/Tokyo";
 
 export const CALENDAR_SETUP_PATH = "/my/calendar-setup";
 export const CALENDAR_SETUP_SKIP_COOKIE = "shifta_calendar_setup_skipped";
+export const GOOGLE_TOKEN_EXPIRED_REASON = "google-token-expired";
+export const GOOGLE_TOKEN_EXPIRED_LOGIN_PATH = `/login?reason=${GOOGLE_TOKEN_EXPIRED_REASON}`;

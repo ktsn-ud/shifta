@@ -97,6 +97,26 @@ function isTokenExpired(expiresAt: number | null): boolean {
   return expiresAt - nowSeconds <= 60;
 }
 
+type GoogleApiErrorCandidate = Error & {
+  code?: number | string;
+  status?: number;
+  response?: {
+    status?: number;
+  };
+};
+
+function extractGoogleErrorStatus(error: unknown): number | null {
+  if (!(error instanceof Error)) {
+    return null;
+  }
+
+  const candidate = error as GoogleApiErrorCandidate;
+  const status =
+    candidate.status ?? candidate.response?.status ?? Number(candidate.code);
+
+  return Number.isFinite(status) ? status : null;
+}
+
 async function migrateLegacyPlainTextTokens(
   userId: string,
   accessToken: string | null,
@@ -200,8 +220,27 @@ async function refreshGoogleTokenIfNeeded(
     expiry_date: account.expires_at ? account.expires_at * 1000 : undefined,
   });
 
-  const refreshed = await oauth2Client.refreshAccessToken();
-  const credentials = refreshed.credentials;
+  try {
+    await oauth2Client.refreshAccessToken();
+  } catch (error) {
+    const status = extractGoogleErrorStatus(error);
+    const message = error instanceof Error ? error.message.toLowerCase() : "";
+    const isRevokedOrInvalidToken =
+      status === 400 ||
+      status === 401 ||
+      message.includes("invalid_grant") ||
+      message.includes("invalid_token");
+
+    if (isRevokedOrInvalidToken) {
+      throw new GoogleCalendarAuthError(
+        "TOKEN_EXPIRED",
+        "Googleトークンの更新に失敗しました。再ログインしてください",
+      );
+    }
+
+    throw error;
+  }
+  const credentials = oauth2Client.credentials;
 
   const nextAccessToken = credentials.access_token ?? account.access_token;
   const nextRefreshToken = credentials.refresh_token ?? account.refresh_token;

@@ -42,9 +42,12 @@ import { CALENDAR_SETUP_PATH } from "@/lib/google-calendar/constants";
 import { clearShiftDerivedCaches } from "@/lib/client-cache/shift-derived-cache";
 import { messages, toErrorMessage } from "@/lib/messages";
 import { resolveUserFacingErrorFromResponse } from "@/lib/user-facing-error";
+import { useGoogleTokenExpiredSignOut } from "@/hooks/use-google-token-expired-signout";
 
 const LAST_WORKPLACE_ID_KEY = "shifta:last-workplace-id";
 const DATE_ONLY_REGEX = /^\d{4}-\d{2}-\d{2}$/;
+const GOOGLE_TOKEN_EXPIRED_DESCRIPTION =
+  "3秒後にログアウトします。再度Googleアカウントでログインしてください。";
 
 type ShiftType = "NORMAL" | "LESSON";
 type ShiftFormMode = "create" | "edit";
@@ -457,6 +460,8 @@ export function ShiftForm({
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [errors, setErrors] = useState<FormErrors>({});
   const [warningMessage, setWarningMessage] = useState<string | null>(null);
+  const { isSignOutScheduled, scheduleSignOut } =
+    useGoogleTokenExpiredSignOut();
 
   const returnPath = useMemo(() => {
     const basePath = returnTo === "list" ? "/my/shifts/list" : "/my";
@@ -1071,6 +1076,9 @@ export function ShiftForm({
 
   async function handleSubmit(event: React.FormEvent<HTMLFormElement>) {
     event.preventDefault();
+    if (isSignOutScheduled) {
+      return;
+    }
 
     setWarningMessage(null);
     setErrors((current) => {
@@ -1184,6 +1192,16 @@ export function ShiftForm({
           "シフトの保存に失敗しました",
         );
 
+        if (apiError.requiresSignOut) {
+          toast.error("Google 連携の有効期限が切れました", {
+            id: loadingToastId,
+            description: GOOGLE_TOKEN_EXPIRED_DESCRIPTION,
+            duration: 6000,
+          });
+          scheduleSignOut();
+          return;
+        }
+
         if (apiError.requiresCalendarSetup) {
           toast.error(messages.error.calendarSyncFailed, {
             id: loadingToastId,
@@ -1206,6 +1224,16 @@ export function ShiftForm({
       window.localStorage.setItem(LAST_WORKPLACE_ID_KEY, form.workplaceId);
 
       if (syncFailure) {
+        if (syncFailure.requiresSignOut) {
+          toast.error("Google 連携の有効期限が切れました", {
+            id: loadingToastId,
+            description: GOOGLE_TOKEN_EXPIRED_DESCRIPTION,
+            duration: 6000,
+          });
+          scheduleSignOut();
+          return;
+        }
+
         toast.error(messages.error.calendarSyncFailed, {
           id: loadingToastId,
           description: syncFailure.requiresCalendarSetup
@@ -1260,6 +1288,7 @@ export function ShiftForm({
   );
   const disabled =
     isSubmitting ||
+    isSignOutScheduled ||
     isWorkplaceLoading ||
     isShiftLoading ||
     workplaces.length === 0;

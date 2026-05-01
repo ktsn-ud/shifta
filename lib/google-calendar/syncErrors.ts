@@ -1,5 +1,6 @@
 export const GOOGLE_SYNC_ERROR_CODES = {
   CALENDAR_NOT_FOUND: "CALENDAR_NOT_FOUND",
+  TOKEN_EXPIRED: "TOKEN_EXPIRED",
 } as const;
 
 export type GoogleSyncErrorCode =
@@ -19,4 +20,10 @@ export function requiresCalendarSetupBySyncErrorCode(
   code: string | null | undefined,
 ): boolean {
   return code === GOOGLE_SYNC_ERROR_CODES.CALENDAR_NOT_FOUND;
+}
+
+export function requiresSignOutBySyncErrorCode(
+  code: string | null | undefined,
+): boolean {
+  return code === GOOGLE_SYNC_ERROR_CODES.TOKEN_EXPIRED;
 }

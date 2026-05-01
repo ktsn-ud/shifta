@@ -196,6 +196,7 @@ async function parseApiError(
   let fieldErrors: Record<string, string> = {};
   let code: string | null = null;
   let requiresCalendarSetup = false;
+  let requiresSignOut = false;
 
   try {
     const payload = (await response.json()) as {
@@ -233,6 +234,9 @@ async function parseApiError(
       if (detailsRecord.requiresCalendarSetup === true) {
         requiresCalendarSetup = true;
       }
+      if (detailsRecord.requiresSignOut === true) {
+        requiresSignOut = true;
+      }
     }
   } catch {
     fieldErrors = {};
@@ -242,6 +246,7 @@ async function parseApiError(
     status: response.status,
     code,
     requiresCalendarSetup,
+    requiresSignOut,
   });
 
   return {

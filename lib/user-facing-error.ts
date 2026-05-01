@@ -12,6 +12,7 @@ type ApiErrorMeta = {
   status: number;
   code: string | null;
   requiresCalendarSetup: boolean;
+  requiresSignOut: boolean;
 };
 
 type ApiErrorPayload = {
@@ -24,6 +25,7 @@ const AUTH_ERROR_CODES = new Set([
   "READ_SCOPE_MISSING",
   "GOOGLE_ACCOUNT_NOT_FOUND",
   "GOOGLE_ENV_MISSING",
+  "TOKEN_EXPIRED",
 ]);
 
 const CALENDAR_SETUP_ERROR_CODES = new Set(["CALENDAR_NOT_FOUND"]);
@@ -101,6 +103,10 @@ export function buildActionableErrorMessage(
 }
 
 export function classifyApiErrorKind(meta: ApiErrorMeta): UserFacingErrorKind {
+  if (meta.requiresSignOut) {
+    return "authentication";
+  }
+
   if (meta.requiresCalendarSetup) {
     return "calendarSetup";
   }
@@ -121,6 +127,7 @@ export class UserFacingError extends Error {
   readonly status: number | null;
   readonly code: string | null;
   readonly requiresCalendarSetup: boolean;
+  readonly requiresSignOut: boolean;
 
   constructor(
     message: string,
@@ -129,6 +136,7 @@ export class UserFacingError extends Error {
       status?: number | null;
       code?: string | null;
       requiresCalendarSetup?: boolean;
+      requiresSignOut?: boolean;
     },
   ) {
     super(message);
@@ -137,6 +145,7 @@ export class UserFacingError extends Error {
     this.status = options?.status ?? null;
     this.code = options?.code ?? null;
     this.requiresCalendarSetup = options?.requiresCalendarSetup ?? false;
+    this.requiresSignOut = options?.requiresSignOut ?? false;
   }
 }
 
@@ -148,17 +157,20 @@ export async function parseApiErrorMeta(
     const details = getResponseDetails(payload);
     const code = normalizeErrorCode(details?.code);
     const requiresCalendarSetup = details?.requiresCalendarSetup === true;
+    const requiresSignOut = details?.requiresSignOut === true;
 
     return {
       status: response.status,
       code,
       requiresCalendarSetup,
+      requiresSignOut,
     };
   } catch {
     return {
       status: response.status,
       code: null,
       requiresCalendarSetup: false,
+      requiresSignOut: false,
     };
   }
 }
@@ -172,6 +184,7 @@ export async function resolveUserFacingErrorFromResponse(
   code: string | null;
   status: number;
   requiresCalendarSetup: boolean;
+  requiresSignOut: boolean;
 }> {
   const meta = await parseApiErrorMeta(response);
   const kind = classifyApiErrorKind(meta);
@@ -183,6 +196,7 @@ export async function resolveUserFacingErrorFromResponse(
     code: meta.code,
     status: meta.status,
     requiresCalendarSetup: meta.requiresCalendarSetup,
+    requiresSignOut: meta.requiresSignOut,
   };
 }
 
@@ -197,7 +211,12 @@ function classifyUnknownErrorKind(error: unknown): UserFacingErrorKind {
       status?: unknown;
       code?: unknown;
       requiresCalendarSetup?: unknown;
+      requiresSignOut?: unknown;
     };
+
+    if (candidate.requiresSignOut === true) {
+      return "authentication";
+    }
 
     if (candidate.requiresCalendarSetup === true) {
       return "calendarSetup";

@@ -332,6 +332,7 @@ export async function POST(request: Request) {
           errorMessage: null,
           errorCode: null,
           requiresCalendarSetup: false,
+          requiresSignOut: false,
           pending: createdShiftIds.length > 0,
         },
       },
