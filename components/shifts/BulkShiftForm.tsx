@@ -49,6 +49,7 @@ import { clearShiftDerivedCaches } from "@/lib/client-cache/shift-derived-cache"
 import { messages, toErrorMessage } from "@/lib/messages";
 import { resolveUserFacingErrorFromResponse } from "@/lib/user-facing-error";
 import { cn } from "@/lib/utils";
+import { useGoogleTokenExpiredSignOut } from "@/hooks/use-google-token-expired-signout";
 
 const LAST_WORKPLACE_ID_KEY = "shifta:last-workplace-id";
 const BULK_CALENDAR_SELECTION_STORAGE_KEY = "shifta:bulk-calendar-selection";
@@ -58,6 +59,8 @@ const DAY_CELL_COUNT = 42;
 const MAX_BREAK_MINUTES = 240;
 const GOOGLE_EVENT_LIST_LIMIT = 5;
 const GOOGLE_EVENT_LIST_VISIBLE_WHEN_OVERFLOW = 3;
+const GOOGLE_TOKEN_EXPIRED_DESCRIPTION =
+  "3秒後にログアウトします。再度Googleアカウントでログインしてください。";
 
 type ShiftType = "NORMAL" | "LESSON";
 
@@ -617,6 +620,8 @@ export function BulkShiftForm() {
   const [isWorkplaceLoading, setIsWorkplaceLoading] = useState(true);
   const [isTimetableLoading, setIsTimetableLoading] = useState(false);
   const [isSubmitting, setIsSubmitting] = useState(false);
+  const { isSignOutScheduled, scheduleSignOut } =
+    useGoogleTokenExpiredSignOut();
 
   const todayKey = toDateKey(new Date());
 
@@ -1355,6 +1360,10 @@ export function BulkShiftForm() {
   };
 
   const handleSubmit = async () => {
+    if (isSignOutScheduled) {
+      return;
+    }
+
     const validated = validateAndBuildPayload();
 
     if (!validated.success) {
@@ -1394,6 +1403,16 @@ export function BulkShiftForm() {
           "シフト一括登録に失敗しました。",
         );
 
+        if (apiError.requiresSignOut) {
+          toast.error("Google 連携の有効期限が切れました", {
+            id: loadingToastId,
+            description: GOOGLE_TOKEN_EXPIRED_DESCRIPTION,
+            duration: 6000,
+          });
+          scheduleSignOut();
+          return;
+        }
+
         if (apiError.requiresCalendarSetup) {
           toast.error(messages.error.calendarSyncFailed, {
             id: loadingToastId,
@@ -1425,6 +1444,16 @@ export function BulkShiftForm() {
       );
 
       if (syncFailure) {
+        if (syncFailure.requiresSignOut) {
+          toast.error("Google 連携の有効期限が切れました", {
+            id: loadingToastId,
+            description: GOOGLE_TOKEN_EXPIRED_DESCRIPTION,
+            duration: 6000,
+          });
+          scheduleSignOut();
+          return;
+        }
+
         const failedCount = payload.summary?.failed ?? 0;
         const failedCountLabel =
           failedCount > 0
@@ -2479,11 +2508,14 @@ export function BulkShiftForm() {
             onClick={() => {
               router.push("/my");
             }}
-            disabled={isSubmitting}
+            disabled={isSubmitting || isSignOutScheduled}
           >
             キャンセル
           </Button>
-          <Button type="submit" disabled={isSubmitting || isWorkplaceLoading}>
+          <Button
+            type="submit"
+            disabled={isSubmitting || isSignOutScheduled || isWorkplaceLoading}
+          >
             {isSubmitting ? "登録中..." : "確定"}
           </Button>
         </div>

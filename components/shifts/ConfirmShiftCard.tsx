@@ -13,6 +13,7 @@ import {
 import { CALENDAR_SETUP_PATH } from "@/lib/google-calendar/constants";
 import { messages, toErrorMessage } from "@/lib/messages";
 import { formatShiftWorkplaceLabel } from "@/lib/shifts/format";
+import { useGoogleTokenExpiredSignOut } from "@/hooks/use-google-token-expired-signout";
 import type { UnconfirmedShiftItem } from "@/components/shifts/shift-confirmation-types";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
@@ -28,6 +29,9 @@ type ValidationResult = {
   endTime: string;
   breakMinutes: number;
 };
+
+const GOOGLE_TOKEN_EXPIRED_DESCRIPTION =
+  "3秒後にログアウトします。再度Googleアカウントでログインしてください。";
 
 function validateShiftInput(
   startTime: string,
@@ -92,6 +96,8 @@ export function ConfirmShiftCard({
   const [breakMinutes, setBreakMinutes] = useState(String(shift.breakMinutes));
   const [isConfirming, setIsConfirming] = useState(false);
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
+  const { isSignOutScheduled, scheduleSignOut } =
+    useGoogleTokenExpiredSignOut();
 
   useEffect(() => {
     setStartTime(shift.startTime);
@@ -100,13 +106,17 @@ export function ConfirmShiftCard({
     setErrorMessage(null);
   }, [shift.breakMinutes, shift.endTime, shift.id, shift.startTime]);
 
-  const isMutating = isConfirming;
+  const isMutating = isConfirming || isSignOutScheduled;
   const workplaceLabel = formatShiftWorkplaceLabel({
     workplaceName: shift.workplaceName,
     comment: shift.comment,
   });
 
   const handleConfirm = async () => {
+    if (isMutating) {
+      return;
+    }
+
     setErrorMessage(null);
     const validation = validateShiftInput(startTime, endTime, breakMinutes);
     if (!validation.success) {
@@ -129,6 +139,15 @@ export function ConfirmShiftCard({
           response,
           messages.error.shiftConfirmFailed,
         );
+
+        if (apiError.requiresSignOut) {
+          toast.error("Google 連携の有効期限が切れました", {
+            description: GOOGLE_TOKEN_EXPIRED_DESCRIPTION,
+            duration: 6000,
+          });
+          scheduleSignOut();
+          return;
+        }
         throw new Error(apiError.message);
       }
 
@@ -142,6 +161,15 @@ export function ConfirmShiftCard({
       await onActionCompleted?.();
 
       if (syncFailure) {
+        if (syncFailure.requiresSignOut) {
+          toast.error("Google 連携の有効期限が切れました", {
+            description: GOOGLE_TOKEN_EXPIRED_DESCRIPTION,
+            duration: 6000,
+          });
+          scheduleSignOut();
+          return;
+        }
+
         toast.error(messages.error.calendarSyncFailed, {
           description: syncFailure.requiresCalendarSetup
             ? syncFailure.message

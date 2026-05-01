@@ -1,7 +1,11 @@
 import { signIn } from "@/lib/auth";
 import { Button } from "@/components/ui/button";
 
-export function LogIn() {
+type LogInProps = {
+  label?: string;
+};
+
+export function LogIn({ label = "Google でログイン" }: LogInProps) {
   return (
     <form
       className="w-full"
@@ -42,7 +46,7 @@ export function LogIn() {
           ></path>
           <path fill="none" d="M0 0h48v48H0z"></path>
         </svg>
-        Google でログイン
+        {label}
       </Button>
     </form>
   );
