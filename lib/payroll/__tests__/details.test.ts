@@ -27,6 +27,7 @@ function createShift(
     breakMinutes: 60,
     isConfirmed: false,
     shiftType: "NORMAL",
+    comment: null,
     googleEventId: null,
     googleSyncStatus: "PENDING",
     googleSyncError: null,
