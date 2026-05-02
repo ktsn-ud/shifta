@@ -198,43 +198,44 @@ export async function getPayrollTotalWageForUserByMonth(
     throw new Error("PAYROLL_PERIOD_NOT_FOUND");
   }
 
-  const shifts = await prisma.shift.findMany({
-    where: {
-      workplaceId: {
-        in: workplaceIds,
-      },
-      date: {
-        gte: fetchStartDate,
-        lte: fetchEndDate,
-      },
-    },
-    include: {
-      lessonRange: true,
-    },
-    orderBy: [{ date: "asc" }, { startTime: "asc" }],
-  });
-
-  const payrollRules = await prisma.payrollRule.findMany({
-    where: {
-      workplaceId: {
-        in: workplaceIds,
-      },
-      startDate: {
-        lte: fetchEndDate,
-      },
-      OR: [
-        {
-          endDate: null,
+  const [shifts, payrollRules] = await Promise.all([
+    prisma.shift.findMany({
+      where: {
+        workplaceId: {
+          in: workplaceIds,
         },
-        {
-          endDate: {
-            gt: fetchStartDate,
+        date: {
+          gte: fetchStartDate,
+          lte: fetchEndDate,
+        },
+      },
+      include: {
+        lessonRange: true,
+      },
+      orderBy: [{ date: "asc" }, { startTime: "asc" }],
+    }),
+    prisma.payrollRule.findMany({
+      where: {
+        workplaceId: {
+          in: workplaceIds,
+        },
+        startDate: {
+          lte: fetchEndDate,
+        },
+        OR: [
+          {
+            endDate: null,
           },
-        },
-      ],
-    },
-    orderBy: [{ workplaceId: "asc" }, { startDate: "asc" }],
-  });
+          {
+            endDate: {
+              gt: fetchStartDate,
+            },
+          },
+        ],
+      },
+      orderBy: [{ workplaceId: "asc" }, { startDate: "asc" }],
+    }),
+  ]);
 
   const rulesByWorkplace = groupPayrollRulesByWorkplace(payrollRules);
   const shiftsByWorkplace = groupShiftsByWorkplace(shifts);
@@ -328,43 +329,44 @@ export async function getPayrollSummaryForUser(
     throw new Error("PAYROLL_PERIOD_NOT_FOUND");
   }
 
-  const shifts = await prisma.shift.findMany({
-    where: {
-      workplaceId: {
-        in: workplaceIds,
-      },
-      date: {
-        gte: fetchStartDate,
-        lte: fetchEndDate,
-      },
-    },
-    include: {
-      lessonRange: true,
-    },
-    orderBy: [{ date: "asc" }, { startTime: "asc" }],
-  });
-
-  const payrollRules = await prisma.payrollRule.findMany({
-    where: {
-      workplaceId: {
-        in: workplaceIds,
-      },
-      startDate: {
-        lte: fetchEndDate,
-      },
-      OR: [
-        {
-          endDate: null,
+  const [shifts, payrollRules] = await Promise.all([
+    prisma.shift.findMany({
+      where: {
+        workplaceId: {
+          in: workplaceIds,
         },
-        {
-          endDate: {
-            gt: fetchStartDate,
+        date: {
+          gte: fetchStartDate,
+          lte: fetchEndDate,
+        },
+      },
+      include: {
+        lessonRange: true,
+      },
+      orderBy: [{ date: "asc" }, { startTime: "asc" }],
+    }),
+    prisma.payrollRule.findMany({
+      where: {
+        workplaceId: {
+          in: workplaceIds,
+        },
+        startDate: {
+          lte: fetchEndDate,
+        },
+        OR: [
+          {
+            endDate: null,
           },
-        },
-      ],
-    },
-    orderBy: [{ workplaceId: "asc" }, { startDate: "asc" }],
-  });
+          {
+            endDate: {
+              gt: fetchStartDate,
+            },
+          },
+        ],
+      },
+      orderBy: [{ workplaceId: "asc" }, { startDate: "asc" }],
+    }),
+  ]);
 
   const rulesByWorkplace = groupPayrollRulesByWorkplace(payrollRules);
   const shiftsByWorkplace = groupShiftsByWorkplace(shifts);
