@@ -1,28 +1,28 @@
-"use client";
+import { EditShiftFormPageClient } from "@/components/shifts/shift-form-page-client";
+import {
+  normalizeShiftPageSearchParams,
+  type ShiftPageSearchParams,
+} from "@/lib/shifts/page-search-params";
 
-import dynamic from "next/dynamic";
-import { useParams, useSearchParams } from "next/navigation";
-import { EditShiftFormLoadingSkeleton } from "@/components/shifts/ShiftFormLoadingSkeleton";
+type EditShiftPageProps = {
+  params: Promise<{ id: string }>;
+  searchParams: Promise<ShiftPageSearchParams>;
+};
 
-const ShiftForm = dynamic(
-  () => import("@/components/shifts/ShiftForm").then((mod) => mod.ShiftForm),
-  {
-    loading: () => <EditShiftFormLoadingSkeleton />,
-  },
-);
-
-export default function EditShiftPage() {
-  const params = useParams<{ id: string }>();
-  const searchParams = useSearchParams();
-  const returnTo =
-    searchParams.get("returnTo") === "list" ? "list" : "dashboard";
+export default async function EditShiftPage({
+  params,
+  searchParams,
+}: EditShiftPageProps) {
+  const [{ id }, navigation] = await Promise.all([
+    params,
+    searchParams.then(normalizeShiftPageSearchParams),
+  ]);
 
   return (
-    <ShiftForm
-      mode="edit"
-      shiftId={params.id}
-      returnMonth={searchParams.get("month") ?? undefined}
-      returnTo={returnTo}
+    <EditShiftFormPageClient
+      shiftId={id}
+      returnMonth={navigation.returnMonth}
+      returnTo={navigation.returnTo}
     />
   );
 }
