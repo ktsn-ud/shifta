@@ -131,6 +131,72 @@ describe("shift flow integration", () => {
     });
   });
 
+  it("shows overnight confirmation before creating NORMAL shift", async () => {
+    const user = userEvent.setup();
+    const fetchMock = globalThis.fetch as jest.Mock;
+
+    fetchMock.mockImplementation(
+      async (input: string, init?: { method?: string }) => {
+        if (input === WORKPLACE_LIST_URL) {
+          return jsonResponse({
+            data: [
+              {
+                id: "workplace-1",
+                name: "勤務先A",
+                color: "#3366FF",
+                type: "GENERAL",
+              },
+            ],
+          });
+        }
+
+        if (input.startsWith("/api/shifts?")) {
+          return jsonResponse({ data: [] });
+        }
+
+        if (input === "/api/shifts" && init?.method === "POST") {
+          return jsonResponse({ data: { id: "shift-overnight-1" } }, 201);
+        }
+
+        throw new Error(`Unexpected fetch: ${input}`);
+      },
+    );
+
+    render(<ShiftForm mode="create" initialDate="2026-03-18" />);
+
+    await waitFor(() => {
+      expect(screen.getByRole("button", { name: "登録" })).toBeEnabled();
+    });
+
+    fireEvent.change(screen.getByLabelText("開始時刻"), {
+      target: { value: "18:00" },
+    });
+    fireEvent.change(screen.getByLabelText("終了時刻"), {
+      target: { value: "01:00" },
+    });
+
+    await user.click(screen.getByRole("button", { name: "登録" }));
+
+    expect(
+      screen.getByRole("heading", { name: "このシフトは日付をまたぎます" }),
+    ).toBeInTheDocument();
+    expect(
+      fetchMock.mock.calls.some(
+        ([url, options]) =>
+          url === "/api/shifts" &&
+          (options as { method?: string } | undefined)?.method === "POST",
+      ),
+    ).toBe(false);
+
+    await user.click(
+      screen.getByRole("button", { name: "翌日終了として保存" }),
+    );
+
+    await waitFor(() => {
+      expect(pushMock).toHaveBeenCalledWith("/my");
+    });
+  });
+
   it("returns to requested dashboard month after creating a shift", async () => {
     const fetchMock = globalThis.fetch as jest.Mock;
 
@@ -185,6 +251,48 @@ describe("shift flow integration", () => {
     await waitFor(() => {
       expect(pushMock).toHaveBeenCalledWith("/my?month=2026-01");
     });
+  });
+
+  it("shows validation error when start and end time are the same in create mode", async () => {
+    const user = userEvent.setup();
+    const fetchMock = globalThis.fetch as jest.Mock;
+
+    fetchMock.mockImplementation(async (input: string) => {
+      if (input === WORKPLACE_LIST_URL) {
+        return jsonResponse({
+          data: [
+            {
+              id: "workplace-1",
+              name: "勤務先A",
+              color: "#3366FF",
+              type: "GENERAL",
+            },
+          ],
+        });
+      }
+
+      throw new Error(`Unexpected fetch: ${input}`);
+    });
+
+    render(<ShiftForm mode="create" initialDate="2026-03-18" />);
+
+    await waitFor(() => {
+      expect(screen.getByRole("button", { name: "登録" })).toBeEnabled();
+    });
+
+    fireEvent.change(screen.getByLabelText("開始時刻"), {
+      target: { value: "18:00" },
+    });
+    fireEvent.change(screen.getByLabelText("終了時刻"), {
+      target: { value: "18:00" },
+    });
+
+    await user.click(screen.getByRole("button", { name: "登録" }));
+
+    expect(
+      screen.getByText("ERR_002: 開始時刻と終了時刻は同じ時刻にできません"),
+    ).toBeInTheDocument();
+    expect(fetchMock).toHaveBeenCalledTimes(1);
   });
 
   it("redirects to calendar setup when sync detects missing calendar", async () => {
@@ -342,6 +450,172 @@ describe("shift flow integration", () => {
       endTime: "18:00",
       breakMinutes: 45,
     });
+  });
+
+  it("shows overnight confirmation when editing from same-day to overnight", async () => {
+    const user = userEvent.setup();
+    const fetchMock = globalThis.fetch as jest.Mock;
+
+    fetchMock.mockImplementation(
+      async (input: string, init?: { method?: string }) => {
+        if (input === WORKPLACE_LIST_URL) {
+          return jsonResponse({
+            data: [
+              {
+                id: "workplace-1",
+                name: "勤務先A",
+                color: "#3366FF",
+                type: "GENERAL",
+              },
+            ],
+          });
+        }
+
+        if (input === "/api/shifts/shift-1" && (!init || !init.method)) {
+          return jsonResponse({
+            data: {
+              id: "shift-1",
+              workplaceId: "workplace-1",
+              date: "2026-03-18T00:00:00.000Z",
+              startTime: "1970-01-01T09:00:00.000Z",
+              endTime: "1970-01-01T17:00:00.000Z",
+              breakMinutes: 45,
+              shiftType: "NORMAL",
+              comment: null,
+              lessonRange: null,
+            },
+          });
+        }
+
+        if (input.startsWith("/api/shifts?")) {
+          return jsonResponse({
+            data: [
+              {
+                id: "shift-1",
+                startTime: "1970-01-01T09:00:00.000Z",
+                endTime: "1970-01-01T17:00:00.000Z",
+              },
+            ],
+          });
+        }
+
+        if (input === "/api/shifts/shift-1" && init?.method === "PUT") {
+          return jsonResponse({ data: { id: "shift-1" } });
+        }
+
+        throw new Error(`Unexpected fetch: ${input}`);
+      },
+    );
+
+    render(<ShiftForm mode="edit" shiftId="shift-1" />);
+
+    await waitFor(() => {
+      expect(screen.getByLabelText("開始時刻")).toHaveValue("09:00");
+    });
+
+    fireEvent.change(screen.getByLabelText("開始時刻"), {
+      target: { value: "18:00" },
+    });
+    fireEvent.change(screen.getByLabelText("終了時刻"), {
+      target: { value: "01:00" },
+    });
+
+    await user.click(screen.getByRole("button", { name: "更新" }));
+
+    expect(
+      screen.getByRole("heading", { name: "このシフトは日付をまたぎます" }),
+    ).toBeInTheDocument();
+    expect(
+      fetchMock.mock.calls.some(
+        ([url, options]) =>
+          url === "/api/shifts/shift-1" &&
+          (options as { method?: string } | undefined)?.method === "PUT",
+      ),
+    ).toBe(false);
+
+    await user.click(
+      screen.getByRole("button", { name: "翌日終了として保存" }),
+    );
+
+    await waitFor(() => {
+      expect(pushMock).toHaveBeenCalledWith("/my");
+    });
+  });
+
+  it("does not show overnight confirmation when editing comment only on existing overnight shift", async () => {
+    const user = userEvent.setup();
+    const fetchMock = globalThis.fetch as jest.Mock;
+
+    fetchMock.mockImplementation(
+      async (input: string, init?: { method?: string }) => {
+        if (input === WORKPLACE_LIST_URL) {
+          return jsonResponse({
+            data: [
+              {
+                id: "workplace-1",
+                name: "勤務先A",
+                color: "#3366FF",
+                type: "GENERAL",
+              },
+            ],
+          });
+        }
+
+        if (input === "/api/shifts/shift-1" && (!init || !init.method)) {
+          return jsonResponse({
+            data: {
+              id: "shift-1",
+              workplaceId: "workplace-1",
+              date: "2026-03-18T00:00:00.000Z",
+              startTime: "1970-01-01T18:00:00.000Z",
+              endTime: "1970-01-01T01:00:00.000Z",
+              breakMinutes: 45,
+              shiftType: "NORMAL",
+              comment: null,
+              lessonRange: null,
+            },
+          });
+        }
+
+        if (input.startsWith("/api/shifts?")) {
+          return jsonResponse({
+            data: [
+              {
+                id: "shift-1",
+                startTime: "1970-01-01T18:00:00.000Z",
+                endTime: "1970-01-01T01:00:00.000Z",
+              },
+            ],
+          });
+        }
+
+        if (input === "/api/shifts/shift-1" && init?.method === "PUT") {
+          return jsonResponse({ data: { id: "shift-1" } });
+        }
+
+        throw new Error(`Unexpected fetch: ${input}`);
+      },
+    );
+
+    render(<ShiftForm mode="edit" shiftId="shift-1" />);
+
+    await waitFor(() => {
+      expect(screen.getByLabelText("開始時刻")).toHaveValue("18:00");
+    });
+
+    fireEvent.change(screen.getByLabelText("コメント"), {
+      target: { value: "コメント更新" },
+    });
+
+    await user.click(screen.getByRole("button", { name: "更新" }));
+
+    await waitFor(() => {
+      expect(pushMock).toHaveBeenCalledWith("/my");
+    });
+
+    expect(
+      screen.queryByRole("heading", { name: "このシフトは日付をまたぎます" }),
+    ).not.toBeInTheDocument();
   });
 
   it("returns to requested dashboard month after editing a shift", async () => {

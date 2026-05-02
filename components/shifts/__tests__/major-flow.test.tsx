@@ -252,4 +252,37 @@ describe("major flow integration", () => {
       expect(onRetrySync).toHaveBeenCalledWith("shift-1");
     });
   });
+
+  it("shows overnight time with 翌 prefix in shift list modal", () => {
+    render(
+      <ShiftListModal
+        open
+        onOpenChange={jest.fn()}
+        targetDate={new Date("2026-03-18T00:00:00.000Z")}
+        shifts={[
+          {
+            id: "shift-1",
+            startTime: "1970-01-01T22:00:00.000Z",
+            endTime: "1970-01-01T05:00:00.000Z",
+            shiftType: "NORMAL",
+            comment: null,
+            estimatedPay: 8000,
+            googleSyncStatus: "SUCCESS",
+            googleSyncError: null,
+            workplace: {
+              id: "workplace-1",
+              name: "勤務先A",
+              color: "#3366FF",
+            },
+          },
+        ]}
+        onCreateShift={jest.fn()}
+        onEditShift={jest.fn()}
+        onDeleteShift={jest.fn()}
+        onRetrySync={jest.fn()}
+      />,
+    );
+
+    expect(screen.getByText("22:00 - 翌05:00")).toBeInTheDocument();
+  });
 });
