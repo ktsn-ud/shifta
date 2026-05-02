@@ -40,6 +40,7 @@ import {
 } from "@/lib/calendar/date";
 import { clearShiftDerivedCaches } from "@/lib/client-cache/shift-derived-cache";
 import { messages, toErrorMessage } from "@/lib/messages";
+import { formatShiftTimeRange } from "@/lib/shifts/time";
 import { formatShiftWorkplaceLabel } from "@/lib/shifts/format";
 import { resolveUserFacingErrorFromResponse } from "@/lib/user-facing-error";
 import { type MonthShift, useMonthShifts } from "@/hooks/use-month-shifts";
@@ -74,7 +75,10 @@ function formatTime(value: string): string {
 }
 
 function formatTimeRange(shift: MonthShift): string {
-  return `${formatTime(shift.startTime)} - ${formatTime(shift.endTime)}`;
+  return formatShiftTimeRange(
+    formatTime(shift.startTime),
+    formatTime(shift.endTime),
+  );
 }
 
 function formatCurrency(value: number | null): string {

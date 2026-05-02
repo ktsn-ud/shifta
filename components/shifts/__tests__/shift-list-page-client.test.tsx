@@ -284,4 +284,32 @@ describe("ShiftListPageClient", () => {
       );
     });
   });
+
+  it("renders overnight shift time range with 翌 prefix", async () => {
+    const fetchMock = globalThis.fetch as jest.Mock;
+
+    fetchMock.mockImplementation(async (input: string) => {
+      if (input.startsWith("/api/shifts?")) {
+        return jsonResponse({
+          data: [
+            createShift({
+              id: "shift-overnight",
+              date: "2026-03-10T00:00:00.000Z",
+              startTime: "1970-01-01T18:00:00.000Z",
+              endTime: "1970-01-01T01:00:00.000Z",
+              workplaceName: "勤務先A",
+            }),
+          ],
+        });
+      }
+
+      throw new Error(`Unexpected fetch: ${input}`);
+    });
+
+    renderShiftListPage();
+
+    await waitFor(() => {
+      expect(screen.getByText("18:00 - 翌01:00")).toBeInTheDocument();
+    });
+  });
 });

@@ -9,6 +9,14 @@ import { FormErrorMessage } from "@/components/form/form-error-message";
 import { Button } from "@/components/ui/button";
 import { Checkbox } from "@/components/ui/checkbox";
 import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogFooter,
+  DialogHeader,
+  DialogTitle,
+} from "@/components/ui/dialog";
+import {
   Field,
   FieldContent,
   FieldDescription,
@@ -27,11 +35,7 @@ import {
   SelectValue,
 } from "@/components/ui/select";
 import { SpinnerPanel } from "@/components/ui/spinner";
-import {
-  DATE_ONLY_REGEX,
-  TIME_ONLY_REGEX,
-  toMinutes,
-} from "@/lib/api/date-time";
+import { DATE_ONLY_REGEX, TIME_ONLY_REGEX } from "@/lib/api/date-time";
 import {
   addMonths,
   dateFromDateKey,
@@ -47,6 +51,12 @@ import {
 import { CALENDAR_SETUP_PATH } from "@/lib/google-calendar/constants";
 import { clearShiftDerivedCaches } from "@/lib/client-cache/shift-derived-cache";
 import { messages, toErrorMessage } from "@/lib/messages";
+import {
+  formatShiftTimeRange,
+  getShiftEndDate,
+  isOvernightShift,
+  isSameTimeShift,
+} from "@/lib/shifts/time";
 import { resolveUserFacingErrorFromResponse } from "@/lib/user-facing-error";
 import { cn } from "@/lib/utils";
 import { useGoogleTokenExpiredSignOut } from "@/hooks/use-google-token-expired-signout";
@@ -404,6 +414,14 @@ type LessonShiftPayload = {
 
 type BulkShiftPayload = NormalShiftPayload | LessonShiftPayload;
 
+type OvernightSummaryItem = {
+  date: string;
+  startTime: string;
+  endTime: string;
+  startDateLabel: string;
+  endDateLabel: string;
+};
+
 const DEFAULT_BULK_VALUES: BulkDefaults = {
   shiftType: "NORMAL",
   comment: "",
@@ -620,6 +638,13 @@ export function BulkShiftForm() {
   const [isWorkplaceLoading, setIsWorkplaceLoading] = useState(true);
   const [isTimetableLoading, setIsTimetableLoading] = useState(false);
   const [isSubmitting, setIsSubmitting] = useState(false);
+  const [isOvernightConfirmOpen, setIsOvernightConfirmOpen] = useState(false);
+  const [pendingPayload, setPendingPayload] = useState<
+    BulkShiftPayload[] | null
+  >(null);
+  const [overnightSummaries, setOvernightSummaries] = useState<
+    OvernightSummaryItem[]
+  >([]);
   const { isSignOutScheduled, scheduleSignOut } =
     useGoogleTokenExpiredSignOut();
 
@@ -1204,6 +1229,7 @@ export function BulkShiftForm() {
     | {
         success: true;
         payload: BulkShiftPayload[];
+        overnightSummaries: OvernightSummaryItem[];
       }
     | {
         success: false;
@@ -1222,6 +1248,7 @@ export function BulkShiftForm() {
     }
 
     const payload: BulkShiftPayload[] = [];
+    const overnightCandidates: OvernightSummaryItem[] = [];
 
     for (const dateKey of selectedDateKeys) {
       const row = rowsByDate[dateKey];
@@ -1320,12 +1347,26 @@ export function BulkShiftForm() {
         if (
           TIME_ONLY_REGEX.test(row.startTime) &&
           TIME_ONLY_REGEX.test(row.endTime) &&
-          toMinutes(row.startTime) >= toMinutes(row.endTime)
+          isSameTimeShift(row.startTime, row.endTime)
         ) {
-          rowErrors.endTime = "開始時刻は終了時刻より前にしてください。";
+          rowErrors.endTime = "開始時刻と終了時刻は同じ時刻にできません。";
         }
 
         if (!hasRowErrors(rowErrors)) {
+          if (isOvernightShift(row.startTime, row.endTime)) {
+            const startDateLabel = formatSelectedDate(dateKey);
+            const endDateLabel = formatSelectedDate(
+              getShiftEndDate(dateKey, row.startTime, row.endTime),
+            );
+            overnightCandidates.push({
+              date: dateKey,
+              startTime: row.startTime,
+              endTime: row.endTime,
+              startDateLabel,
+              endDateLabel,
+            });
+          }
+
           payload.push({
             date: dateKey,
             shiftType: row.shiftType,
@@ -1356,28 +1397,12 @@ export function BulkShiftForm() {
     return {
       success: true,
       payload,
+      overnightSummaries: overnightCandidates,
     };
   };
 
-  const handleSubmit = async () => {
+  const submitBulk = async (payloadItems: BulkShiftPayload[]) => {
     if (isSignOutScheduled) {
-      return;
-    }
-
-    const validated = validateAndBuildPayload();
-
-    if (!validated.success) {
-      setErrors(validated.errors);
-      const firstRowError = Object.values(validated.errors.rows ?? {})
-        .flatMap((rowError) => Object.values(rowError))
-        .find((message): message is string => Boolean(message));
-      toast.error(messages.error.validation, {
-        description:
-          firstRowError ??
-          validated.errors.workplaceId ??
-          validated.errors.selectedDates,
-        duration: 6000,
-      });
       return;
     }
 
@@ -1393,7 +1418,7 @@ export function BulkShiftForm() {
         },
         body: JSON.stringify({
           workplaceId: selectedWorkplaceId,
-          shifts: validated.payload,
+          shifts: payloadItems,
         }),
       });
 
@@ -1435,7 +1460,7 @@ export function BulkShiftForm() {
           pending?: boolean;
         };
       };
-      const createdCount = payload.summary?.total ?? validated.payload.length;
+      const createdCount = payload.summary?.total ?? payloadItems.length;
       const isSyncPending = payload.sync?.pending === true;
 
       const syncFailure = parseGoogleSyncFailureFromPayload(
@@ -1499,6 +1524,38 @@ export function BulkShiftForm() {
     } finally {
       setIsSubmitting(false);
     }
+  };
+
+  const handleSubmit = async () => {
+    if (isSignOutScheduled) {
+      return;
+    }
+
+    const validated = validateAndBuildPayload();
+
+    if (!validated.success) {
+      setErrors(validated.errors);
+      const firstRowError = Object.values(validated.errors.rows ?? {})
+        .flatMap((rowError) => Object.values(rowError))
+        .find((message): message is string => Boolean(message));
+      toast.error(messages.error.validation, {
+        description:
+          firstRowError ??
+          validated.errors.workplaceId ??
+          validated.errors.selectedDates,
+        duration: 6000,
+      });
+      return;
+    }
+
+    if (validated.overnightSummaries.length > 0) {
+      setPendingPayload(validated.payload);
+      setOvernightSummaries(validated.overnightSummaries);
+      setIsOvernightConfirmOpen(true);
+      return;
+    }
+
+    await submitBulk(validated.payload);
   };
 
   return (
@@ -2520,6 +2577,69 @@ export function BulkShiftForm() {
           </Button>
         </div>
       </Form>
+
+      <Dialog
+        open={isOvernightConfirmOpen}
+        onOpenChange={(open) => {
+          setIsOvernightConfirmOpen(open);
+          if (!open) {
+            setPendingPayload(null);
+            setOvernightSummaries([]);
+          }
+        }}
+      >
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>翌日終了として登録されるシフトがあります</DialogTitle>
+            <DialogDescription>
+              終了時刻が開始時刻より早いシフトは翌日終了として登録されます。内容を確認してください。
+            </DialogDescription>
+          </DialogHeader>
+
+          <div className="max-h-64 overflow-y-auto rounded-md border">
+            <ul className="divide-y">
+              {overnightSummaries.map((item) => (
+                <li key={item.date} className="space-y-1 px-3 py-2 text-sm">
+                  <p className="font-medium">{formatSelectedDate(item.date)}</p>
+                  <p className="text-muted-foreground">
+                    入力: {formatShiftTimeRange(item.startTime, item.endTime)}
+                  </p>
+                  <p className="text-muted-foreground">
+                    解釈: {item.startDateLabel} {item.startTime} 〜{" "}
+                    {item.endDateLabel} {item.endTime}
+                  </p>
+                </li>
+              ))}
+            </ul>
+          </div>
+
+          <DialogFooter>
+            <Button
+              type="button"
+              variant="outline"
+              onClick={() => setIsOvernightConfirmOpen(false)}
+              disabled={isSubmitting}
+            >
+              戻って修正
+            </Button>
+            <Button
+              type="button"
+              onClick={async () => {
+                if (!pendingPayload) {
+                  return;
+                }
+                setIsOvernightConfirmOpen(false);
+                await submitBulk(pendingPayload);
+                setPendingPayload(null);
+                setOvernightSummaries([]);
+              }}
+              disabled={isSubmitting}
+            >
+              まとめて翌日終了として登録
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
     </section>
   );
 }
