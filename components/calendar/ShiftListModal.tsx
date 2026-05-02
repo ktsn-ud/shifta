@@ -15,6 +15,7 @@ import {
 } from "@/components/ui/dialog";
 import { messages, toErrorMessage } from "@/lib/messages";
 import { formatShiftWorkplaceLabel } from "@/lib/shifts/format";
+import { formatShiftTimeRange } from "@/lib/shifts/time";
 
 type ShiftListModalShift = {
   id: string;
@@ -72,7 +73,7 @@ function formatEstimatedPay(value: number | null): string {
 }
 
 function formatShiftLabel(shift: ShiftListModalShift): string {
-  return `${formatTime(shift.startTime)} - ${formatTime(shift.endTime)} ${formatWorkplaceLabel(shift)}`;
+  return `${formatShiftTimeRange(formatTime(shift.startTime), formatTime(shift.endTime))} ${formatWorkplaceLabel(shift)}`;
 }
 
 function formatWorkplaceLabel(shift: ShiftListModalShift): string {
@@ -169,8 +170,10 @@ export function ShiftListModal({
                       時刻
                     </p>
                     <p className="font-medium">
-                      {formatTime(shift.startTime)} -{" "}
-                      {formatTime(shift.endTime)}
+                      {formatShiftTimeRange(
+                        formatTime(shift.startTime),
+                        formatTime(shift.endTime),
+                      )}
                     </p>
                   </div>
 

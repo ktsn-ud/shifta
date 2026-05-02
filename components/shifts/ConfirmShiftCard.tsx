@@ -4,7 +4,7 @@ import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
 import { CheckIcon } from "lucide-react";
 import { toast } from "sonner";
-import { TIME_ONLY_REGEX, toMinutes } from "@/lib/api/date-time";
+import { TIME_ONLY_REGEX } from "@/lib/api/date-time";
 import { clearShiftDerivedCaches } from "@/lib/client-cache/shift-derived-cache";
 import {
   parseGoogleSyncFailureFromPayload,
@@ -13,7 +13,9 @@ import {
 import { CALENDAR_SETUP_PATH } from "@/lib/google-calendar/constants";
 import { messages, toErrorMessage } from "@/lib/messages";
 import { formatShiftWorkplaceLabel } from "@/lib/shifts/format";
+import { isOvernightShift, isSameTimeShift } from "@/lib/shifts/time";
 import { useGoogleTokenExpiredSignOut } from "@/hooks/use-google-token-expired-signout";
+import { ConfirmDialog } from "@/components/modal/confirm-dialog";
 import type { UnconfirmedShiftItem } from "@/components/shifts/shift-confirmation-types";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
@@ -54,10 +56,10 @@ function validateShiftInput(
     };
   }
 
-  if (toMinutes(startTime) >= toMinutes(endTime)) {
+  if (isSameTimeShift(startTime, endTime)) {
     return {
       success: false,
-      message: "開始時刻は終了時刻より前にしてください。",
+      message: "開始時刻と終了時刻は同じ時刻にできません。",
     };
   }
 
@@ -95,6 +97,9 @@ export function ConfirmShiftCard({
   const [endTime, setEndTime] = useState(shift.endTime);
   const [breakMinutes, setBreakMinutes] = useState(String(shift.breakMinutes));
   const [isConfirming, setIsConfirming] = useState(false);
+  const [isOvernightDialogOpen, setIsOvernightDialogOpen] = useState(false);
+  const [pendingConfirmation, setPendingConfirmation] =
+    useState<ValidationResult | null>(null);
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
   const { isSignOutScheduled, scheduleSignOut } =
     useGoogleTokenExpiredSignOut();
@@ -103,6 +108,8 @@ export function ConfirmShiftCard({
     setStartTime(shift.startTime);
     setEndTime(shift.endTime);
     setBreakMinutes(String(shift.breakMinutes));
+    setIsOvernightDialogOpen(false);
+    setPendingConfirmation(null);
     setErrorMessage(null);
   }, [shift.breakMinutes, shift.endTime, shift.id, shift.startTime]);
 
@@ -112,18 +119,7 @@ export function ConfirmShiftCard({
     comment: shift.comment,
   });
 
-  const handleConfirm = async () => {
-    if (isMutating) {
-      return;
-    }
-
-    setErrorMessage(null);
-    const validation = validateShiftInput(startTime, endTime, breakMinutes);
-    if (!validation.success) {
-      setErrorMessage(validation.message);
-      return;
-    }
-
+  const submitConfirmedShift = async (data: ValidationResult) => {
     setIsConfirming(true);
     try {
       const response = await fetch(`/api/shifts/${shift.id}/confirm`, {
@@ -131,7 +127,7 @@ export function ConfirmShiftCard({
         headers: {
           "content-type": "application/json",
         },
-        body: JSON.stringify(validation.data),
+        body: JSON.stringify(data),
       });
 
       if (response.ok === false) {
@@ -194,75 +190,116 @@ export function ConfirmShiftCard({
     }
   };
 
+  const handleConfirm = async () => {
+    if (isMutating) {
+      return;
+    }
+
+    setErrorMessage(null);
+    const validation = validateShiftInput(startTime, endTime, breakMinutes);
+    if (!validation.success) {
+      setErrorMessage(validation.message);
+      return;
+    }
+
+    if (isOvernightShift(validation.data.startTime, validation.data.endTime)) {
+      setPendingConfirmation(validation.data);
+      setIsOvernightDialogOpen(true);
+      return;
+    }
+
+    await submitConfirmedShift(validation.data);
+  };
+
   return (
-    <Card size="sm" className="w-full shadow-none md:max-w-2xl">
-      <CardHeader>
-        <div className="flex items-center gap-3">
-          <CardTitle className="font-bold">{shift.date}</CardTitle>
-          <div className="flex items-center gap-1.5 text-sm text-muted-foreground">
-            <span
-              aria-hidden="true"
-              className="size-2.5 shrink-0 rounded-full"
-              style={{ backgroundColor: shift.workplaceColor }}
-            />
-            <p>{workplaceLabel}</p>
+    <>
+      <Card size="sm" className="w-full shadow-none md:max-w-2xl">
+        <CardHeader>
+          <div className="flex items-center gap-3">
+            <CardTitle className="font-bold">{shift.date}</CardTitle>
+            <div className="flex items-center gap-1.5 text-sm text-muted-foreground">
+              <span
+                aria-hidden="true"
+                className="size-2.5 shrink-0 rounded-full"
+                style={{ backgroundColor: shift.workplaceColor }}
+              />
+              <p>{workplaceLabel}</p>
+            </div>
           </div>
-        </div>
-      </CardHeader>
+        </CardHeader>
 
-      <CardContent className="flex flex-col gap-4">
-        <div className="grid grid-cols-2 gap-3 lg:grid-cols-[minmax(0,1fr)_minmax(0,1fr)_minmax(0,1fr)_auto]">
-          <label className="flex flex-col gap-1 text-sm">
-            開始時刻
-            <Input
-              type="time"
-              value={startTime}
-              disabled={isMutating}
-              onChange={(event) => setStartTime(event.currentTarget.value)}
-            />
-          </label>
+        <CardContent className="flex flex-col gap-4">
+          <div className="grid grid-cols-2 gap-3 lg:grid-cols-[minmax(0,1fr)_minmax(0,1fr)_minmax(0,1fr)_auto]">
+            <label className="flex flex-col gap-1 text-sm">
+              開始時刻
+              <Input
+                type="time"
+                value={startTime}
+                disabled={isMutating}
+                onChange={(event) => setStartTime(event.currentTarget.value)}
+              />
+            </label>
 
-          <label className="flex flex-col gap-1 text-sm">
-            終了時刻
-            <Input
-              type="time"
-              value={endTime}
-              disabled={isMutating}
-              onChange={(event) => setEndTime(event.currentTarget.value)}
-            />
-          </label>
+            <label className="flex flex-col gap-1 text-sm">
+              終了時刻
+              <Input
+                type="time"
+                value={endTime}
+                disabled={isMutating}
+                onChange={(event) => setEndTime(event.currentTarget.value)}
+              />
+            </label>
 
-          <label className="flex flex-col gap-1 text-sm">
-            休憩時間（分）
-            <Input
-              type="number"
-              min={0}
-              max={240}
-              value={breakMinutes}
-              disabled={isMutating}
-              onChange={(event) => setBreakMinutes(event.currentTarget.value)}
-            />
-          </label>
+            <label className="flex flex-col gap-1 text-sm">
+              休憩時間（分）
+              <Input
+                type="number"
+                min={0}
+                max={240}
+                value={breakMinutes}
+                disabled={isMutating}
+                onChange={(event) => setBreakMinutes(event.currentTarget.value)}
+              />
+            </label>
 
-          <div className="flex items-end lg:justify-end">
-            <Button
-              type="button"
-              className="w-full lg:w-auto"
-              disabled={isMutating}
-              onClick={handleConfirm}
-            >
-              <CheckIcon data-icon="inline-start" />
-              {isConfirming ? "確定中..." : "確定"}
-            </Button>
+            <div className="flex items-end lg:justify-end">
+              <Button
+                type="button"
+                className="w-full lg:w-auto"
+                disabled={isMutating}
+                onClick={handleConfirm}
+              >
+                <CheckIcon data-icon="inline-start" />
+                {isConfirming ? "確定中..." : "確定"}
+              </Button>
+            </div>
           </div>
-        </div>
 
-        {errorMessage ? (
-          <p className="rounded-md border border-destructive/40 bg-destructive/5 px-3 py-2 text-sm text-destructive">
-            {errorMessage}
-          </p>
-        ) : null}
-      </CardContent>
-    </Card>
+          {errorMessage ? (
+            <p className="rounded-md border border-destructive/40 bg-destructive/5 px-3 py-2 text-sm text-destructive">
+              {errorMessage}
+            </p>
+          ) : null}
+        </CardContent>
+      </Card>
+
+      <ConfirmDialog
+        open={isOvernightDialogOpen}
+        onOpenChange={setIsOvernightDialogOpen}
+        title="このシフトは日付をまたぎます"
+        description="終了時刻が開始時刻より早いため、翌日終了として確定します。よろしいですか？"
+        confirmLabel="翌日終了として確定"
+        cancelLabel="キャンセル"
+        destructive={false}
+        onConfirm={async () => {
+          if (!pendingConfirmation) {
+            return;
+          }
+
+          await submitConfirmedShift(pendingConfirmation);
+          setPendingConfirmation(null);
+        }}
+      />
+    </>
   );
 }

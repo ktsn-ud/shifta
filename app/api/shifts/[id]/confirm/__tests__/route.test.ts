@@ -1,4 +1,5 @@
 import { requireCurrentUser } from "@/lib/api/current-user";
+import { parseJsonBody } from "@/lib/api/http";
 import { syncShiftAfterUpdate } from "@/lib/google-calendar/syncStatus";
 import { prisma } from "@/lib/prisma";
 
@@ -42,6 +43,14 @@ jest.mock("@/lib/google-calendar/syncStatus", () => ({
   syncShiftAfterUpdate: jest.fn(),
 }));
 
+jest.mock("@/lib/api/http", () => ({
+  parseJsonBody: jest.fn(),
+  jsonError: (message: string, status = 400) => ({
+    status,
+    json: async () => ({ error: message }),
+  }),
+}));
+
 jest.mock("@/lib/prisma", () => ({
   prisma: {
     shift: {
@@ -54,6 +63,7 @@ jest.mock("@/lib/prisma", () => ({
 import { PATCH } from "@/app/api/shifts/[id]/confirm/route";
 
 const requireCurrentUserMock = jest.mocked(requireCurrentUser);
+const parseJsonBodyMock = jest.mocked(parseJsonBody);
 const syncShiftAfterUpdateMock = jest.mocked(syncShiftAfterUpdate);
 const prismaShiftFindFirstMock = jest.mocked(prisma.shift.findFirst);
 const prismaShiftUpdateMock = jest.mocked(prisma.shift.update);
@@ -77,11 +87,11 @@ describe("PATCH /api/shifts/[id]/confirm", () => {
     requireCurrentUserMock.mockResolvedValue({
       user: { id: "user-1" },
     } as Awaited<ReturnType<typeof requireCurrentUser>>);
-    prismaShiftFindFirstMock.mockResolvedValue(createShiftEntity());
+    prismaShiftFindFirstMock.mockResolvedValue(createShiftEntity() as never);
     prismaShiftUpdateMock.mockResolvedValue({
       ...createShiftEntity(),
       isConfirmed: true,
-    });
+    } as never);
     syncShiftAfterUpdateMock.mockResolvedValue({
       ok: true,
       googleEventId: "event-1",
@@ -89,19 +99,22 @@ describe("PATCH /api/shifts/[id]/confirm", () => {
   });
 
   it("rejects when start and end time are the same", async () => {
-    const request = new Request("http://localhost/api/shifts/shift-1/confirm", {
-      method: "PATCH",
-      headers: { "content-type": "application/json" },
-      body: JSON.stringify({
+    parseJsonBodyMock.mockResolvedValue({
+      success: true,
+      data: {
         startTime: "18:00",
         endTime: "18:00",
         breakMinutes: 60,
-      }),
+      },
     });
+    const request = {} as Request;
 
     const response = await PATCH(request, {
       params: Promise.resolve({ id: "shift-1" }),
     });
+    if (!response) {
+      throw new Error("response is undefined");
+    }
     const payload = (await response.json()) as { error?: string };
 
     expect(response.status).toBe(400);
@@ -110,19 +123,22 @@ describe("PATCH /api/shifts/[id]/confirm", () => {
   });
 
   it("accepts overnight shift and confirms it", async () => {
-    const request = new Request("http://localhost/api/shifts/shift-1/confirm", {
-      method: "PATCH",
-      headers: { "content-type": "application/json" },
-      body: JSON.stringify({
+    parseJsonBodyMock.mockResolvedValue({
+      success: true,
+      data: {
         startTime: "22:00",
         endTime: "05:00",
         breakMinutes: 30,
-      }),
+      },
     });
+    const request = {} as Request;
 
     const response = await PATCH(request, {
       params: Promise.resolve({ id: "shift-1" }),
     });
+    if (!response) {
+      throw new Error("response is undefined");
+    }
 
     expect(response.status).toBe(200);
     expect(prismaShiftUpdateMock).toHaveBeenCalled();

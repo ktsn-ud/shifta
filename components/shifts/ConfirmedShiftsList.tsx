@@ -8,6 +8,7 @@ import {
   TableRow,
 } from "@/components/ui/table";
 import type { ConfirmedShiftWorkplaceGroup } from "@/components/shifts/shift-confirmation-types";
+import { formatShiftTimeRange } from "@/lib/shifts/time";
 
 type ConfirmedShiftsListProps = {
   groups: ConfirmedShiftWorkplaceGroup[];
@@ -64,7 +65,7 @@ export function ConfirmedShiftsList({ groups }: ConfirmedShiftsListProps) {
                   <TableRow key={shift.id}>
                     <TableCell>{shift.date}</TableCell>
                     <TableCell>{shift.comment ?? "-"}</TableCell>
-                    <TableCell>{`${shift.startTime} ～ ${shift.endTime}（実働${formatDurationHours(shift.workDurationHours)}）`}</TableCell>
+                    <TableCell>{`${formatShiftTimeRange(shift.startTime, shift.endTime, { separator: " ～ " })}（実働${formatDurationHours(shift.workDurationHours)}）`}</TableCell>
                     <TableCell>
                       {shift.wage === null ? "-" : formatCurrency(shift.wage)}
                     </TableCell>
