@@ -19,6 +19,10 @@ import {
   findApplicablePayrollRule,
   groupPayrollRulesByWorkplace,
 } from "@/lib/payroll/summarizeByPeriod";
+import {
+  buildPayrollRuleWhereForDateRange,
+  resolvePayrollRuleDateRange,
+} from "@/lib/payroll/rule-query";
 import { calculateWorkedMinutes } from "@/lib/payroll/estimate";
 import { prisma } from "@/lib/prisma";
 
@@ -81,12 +85,16 @@ async function getMonthShiftsWithEstimate(
   const relatedWorkplaceIds = Array.from(
     new Set(shifts.map((shift) => shift.workplaceId)),
   );
+  const payrollRuleDateRange = resolvePayrollRuleDateRange(shifts);
+  if (!payrollRuleDateRange) {
+    return [];
+  }
+
   const payrollRules = await prisma.payrollRule.findMany({
-    where: {
-      workplaceId: {
-        in: relatedWorkplaceIds,
-      },
-    },
+    where: buildPayrollRuleWhereForDateRange(
+      relatedWorkplaceIds,
+      payrollRuleDateRange,
+    ),
     orderBy: [{ workplaceId: "asc" }, { startDate: "desc" }],
   });
   const rulesByWorkplace = groupPayrollRulesByWorkplace(payrollRules);

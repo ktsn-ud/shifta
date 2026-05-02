@@ -10,6 +10,7 @@ import {
   findApplicablePayrollRule,
   groupPayrollRulesByWorkplace,
 } from "@/lib/payroll/summarizeByPeriod";
+import { buildPayrollRuleWhereForDateRange } from "@/lib/payroll/rule-query";
 import { prisma } from "@/lib/prisma";
 import { formatShiftWorkplaceLabel } from "@/lib/shifts/format";
 import { getCalendarClientByUserId } from "./client";
@@ -202,9 +203,10 @@ async function estimateShiftWageForEvent(
     payrollRulesByWorkplaceId ??
     groupPayrollRulesByWorkplace(
       await prisma.payrollRule.findMany({
-        where: {
-          workplaceId: shift.workplaceId,
-        },
+        where: buildPayrollRuleWhereForDateRange([shift.workplaceId], {
+          startDate: shift.date,
+          endDate: shift.date,
+        }),
         orderBy: [{ startDate: "desc" }],
       }),
     );

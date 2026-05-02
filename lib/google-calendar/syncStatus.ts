@@ -1,4 +1,8 @@
 import type { PayrollRule, User } from "@/lib/generated/prisma/client";
+import {
+  buildPayrollRuleWhereForDateRange,
+  resolvePayrollRuleDateRange,
+} from "@/lib/payroll/rule-query";
 import { prisma } from "@/lib/prisma";
 import {
   GoogleCalendarSyncError,
@@ -455,12 +459,16 @@ async function buildPayrollRulesByWorkplace(
     return new Map();
   }
 
+  const payrollRuleDateRange = resolvePayrollRuleDateRange(shifts);
+  if (!payrollRuleDateRange) {
+    return new Map();
+  }
+
   const payrollRules = await prisma.payrollRule.findMany({
-    where: {
-      workplaceId: {
-        in: workplaceIds,
-      },
-    },
+    where: buildPayrollRuleWhereForDateRange(
+      workplaceIds,
+      payrollRuleDateRange,
+    ),
     orderBy: [{ workplaceId: "asc" }, { startDate: "desc" }],
   });
 
