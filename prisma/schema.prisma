@@ -49,6 +49,7 @@ model Account {
   user User @relation(fields: [userId], references: [id], onDelete: Cascade)
 
   @@id([provider, providerAccountId])
+  @@index([userId, provider])
 }
 
 model Session {
@@ -59,6 +60,8 @@ model Session {
 
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
+
+  @@index([userId])
 }
 
 model VerificationToken {
@@ -107,6 +110,7 @@ model Workplace {
   shifts         Shift[]
 
   @@index([userId])
+  @@index([userId, createdAt])
 }
 
 model PayrollRule {
@@ -171,7 +175,8 @@ model Shift {
   workplace        Workplace         @relation(fields: [workplaceId], references: [id], onDelete: Cascade)
   lessonRange      ShiftLessonRange?
 
-  @@index([workplaceId, date])
+  @@index([workplaceId, date, startTime])
+  @@index([workplaceId, isConfirmed, date, startTime])
 }
 
 model ShiftLessonRange {

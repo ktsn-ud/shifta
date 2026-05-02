@@ -3,6 +3,7 @@
 import { useEffect, useMemo, useState } from "react";
 import { useRouter } from "next/navigation";
 import { toast } from "sonner";
+import { ConfirmDialog } from "@/components/modal/confirm-dialog";
 import { FormErrorMessage } from "@/components/form/form-error-message";
 import { Button } from "@/components/ui/button";
 import { DatePicker } from "@/components/ui/date-picker";
@@ -41,6 +42,13 @@ import {
 import { CALENDAR_SETUP_PATH } from "@/lib/google-calendar/constants";
 import { clearShiftDerivedCaches } from "@/lib/client-cache/shift-derived-cache";
 import { messages, toErrorMessage } from "@/lib/messages";
+import {
+  formatShiftTimeRange,
+  isOvernightShift,
+  isSameTimeShift,
+  shiftDateKeyAddDays,
+  toComparableShiftRange,
+} from "@/lib/shifts/time";
 import { resolveUserFacingErrorFromResponse } from "@/lib/user-facing-error";
 import { useGoogleTokenExpiredSignOut } from "@/hooks/use-google-token-expired-signout";
 
@@ -82,6 +90,7 @@ type TimetableSet = {
 
 type ShiftListItem = {
   id: string;
+  date: string;
   startTime: string;
   endTime: string;
 };
@@ -129,6 +138,11 @@ type FormErrorKey =
   | "form";
 
 type FormErrors = Partial<Record<FormErrorKey, string>>;
+
+type ShiftTimePair = {
+  startTime: string;
+  endTime: string;
+};
 
 type ShiftFormProps = {
   mode: ShiftFormMode;
@@ -232,6 +246,7 @@ function isShiftListItem(value: unknown): value is ShiftListItem {
 
   return (
     typeof value.id === "string" &&
+    typeof value.date === "string" &&
     typeof value.startTime === "string" &&
     typeof value.endTime === "string"
   );
@@ -325,20 +340,6 @@ function toTimeOnly(value: string): string {
   const hours = String(date.getUTCHours()).padStart(2, "0");
   const minutes = String(date.getUTCMinutes()).padStart(2, "0");
   return `${hours}:${minutes}`;
-}
-
-function toMinutes(value: string): number {
-  const [hour, minute] = value.split(":");
-  return Number(hour) * 60 + Number(minute);
-}
-
-function hasTimeOverlap(
-  startA: number,
-  endA: number,
-  startB: number,
-  endB: number,
-): boolean {
-  return startA < endB && startB < endA;
 }
 
 function findSetById(
@@ -460,6 +461,11 @@ export function ShiftForm({
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [errors, setErrors] = useState<FormErrors>({});
   const [warningMessage, setWarningMessage] = useState<string | null>(null);
+  const [initialShiftTimes, setInitialShiftTimes] =
+    useState<ShiftTimePair | null>(null);
+  const [isOvernightDialogOpen, setIsOvernightDialogOpen] = useState(false);
+  const [pendingOvernightTimes, setPendingOvernightTimes] =
+    useState<ShiftTimePair | null>(null);
   const { isSignOutScheduled, scheduleSignOut } =
     useGoogleTokenExpiredSignOut();
 
@@ -559,6 +565,7 @@ export function ShiftForm({
   useEffect(() => {
     if (mode !== "edit") {
       setIsShiftLoading(false);
+      setInitialShiftTimes(null);
       return;
     }
 
@@ -596,14 +603,17 @@ export function ShiftForm({
           throw new Error("シフトデータの形式が不正です");
         }
 
+        const parsedStartTime = toTimeOnly(shift.startTime);
+        const parsedEndTime = toTimeOnly(shift.endTime);
+
         setForm((current) => ({
           ...current,
           workplaceId: shift.workplaceId,
           date: dateKeyFromApiDate(shift.date),
           shiftType: shift.shiftType,
           comment: shift.comment ?? "",
-          startTime: toTimeOnly(shift.startTime),
-          endTime: toTimeOnly(shift.endTime),
+          startTime: parsedStartTime,
+          endTime: parsedEndTime,
           breakMinutes: String(shift.breakMinutes),
           timetableSetId: shift.lessonRange?.timetableSetId ?? "",
           startPeriod: shift.lessonRange
@@ -613,6 +623,10 @@ export function ShiftForm({
             ? String(shift.lessonRange.endPeriod)
             : "",
         }));
+        setInitialShiftTimes({
+          startTime: parsedStartTime,
+          endTime: parsedEndTime,
+        });
       } catch (error) {
         if (abortController.signal.aborted) {
           return;
@@ -993,8 +1007,9 @@ export function ShiftForm({
     }
 
     if (form.startTime && form.endTime) {
-      if (toMinutes(form.startTime) >= toMinutes(form.endTime)) {
-        nextErrors.endTime = "ERR_002: 開始時刻は終了時刻より前にしてください";
+      if (isSameTimeShift(form.startTime, form.endTime)) {
+        nextErrors.endTime =
+          "ERR_002: 開始時刻と終了時刻は同じ時刻にできません";
       }
     }
 
@@ -1025,8 +1040,8 @@ export function ShiftForm({
     try {
       const params = new URLSearchParams({
         workplaceId: form.workplaceId,
-        startDate: form.date,
-        endDate: form.date,
+        startDate: shiftDateKeyAddDays(form.date, -1),
+        endDate: shiftDateKeyAddDays(form.date, 1),
       });
 
       const response = await fetch(`/api/shifts?${params.toString()}`, {
@@ -1044,22 +1059,26 @@ export function ShiftForm({
         return null;
       }
 
-      const candidateStart = toMinutes(candidateTimes.startTime);
-      const candidateEnd = toMinutes(candidateTimes.endTime);
+      const candidateRange = toComparableShiftRange(
+        form.date,
+        candidateTimes.startTime,
+        candidateTimes.endTime,
+      );
 
       const overlapped = shiftsPayload.some((shift) => {
         if (mode === "edit" && shift.id === shiftId) {
           return false;
         }
 
-        const shiftStart = toMinutes(toTimeOnly(shift.startTime));
-        const shiftEnd = toMinutes(toTimeOnly(shift.endTime));
+        const shiftRange = toComparableShiftRange(
+          dateKeyFromApiDate(shift.date),
+          toTimeOnly(shift.startTime),
+          toTimeOnly(shift.endTime),
+        );
 
-        return hasTimeOverlap(
-          candidateStart,
-          candidateEnd,
-          shiftStart,
-          shiftEnd,
+        return (
+          candidateRange.startAtUtcMinutes < shiftRange.endAtUtcMinutes &&
+          shiftRange.startAtUtcMinutes < candidateRange.endAtUtcMinutes
         );
       });
 
@@ -1074,37 +1093,44 @@ export function ShiftForm({
     }
   }
 
-  async function handleSubmit(event: React.FormEvent<HTMLFormElement>) {
-    event.preventDefault();
-    if (isSignOutScheduled) {
+  function shouldRequireOvernightConfirmation(
+    candidateTimes: ShiftTimePair,
+  ): boolean {
+    if (!isOvernightShift(candidateTimes.startTime, candidateTimes.endTime)) {
+      return false;
+    }
+
+    if (
+      mode === "edit" &&
+      initialShiftTimes &&
+      initialShiftTimes.startTime === candidateTimes.startTime &&
+      initialShiftTimes.endTime === candidateTimes.endTime
+    ) {
+      return false;
+    }
+
+    return true;
+  }
+
+  async function executeSubmit(
+    validation: {
+      errors: FormErrors;
+      candidateTimes: ShiftTimePair | null;
+    },
+    options?: {
+      skipOvernightConfirmation?: boolean;
+    },
+  ) {
+    if (!validation.candidateTimes) {
       return;
     }
 
-    setWarningMessage(null);
-    setErrors((current) => {
-      if (!current.form) {
-        return current;
-      }
-
-      const next = { ...current };
-      delete next.form;
-      return next;
-    });
-
-    const validation = validate();
     if (
-      Object.keys(validation.errors).length > 0 ||
-      !validation.candidateTimes
+      !options?.skipOvernightConfirmation &&
+      shouldRequireOvernightConfirmation(validation.candidateTimes)
     ) {
-      setErrors(validation.errors);
-      const firstValidationMessage = Object.values(validation.errors).find(
-        (value): value is string =>
-          typeof value === "string" && value.length > 0,
-      );
-      toast.error(messages.error.validation, {
-        description: firstValidationMessage,
-        duration: 6000,
-      });
+      setPendingOvernightTimes(validation.candidateTimes);
+      setIsOvernightDialogOpen(true);
       return;
     }
 
@@ -1258,7 +1284,10 @@ export function ShiftForm({
           : messages.success.shiftUpdated,
         {
           id: loadingToastId,
-          description: `${form.date} ${validation.candidateTimes.startTime} - ${validation.candidateTimes.endTime}`,
+          description: `${form.date} ${formatShiftTimeRange(
+            validation.candidateTimes.startTime,
+            validation.candidateTimes.endTime,
+          )}`,
         },
       );
       clearShiftDerivedCaches();
@@ -1278,6 +1307,43 @@ export function ShiftForm({
     } finally {
       setIsSubmitting(false);
     }
+  }
+
+  async function handleSubmit(event: React.FormEvent<HTMLFormElement>) {
+    event.preventDefault();
+    if (isSignOutScheduled) {
+      return;
+    }
+
+    setWarningMessage(null);
+    setErrors((current) => {
+      if (!current.form) {
+        return current;
+      }
+
+      const next = { ...current };
+      delete next.form;
+      return next;
+    });
+
+    const validation = validate();
+    if (
+      Object.keys(validation.errors).length > 0 ||
+      !validation.candidateTimes
+    ) {
+      setErrors(validation.errors);
+      const firstValidationMessage = Object.values(validation.errors).find(
+        (value): value is string =>
+          typeof value === "string" && value.length > 0,
+      );
+      toast.error(messages.error.validation, {
+        description: firstValidationMessage,
+        duration: 6000,
+      });
+      return;
+    }
+
+    await executeSubmit(validation);
   }
 
   const showShiftTypeSelector = selectedWorkplaceType === "CRAM_SCHOOL";
@@ -1665,6 +1731,35 @@ export function ShiftForm({
           </Button>
         </div>
       </Form>
+
+      <ConfirmDialog
+        open={isOvernightDialogOpen}
+        onOpenChange={(open) => {
+          setIsOvernightDialogOpen(open);
+          if (!open) {
+            setPendingOvernightTimes(null);
+          }
+        }}
+        title="このシフトは日付をまたぎます"
+        description="終了時刻が開始時刻より早いため、翌日終了として保存します。よろしいですか？"
+        confirmLabel="翌日終了として保存"
+        cancelLabel="キャンセル"
+        destructive={false}
+        onConfirm={async () => {
+          if (!pendingOvernightTimes) {
+            return;
+          }
+
+          await executeSubmit(
+            {
+              errors: {},
+              candidateTimes: pendingOvernightTimes,
+            },
+            { skipOvernightConfirmation: true },
+          );
+          setPendingOvernightTimes(null);
+        }}
+      />
     </section>
   );
 }

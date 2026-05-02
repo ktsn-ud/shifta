@@ -108,6 +108,38 @@ describe("shift confirm page and card flow", () => {
     ).toBeInTheDocument();
   });
 
+  it("renders overnight time range in confirmed shift list", () => {
+    const initialConfirmedShiftGroups: ConfirmedShiftWorkplaceGroup[] = [
+      {
+        workplaceId: "workplace-1",
+        workplaceName: "コンビニA",
+        workplaceColor: "#FF5733",
+        shifts: [
+          {
+            id: "shift-2",
+            date: "2026年3月6日(金)",
+            comment: null,
+            startTime: "18:00",
+            endTime: "01:00",
+            workDurationHours: 6.0,
+            wage: 7200,
+          },
+        ],
+      },
+    ];
+
+    render(
+      <ShiftConfirmPageClient
+        initialUnconfirmedShifts={[]}
+        initialConfirmedShiftGroups={initialConfirmedShiftGroups}
+      />,
+    );
+
+    expect(
+      screen.getByText("18:00 ～ 翌01:00（実働6.0h）"),
+    ).toBeInTheDocument();
+  });
+
   it("confirms a shift with edited values", async () => {
     const user = userEvent.setup();
     const onActionCompleted = jest.fn(async () => undefined);
@@ -157,9 +189,21 @@ describe("shift confirm page and card flow", () => {
     expect(toast.success).toHaveBeenCalledWith("シフトを確定しました。");
   });
 
-  it("shows validation error when start time is after end time", async () => {
+  it("shows overnight confirmation before confirming shift", async () => {
     const user = userEvent.setup();
     const fetchMock = globalThis.fetch as jest.Mock;
+
+    fetchMock.mockResolvedValueOnce(
+      jsonResponse({
+        id: "shift-1",
+        isConfirmed: true,
+        date: "2026-03-05",
+        startTime: "20:00",
+        endTime: "04:00",
+        breakMinutes: 60,
+        sync: { ok: true, googleEventId: "event-1" },
+      }),
+    );
 
     render(<ConfirmShiftCard shift={createUnconfirmedShift()} />);
 
@@ -173,7 +217,41 @@ describe("shift confirm page and card flow", () => {
     await user.click(screen.getByRole("button", { name: "確定" }));
 
     expect(
-      screen.getByText("開始時刻は終了時刻より前にしてください。"),
+      screen.getByRole("heading", { name: "このシフトは日付をまたぎます" }),
+    ).toBeInTheDocument();
+    expect(fetchMock).not.toHaveBeenCalled();
+
+    await user.click(
+      screen.getByRole("button", { name: "翌日終了として確定" }),
+    );
+
+    await waitFor(() => {
+      expect(fetchMock).toHaveBeenCalledWith(
+        "/api/shifts/shift-1/confirm",
+        expect.objectContaining({
+          method: "PATCH",
+        }),
+      );
+    });
+  });
+
+  it("shows validation error when start and end time are the same", async () => {
+    const user = userEvent.setup();
+    const fetchMock = globalThis.fetch as jest.Mock;
+
+    render(<ConfirmShiftCard shift={createUnconfirmedShift()} />);
+
+    fireEvent.change(screen.getByLabelText("開始時刻"), {
+      target: { value: "18:00" },
+    });
+    fireEvent.change(screen.getByLabelText("終了時刻"), {
+      target: { value: "18:00" },
+    });
+
+    await user.click(screen.getByRole("button", { name: "確定" }));
+
+    expect(
+      screen.getByText("開始時刻と終了時刻は同じ時刻にできません。"),
     ).toBeInTheDocument();
     expect(fetchMock).not.toHaveBeenCalled();
   });

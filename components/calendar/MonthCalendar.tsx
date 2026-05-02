@@ -16,6 +16,7 @@ import {
   toDateKey,
 } from "@/lib/calendar/date";
 import { formatShiftWorkplaceLabel } from "@/lib/shifts/format";
+import { formatShiftTimeRange } from "@/lib/shifts/time";
 import { cn } from "@/lib/utils";
 
 const WEEKDAY_LABELS = ["日", "月", "火", "水", "木", "金", "土"] as const;
@@ -94,7 +95,13 @@ function formatTime(value: string): string {
 }
 
 function formatShiftTime(shift: MonthCalendarShift): string {
-  return `${formatTime(shift.startTime)}-${formatTime(shift.endTime)}`;
+  return formatShiftTimeRange(
+    formatTime(shift.startTime),
+    formatTime(shift.endTime),
+    {
+      separator: "-",
+    },
+  );
 }
 
 function formatWorkplaceLabel(shift: MonthCalendarShift): string {

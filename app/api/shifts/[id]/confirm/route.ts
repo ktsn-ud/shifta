@@ -2,8 +2,9 @@ import { after, NextResponse } from "next/server";
 import { revalidatePath } from "next/cache";
 import { z } from "zod";
 import { requireCurrentUser } from "@/lib/api/current-user";
-import { TIME_ONLY_REGEX, toMinutes } from "@/lib/api/date-time";
+import { TIME_ONLY_REGEX } from "@/lib/api/date-time";
 import { jsonError, parseJsonBody } from "@/lib/api/http";
+import { isSameTimeShift } from "@/lib/shifts/time";
 import { syncShiftAfterUpdate } from "@/lib/google-calendar/syncStatus";
 import { prisma } from "@/lib/prisma";
 
@@ -84,8 +85,8 @@ export async function PATCH(request: Request, context: Context) {
     const nextEndTime = body.data.endTime ?? toTimeOnlyString(existing.endTime);
     const nextBreakMinutes = body.data.breakMinutes ?? existing.breakMinutes;
 
-    if (toMinutes(nextStartTime) >= toMinutes(nextEndTime)) {
-      return jsonError("開始時刻は終了時刻より前にしてください", 400);
+    if (isSameTimeShift(nextStartTime, nextEndTime)) {
+      return jsonError("開始時刻と終了時刻は同じ時刻にできません", 400);
     }
 
     if (nextBreakMinutes < 0) {

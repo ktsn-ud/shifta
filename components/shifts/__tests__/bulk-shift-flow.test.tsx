@@ -224,6 +224,106 @@ describe("bulk shift flow integration", () => {
     ]);
   });
 
+  it("shows overnight summary confirmation before bulk submit", async () => {
+    const user = userEvent.setup({
+      advanceTimers: jest.advanceTimersByTime,
+    });
+    const fetchMock = globalThis.fetch as jest.Mock;
+
+    fetchMock.mockImplementation(
+      async (input: string, init?: { method?: string }) => {
+        if (input.startsWith("/api/calendar/events?month=")) {
+          return jsonResponse({
+            data: {
+              month: "2026-03",
+              calendars: [],
+              selectedCalendarIds: [],
+              dates: [],
+            },
+          });
+        }
+
+        if (input === WORKPLACE_LIST_URL) {
+          return jsonResponse({
+            data: [
+              {
+                id: "workplace-1",
+                name: "勤務先A",
+                color: "#3366FF",
+                type: "GENERAL",
+              },
+            ],
+          });
+        }
+
+        if (input === "/api/shifts/bulk" && init?.method === "POST") {
+          return jsonResponse(
+            {
+              data: [],
+              summary: {
+                total: 1,
+                synced: 1,
+                failed: 0,
+              },
+            },
+            201,
+          );
+        }
+
+        throw new Error(`Unexpected fetch: ${input}`);
+      },
+    );
+
+    render(<BulkShiftForm />);
+
+    await waitFor(() => {
+      expect(
+        screen.getByRole("combobox", { name: "勤務先" }),
+      ).toHaveTextContent("勤務先A");
+    });
+
+    await user.click(findEnabledDayButton(20));
+
+    const dateKey = dateKeyFromDay(20);
+    const rowDeleteButton = screen.getByRole("button", {
+      name: `${dateKey}の入力行を削除`,
+    });
+    const row = rowDeleteButton.closest("section");
+    if (!row) {
+      throw new Error("row section not found");
+    }
+
+    fireEvent.change(within(row).getByLabelText("開始時刻"), {
+      target: { value: "18:00" },
+    });
+    fireEvent.change(within(row).getByLabelText("終了時刻"), {
+      target: { value: "01:00" },
+    });
+
+    await user.click(screen.getByRole("button", { name: "確定" }));
+
+    expect(
+      screen.getByRole("heading", {
+        name: "翌日終了として登録されるシフトがあります",
+      }),
+    ).toBeInTheDocument();
+    expect(
+      fetchMock.mock.calls.some(
+        ([url, options]) =>
+          url === "/api/shifts/bulk" &&
+          (options as { method?: string } | undefined)?.method === "POST",
+      ),
+    ).toBe(false);
+
+    await user.click(
+      screen.getByRole("button", { name: "まとめて翌日終了として登録" }),
+    );
+
+    await waitFor(() => {
+      expect(pushMock).toHaveBeenCalledWith("/my");
+    });
+  });
+
   it("redirects to calendar setup when bulk sync reports missing calendar", async () => {
     const user = userEvent.setup({
       advanceTimers: jest.advanceTimersByTime,

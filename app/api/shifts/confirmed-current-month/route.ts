@@ -7,6 +7,10 @@ import {
   findApplicablePayrollRule,
   groupPayrollRulesByWorkplace,
 } from "@/lib/payroll/summarizeByPeriod";
+import {
+  buildPayrollRuleWhereForDateRange,
+  resolvePayrollRuleDateRange,
+} from "@/lib/payroll/rule-query";
 import { prisma } from "@/lib/prisma";
 
 const DATE_PART_PADDING = 2;
@@ -73,14 +77,14 @@ export async function GET() {
     const workplaceIds = Array.from(
       new Set(shifts.map((shift) => shift.workplaceId)),
     );
+    const payrollRuleDateRange = resolvePayrollRuleDateRange(shifts);
     const payrollRules =
-      workplaceIds.length > 0
+      workplaceIds.length > 0 && payrollRuleDateRange
         ? await prisma.payrollRule.findMany({
-            where: {
-              workplaceId: {
-                in: workplaceIds,
-              },
-            },
+            where: buildPayrollRuleWhereForDateRange(
+              workplaceIds,
+              payrollRuleDateRange,
+            ),
             orderBy: [{ workplaceId: "asc" }, { startDate: "desc" }],
           })
         : [];
