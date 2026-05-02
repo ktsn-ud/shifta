@@ -71,6 +71,12 @@ const GOOGLE_EVENT_LIST_LIMIT = 5;
 const GOOGLE_EVENT_LIST_VISIBLE_WHEN_OVERFLOW = 3;
 const GOOGLE_TOKEN_EXPIRED_DESCRIPTION =
   "3秒後にログアウトします。再度Googleアカウントでログインしてください。";
+const selectedDateFormatter = new Intl.DateTimeFormat("ja-JP", {
+  year: "numeric",
+  month: "long",
+  day: "numeric",
+  weekday: "short",
+});
 
 type ShiftType = "NORMAL" | "LESSON";
 
@@ -525,12 +531,7 @@ function formatSelectedDate(dateKey: string): string {
     return dateKey;
   }
 
-  return new Intl.DateTimeFormat("ja-JP", {
-    year: "numeric",
-    month: "long",
-    day: "numeric",
-    weekday: "short",
-  }).format(date);
+  return selectedDateFormatter.format(date);
 }
 
 function formatShiftTypeForWorkplace(

@@ -58,13 +58,20 @@ type SortState = {
   direction: SortDirection;
 } | null;
 
+const shiftDateFormatter = new Intl.DateTimeFormat("ja-JP", {
+  month: "2-digit",
+  day: "2-digit",
+  weekday: "short",
+  timeZone: "UTC",
+});
+const currencyFormatter = new Intl.NumberFormat("ja-JP", {
+  style: "currency",
+  currency: "JPY",
+  maximumFractionDigits: 0,
+});
+
 function formatDate(value: string): string {
-  return new Intl.DateTimeFormat("ja-JP", {
-    month: "2-digit",
-    day: "2-digit",
-    weekday: "short",
-    timeZone: "UTC",
-  }).format(new Date(value));
+  return shiftDateFormatter.format(new Date(value));
 }
 
 function formatTime(value: string): string {
@@ -86,11 +93,7 @@ function formatCurrency(value: number | null): string {
     return "--";
   }
 
-  return new Intl.NumberFormat("ja-JP", {
-    style: "currency",
-    currency: "JPY",
-    maximumFractionDigits: 0,
-  }).format(value);
+  return currencyFormatter.format(value);
 }
 
 function compareByDefault(left: MonthShift, right: MonthShift): number {

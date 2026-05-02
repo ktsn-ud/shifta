@@ -52,19 +52,21 @@ type ShiftConfirmPageClientProps = {
   initialConfirmedShiftGroups: ConfirmedShiftWorkplaceGroup[];
 };
 
+const dateWithWeekdayFormatter = new Intl.DateTimeFormat("ja-JP", {
+  year: "numeric",
+  month: "long",
+  day: "numeric",
+  weekday: "short",
+  timeZone: "UTC",
+});
+
 function parseDateOnly(value: string): Date {
   const [year, month, day] = value.split("-").map((part) => Number(part));
   return new Date(Date.UTC(year, month - 1, day));
 }
 
 function formatDateWithWeekday(dateOnly: string): string {
-  return new Intl.DateTimeFormat("ja-JP", {
-    year: "numeric",
-    month: "long",
-    day: "numeric",
-    weekday: "short",
-    timeZone: "UTC",
-  }).format(parseDateOnly(dateOnly));
+  return dateWithWeekdayFormatter.format(parseDateOnly(dateOnly));
 }
 
 export function ShiftConfirmPageClient({

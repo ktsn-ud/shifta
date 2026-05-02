@@ -201,17 +201,19 @@ function toNumber(value: string | number | null): number | null {
   return parsed;
 }
 
+const payrollRuleCurrencyFormatter = new Intl.NumberFormat("ja-JP", {
+  style: "currency",
+  currency: "JPY",
+  maximumFractionDigits: 2,
+});
+
 function formatCurrency(value: string | number | null): string {
   const numeric = toNumber(value);
   if (numeric === null) {
     return "-";
   }
 
-  return new Intl.NumberFormat("ja-JP", {
-    style: "currency",
-    currency: "JPY",
-    maximumFractionDigits: 2,
-  }).format(numeric);
+  return payrollRuleCurrencyFormatter.format(numeric);
 }
 
 function formatDate(value: string | null, shiftDays = 0): string {
