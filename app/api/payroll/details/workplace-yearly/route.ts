@@ -1,8 +1,8 @@
-import { NextResponse } from "next/server";
 import { z } from "zod";
 import { requireCurrentUser } from "@/lib/api/current-user";
 import { jsonError } from "@/lib/api/http";
 import { getPayrollDetailsWorkplaceYearlyForUser } from "@/lib/payroll/details";
+import { jsonNoStore } from "@/lib/api/cache-control";
 
 const YEAR_REGEX = /^\d{4}$/;
 const MIN_YEAR = 2000;
@@ -47,7 +47,7 @@ export async function GET(request: Request) {
       query.data.year,
     );
 
-    return NextResponse.json(yearly, {
+    return jsonNoStore(yearly, {
       headers: {
         "Cache-Control": "private, no-store, no-cache, must-revalidate",
       },

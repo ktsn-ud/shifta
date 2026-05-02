@@ -1,4 +1,4 @@
-import { after, NextResponse } from "next/server";
+import { after } from "next/server";
 import { revalidatePath } from "next/cache";
 import { requireCurrentUser } from "@/lib/api/current-user";
 import {
@@ -12,6 +12,7 @@ import {
   syncShiftDeletion,
 } from "@/lib/google-calendar/syncStatus";
 import { prisma } from "@/lib/prisma";
+import { jsonNoStore } from "@/lib/api/cache-control";
 import {
   buildShiftData,
   ShiftValidationError,
@@ -66,7 +67,7 @@ export async function GET(_: Request, context: Context) {
       return jsonError("シフトが見つかりません", 404);
     }
 
-    return NextResponse.json({ data: shift });
+    return jsonNoStore({ data: shift });
   } catch (error) {
     console.error("GET /api/shifts/:id failed", error);
     return jsonError("シフト取得に失敗しました", 500);
@@ -166,7 +167,7 @@ export async function PUT(request: Request, context: Context) {
 
     revalidateShiftRelatedPaths();
 
-    return NextResponse.json({
+    return jsonNoStore({
       data: updated,
       syncStatus: updated ? "pending" : null,
     });
@@ -225,7 +226,7 @@ export async function DELETE(request: Request, context: Context) {
       }
     });
 
-    return NextResponse.json({
+    return jsonNoStore({
       id,
       message: "Shift deleted successfully",
       syncStatus: "pending",

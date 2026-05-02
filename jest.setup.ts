@@ -17,7 +17,10 @@ if (typeof globalThis.TextDecoder === "undefined") {
   });
 }
 
-if (typeof globalThis.PointerEvent === "undefined") {
+if (
+  typeof globalThis.PointerEvent === "undefined" &&
+  typeof globalThis.MouseEvent !== "undefined"
+) {
   class PointerEventPolyfill extends MouseEvent {}
 
   Object.defineProperty(globalThis, "PointerEvent", {

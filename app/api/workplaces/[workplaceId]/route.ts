@@ -1,4 +1,3 @@
-import { NextResponse } from "next/server";
 import { z } from "zod";
 import { requireCurrentUser } from "@/lib/api/current-user";
 import {
@@ -7,6 +6,7 @@ import {
   verifyMutationRequest,
 } from "@/lib/api/http";
 import { prisma } from "@/lib/prisma";
+import { jsonNoStore } from "@/lib/api/cache-control";
 
 const colorRegex = /^#[0-9A-Fa-f]{6}$/;
 const PAYROLL_DAY_MIN = 1;
@@ -76,7 +76,7 @@ export async function GET(_: Request, context: Context) {
       return jsonError("勤務先が見つかりません", 404);
     }
 
-    return NextResponse.json({
+    return jsonNoStore({
       data: {
         ...workplace,
         _count: {
@@ -151,7 +151,7 @@ export async function PUT(request: Request, context: Context) {
       },
     });
 
-    return NextResponse.json({ data: workplace });
+    return jsonNoStore({ data: workplace });
   } catch (error) {
     console.error("PUT /api/workplaces/:id failed", error);
     return jsonError("勤務先の更新に失敗しました", 500);
@@ -184,7 +184,7 @@ export async function DELETE(request: Request, context: Context) {
 
     await prisma.workplace.delete({ where: { id: workplaceId } });
 
-    return NextResponse.json({
+    return jsonNoStore({
       data: {
         id: workplaceId,
         deleted: true,

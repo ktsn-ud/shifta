@@ -1,4 +1,3 @@
-import { NextResponse } from "next/server";
 import { auth } from "@/lib/auth";
 import { requireCurrentUser } from "@/lib/api/current-user";
 import { jsonError, verifyMutationRequest } from "@/lib/api/http";
@@ -10,6 +9,7 @@ import { createShiftaCalendar } from "@/lib/google-calendar/client";
 import { CALENDAR_SETUP_SKIP_COOKIE } from "@/lib/google-calendar/constants";
 import { syncShiftsAfterBulkCreate } from "@/lib/google-calendar/syncStatus";
 import { prisma } from "@/lib/prisma";
+import { jsonNoStore } from "@/lib/api/cache-control";
 
 function mapGoogleAuthErrorStatus(error: GoogleCalendarAuthError): number {
   if (error.code === "UNAUTHENTICATED" || error.code === "TOKEN_EXPIRED") {
@@ -90,7 +90,7 @@ export async function POST(request: Request) {
     const successCount = syncResults.filter((result) => result.ok).length;
     const failedCount = syncResults.length - successCount;
 
-    const response = NextResponse.json({
+    const response = jsonNoStore({
       success: true,
       calendarId,
       sync: {

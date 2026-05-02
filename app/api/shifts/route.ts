@@ -1,5 +1,5 @@
 import { type Prisma } from "@/lib/generated/prisma/client";
-import { after, NextResponse } from "next/server";
+import { after } from "next/server";
 import { revalidatePath } from "next/cache";
 import { z } from "zod";
 import { requireCurrentUser } from "@/lib/api/current-user";
@@ -17,6 +17,7 @@ import {
   resolvePayrollRuleDateRange,
 } from "@/lib/payroll/rule-query";
 import { prisma } from "@/lib/prisma";
+import { jsonNoStore } from "@/lib/api/cache-control";
 import {
   syncShiftAfterCreate,
   syncShiftDeletion,
@@ -142,7 +143,7 @@ export async function POST(request: Request) {
 
     revalidateShiftRelatedPaths();
 
-    return NextResponse.json(
+    return jsonNoStore(
       {
         data: created,
         syncStatus: created ? "pending" : null,
@@ -255,7 +256,7 @@ export async function GET(request: Request) {
     });
 
     if (query.data.includeEstimate !== "true") {
-      return NextResponse.json({ data: shiftsWithWorkedMinutes });
+      return jsonNoStore({ data: shiftsWithWorkedMinutes });
     }
 
     const workplaceIds = Array.from(
@@ -266,7 +267,7 @@ export async function GET(request: Request) {
     );
 
     if (workplaceIds.length === 0 || !payrollRuleDateRange) {
-      return NextResponse.json({ data: [] });
+      return jsonNoStore({ data: [] });
     }
 
     const payrollRules = await prisma.payrollRule.findMany({
@@ -295,7 +296,7 @@ export async function GET(request: Request) {
       };
     });
 
-    return NextResponse.json({ data: withEstimate });
+    return jsonNoStore({ data: withEstimate });
   } catch (error) {
     console.error("GET /api/shifts failed", error);
     return jsonError("シフト一覧の取得に失敗しました", 500);
@@ -394,7 +395,7 @@ export async function DELETE(request: Request) {
       }
     });
 
-    return NextResponse.json({
+    return jsonNoStore({
       deletedIds: uniqueShiftIds,
       deletedCount: uniqueShiftIds.length,
       syncStatus: "pending",

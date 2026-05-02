@@ -1,3 +1,7 @@
+/**
+ * @jest-environment node
+ */
+
 import nextConfig from "@/next.config";
 import {
   NO_STORE_PRIVATE,

@@ -1,10 +1,10 @@
-import { NextResponse } from "next/server";
 import { calendar_v3 } from "googleapis";
 import { requireCurrentUser } from "@/lib/api/current-user";
 import { jsonError } from "@/lib/api/http";
 import { GoogleCalendarAuthError } from "@/lib/google-calendar/auth";
 import { getReadCalendarClientByUserId } from "@/lib/google-calendar/client";
 import { SHIFTA_CALENDAR_TIMEZONE } from "@/lib/google-calendar/constants";
+import { jsonNoStore } from "@/lib/api/cache-control";
 
 const MONTH_REGEX = /^(\d{4})-(\d{2})$/;
 const FETCH_CONCURRENCY = 3;
@@ -492,7 +492,7 @@ export async function GET(request: Request) {
     );
     const cached = readCalendarEventsCache(cacheKey);
     if (cached) {
-      return NextResponse.json({ data: cached });
+      return jsonNoStore({ data: cached });
     }
 
     const calendar = await getReadCalendarClientByUserId(current.user.id);
@@ -587,7 +587,7 @@ export async function GET(request: Request) {
     };
     writeCalendarEventsCache(cacheKey, responseData);
 
-    return NextResponse.json({ data: responseData });
+    return jsonNoStore({ data: responseData });
   } catch (error) {
     if (error instanceof GoogleCalendarAuthError) {
       const details: Record<string, unknown> = {
