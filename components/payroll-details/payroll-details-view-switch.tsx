@@ -14,11 +14,7 @@ export function PayrollDetailsViewSwitch({
 }: PayrollDetailsViewSwitchProps) {
   return (
     <div className="flex flex-wrap items-center gap-2">
-      <Button
-        type="button"
-        size="sm"
-        render={<Link href={href} prefetch={false} />}
-      >
+      <Button type="button" size="sm" render={<Link href={href} />}>
         {currentMode === "monthly"
           ? "勤務先別表示へ切り替え"
           : "月別表示へ切り替え"}
