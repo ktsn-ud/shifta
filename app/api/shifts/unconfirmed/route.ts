@@ -1,7 +1,7 @@
-import { NextResponse } from "next/server";
 import { requireCurrentUser } from "@/lib/api/current-user";
 import { jsonError } from "@/lib/api/http";
 import { prisma } from "@/lib/prisma";
+import { jsonNoStore } from "@/lib/api/cache-control";
 
 const DATE_PART_PADDING = 2;
 
@@ -53,7 +53,7 @@ export async function GET() {
       orderBy: [{ date: "asc" }, { startTime: "asc" }],
     });
 
-    return NextResponse.json({
+    return jsonNoStore({
       shifts: shifts.map((shift) => ({
         id: shift.id,
         comment: shift.comment,

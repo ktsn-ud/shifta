@@ -1,8 +1,8 @@
-import { NextResponse } from "next/server";
 import { z } from "zod";
 import { getSessionEmail, requireCurrentUser } from "@/lib/api/current-user";
 import { jsonError, parseJsonBody } from "@/lib/api/http";
 import { prisma } from "@/lib/prisma";
+import { jsonNoStore } from "@/lib/api/cache-control";
 
 const updateUserSchema = z
   .object({
@@ -22,7 +22,7 @@ export async function GET() {
       return result.response;
     }
 
-    return NextResponse.json({ data: result.user });
+    return jsonNoStore({ data: result.user });
   } catch (error) {
     console.error("GET /api/users/me failed", error);
     return jsonError("ユーザー取得に失敗しました", 500);
@@ -71,7 +71,7 @@ export async function PUT(request: Request) {
       data: updateData,
     });
 
-    return NextResponse.json({ data: user });
+    return jsonNoStore({ data: user });
   } catch (error) {
     console.error("PUT /api/users/me failed", error);
     return jsonError("ユーザー更新に失敗しました", 500);

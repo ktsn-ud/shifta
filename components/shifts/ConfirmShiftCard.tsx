@@ -114,6 +114,9 @@ export function ConfirmShiftCard({
   }, [shift.breakMinutes, shift.endTime, shift.id, shift.startTime]);
 
   const isMutating = isConfirming || isSignOutScheduled;
+  const startTimeInputId = `${shift.id}-confirm-start-time`;
+  const endTimeInputId = `${shift.id}-confirm-end-time`;
+  const breakMinutesInputId = `${shift.id}-confirm-break-minutes`;
   const workplaceLabel = formatShiftWorkplaceLabel({
     workplaceName: shift.workplaceName,
     comment: shift.comment,
@@ -230,9 +233,13 @@ export function ConfirmShiftCard({
 
         <CardContent className="flex flex-col gap-4">
           <div className="grid grid-cols-2 gap-3 lg:grid-cols-[minmax(0,1fr)_minmax(0,1fr)_minmax(0,1fr)_auto]">
-            <label className="flex flex-col gap-1 text-sm">
+            <label
+              htmlFor={startTimeInputId}
+              className="flex flex-col gap-1 text-sm"
+            >
               開始時刻
               <Input
+                id={startTimeInputId}
                 type="time"
                 value={startTime}
                 disabled={isMutating}
@@ -240,9 +247,13 @@ export function ConfirmShiftCard({
               />
             </label>
 
-            <label className="flex flex-col gap-1 text-sm">
+            <label
+              htmlFor={endTimeInputId}
+              className="flex flex-col gap-1 text-sm"
+            >
               終了時刻
               <Input
+                id={endTimeInputId}
                 type="time"
                 value={endTime}
                 disabled={isMutating}
@@ -250,9 +261,13 @@ export function ConfirmShiftCard({
               />
             </label>
 
-            <label className="flex flex-col gap-1 text-sm">
+            <label
+              htmlFor={breakMinutesInputId}
+              className="flex flex-col gap-1 text-sm"
+            >
               休憩時間（分）
               <Input
+                id={breakMinutesInputId}
                 type="number"
                 min={0}
                 max={240}

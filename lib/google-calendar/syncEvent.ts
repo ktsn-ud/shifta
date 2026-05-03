@@ -22,6 +22,11 @@ type ShiftWithLessonRange = Shift & {
 };
 
 type CalendarClient = Awaited<ReturnType<typeof getCalendarClientByUserId>>;
+const eventCurrencyFormatter = new Intl.NumberFormat("ja-JP", {
+  style: "currency",
+  currency: "JPY",
+  maximumFractionDigits: 0,
+});
 
 type CreateCalendarEventOptions = {
   calendar?: CalendarClient;
@@ -188,11 +193,7 @@ function formatCurrency(value: number | null): string {
     return "--";
   }
 
-  return new Intl.NumberFormat("ja-JP", {
-    style: "currency",
-    currency: "JPY",
-    maximumFractionDigits: 0,
-  }).format(value);
+  return eventCurrencyFormatter.format(value);
 }
 
 async function estimateShiftWageForEvent(

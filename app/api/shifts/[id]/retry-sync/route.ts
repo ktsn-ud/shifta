@@ -1,7 +1,7 @@
-import { NextResponse } from "next/server";
 import { requireCurrentUser } from "@/lib/api/current-user";
 import { jsonError, verifyMutationRequest } from "@/lib/api/http";
 import { retryShiftSync } from "@/lib/google-calendar/syncStatus";
+import { jsonNoStore } from "@/lib/api/cache-control";
 
 type Context = {
   params: Promise<{ id: string }>;
@@ -23,7 +23,7 @@ export async function POST(request: Request, context: Context) {
     const result = await retryShiftSync(id, current.user.id);
 
     if (result.ok) {
-      return NextResponse.json({
+      return jsonNoStore({
         success: true,
         googleEventId: result.googleEventId,
       });

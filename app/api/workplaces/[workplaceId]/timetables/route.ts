@@ -1,12 +1,12 @@
 import { randomUUID } from "node:crypto";
 import { Prisma } from "@/lib/generated/prisma/client";
-import { NextResponse } from "next/server";
 import { z } from "zod";
 import { requireCurrentUser } from "@/lib/api/current-user";
 import { parseTimeOnly, toMinutes, TIME_ONLY_REGEX } from "@/lib/api/date-time";
 import { jsonError, parseJsonBody } from "@/lib/api/http";
 import { requireOwnedWorkplace } from "@/lib/api/workplace";
 import { prisma } from "@/lib/prisma";
+import { jsonNoStore } from "@/lib/api/cache-control";
 
 const timetableItemSchema = z
   .object({
@@ -251,10 +251,10 @@ export async function POST(request: Request, context: Context) {
     }
 
     if (created.length === 1 && !("sets" in body.data)) {
-      return NextResponse.json({ data: created[0] }, { status: 201 });
+      return jsonNoStore({ data: created[0] }, { status: 201 });
     }
 
-    return NextResponse.json({ data: created }, { status: 201 });
+    return jsonNoStore({ data: created }, { status: 201 });
   } catch (error) {
     if (
       error instanceof Error &&
@@ -309,7 +309,7 @@ export async function GET(_: Request, context: Context) {
       orderBy: [{ sortOrder: "asc" }, { createdAt: "asc" }],
     });
 
-    return NextResponse.json({
+    return jsonNoStore({
       data: buildSetResponse(sets),
     });
   } catch (error) {

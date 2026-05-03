@@ -58,13 +58,14 @@ type DashboardPageClientProps = {
 const NEXT_PAYMENT_CACHE_TTL_MS = 5 * 60 * 1000;
 const GOOGLE_TOKEN_EXPIRED_DESCRIPTION =
   "3秒後にログアウトします。再度Googleアカウントでログインしてください。";
+const currencyFormatter = new Intl.NumberFormat("ja-JP", {
+  style: "currency",
+  currency: "JPY",
+  maximumFractionDigits: 0,
+});
 
 function formatCurrency(value: number): string {
-  return new Intl.NumberFormat("ja-JP", {
-    style: "currency",
-    currency: "JPY",
-    maximumFractionDigits: 0,
-  }).format(value);
+  return currencyFormatter.format(value);
 }
 
 function formatCalendarMonthLabel(month: Date): string {

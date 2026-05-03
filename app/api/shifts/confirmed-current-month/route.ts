@@ -1,4 +1,3 @@
-import { NextResponse } from "next/server";
 import { requireCurrentUser } from "@/lib/api/current-user";
 import { jsonError } from "@/lib/api/http";
 import { calculateWorkedMinutes } from "@/lib/payroll/estimate";
@@ -12,6 +11,7 @@ import {
   resolvePayrollRuleDateRange,
 } from "@/lib/payroll/rule-query";
 import { prisma } from "@/lib/prisma";
+import { jsonNoStore } from "@/lib/api/cache-control";
 
 const DATE_PART_PADDING = 2;
 
@@ -90,7 +90,7 @@ export async function GET() {
         : [];
     const rulesByWorkplace = groupPayrollRulesByWorkplace(payrollRules);
 
-    return NextResponse.json({
+    return jsonNoStore({
       shifts: shifts.map((shift) => {
         const normalizedShiftType =
           shift.shiftType === "LESSON" ? "LESSON" : "NORMAL";

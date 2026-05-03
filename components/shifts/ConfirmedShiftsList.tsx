@@ -18,12 +18,14 @@ function formatDurationHours(hours: number): string {
   return `${hours.toFixed(1)}h`;
 }
 
+const currencyFormatter = new Intl.NumberFormat("ja-JP", {
+  style: "currency",
+  currency: "JPY",
+  maximumFractionDigits: 0,
+});
+
 function formatCurrency(value: number): string {
-  return new Intl.NumberFormat("ja-JP", {
-    style: "currency",
-    currency: "JPY",
-    maximumFractionDigits: 0,
-  }).format(value);
+  return currencyFormatter.format(value);
 }
 
 export function ConfirmedShiftsList({ groups }: ConfirmedShiftsListProps) {

@@ -1,7 +1,6 @@
 "use client";
 
 import { useState } from "react";
-import { usePathname, useRouter } from "next/navigation";
 import { Button } from "@/components/ui/button";
 import {
   Dialog,
@@ -25,8 +24,6 @@ export function DeleteConfirmDialog({
   shiftLabel,
   onDelete,
 }: DeleteConfirmDialogProps) {
-  const router = useRouter();
-  const pathname = usePathname();
   const [pending, setPending] = useState(false);
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
 
@@ -76,10 +73,6 @@ export function DeleteConfirmDialog({
               try {
                 await onDelete();
                 onOpenChange(false);
-
-                if (pathname !== "/my") {
-                  router.push("/my");
-                }
               } catch (error) {
                 console.error("failed to delete shift", error);
                 setErrorMessage(

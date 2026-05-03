@@ -20,6 +20,13 @@ import {
 import { prisma } from "@/lib/prisma";
 
 const DATE_PART_PADDING = 2;
+const dateWithWeekdayFormatter = new Intl.DateTimeFormat("ja-JP", {
+  year: "numeric",
+  month: "long",
+  day: "numeric",
+  weekday: "short",
+  timeZone: "UTC",
+});
 
 function pad(value: number): string {
   return String(value).padStart(DATE_PART_PADDING, "0");
@@ -39,13 +46,7 @@ function parseDateOnly(value: string): Date {
 }
 
 function formatDateWithWeekday(dateOnly: string): string {
-  return new Intl.DateTimeFormat("ja-JP", {
-    year: "numeric",
-    month: "long",
-    day: "numeric",
-    weekday: "short",
-    timeZone: "UTC",
-  }).format(parseDateOnly(dateOnly));
+  return dateWithWeekdayFormatter.format(parseDateOnly(dateOnly));
 }
 
 function startOfUtcDay(value: Date): Date {

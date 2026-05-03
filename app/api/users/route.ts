@@ -1,8 +1,8 @@
-import { NextResponse } from "next/server";
 import { z } from "zod";
 import { getSessionEmail } from "@/lib/api/current-user";
 import { jsonError, parseJsonBody } from "@/lib/api/http";
 import { prisma } from "@/lib/prisma";
+import { jsonNoStore } from "@/lib/api/cache-control";
 
 const createUserSchema = z
   .object({
@@ -45,7 +45,7 @@ export async function POST(request: Request) {
     });
 
     const created = user.createdAt.getTime() === user.updatedAt.getTime();
-    return NextResponse.json(
+    return jsonNoStore(
       { data: user, created },
       { status: created ? 201 : 200 },
     );
