@@ -45,13 +45,20 @@ type ShiftListModalProps = {
   onRetrySync: (shiftId: string) => Promise<void> | void;
 };
 
+const dateFormatter = new Intl.DateTimeFormat("ja-JP", {
+  year: "numeric",
+  month: "long",
+  day: "numeric",
+  weekday: "short",
+});
+const estimatedPayFormatter = new Intl.NumberFormat("ja-JP", {
+  style: "currency",
+  currency: "JPY",
+  maximumFractionDigits: 0,
+});
+
 function formatDate(date: Date): string {
-  return new Intl.DateTimeFormat("ja-JP", {
-    year: "numeric",
-    month: "long",
-    day: "numeric",
-    weekday: "short",
-  }).format(date);
+  return dateFormatter.format(date);
 }
 
 function formatTime(value: string): string {
@@ -65,11 +72,7 @@ function formatEstimatedPay(value: number | null): string {
   if (value === null) {
     return "--";
   }
-  return new Intl.NumberFormat("ja-JP", {
-    style: "currency",
-    currency: "JPY",
-    maximumFractionDigits: 0,
-  }).format(value);
+  return estimatedPayFormatter.format(value);
 }
 
 function formatShiftLabel(shift: ShiftListModalShift): string {

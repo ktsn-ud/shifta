@@ -1,5 +1,5 @@
 import { randomUUID } from "node:crypto";
-import { after, NextResponse } from "next/server";
+import { after } from "next/server";
 import { revalidatePath } from "next/cache";
 import { z } from "zod";
 import { requireCurrentUser } from "@/lib/api/current-user";
@@ -8,6 +8,7 @@ import { jsonError, parseJsonBody } from "@/lib/api/http";
 import { requireOwnedWorkplace } from "@/lib/api/workplace";
 import { syncShiftsAfterBulkCreate } from "@/lib/google-calendar/syncStatus";
 import { prisma } from "@/lib/prisma";
+import { jsonNoStore } from "@/lib/api/cache-control";
 import {
   buildShiftData,
   type BuiltShiftData,
@@ -318,7 +319,7 @@ export async function POST(request: Request) {
 
     revalidateShiftRelatedPaths();
 
-    return NextResponse.json(
+    return jsonNoStore(
       {
         data: latest,
         summary: {

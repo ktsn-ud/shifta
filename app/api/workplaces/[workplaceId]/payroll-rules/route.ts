@@ -1,4 +1,3 @@
-import { NextResponse } from "next/server";
 import { type Prisma } from "@/lib/generated/prisma/client";
 import { z } from "zod";
 import { requireCurrentUser } from "@/lib/api/current-user";
@@ -6,6 +5,7 @@ import { parseDateOnly, DATE_ONLY_REGEX } from "@/lib/api/date-time";
 import { jsonError, parseJsonBody } from "@/lib/api/http";
 import { requireOwnedWorkplace } from "@/lib/api/workplace";
 import { prisma } from "@/lib/prisma";
+import { jsonNoStore } from "@/lib/api/cache-control";
 
 const payrollRuleSchema = z
   .object({
@@ -201,7 +201,7 @@ export async function POST(request: Request, context: Context) {
       return { payrollRule, overlaps };
     });
 
-    return NextResponse.json(
+    return jsonNoStore(
       {
         data: payrollRule,
         warning:
@@ -244,7 +244,7 @@ export async function GET(_: Request, context: Context) {
       orderBy: [{ startDate: "desc" }],
     });
 
-    return NextResponse.json({ data: rules });
+    return jsonNoStore({ data: rules });
   } catch (error) {
     console.error(
       "GET /api/workplaces/:workplaceId/payroll-rules failed",

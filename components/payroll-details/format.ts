@@ -1,7 +1,9 @@
+const currencyFormatter = new Intl.NumberFormat("ja-JP", {
+  maximumFractionDigits: 0,
+});
+
 export function formatCurrency(value: number): string {
-  return `¥${new Intl.NumberFormat("ja-JP", {
-    maximumFractionDigits: 0,
-  }).format(Math.round(value))}`;
+  return `¥${currencyFormatter.format(Math.round(value))}`;
 }
 
 export function formatRate(value: number | null): string {

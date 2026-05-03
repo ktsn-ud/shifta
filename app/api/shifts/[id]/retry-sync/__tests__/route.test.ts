@@ -87,7 +87,9 @@ describe("POST /api/shifts/[id]/retry-sync", () => {
     };
 
     expect(response.status).toBe(401);
-    expect(response.headers.get("cache-control")).toBe("no-store");
+    expect(response.headers.get("cache-control")).toBe(
+      "private, no-store, no-cache, must-revalidate",
+    );
     expect(payload.details).toMatchObject({
       code: "TOKEN_EXPIRED",
       requiresSignOut: true,
@@ -95,7 +97,7 @@ describe("POST /api/shifts/[id]/retry-sync", () => {
     });
   });
 
-  it("CALENDAR_NOT_FOUND のとき 409 を返し no-store は付けない", async () => {
+  it("CALENDAR_NOT_FOUND のとき 409 + no-store を返す", async () => {
     requireCurrentUserMock.mockResolvedValue({
       user: { id: "user-1" },
     } as Awaited<ReturnType<typeof requireCurrentUser>>);
@@ -121,7 +123,9 @@ describe("POST /api/shifts/[id]/retry-sync", () => {
     };
 
     expect(response.status).toBe(409);
-    expect(response.headers.get("cache-control")).toBeNull();
+    expect(response.headers.get("cache-control")).toBe(
+      "private, no-store, no-cache, must-revalidate",
+    );
     expect(payload.details).toMatchObject({
       code: "CALENDAR_NOT_FOUND",
       requiresCalendarSetup: true,

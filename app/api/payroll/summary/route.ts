@@ -1,9 +1,9 @@
-import { NextResponse } from "next/server";
 import { z } from "zod";
 import { requireCurrentUser } from "@/lib/api/current-user";
 import { parseDateOnly } from "@/lib/api/date-time";
 import { jsonError } from "@/lib/api/http";
 import { getPayrollSummaryForUser } from "@/lib/payroll/summary";
+import { jsonNoStore } from "@/lib/api/cache-control";
 
 const MONTH_REGEX = /^\d{4}-(0[1-9]|1[0-2])$/;
 
@@ -40,7 +40,7 @@ export async function GET(request: Request) {
       parseDateOnly(`${query.data.month}-01`),
     );
 
-    return NextResponse.json(summary, {
+    return jsonNoStore(summary, {
       headers: {
         "Cache-Control": "private, no-store, no-cache, must-revalidate",
       },

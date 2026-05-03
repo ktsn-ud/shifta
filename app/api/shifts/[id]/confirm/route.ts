@@ -1,4 +1,4 @@
-import { after, NextResponse } from "next/server";
+import { after } from "next/server";
 import { revalidatePath } from "next/cache";
 import { z } from "zod";
 import { requireCurrentUser } from "@/lib/api/current-user";
@@ -7,6 +7,7 @@ import { jsonError, parseJsonBody } from "@/lib/api/http";
 import { isSameTimeShift } from "@/lib/shifts/time";
 import { syncShiftAfterUpdate } from "@/lib/google-calendar/syncStatus";
 import { prisma } from "@/lib/prisma";
+import { jsonNoStore } from "@/lib/api/cache-control";
 
 type Context = {
   params: Promise<{ id: string }>;
@@ -128,7 +129,7 @@ export async function PATCH(request: Request, context: Context) {
       breakMinutes: updated.breakMinutes,
     };
 
-    return NextResponse.json({
+    return jsonNoStore({
       ...responsePayload,
       syncStatus: "pending",
     });

@@ -1,4 +1,5 @@
 import { NextResponse } from "next/server";
+import { withCacheControl } from "@/lib/api/cache-control";
 
 type SchemaValidationSuccess<T> = {
   success: true;
@@ -33,10 +34,10 @@ export function jsonError(
       error: message,
       ...(details !== undefined ? { details } : {}),
     },
-    {
+    withCacheControl({
       status,
-      ...(init?.headers ? { headers: init.headers } : {}),
-    },
+      headers: init?.headers,
+    }),
   );
 }
 

@@ -19,12 +19,17 @@ const chartConfig = {
   },
 } as const;
 
+const currencyFormatter = new Intl.NumberFormat("ja-JP", {
+  style: "currency",
+  currency: "JPY",
+  maximumFractionDigits: 0,
+});
+const axisCurrencyFormatter = new Intl.NumberFormat("ja-JP", {
+  maximumFractionDigits: 0,
+});
+
 function formatCurrency(value: number): string {
-  return new Intl.NumberFormat("ja-JP", {
-    style: "currency",
-    currency: "JPY",
-    maximumFractionDigits: 0,
-  }).format(value);
+  return currencyFormatter.format(value);
 }
 
 export function WorkplaceWageChart({ byWorkplace }: WorkplaceWageChartProps) {
@@ -41,11 +46,7 @@ export function WorkplaceWageChart({ byWorkplace }: WorkplaceWageChartProps) {
         <YAxis
           tickLine={false}
           axisLine={false}
-          tickFormatter={(value: number) =>
-            new Intl.NumberFormat("ja-JP", {
-              maximumFractionDigits: 0,
-            }).format(value)
-          }
+          tickFormatter={(value: number) => axisCurrencyFormatter.format(value)}
         />
         <ChartTooltip
           cursor={false}

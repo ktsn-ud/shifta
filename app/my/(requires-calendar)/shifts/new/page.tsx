@@ -1,27 +1,23 @@
-"use client";
+import { NewShiftFormPageClient } from "@/components/shifts/shift-form-page-client";
+import {
+  normalizeShiftPageSearchParams,
+  type ShiftPageSearchParams,
+} from "@/lib/shifts/page-search-params";
 
-import dynamic from "next/dynamic";
-import { useSearchParams } from "next/navigation";
-import { NewShiftFormLoadingSkeleton } from "@/components/shifts/ShiftFormLoadingSkeleton";
+type NewShiftPageProps = {
+  searchParams: Promise<ShiftPageSearchParams>;
+};
 
-const ShiftForm = dynamic(
-  () => import("@/components/shifts/ShiftForm").then((mod) => mod.ShiftForm),
-  {
-    loading: () => <NewShiftFormLoadingSkeleton />,
-  },
-);
-
-export default function NewShiftPage() {
-  const searchParams = useSearchParams();
-  const returnTo =
-    searchParams.get("returnTo") === "list" ? "list" : "dashboard";
+export default async function NewShiftPage({
+  searchParams,
+}: NewShiftPageProps) {
+  const navigation = normalizeShiftPageSearchParams(await searchParams);
 
   return (
-    <ShiftForm
-      mode="create"
-      initialDate={searchParams.get("date") ?? undefined}
-      returnMonth={searchParams.get("month") ?? undefined}
-      returnTo={returnTo}
+    <NewShiftFormPageClient
+      initialDate={navigation.initialDate}
+      returnMonth={navigation.returnMonth}
+      returnTo={navigation.returnTo}
     />
   );
 }

@@ -1,6 +1,5 @@
 import { randomUUID } from "node:crypto";
 import { Prisma } from "@/lib/generated/prisma/client";
-import { NextResponse } from "next/server";
 import { z } from "zod";
 import { requireCurrentUser } from "@/lib/api/current-user";
 import { parseTimeOnly, toMinutes, TIME_ONLY_REGEX } from "@/lib/api/date-time";
@@ -11,6 +10,7 @@ import {
 } from "@/lib/api/http";
 import { requireOwnedWorkplace } from "@/lib/api/workplace";
 import { prisma } from "@/lib/prisma";
+import { jsonNoStore } from "@/lib/api/cache-control";
 
 const timetableItemSchema = z
   .object({
@@ -200,7 +200,7 @@ export async function PUT(request: Request, context: Context) {
       return jsonError("時間割セットの更新に失敗しました", 500);
     }
 
-    return NextResponse.json({ data: buildSetResponse(updated) });
+    return jsonNoStore({ data: buildSetResponse(updated) });
   } catch (error) {
     if (
       error instanceof Error &&
@@ -277,7 +277,7 @@ export async function DELETE(request: Request, context: Context) {
       },
     });
 
-    return NextResponse.json({
+    return jsonNoStore({
       data: {
         id,
         deleted: true,

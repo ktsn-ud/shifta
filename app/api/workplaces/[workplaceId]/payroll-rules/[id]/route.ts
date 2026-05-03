@@ -1,4 +1,3 @@
-import { NextResponse } from "next/server";
 import { type Prisma } from "@/lib/generated/prisma/client";
 import { z } from "zod";
 import { requireCurrentUser } from "@/lib/api/current-user";
@@ -10,6 +9,7 @@ import {
 } from "@/lib/api/http";
 import { requireOwnedWorkplace } from "@/lib/api/workplace";
 import { prisma } from "@/lib/prisma";
+import { jsonNoStore } from "@/lib/api/cache-control";
 
 const payrollRuleSchema = z
   .object({
@@ -147,7 +147,7 @@ export async function GET(_: Request, context: Context) {
       return jsonError("給与ルールが見つかりません", 404);
     }
 
-    return NextResponse.json({ data: rule });
+    return jsonNoStore({ data: rule });
   } catch (error) {
     console.error(
       "GET /api/workplaces/:workplaceId/payroll-rules/:id failed",
@@ -220,7 +220,7 @@ export async function PUT(request: Request, context: Context) {
       },
     });
 
-    return NextResponse.json({
+    return jsonNoStore({
       data: rule,
       warning:
         overlaps.length > 0
@@ -267,7 +267,7 @@ export async function DELETE(request: Request, context: Context) {
 
     await prisma.payrollRule.delete({ where: { id } });
 
-    return NextResponse.json({
+    return jsonNoStore({
       data: {
         id,
         deleted: true,

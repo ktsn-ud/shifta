@@ -1,7 +1,7 @@
-import { NextResponse } from "next/server";
 import { requireCurrentUser } from "@/lib/api/current-user";
 import { jsonError } from "@/lib/api/http";
 import { getOwnedShiftSyncStatus } from "@/lib/google-calendar/syncStatus";
+import { jsonNoStore } from "@/lib/api/cache-control";
 
 type Context = {
   params: Promise<{ id: string }>;
@@ -21,7 +21,7 @@ export async function GET(_: Request, context: Context) {
       return jsonError("シフトが見つかりません", 404);
     }
 
-    return NextResponse.json({ data: status });
+    return jsonNoStore({ data: status });
   } catch (error) {
     console.error("GET /api/shifts/:id/sync-status failed", error);
     return jsonError("同期ステータス取得に失敗しました", 500);

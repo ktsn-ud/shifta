@@ -40,6 +40,11 @@ type SummaryPageClientProps = {
 };
 
 const SUMMARY_CACHE_TTL_MS = 5 * 60 * 1000;
+const currencyFormatter = new Intl.NumberFormat("ja-JP", {
+  style: "currency",
+  currency: "JPY",
+  maximumFractionDigits: 0,
+});
 
 const WorkplaceWageChart = dynamic(
   () =>
@@ -55,11 +60,7 @@ const WorkplaceWageChart = dynamic(
 );
 
 function formatCurrency(value: number): string {
-  return new Intl.NumberFormat("ja-JP", {
-    style: "currency",
-    currency: "JPY",
-    maximumFractionDigits: 0,
-  }).format(value);
+  return currencyFormatter.format(value);
 }
 
 function formatHours(value: number): string {
