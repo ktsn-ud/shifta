@@ -1,3 +1,4 @@
+import { createHash } from "node:crypto";
 import { calendar_v3 } from "googleapis";
 import { requireCurrentUser } from "@/lib/api/current-user";
 import { jsonError } from "@/lib/api/http";
@@ -14,6 +15,8 @@ const MAX_ITEMS_PER_DAY = 20;
 const DEFAULT_SELECTED_CALENDAR_LIMIT = 3;
 const MAX_SELECTED_CALENDAR_COUNT = 10;
 const CALENDAR_EVENTS_CACHE_TTL_MS = 60 * 1000;
+const CALENDAR_EVENTS_STALE_FALLBACK_TTL_MS = 5 * 60 * 1000;
+const CALENDAR_EVENTS_CACHE_MAX_ENTRIES = 100;
 
 type GoogleColorPalettes = {
   calendar: Map<string, string>;
@@ -67,6 +70,7 @@ type GoogleApiErrorCandidate = Error & {
 
 type CalendarEventsCacheEntry = {
   expiresAt: number;
+  staleExpiresAt: number;
   data: CalendarEventsResponseData;
 };
 
@@ -233,12 +237,41 @@ function toCacheKey(
 ): string {
   const requestedKey =
     requestedCalendarIds.length > 0
-      ? requestedCalendarIds.join(",")
+      ? createHash("sha256")
+          .update(requestedCalendarIds.join(","))
+          .digest("hex")
+          .slice(0, 20)
       : "default";
+
   return `${userId}:${month}:${requestedKey}`;
 }
 
-function readCalendarEventsCache(
+function pruneCalendarEventsCache(now: number): void {
+  for (const [key, value] of calendarEventsCache.entries()) {
+    if (value.staleExpiresAt <= now) {
+      calendarEventsCache.delete(key);
+    }
+  }
+}
+
+function trimCalendarEventsCacheSize(): void {
+  if (calendarEventsCache.size <= CALENDAR_EVENTS_CACHE_MAX_ENTRIES) {
+    return;
+  }
+
+  const overflowCount =
+    calendarEventsCache.size - CALENDAR_EVENTS_CACHE_MAX_ENTRIES;
+  const keysToDelete = Array.from(calendarEventsCache.entries())
+    .sort((left, right) => left[1].staleExpiresAt - right[1].staleExpiresAt)
+    .slice(0, overflowCount)
+    .map(([key]) => key);
+
+  for (const key of keysToDelete) {
+    calendarEventsCache.delete(key);
+  }
+}
+
+function readCalendarEventsCacheFresh(
   cacheKey: string,
 ): CalendarEventsResponseData | null {
   const cached = calendarEventsCache.get(cacheKey);
@@ -247,6 +280,21 @@ function readCalendarEventsCache(
   }
 
   if (cached.expiresAt <= Date.now()) {
+    return null;
+  }
+
+  return cached.data;
+}
+
+function readCalendarEventsCacheStale(
+  cacheKey: string,
+): CalendarEventsResponseData | null {
+  const cached = calendarEventsCache.get(cacheKey);
+  if (!cached) {
+    return null;
+  }
+
+  if (cached.staleExpiresAt <= Date.now()) {
     calendarEventsCache.delete(cacheKey);
     return null;
   }
@@ -258,10 +306,19 @@ function writeCalendarEventsCache(
   cacheKey: string,
   data: CalendarEventsResponseData,
 ): void {
+  const now = Date.now();
+  pruneCalendarEventsCache(now);
+
   calendarEventsCache.set(cacheKey, {
     data,
-    expiresAt: Date.now() + CALENDAR_EVENTS_CACHE_TTL_MS,
+    expiresAt: now + CALENDAR_EVENTS_CACHE_TTL_MS,
+    staleExpiresAt:
+      now +
+      CALENDAR_EVENTS_CACHE_TTL_MS +
+      CALENDAR_EVENTS_STALE_FALLBACK_TTL_MS,
   });
+
+  trimCalendarEventsCacheSize();
 }
 
 async function mapWithConcurrency<T, R>(
@@ -469,6 +526,8 @@ function aggregateEvent(
 }
 
 export async function GET(request: Request) {
+  let cacheKey: string | null = null;
+
   try {
     const current = await requireCurrentUser();
     if ("response" in current) {
@@ -485,14 +544,16 @@ export async function GET(request: Request) {
       return jsonError("month は YYYY-MM 形式で指定してください", 400);
     }
 
-    const cacheKey = toCacheKey(
-      current.user.id,
-      range.month,
-      requestedCalendarIds,
-    );
-    const cached = readCalendarEventsCache(cacheKey);
+    cacheKey = toCacheKey(current.user.id, range.month, requestedCalendarIds);
+    pruneCalendarEventsCache(Date.now());
+    const cached = readCalendarEventsCacheFresh(cacheKey);
     if (cached) {
-      return jsonNoStore({ data: cached });
+      return jsonNoStore({
+        data: cached,
+        meta: {
+          cacheStatus: "hit",
+        },
+      });
     }
 
     const calendar = await getReadCalendarClientByUserId(current.user.id);
@@ -587,7 +648,12 @@ export async function GET(request: Request) {
     };
     writeCalendarEventsCache(cacheKey, responseData);
 
-    return jsonNoStore({ data: responseData });
+    return jsonNoStore({
+      data: responseData,
+      meta: {
+        cacheStatus: "live",
+      },
+    });
   } catch (error) {
     if (error instanceof GoogleCalendarAuthError) {
       const details: Record<string, unknown> = {
@@ -616,6 +682,24 @@ export async function GET(request: Request) {
 
     const googleErrorStatus = extractGoogleErrorStatus(error);
     if (googleErrorStatus !== null) {
+      if (cacheKey) {
+        const staleData = readCalendarEventsCacheStale(cacheKey);
+        if (staleData) {
+          console.warn("GET /api/calendar/events fallback to stale cache", {
+            status: googleErrorStatus,
+          });
+
+          return jsonNoStore({
+            data: staleData,
+            meta: {
+              cacheStatus: "stale",
+              warning:
+                "Google Calendar の最新予定を取得できなかったため、直近の取得結果を表示しています。",
+            },
+          });
+        }
+      }
+
       console.error("GET /api/calendar/events google api failed", {
         status: googleErrorStatus,
         error,

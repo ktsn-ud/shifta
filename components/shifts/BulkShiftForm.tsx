@@ -270,6 +270,7 @@ function parseGoogleCalendarEventsResponse(payload: unknown): {
   calendars: GoogleCalendarOption[];
   selectedCalendarIds: string[];
   dates: GoogleCalendarDay[];
+  cacheWarning: string | null;
 } | null {
   if (!isRecord(payload) || !isRecord(payload.data)) {
     return null;
@@ -304,11 +305,22 @@ function parseGoogleCalendarEventsResponse(payload: unknown): {
     return null;
   }
 
+  let cacheWarning: string | null = null;
+  if (isRecord(payload.meta)) {
+    if (payload.meta.cacheStatus === "stale") {
+      cacheWarning =
+        typeof payload.meta.warning === "string"
+          ? payload.meta.warning
+          : "Google予定は最新でない可能性があります。";
+    }
+  }
+
   return {
     month: data.month,
     calendars: data.calendars,
     selectedCalendarIds: data.selectedCalendarIds,
     dates: data.dates,
+    cacheWarning,
   };
 }
 
@@ -634,6 +646,9 @@ export function BulkShiftForm() {
   const [googleEventsError, setGoogleEventsError] = useState<string | null>(
     null,
   );
+  const [googleEventsWarning, setGoogleEventsWarning] = useState<string | null>(
+    null,
+  );
   const [defaults, setDefaults] = useState<BulkDefaults>(DEFAULT_BULK_VALUES);
   const [errors, setErrors] = useState<FormErrors>({});
   const [isWorkplaceLoading, setIsWorkplaceLoading] = useState(true);
@@ -821,6 +836,7 @@ export function BulkShiftForm() {
     async function fetchGoogleCalendarEvents() {
       setIsGoogleEventsLoading(true);
       setGoogleEventsError(null);
+      setGoogleEventsWarning(null);
 
       try {
         const response = await fetch(
@@ -858,6 +874,7 @@ export function BulkShiftForm() {
         }
 
         setCalendarOptions(payload.calendars);
+        setGoogleEventsWarning(payload.cacheWarning);
         setSelectedCalendarIds((current) => {
           if (!hasUserCalendarSelection) {
             const nextDefaultIds = payload.selectedCalendarIds;
@@ -889,6 +906,7 @@ export function BulkShiftForm() {
         console.error("failed to fetch google calendar events", error);
         setCalendarOptions([]);
         setGoogleEventsByDate({});
+        setGoogleEventsWarning(null);
         setGoogleEventsError(
           toErrorMessage(error, "Google予定の取得に失敗しました。"),
         );
@@ -1831,6 +1849,11 @@ export function BulkShiftForm() {
 
           {googleEventsError ? (
             <p className="text-xs text-amber-600">{googleEventsError}</p>
+          ) : null}
+          {googleEventsWarning ? (
+            <p className="text-xs text-muted-foreground">
+              {googleEventsWarning}
+            </p>
           ) : null}
 
           <FormErrorMessage message={errors.selectedDates} />
