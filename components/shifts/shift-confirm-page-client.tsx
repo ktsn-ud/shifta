@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback, useState } from "react";
+import { useCallback } from "react";
 import { toast } from "sonner";
 import { ConfirmShiftCard } from "@/components/shifts/ConfirmShiftCard";
 import { ConfirmedShiftsList } from "@/components/shifts/ConfirmedShiftsList";
@@ -10,181 +10,72 @@ import {
 } from "@/components/shifts/shift-confirmation-types";
 import { SpinnerPanel } from "@/components/ui/spinner";
 import { toErrorMessage } from "@/lib/messages";
-
-type UnconfirmedShiftApiResponse = {
-  shifts: Array<{
-    id: string;
-    comment: string | null;
-    date: string;
-    startTime: string;
-    endTime: string;
-    breakMinutes: number;
-    isConfirmed: boolean;
-    workplace: {
-      id: string;
-      name: string;
-      color: string;
-    };
-  }>;
-};
-
-type ConfirmedShiftApiResponse = {
-  shifts: Array<{
-    id: string;
-    comment: string | null;
-    date: string;
-    startTime: string;
-    endTime: string;
-    breakMinutes: number;
-    workDurationHours: number;
-    wage: number | null;
-    isConfirmed: boolean;
-    workplace: {
-      id: string;
-      name: string;
-      color: string;
-    };
-  }>;
-};
+import { getBrowserQueryClient } from "@/lib/query/query-client";
+import {
+  useConfirmedCurrentMonthShiftsQuery,
+  useUnconfirmedShiftsQuery,
+} from "@/lib/query/queries/shift-confirmation";
+import { queryKeys } from "@/lib/query/query-keys";
 
 type ShiftConfirmPageClientProps = {
+  currentUserId: string;
   initialUnconfirmedShifts: UnconfirmedShiftItem[];
   initialConfirmedShiftGroups: ConfirmedShiftWorkplaceGroup[];
 };
 
-const dateWithWeekdayFormatter = new Intl.DateTimeFormat("ja-JP", {
-  year: "numeric",
-  month: "long",
-  day: "numeric",
-  weekday: "short",
-  timeZone: "UTC",
-});
-
-function parseDateOnly(value: string): Date {
-  const [year, month, day] = value.split("-").map((part) => Number(part));
-  return new Date(Date.UTC(year, month - 1, day));
-}
-
-function formatDateWithWeekday(dateOnly: string): string {
-  return dateWithWeekdayFormatter.format(parseDateOnly(dateOnly));
-}
-
 export function ShiftConfirmPageClient({
+  currentUserId,
   initialUnconfirmedShifts,
   initialConfirmedShiftGroups,
 }: ShiftConfirmPageClientProps) {
-  const [unconfirmedShifts, setUnconfirmedShifts] = useState<
-    UnconfirmedShiftItem[]
-  >(initialUnconfirmedShifts);
-  const [confirmedShiftGroups, setConfirmedShiftGroups] = useState<
-    ConfirmedShiftWorkplaceGroup[]
-  >(initialConfirmedShiftGroups);
-  const [isLoading, setIsLoading] = useState(false);
-  const [errorMessage, setErrorMessage] = useState<string | null>(null);
+  const queryClient = getBrowserQueryClient();
+  const unconfirmedQuery = useUnconfirmedShiftsQuery({
+    userId: currentUserId,
+    initialData: initialUnconfirmedShifts,
+  });
+  const confirmedQuery = useConfirmedCurrentMonthShiftsQuery({
+    userId: currentUserId,
+    initialData: initialConfirmedShiftGroups,
+  });
+
+  const unconfirmedShifts = unconfirmedQuery.data ?? [];
+  const confirmedShiftGroups = confirmedQuery.data ?? [];
+  const isLoading = unconfirmedQuery.isLoading || confirmedQuery.isLoading;
+  const errorMessage = unconfirmedQuery.error
+    ? toErrorMessage(
+        unconfirmedQuery.error,
+        "シフト確定ページのデータ取得に失敗しました。",
+      )
+    : confirmedQuery.error
+      ? toErrorMessage(
+          confirmedQuery.error,
+          "シフト確定ページのデータ取得に失敗しました。",
+        )
+      : null;
 
   const loadShiftConfirmationData = useCallback(async () => {
-    setIsLoading(true);
-    setErrorMessage(null);
-
     try {
-      const [unconfirmedResponse, confirmedResponse] = await Promise.all([
-        fetch("/api/shifts/unconfirmed", {
-          cache: "no-store",
+      await Promise.all([
+        queryClient.invalidateQueries({
+          queryKey: queryKeys.shifts.unconfirmed({ userId: currentUserId }),
         }),
-        fetch("/api/shifts/confirmed-current-month", {
-          cache: "no-store",
+        queryClient.invalidateQueries({
+          queryKey: queryKeys.shifts.confirmedCurrentMonth({
+            userId: currentUserId,
+          }),
         }),
       ]);
-
-      if (unconfirmedResponse.ok === false) {
-        throw new Error("UNCONFIRMED_SHIFTS_FETCH_FAILED");
-      }
-
-      if (confirmedResponse.ok === false) {
-        throw new Error("CONFIRMED_SHIFTS_FETCH_FAILED");
-      }
-
-      const unconfirmedPayload = (await unconfirmedResponse.json()) as
-        | UnconfirmedShiftApiResponse
-        | undefined;
-      const confirmedPayload = (await confirmedResponse.json()) as
-        | ConfirmedShiftApiResponse
-        | undefined;
-
-      if (!unconfirmedPayload || !Array.isArray(unconfirmedPayload.shifts)) {
-        throw new Error("UNCONFIRMED_SHIFTS_RESPONSE_INVALID");
-      }
-
-      if (!confirmedPayload || !Array.isArray(confirmedPayload.shifts)) {
-        throw new Error("CONFIRMED_SHIFTS_RESPONSE_INVALID");
-      }
-
-      setUnconfirmedShifts(
-        unconfirmedPayload.shifts.map((shift) => ({
-          id: shift.id,
-          date: formatDateWithWeekday(shift.date),
-          workplaceName: shift.workplace.name,
-          workplaceColor: shift.workplace.color,
-          comment: shift.comment,
-          startTime: shift.startTime,
-          endTime: shift.endTime,
-          breakMinutes: shift.breakMinutes,
-        })),
-      );
-
-      const grouped = new Map<string, ConfirmedShiftWorkplaceGroup>();
-
-      for (const shift of confirmedPayload.shifts) {
-        const existing = grouped.get(shift.workplace.id);
-        if (existing) {
-          existing.shifts.push({
-            id: shift.id,
-            date: formatDateWithWeekday(shift.date),
-            comment: shift.comment,
-            startTime: shift.startTime,
-            endTime: shift.endTime,
-            workDurationHours: shift.workDurationHours,
-            wage: shift.wage,
-          });
-          continue;
-        }
-
-        grouped.set(shift.workplace.id, {
-          workplaceId: shift.workplace.id,
-          workplaceName: shift.workplace.name,
-          workplaceColor: shift.workplace.color,
-          shifts: [
-            {
-              id: shift.id,
-              date: formatDateWithWeekday(shift.date),
-              comment: shift.comment,
-              startTime: shift.startTime,
-              endTime: shift.endTime,
-              workDurationHours: shift.workDurationHours,
-              wage: shift.wage,
-            },
-          ],
-        });
-      }
-
-      setConfirmedShiftGroups(Array.from(grouped.values()));
     } catch (error) {
-      console.error("failed to fetch shift confirmation data", error);
-      setUnconfirmedShifts([]);
-      setConfirmedShiftGroups([]);
       const message = toErrorMessage(
         error,
         "シフト確定ページのデータ取得に失敗しました。",
       );
-      setErrorMessage(message);
       toast.error("シフト確定ページのデータ取得に失敗しました。", {
         description: message,
         duration: 6000,
       });
-    } finally {
-      setIsLoading(false);
     }
-  }, []);
+  }, [currentUserId, queryClient]);
 
   return (
     <section className="flex flex-col gap-6 p-4 md:h-[calc(100svh-var(--header-height))] md:overflow-hidden md:p-6">

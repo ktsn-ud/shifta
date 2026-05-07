@@ -1,11 +1,14 @@
 import { fireEvent, render, screen, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
+import { QueryClientProvider } from "@tanstack/react-query";
+import type { ReactElement } from "react";
 import { ConfirmShiftCard } from "@/components/shifts/ConfirmShiftCard";
 import { ShiftConfirmPageClient } from "@/components/shifts/shift-confirm-page-client";
 import type {
   ConfirmedShiftWorkplaceGroup,
   UnconfirmedShiftItem,
 } from "@/components/shifts/shift-confirmation-types";
+import { createQueryClient } from "@/lib/query/query-client";
 import { toast } from "sonner";
 
 const pushMock = jest.fn();
@@ -47,6 +50,13 @@ function createUnconfirmedShift(
   };
 }
 
+function renderWithQueryProvider(ui: ReactElement) {
+  const queryClient = createQueryClient();
+  return render(
+    <QueryClientProvider client={queryClient}>{ui}</QueryClientProvider>,
+  );
+}
+
 describe("shift confirm page and card flow", () => {
   beforeEach(() => {
     pushMock.mockReset();
@@ -79,8 +89,9 @@ describe("shift confirm page and card flow", () => {
       },
     ];
 
-    render(
+    renderWithQueryProvider(
       <ShiftConfirmPageClient
+        currentUserId="user-test"
         initialUnconfirmedShifts={[createUnconfirmedShift()]}
         initialConfirmedShiftGroups={initialConfirmedShiftGroups}
       />,
@@ -93,8 +104,9 @@ describe("shift confirm page and card flow", () => {
   });
 
   it("shows empty states when no initial shifts are passed", () => {
-    render(
+    renderWithQueryProvider(
       <ShiftConfirmPageClient
+        currentUserId="user-test"
         initialUnconfirmedShifts={[]}
         initialConfirmedShiftGroups={[]}
       />,
@@ -128,8 +140,9 @@ describe("shift confirm page and card flow", () => {
       },
     ];
 
-    render(
+    renderWithQueryProvider(
       <ShiftConfirmPageClient
+        currentUserId="user-test"
         initialUnconfirmedShifts={[]}
         initialConfirmedShiftGroups={initialConfirmedShiftGroups}
       />,
