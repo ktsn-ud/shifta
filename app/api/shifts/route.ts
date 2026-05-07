@@ -1,5 +1,4 @@
 import { after } from "next/server";
-import { revalidatePath } from "next/cache";
 import { z } from "zod";
 import { requireCurrentUser } from "@/lib/api/current-user";
 import { DATE_ONLY_REGEX, parseDateOnly } from "@/lib/api/date-time";
@@ -7,6 +6,7 @@ import { jsonError, parseJsonBody } from "@/lib/api/http";
 import { requireOwnedWorkplace } from "@/lib/api/workplace";
 import { prisma } from "@/lib/prisma";
 import { jsonNoStore } from "@/lib/api/cache-control";
+import { revalidateShiftDomainTags } from "@/lib/cache/revalidate";
 import { getMonthShifts } from "@/lib/shifts/month-shifts";
 import {
   syncShiftAfterCreate,
@@ -50,13 +50,16 @@ const shiftBulkDeleteSchema = z
   })
   .strict();
 
-function revalidateShiftRelatedPaths(): void {
-  revalidatePath("/my");
-  revalidatePath("/my/shifts/list");
-  revalidatePath("/my/shifts/confirm");
-  revalidatePath("/my/summary");
-  revalidatePath("/my/payroll-details/monthly");
-  revalidatePath("/my/payroll-details/workplace-yearly");
+function revalidateShiftMutationTags(input: {
+  userId: string;
+  workplaceIds?: string[];
+}): void {
+  revalidateShiftDomainTags({ userId: input.userId });
+
+  const workplaceIds = input.workplaceIds ?? [];
+  for (const workplaceId of new Set(workplaceIds)) {
+    revalidateShiftDomainTags({ userId: input.userId, workplaceId });
+  }
 }
 
 export async function POST(request: Request) {
@@ -131,7 +134,10 @@ export async function POST(request: Request) {
       });
     }
 
-    revalidateShiftRelatedPaths();
+    revalidateShiftMutationTags({
+      userId: current.user.id,
+      workplaceIds: [body.data.workplaceId],
+    });
 
     return jsonNoStore(
       {
@@ -226,6 +232,7 @@ export async function DELETE(request: Request) {
         workplace: {
           select: {
             userId: true,
+            id: true,
           },
         },
       },
@@ -259,7 +266,10 @@ export async function DELETE(request: Request) {
       }
     });
 
-    revalidateShiftRelatedPaths();
+    revalidateShiftMutationTags({
+      userId: current.user.id,
+      workplaceIds: targets.map((target) => target.workplace.id),
+    });
 
     after(async () => {
       const results = await Promise.allSettled(
