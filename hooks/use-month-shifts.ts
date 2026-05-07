@@ -1,20 +1,16 @@
 "use client";
 
-import { useCallback, useEffect, useMemo, useState } from "react";
-import {
-  clearMonthShiftsCache,
-  deleteMonthShiftsCache,
-  readMonthShiftsCache,
-  writeMonthShiftsCache,
-} from "@/lib/client-cache/month-shifts-cache";
+import { useEffect, useMemo } from "react";
+import { useQuery, useQueryClient } from "@tanstack/react-query";
 import {
   endOfMonth,
   startOfMonth,
   toDateOnlyString,
 } from "@/lib/calendar/date";
+import { fetchJson } from "@/lib/query/fetch-json";
+import { getBrowserQueryClient } from "@/lib/query/query-client";
+import { queryKeys } from "@/lib/query/query-keys";
 import { toUserFacingMessage } from "@/lib/user-facing-error";
-
-const MONTH_SHIFTS_CACHE_TTL_MS = 5 * 60 * 1000;
 
 type MonthShift = {
   id: string;
@@ -69,14 +65,6 @@ function isShiftListResponse(value: unknown): value is ShiftListResponse {
   }
 
   return false;
-}
-
-function toMonthShiftsCacheKey(
-  userKey: string,
-  startDate: string,
-  endDate: string,
-): string {
-  return `${userKey}:${startDate}:${endDate}`;
 }
 
 function normalizeMonthShift(raw: unknown): MonthShift | null {
@@ -159,7 +147,46 @@ function normalizeMonthShift(raw: unknown): MonthShift | null {
   };
 }
 
-export { clearMonthShiftsCache };
+function parseMonthShiftsPayload(payload: unknown): MonthShift[] {
+  const isValidPayload =
+    isShiftListResponse(payload) && Array.isArray(payload.data);
+
+  if (isValidPayload === false) {
+    throw new Error("SHIFT_RESPONSE_INVALID");
+  }
+
+  return payload.data
+    .map((shift) => normalizeMonthShift(shift))
+    .filter((shift): shift is MonthShift => shift !== null);
+}
+
+async function fetchMonthShifts(params: {
+  startDate: string;
+  endDate: string;
+  includeEstimate: boolean;
+  signal?: AbortSignal;
+}): Promise<MonthShift[]> {
+  const query = new URLSearchParams({
+    startDate: params.startDate,
+    endDate: params.endDate,
+    includeEstimate: params.includeEstimate ? "true" : "false",
+  });
+
+  return fetchJson(`/api/shifts?${query.toString()}`, {
+    init: {
+      signal: params.signal,
+    },
+    fallbackMessage: "シフト一覧の取得に失敗しました。",
+    parse: parseMonthShiftsPayload,
+  });
+}
+
+export function clearMonthShiftsCache(): void {
+  const queryClient = getBrowserQueryClient();
+  queryClient.removeQueries({
+    queryKey: ["shifts", "month"],
+  });
+}
 
 export function summarizeShifts(shifts: MonthShift[]): ShiftSummary {
   return shifts.reduce<ShiftSummary>(
@@ -187,213 +214,121 @@ export function useMonthShifts(month: Date, options: UseMonthShiftsOptions) {
     initialEndDate,
     deferEstimate = false,
   } = options;
-  const hasInitialData =
-    Array.isArray(initialShifts) &&
-    typeof initialStartDate === "string" &&
-    typeof initialEndDate === "string";
-
-  const [shifts, setShifts] = useState<MonthShift[]>(() => initialShifts ?? []);
-  const [isLoading, setIsLoading] = useState(() => !hasInitialData);
-  const [errorMessage, setErrorMessage] = useState<string | null>(null);
-  const [reloadCount, setReloadCount] = useState(0);
+  const queryClient = useQueryClient();
 
   const startDate = useMemo(
     () => toDateOnlyString(startOfMonth(month)),
     [month],
   );
   const endDate = useMemo(() => toDateOnlyString(endOfMonth(month)), [month]);
-  const cacheKey = useMemo(
-    () => toMonthShiftsCacheKey(cacheUserKey, startDate, endDate),
-    [cacheUserKey, endDate, startDate],
-  );
 
-  const reload = useCallback(() => {
-    deleteMonthShiftsCache(cacheKey);
-    setReloadCount((current) => current + 1);
-  }, [cacheKey]);
+  const hasInitialData =
+    Array.isArray(initialShifts) &&
+    typeof initialStartDate === "string" &&
+    typeof initialEndDate === "string" &&
+    initialStartDate === startDate &&
+    initialEndDate === endDate;
+
+  const primaryIncludeEstimate = deferEstimate === false;
+
+  const primaryQueryKey = queryKeys.shifts.month({
+    userId: cacheUserKey,
+    startDate,
+    endDate,
+    includeEstimate: primaryIncludeEstimate,
+  });
+  const estimatedQueryKey = queryKeys.shifts.month({
+    userId: cacheUserKey,
+    startDate,
+    endDate,
+    includeEstimate: true,
+  });
+
+  const monthShiftsQuery = useQuery({
+    queryKey: primaryQueryKey,
+    queryFn: ({ signal }) =>
+      fetchMonthShifts({
+        startDate,
+        endDate,
+        includeEstimate: primaryIncludeEstimate,
+        signal,
+      }),
+    initialData: hasInitialData ? (initialShifts ?? []) : undefined,
+  });
+
+  const estimatedMonthShiftsQuery = useQuery({
+    queryKey: estimatedQueryKey,
+    queryFn: ({ signal }) =>
+      fetchMonthShifts({
+        startDate,
+        endDate,
+        includeEstimate: true,
+        signal,
+      }),
+    enabled: deferEstimate,
+  });
 
   useEffect(() => {
-    const canUseInitialData =
-      reloadCount === 0 &&
-      hasInitialData &&
-      initialStartDate === startDate &&
-      initialEndDate === endDate;
-
-    if (canUseInitialData) {
-      writeMonthShiftsCache(
-        cacheKey,
-        initialShifts ?? [],
-        MONTH_SHIFTS_CACHE_TTL_MS,
+    if (deferEstimate && estimatedMonthShiftsQuery.error) {
+      console.error(
+        "useMonthShifts estimate fetch failed",
+        estimatedMonthShiftsQuery.error,
       );
-      setErrorMessage(null);
-      setShifts(initialShifts ?? []);
-      setIsLoading(false);
-      return;
+    }
+  }, [deferEstimate, estimatedMonthShiftsQuery.error]);
+
+  const shifts = useMemo(() => {
+    const baseShifts = monthShiftsQuery.data ?? [];
+
+    if (!deferEstimate) {
+      return baseShifts;
     }
 
-    if (reloadCount === 0) {
-      const cachedShifts = readMonthShiftsCache<MonthShift>(cacheKey);
-      if (cachedShifts) {
-        setErrorMessage(null);
-        setShifts(cachedShifts);
-        setIsLoading(false);
-        return;
+    const estimatedShifts = estimatedMonthShiftsQuery.data;
+    if (!estimatedShifts) {
+      return baseShifts;
+    }
+
+    const estimatedPayByShiftId = new Map(
+      estimatedShifts.map((shift) => [shift.id, shift.estimatedPay]),
+    );
+
+    return baseShifts.map((shift) => {
+      const estimatedPay = estimatedPayByShiftId.get(shift.id);
+
+      if (estimatedPay === undefined || shift.estimatedPay === estimatedPay) {
+        return shift;
       }
+
+      return {
+        ...shift,
+        estimatedPay,
+      };
+    });
+  }, [deferEstimate, estimatedMonthShiftsQuery.data, monthShiftsQuery.data]);
+
+  const errorMessage = monthShiftsQuery.error
+    ? toUserFacingMessage(
+        monthShiftsQuery.error,
+        "シフト一覧の取得に失敗しました。",
+      )
+    : null;
+
+  async function reload() {
+    await queryClient.invalidateQueries({
+      queryKey: primaryQueryKey,
+    });
+
+    if (deferEstimate) {
+      await queryClient.invalidateQueries({
+        queryKey: estimatedQueryKey,
+      });
     }
-
-    const abortController = new AbortController();
-
-    async function fetchMonthShifts() {
-      setIsLoading(true);
-      setErrorMessage(null);
-
-      try {
-        const params = new URLSearchParams({
-          startDate,
-          endDate,
-          includeEstimate: deferEstimate ? "false" : "true",
-        });
-
-        const response = await fetch(`/api/shifts?${params.toString()}`, {
-          signal: abortController.signal,
-        });
-
-        if (response.ok === false) {
-          throw new Error("SHIFT_FETCH_FAILED");
-        }
-
-        const payload = (await response.json()) as unknown;
-        const isValidPayload =
-          isShiftListResponse(payload) && Array.isArray(payload.data);
-
-        if (isValidPayload === false) {
-          throw new Error("SHIFT_RESPONSE_INVALID");
-        }
-
-        const normalized = payload.data
-          .map((shift) => normalizeMonthShift(shift))
-          .filter((shift): shift is MonthShift => shift !== null);
-
-        setShifts(normalized);
-        writeMonthShiftsCache(cacheKey, normalized, MONTH_SHIFTS_CACHE_TTL_MS);
-
-        if (!deferEstimate) {
-          return;
-        }
-
-        async function fetchEstimatedPayInBackground() {
-          try {
-            const estimateParams = new URLSearchParams({
-              startDate,
-              endDate,
-              includeEstimate: "true",
-            });
-
-            const estimateResponse = await fetch(
-              `/api/shifts?${estimateParams.toString()}`,
-              {
-                signal: abortController.signal,
-              },
-            );
-
-            if (estimateResponse.ok === false) {
-              throw new Error("SHIFT_ESTIMATE_FETCH_FAILED");
-            }
-
-            const estimatePayload = (await estimateResponse.json()) as unknown;
-            const isValidEstimatePayload =
-              isShiftListResponse(estimatePayload) &&
-              Array.isArray(estimatePayload.data);
-
-            if (isValidEstimatePayload === false) {
-              throw new Error("SHIFT_ESTIMATE_RESPONSE_INVALID");
-            }
-
-            const normalizedWithEstimate = estimatePayload.data
-              .map((shift) => normalizeMonthShift(shift))
-              .filter((shift): shift is MonthShift => shift !== null);
-
-            if (abortController.signal.aborted) {
-              return;
-            }
-
-            const estimatedPayByShiftId = new Map(
-              normalizedWithEstimate.map((shift) => [
-                shift.id,
-                shift.estimatedPay,
-              ]),
-            );
-
-            setShifts((current) =>
-              current.map((shift) => {
-                const estimatedPay = estimatedPayByShiftId.get(shift.id);
-
-                if (
-                  estimatedPay === undefined ||
-                  shift.estimatedPay === estimatedPay
-                ) {
-                  return shift;
-                }
-
-                return {
-                  ...shift,
-                  estimatedPay,
-                };
-              }),
-            );
-
-            writeMonthShiftsCache(
-              cacheKey,
-              normalizedWithEstimate,
-              MONTH_SHIFTS_CACHE_TTL_MS,
-            );
-          } catch (error) {
-            if (abortController.signal.aborted) {
-              return;
-            }
-
-            console.error("useMonthShifts estimate fetch failed", error);
-          }
-        }
-
-        void fetchEstimatedPayInBackground();
-      } catch (error) {
-        if (abortController.signal.aborted) {
-          return;
-        }
-
-        console.error("useMonthShifts failed", error);
-        setShifts([]);
-        setErrorMessage(
-          toUserFacingMessage(error, "シフト一覧の取得に失敗しました。"),
-        );
-      } finally {
-        if (abortController.signal.aborted === false) {
-          setIsLoading(false);
-        }
-      }
-    }
-
-    void fetchMonthShifts();
-
-    return () => {
-      abortController.abort();
-    };
-  }, [
-    endDate,
-    hasInitialData,
-    cacheKey,
-    initialEndDate,
-    initialShifts,
-    initialStartDate,
-    deferEstimate,
-    reloadCount,
-    startDate,
-  ]);
+  }
 
   return {
     shifts,
-    isLoading,
+    isLoading: monthShiftsQuery.isLoading,
     errorMessage,
     reload,
   };
