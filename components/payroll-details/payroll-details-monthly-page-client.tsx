@@ -1,10 +1,6 @@
 "use client";
 
-import { useEffect, useMemo, useState } from "react";
-import {
-  readPayrollDetailsMonthlyCache,
-  writePayrollDetailsMonthlyCache,
-} from "@/lib/client-cache/payroll-details-cache";
+import { useMemo, useState } from "react";
 import { Input } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
 import {
@@ -25,6 +21,7 @@ import {
   toMonthInputValue,
 } from "@/lib/calendar/date";
 import { toErrorMessage } from "@/lib/messages";
+import { usePayrollDetailsMonthlyQuery } from "@/lib/query/queries/payroll";
 import { type PayrollDetailsMonthlyResult } from "@/lib/payroll/details";
 
 type PayrollDetailsMonthlyPageClientProps = {
@@ -32,12 +29,6 @@ type PayrollDetailsMonthlyPageClientProps = {
   initialMonth: string;
   initialDetails: PayrollDetailsMonthlyResult;
 };
-
-const MONTHLY_CACHE_TTL_MS = 5 * 60 * 1000;
-
-function toMonthlyCacheKey(userId: string, month: string): string {
-  return `${userId}:${month}`;
-}
 
 export function PayrollDetailsMonthlyPageLoadingSkeleton() {
   return (
@@ -60,13 +51,9 @@ export function PayrollDetailsMonthlyPageClient({
 }: PayrollDetailsMonthlyPageClientProps) {
   const [draftMonthValue, setDraftMonthValue] = useState(initialMonth);
   const [appliedMonthValue, setAppliedMonthValue] = useState(initialMonth);
-  const [details, setDetails] = useState<PayrollDetailsMonthlyResult | null>(
-    initialDetails,
-  );
-  const [isLoading, setIsLoading] = useState(false);
-  const [errorMessage, setErrorMessage] = useState<string | null>(null);
 
   const currentMonthValue = toMonthInputValue(startOfMonth(new Date()));
+  const isValidAppliedMonth = fromMonthInputValue(appliedMonthValue) !== null;
   const canApplyMonth =
     fromMonthInputValue(draftMonthValue) !== null &&
     draftMonthValue !== appliedMonthValue;
@@ -75,11 +62,6 @@ export function PayrollDetailsMonthlyPageClient({
     const parsed = fromMonthInputValue(appliedMonthValue);
     return parsed ? formatMonthLabel(parsed) : appliedMonthValue;
   }, [appliedMonthValue]);
-
-  const hasAnyShift =
-    details?.byWorkplace.some(
-      (workplace) => workplace.totalWorkHours > 0 || workplace.totalWage > 0,
-    ) ?? false;
 
   const workplaceYearlyHref = "/my/payroll-details/workplace-yearly";
 
@@ -96,93 +78,30 @@ export function PayrollDetailsMonthlyPageClient({
     setAppliedMonthValue(currentMonthValue);
   };
 
-  useEffect(() => {
-    if (fromMonthInputValue(appliedMonthValue) === null) {
-      setDetails(null);
-      setErrorMessage("月は YYYY-MM 形式で指定してください。");
-      setIsLoading(false);
-      return;
-    }
+  const detailsQuery = usePayrollDetailsMonthlyQuery({
+    userId: currentUserId,
+    month: appliedMonthValue,
+    enabled: isValidAppliedMonth,
+    initialData:
+      isValidAppliedMonth && appliedMonthValue === initialMonth
+        ? initialDetails
+        : undefined,
+  });
 
-    if (appliedMonthValue === initialMonth) {
-      writePayrollDetailsMonthlyCache(
-        toMonthlyCacheKey(currentUserId, initialMonth),
-        initialDetails,
-        MONTHLY_CACHE_TTL_MS,
-      );
-      setErrorMessage(null);
-      setDetails(initialDetails);
-      setIsLoading(false);
-      return;
-    }
-
-    const cacheKey = toMonthlyCacheKey(currentUserId, appliedMonthValue);
-    const cached =
-      readPayrollDetailsMonthlyCache<PayrollDetailsMonthlyResult>(cacheKey);
-    if (cached) {
-      setErrorMessage(null);
-      setDetails(cached);
-      setIsLoading(false);
-      return;
-    }
-
-    const abortController = new AbortController();
-
-    async function fetchDetails() {
-      setIsLoading(true);
-      setErrorMessage(null);
-
-      try {
-        const params = new URLSearchParams({ month: appliedMonthValue });
-        const response = await fetch(
-          `/api/payroll/details/monthly?${params.toString()}`,
-          {
-            signal: abortController.signal,
-            cache: "no-store",
-          },
-        );
-
-        if (!response.ok) {
-          throw new Error("PAYROLL_DETAILS_MONTHLY_FETCH_FAILED");
-        }
-
-        const payload = (await response.json()) as unknown;
-        if (
-          typeof payload !== "object" ||
-          payload === null ||
-          typeof (payload as { month?: unknown }).month !== "string" ||
-          typeof (payload as { totals?: { totalWage?: unknown } }).totals
-            ?.totalWage !== "number"
-        ) {
-          throw new Error("PAYROLL_DETAILS_MONTHLY_RESPONSE_INVALID");
-        }
-
-        const parsed = payload as PayrollDetailsMonthlyResult;
-        writePayrollDetailsMonthlyCache(cacheKey, parsed, MONTHLY_CACHE_TTL_MS);
-        setDetails(parsed);
-      } catch (error) {
-        if (abortController.signal.aborted) {
-          return;
-        }
-
-        console.error("failed to fetch payroll details monthly", error);
-        setDetails(null);
-        setErrorMessage(
-          toErrorMessage(error, "給与詳細（月毎表示）の取得に失敗しました。"),
-        );
-      } finally {
-        if (!abortController.signal.aborted) {
-          setIsLoading(false);
-        }
-      }
-    }
-
-    void fetchDetails();
-
-    return () => {
-      abortController.abort();
-    };
-  }, [appliedMonthValue, currentUserId, initialDetails, initialMonth]);
+  const details = detailsQuery.data ?? null;
+  const isLoading = isValidAppliedMonth ? detailsQuery.isLoading : false;
+  const errorMessage = !isValidAppliedMonth
+    ? "月は YYYY-MM 形式で指定してください。"
+    : detailsQuery.error
+      ? toErrorMessage(
+          detailsQuery.error,
+          "給与詳細（月毎表示）の取得に失敗しました。",
+        )
+      : null;
+  const hasAnyShift =
+    details?.byWorkplace.some(
+      (workplace) => workplace.totalWorkHours > 0 || workplace.totalWage > 0,
+    ) ?? false;
 
   return (
     <section className="space-y-6 p-4 md:p-6">

@@ -1,11 +1,7 @@
 "use client";
 
 import dynamic from "next/dynamic";
-import { useEffect, useMemo, useState } from "react";
-import {
-  readSummaryCache,
-  writeSummaryCache,
-} from "@/lib/client-cache/summary-cache";
+import { useMemo, useState } from "react";
 import {
   Card,
   CardContent,
@@ -31,6 +27,7 @@ import {
   toMonthInputValue,
 } from "@/lib/calendar/date";
 import { toErrorMessage } from "@/lib/messages";
+import { usePayrollSummaryQuery } from "@/lib/query/queries/payroll";
 import { type PayrollSummaryResult } from "@/lib/payroll/summary";
 
 type SummaryPageClientProps = {
@@ -39,7 +36,6 @@ type SummaryPageClientProps = {
   initialMonth: string;
 };
 
-const SUMMARY_CACHE_TTL_MS = 5 * 60 * 1000;
 const currencyFormatter = new Intl.NumberFormat("ja-JP", {
   style: "currency",
   currency: "JPY",
@@ -65,10 +61,6 @@ function formatCurrency(value: number): string {
 
 function formatHours(value: number): string {
   return `${value.toFixed(2)} 時間`;
-}
-
-function toSummaryCacheKey(userKey: string, month: string): string {
-  return `${userKey}:${month}`;
 }
 
 export function SummaryPageLoadingSkeleton() {
@@ -98,12 +90,8 @@ export function SummaryPageClient({
 }: SummaryPageClientProps) {
   const [draftMonthValue, setDraftMonthValue] = useState(initialMonth);
   const [appliedMonthValue, setAppliedMonthValue] = useState(initialMonth);
-  const [summary, setSummary] = useState<PayrollSummaryResult | null>(
-    initialSummary,
-  );
-  const [isLoading, setIsLoading] = useState(false);
-  const [errorMessage, setErrorMessage] = useState<string | null>(null);
   const currentMonthValue = toMonthInputValue(startOfMonth(new Date()));
+  const isValidAppliedMonth = fromMonthInputValue(appliedMonthValue) !== null;
 
   const canApplyMonth =
     fromMonthInputValue(draftMonthValue) !== null &&
@@ -127,94 +115,23 @@ export function SummaryPageClient({
     setAppliedMonthValue(currentMonthValue);
   };
 
-  useEffect(() => {
-    if (fromMonthInputValue(appliedMonthValue) === null) {
-      setSummary(null);
-      setErrorMessage("月は YYYY-MM 形式で指定してください。");
-      setIsLoading(false);
-      return;
-    }
+  const summaryQuery = usePayrollSummaryQuery({
+    userId: currentUserId,
+    month: appliedMonthValue,
+    enabled: isValidAppliedMonth,
+    initialData:
+      isValidAppliedMonth && appliedMonthValue === initialMonth
+        ? initialSummary
+        : undefined,
+  });
 
-    if (appliedMonthValue === initialMonth) {
-      writeSummaryCache(
-        toSummaryCacheKey(currentUserId, initialMonth),
-        initialSummary,
-        SUMMARY_CACHE_TTL_MS,
-      );
-      setErrorMessage(null);
-      setSummary(initialSummary);
-      setIsLoading(false);
-      return;
-    }
-
-    const cacheKey = toSummaryCacheKey(currentUserId, appliedMonthValue);
-    const cachedSummary = readSummaryCache<PayrollSummaryResult>(cacheKey);
-    if (cachedSummary) {
-      setErrorMessage(null);
-      setSummary(cachedSummary);
-      setIsLoading(false);
-      return;
-    }
-
-    const abortController = new AbortController();
-
-    async function fetchSummary() {
-      setIsLoading(true);
-      setErrorMessage(null);
-
-      try {
-        const params = new URLSearchParams({
-          month: appliedMonthValue,
-        });
-
-        const response = await fetch(
-          `/api/payroll/summary?${params.toString()}`,
-          {
-            signal: abortController.signal,
-            cache: "no-store",
-          },
-        );
-
-        if (response.ok === false) {
-          throw new Error("PAYROLL_SUMMARY_FETCH_FAILED");
-        }
-
-        const payload = (await response.json()) as unknown;
-
-        if (
-          typeof payload !== "object" ||
-          payload === null ||
-          typeof (payload as { totalWage?: unknown }).totalWage !== "number"
-        ) {
-          throw new Error("PAYROLL_SUMMARY_RESPONSE_INVALID");
-        }
-
-        const parsedSummary = payload as PayrollSummaryResult;
-        writeSummaryCache(cacheKey, parsedSummary, SUMMARY_CACHE_TTL_MS);
-        setSummary(parsedSummary);
-      } catch (error) {
-        if (abortController.signal.aborted) {
-          return;
-        }
-
-        console.error("failed to fetch payroll summary", error);
-        setSummary(null);
-        setErrorMessage(
-          toErrorMessage(error, "給与集計の取得に失敗しました。"),
-        );
-      } finally {
-        if (abortController.signal.aborted === false) {
-          setIsLoading(false);
-        }
-      }
-    }
-
-    void fetchSummary();
-
-    return () => {
-      abortController.abort();
-    };
-  }, [appliedMonthValue, currentUserId, initialMonth, initialSummary]);
+  const summary = summaryQuery.data ?? null;
+  const isLoading = isValidAppliedMonth ? summaryQuery.isLoading : false;
+  const errorMessage = !isValidAppliedMonth
+    ? "月は YYYY-MM 形式で指定してください。"
+    : summaryQuery.error
+      ? toErrorMessage(summaryQuery.error, "給与集計の取得に失敗しました。")
+      : null;
 
   return (
     <section className="space-y-6 p-4 md:p-6">
