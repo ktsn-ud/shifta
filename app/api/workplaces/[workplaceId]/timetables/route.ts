@@ -7,6 +7,7 @@ import { jsonError, parseJsonBody } from "@/lib/api/http";
 import { requireOwnedWorkplace } from "@/lib/api/workplace";
 import { prisma } from "@/lib/prisma";
 import { jsonNoStore } from "@/lib/api/cache-control";
+import { revalidateWorkplaceDomainTags } from "@/lib/cache/revalidate";
 
 const timetableItemSchema = z
   .object({
@@ -244,6 +245,11 @@ export async function POST(request: Request, context: Context) {
       });
 
       return buildSetResponse(createdSets);
+    });
+
+    revalidateWorkplaceDomainTags({
+      userId: current.user.id,
+      workplaceId,
     });
 
     if (created.length === 0) {

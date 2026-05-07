@@ -6,6 +6,7 @@ import { jsonError, parseJsonBody } from "@/lib/api/http";
 import { requireOwnedWorkplace } from "@/lib/api/workplace";
 import { prisma } from "@/lib/prisma";
 import { jsonNoStore } from "@/lib/api/cache-control";
+import { revalidateWorkplaceDomainTags } from "@/lib/cache/revalidate";
 
 const payrollRuleSchema = z
   .object({
@@ -199,6 +200,11 @@ export async function POST(request: Request, context: Context) {
       });
 
       return { payrollRule, overlaps };
+    });
+
+    revalidateWorkplaceDomainTags({
+      userId: current.user.id,
+      workplaceId,
     });
 
     return jsonNoStore(

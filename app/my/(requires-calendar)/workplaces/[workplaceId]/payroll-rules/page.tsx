@@ -1,7 +1,10 @@
 import { notFound, redirect } from "next/navigation";
 import { PayrollRuleList } from "@/components/workplaces/payroll-rule-list";
 import { requireCurrentUser } from "@/lib/api/current-user";
-import { prisma } from "@/lib/prisma";
+import {
+  getCachedPayrollRulesForWorkplace,
+  getCachedWorkplaceDetail,
+} from "@/lib/cache/workplace-read-cache";
 
 type PayrollRuleListPageParams = {
   workplaceId: string;
@@ -41,27 +44,19 @@ export default async function PayrollRuleListPage({
     ? await searchParams
     : ({} as PayrollRuleListSearchParams);
 
-  const workplace = await prisma.workplace.findFirst({
-    where: {
-      id: resolvedParams.workplaceId,
-      userId: current.user.id,
-    },
-    select: {
-      id: true,
-      name: true,
-      type: true,
-      color: true,
-    },
-  });
+  const workplace = await getCachedWorkplaceDetail(
+    current.user.id,
+    resolvedParams.workplaceId,
+  );
 
   if (!workplace) {
     notFound();
   }
 
-  const rules = await prisma.payrollRule.findMany({
-    where: { workplaceId: workplace.id },
-    orderBy: [{ startDate: "desc" }],
-  });
+  const rules = await getCachedPayrollRulesForWorkplace(
+    current.user.id,
+    workplace.id,
+  );
 
   const initialRules = rules.map((rule) => ({
     id: rule.id,
