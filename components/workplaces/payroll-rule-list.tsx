@@ -30,6 +30,8 @@ import {
 } from "@/components/ui/table";
 import { dateKeyFromApiDate } from "@/lib/calendar/date";
 import { messages, toErrorMessage } from "@/lib/messages";
+import { getBrowserQueryClient } from "@/lib/query/query-client";
+import { invalidateAfterPayrollRuleMutation } from "@/lib/query/invalidation";
 import { resolveUserFacingErrorFromResponse } from "@/lib/user-facing-error";
 
 type PayrollRuleListProps = {
@@ -253,6 +255,7 @@ export function PayrollRuleList({
   initialRules,
   initialInfoMessage,
 }: PayrollRuleListProps) {
+  const queryClient = getBrowserQueryClient();
   const hasInitialData =
     initialWorkplace !== undefined && initialRules !== undefined;
   const [workplace, setWorkplace] = useState<{
@@ -382,6 +385,8 @@ export function PayrollRuleList({
           ),
         );
       }
+
+      await invalidateAfterPayrollRuleMutation(queryClient, workplaceId);
 
       setRules((current) =>
         current.filter((rule) => rule.id !== deletingRule.id),

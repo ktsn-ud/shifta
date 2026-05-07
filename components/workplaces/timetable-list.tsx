@@ -29,6 +29,8 @@ import {
   TableRow,
 } from "@/components/ui/table";
 import { messages, toErrorMessage } from "@/lib/messages";
+import { getBrowserQueryClient } from "@/lib/query/query-client";
+import { invalidateAfterTimetableMutation } from "@/lib/query/invalidation";
 import { resolveUserFacingErrorFromResponse } from "@/lib/user-facing-error";
 
 type TimetableListProps = {
@@ -245,6 +247,7 @@ export function TimetableList({
   initialWorkplace,
   initialTimetables,
 }: TimetableListProps) {
+  const queryClient = getBrowserQueryClient();
   const hasInitialData =
     initialWorkplace !== undefined && initialTimetables !== undefined;
   const [workplace, setWorkplace] = useState<{
@@ -382,6 +385,8 @@ export function TimetableList({
           ),
         );
       }
+
+      await invalidateAfterTimetableMutation(queryClient, workplaceId);
 
       setTimetableSets((current) =>
         current.filter((set) => set.id !== deletingTarget.id),

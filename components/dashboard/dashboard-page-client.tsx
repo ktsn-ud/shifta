@@ -8,7 +8,6 @@ import {
   RefreshCwIcon,
 } from "lucide-react";
 import { toast } from "sonner";
-import { clearShiftDerivedCaches } from "@/lib/client-cache/shift-derived-cache";
 import { MonthCalendar } from "@/components/calendar/MonthCalendar";
 import { ShiftListModal } from "@/components/calendar/ShiftListModal";
 import { Button } from "@/components/ui/button";
@@ -35,6 +34,8 @@ import {
 } from "@/lib/google-calendar/clientSync";
 import { CALENDAR_SETUP_PATH } from "@/lib/google-calendar/constants";
 import { messages } from "@/lib/messages";
+import { getBrowserQueryClient } from "@/lib/query/query-client";
+import { invalidateAfterShiftMutation } from "@/lib/query/invalidation";
 import { usePayrollSummaryQuery } from "@/lib/query/queries/payroll";
 import { useGoogleTokenExpiredSignOut } from "@/hooks/use-google-token-expired-signout";
 import {
@@ -112,6 +113,7 @@ export function DashboardPageClient({
   nextMonthPaymentAmount,
 }: DashboardPageClientProps) {
   const router = useRouter();
+  const queryClient = getBrowserQueryClient();
   const searchParams = useSearchParams();
   const [month, setMonth] = useState(() => {
     const initialMonthDate = dateFromDateKey(initialMonthStartDate);
@@ -299,7 +301,7 @@ export function DashboardPageClient({
         },
       );
 
-      await reload();
+      await invalidateAfterShiftMutation(queryClient);
 
       if (summary.failureCount === 0) {
         toast.success("Google Calendar の一括再同期が完了しました", {
@@ -536,8 +538,10 @@ export function DashboardPageClient({
             messages.error.calendarSyncFailed,
           );
 
-          clearShiftDerivedCaches();
-          await reload();
+          await Promise.all([
+            invalidateAfterShiftMutation(queryClient),
+            reload(),
+          ]);
 
           if (syncFailure) {
             if (syncFailure.requiresSignOut) {
@@ -597,7 +601,10 @@ export function DashboardPageClient({
             throw new Error(apiError.message);
           }
 
-          await reload();
+          await Promise.all([
+            invalidateAfterShiftMutation(queryClient),
+            reload(),
+          ]);
           toast.success(messages.success.calendarSyncRetried);
         }}
       />

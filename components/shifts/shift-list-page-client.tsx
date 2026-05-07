@@ -38,8 +38,9 @@ import {
   startOfMonth,
   toMonthInputValue,
 } from "@/lib/calendar/date";
-import { clearShiftDerivedCaches } from "@/lib/client-cache/shift-derived-cache";
 import { messages, toErrorMessage } from "@/lib/messages";
+import { getBrowserQueryClient } from "@/lib/query/query-client";
+import { invalidateAfterShiftMutation } from "@/lib/query/invalidation";
 import { formatShiftTimeRange } from "@/lib/shifts/time";
 import { formatShiftWorkplaceLabel } from "@/lib/shifts/format";
 import { resolveUserFacingErrorFromResponse } from "@/lib/user-facing-error";
@@ -219,6 +220,7 @@ export function ShiftListPageClient({
   initialMonthEndDate,
 }: ShiftListPageClientProps) {
   const router = useRouter();
+  const queryClient = getBrowserQueryClient();
   const [month, setMonth] = useState(() => {
     const parsedMonth = fromMonthInputValue(initialMonth);
     return startOfMonth(parsedMonth ?? new Date());
@@ -383,8 +385,7 @@ export function ShiftListPageClient({
 
       setSelectedShiftIds(new Set());
       setDeleteDialogOpen(false);
-      clearShiftDerivedCaches();
-      await reload();
+      await Promise.all([invalidateAfterShiftMutation(queryClient), reload()]);
 
       toast.success(messages.success.shiftDeleted, {
         description: `${deletedCount}件のシフトを削除しました。`,

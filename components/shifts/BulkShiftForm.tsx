@@ -49,8 +49,9 @@ import {
   readGoogleSyncFailureFromErrorResponse,
 } from "@/lib/google-calendar/clientSync";
 import { CALENDAR_SETUP_PATH } from "@/lib/google-calendar/constants";
-import { clearShiftDerivedCaches } from "@/lib/client-cache/shift-derived-cache";
 import { messages, toErrorMessage } from "@/lib/messages";
+import { getBrowserQueryClient } from "@/lib/query/query-client";
+import { invalidateAfterShiftMutation } from "@/lib/query/invalidation";
 import {
   formatShiftTimeRange,
   getShiftEndDate,
@@ -620,6 +621,7 @@ function normalizeRowForWorkplace(
 
 export function BulkShiftForm() {
   const router = useRouter();
+  const queryClient = getBrowserQueryClient();
 
   const [month, setMonth] = useState(
     () => new Date(new Date().getFullYear(), new Date().getMonth(), 1),
@@ -1516,7 +1518,7 @@ export function BulkShiftForm() {
           return;
         }
 
-        clearShiftDerivedCaches();
+        await invalidateAfterShiftMutation(queryClient);
         router.push("/my");
         return;
       }
@@ -1527,7 +1529,7 @@ export function BulkShiftForm() {
           ? "Google Calendar 同期はバックグラウンドで実行中です。"
           : undefined,
       });
-      clearShiftDerivedCaches();
+      await invalidateAfterShiftMutation(queryClient);
       router.push("/my");
     } catch (error) {
       console.error("failed to submit bulk shifts", error);

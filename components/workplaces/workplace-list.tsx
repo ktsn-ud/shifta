@@ -30,6 +30,8 @@ import {
 } from "@/components/ui/table";
 import { formatWorkplaceType } from "@/lib/enum-labels";
 import { messages, toErrorMessage } from "@/lib/messages";
+import { getBrowserQueryClient } from "@/lib/query/query-client";
+import { invalidateAfterWorkplaceMutation } from "@/lib/query/invalidation";
 import { resolveUserFacingErrorFromResponse } from "@/lib/user-facing-error";
 
 type WorkplaceType = "GENERAL" | "CRAM_SCHOOL";
@@ -192,6 +194,7 @@ async function readApiErrorMessage(
 }
 
 export function WorkplaceList({ initialWorkplaces }: WorkplaceListProps) {
+  const queryClient = getBrowserQueryClient();
   const hasInitialData = initialWorkplaces !== undefined;
   const [workplaces, setWorkplaces] = useState<Workplace[]>(
     () => initialWorkplaces ?? [],
@@ -293,6 +296,8 @@ export function WorkplaceList({ initialWorkplaces }: WorkplaceListProps) {
       if (!parsed) {
         throw new Error("勤務先削除レスポンスの形式が不正です。");
       }
+
+      await invalidateAfterWorkplaceMutation(queryClient);
 
       setWorkplaces((current) =>
         current.filter((workplace) => workplace.id !== deletingTarget.id),

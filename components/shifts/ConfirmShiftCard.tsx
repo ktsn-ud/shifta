@@ -5,13 +5,14 @@ import { useRouter } from "next/navigation";
 import { CheckIcon } from "lucide-react";
 import { toast } from "sonner";
 import { TIME_ONLY_REGEX } from "@/lib/api/date-time";
-import { clearShiftDerivedCaches } from "@/lib/client-cache/shift-derived-cache";
 import {
   parseGoogleSyncFailureFromPayload,
   readGoogleSyncFailureFromErrorResponse,
 } from "@/lib/google-calendar/clientSync";
 import { CALENDAR_SETUP_PATH } from "@/lib/google-calendar/constants";
 import { messages, toErrorMessage } from "@/lib/messages";
+import { getBrowserQueryClient } from "@/lib/query/query-client";
+import { invalidateAfterShiftMutation } from "@/lib/query/invalidation";
 import { formatShiftWorkplaceLabel } from "@/lib/shifts/format";
 import { isOvernightShift, isSameTimeShift } from "@/lib/shifts/time";
 import { useGoogleTokenExpiredSignOut } from "@/hooks/use-google-token-expired-signout";
@@ -93,6 +94,7 @@ export function ConfirmShiftCard({
   onActionCompleted,
 }: ConfirmShiftCardProps) {
   const router = useRouter();
+  const queryClient = getBrowserQueryClient();
   const [startTime, setStartTime] = useState(shift.startTime);
   const [endTime, setEndTime] = useState(shift.endTime);
   const [breakMinutes, setBreakMinutes] = useState(String(shift.breakMinutes));
@@ -156,7 +158,7 @@ export function ConfirmShiftCard({
         messages.error.calendarSyncFailed,
       );
 
-      clearShiftDerivedCaches();
+      await invalidateAfterShiftMutation(queryClient);
       await onActionCompleted?.();
 
       if (syncFailure) {

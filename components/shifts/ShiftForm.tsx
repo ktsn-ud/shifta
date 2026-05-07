@@ -40,8 +40,9 @@ import {
   readGoogleSyncFailureFromErrorResponse,
 } from "@/lib/google-calendar/clientSync";
 import { CALENDAR_SETUP_PATH } from "@/lib/google-calendar/constants";
-import { clearShiftDerivedCaches } from "@/lib/client-cache/shift-derived-cache";
 import { messages, toErrorMessage } from "@/lib/messages";
+import { getBrowserQueryClient } from "@/lib/query/query-client";
+import { invalidateAfterShiftMutation } from "@/lib/query/invalidation";
 import {
   formatShiftTimeRange,
   isOvernightShift,
@@ -468,6 +469,7 @@ export function ShiftForm({
     useState<ShiftTimePair | null>(null);
   const { isSignOutScheduled, scheduleSignOut } =
     useGoogleTokenExpiredSignOut();
+  const queryClient = getBrowserQueryClient();
 
   const returnPath = useMemo(() => {
     const basePath = returnTo === "list" ? "/my/shifts/list" : "/my";
@@ -1273,7 +1275,7 @@ export function ShiftForm({
           return;
         }
 
-        clearShiftDerivedCaches();
+        await invalidateAfterShiftMutation(queryClient);
         router.push(returnPath);
         return;
       }
@@ -1290,7 +1292,7 @@ export function ShiftForm({
           )}`,
         },
       );
-      clearShiftDerivedCaches();
+      await invalidateAfterShiftMutation(queryClient);
       router.push(returnPath);
     } catch (error) {
       console.error("failed to save shift", error);
