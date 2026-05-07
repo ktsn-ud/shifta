@@ -5,33 +5,14 @@ import {
   DashboardPageLoadingSkeleton,
 } from "@/components/dashboard/dashboard-page-client";
 import { requireCurrentUser } from "@/lib/api/current-user";
-import { parseDateOnly } from "@/lib/api/date-time";
 import {
   endOfMonth,
   fromMonthInputValue,
   startOfMonth,
   toDateOnlyString,
 } from "@/lib/calendar/date";
-import { type MonthShift } from "@/hooks/use-month-shifts";
-import { type Prisma } from "@/lib/generated/prisma/client";
-import {
-  calculateShiftPayrollResultByRule,
-  findApplicablePayrollRule,
-  groupPayrollRulesByWorkplace,
-} from "@/lib/payroll/summarizeByPeriod";
-import {
-  buildPayrollRuleWhereForDateRange,
-  resolvePayrollRuleDateRange,
-} from "@/lib/payroll/rule-query";
-import { calculateWorkedMinutes } from "@/lib/payroll/estimate";
+import { getMonthShifts } from "@/lib/shifts/month-shifts";
 import { prisma } from "@/lib/prisma";
-
-type ShiftWithRelations = Prisma.ShiftGetPayload<{
-  include: {
-    lessonRange: true;
-    workplace: true;
-  };
-}>;
 
 function startOfUtcDay(value: Date): Date {
   return new Date(
@@ -50,128 +31,6 @@ function resolveInitialMonth(monthParam: string | string[] | undefined): Date {
 
   const parsedMonth = fromMonthInputValue(monthParam);
   return startOfMonth(parsedMonth ?? new Date());
-}
-
-async function getMonthShiftsWithEstimate(
-  workplaceIds: string[],
-  startDate: string,
-  endDate: string,
-): Promise<MonthShift[]> {
-  if (workplaceIds.length === 0) {
-    return [];
-  }
-
-  const shifts = await prisma.shift.findMany({
-    where: {
-      workplaceId: {
-        in: workplaceIds,
-      },
-      date: {
-        gte: parseDateOnly(startDate),
-        lte: parseDateOnly(endDate),
-      },
-    },
-    include: {
-      lessonRange: true,
-      workplace: true,
-    },
-    orderBy: [{ date: "desc" }, { startTime: "desc" }],
-  });
-
-  if (shifts.length === 0) {
-    return [];
-  }
-
-  const relatedWorkplaceIds = Array.from(
-    new Set(shifts.map((shift) => shift.workplaceId)),
-  );
-  const payrollRuleDateRange = resolvePayrollRuleDateRange(shifts);
-  if (!payrollRuleDateRange) {
-    return [];
-  }
-
-  const payrollRules = await prisma.payrollRule.findMany({
-    where: buildPayrollRuleWhereForDateRange(
-      relatedWorkplaceIds,
-      payrollRuleDateRange,
-    ),
-    orderBy: [{ workplaceId: "asc" }, { startDate: "desc" }],
-  });
-  const rulesByWorkplace = groupPayrollRulesByWorkplace(payrollRules);
-
-  return shifts.map((shift: ShiftWithRelations) => {
-    const normalizedShiftType =
-      shift.shiftType === "LESSON" ? "LESSON" : "NORMAL";
-    const workedMinutes = calculateWorkedMinutes({
-      date: shift.date,
-      startTime: shift.startTime,
-      endTime: shift.endTime,
-      breakMinutes: shift.breakMinutes,
-      shiftType: normalizedShiftType,
-      lessonRange: shift.lessonRange
-        ? {
-            timetableSetId:
-              (
-                shift.lessonRange as {
-                  timetableSetId?: string;
-                }
-              ).timetableSetId ?? "",
-            startPeriod: shift.lessonRange.startPeriod,
-            endPeriod: shift.lessonRange.endPeriod,
-          }
-        : null,
-    });
-
-    const selectedRule = findApplicablePayrollRule(
-      rulesByWorkplace,
-      shift.workplaceId,
-      shift.date,
-    );
-
-    const estimatedPay = selectedRule
-      ? calculateShiftPayrollResultByRule(shift, selectedRule).totalWage
-      : null;
-
-    return {
-      id: shift.id,
-      workplaceId: shift.workplaceId,
-      date: shift.date.toISOString(),
-      startTime: shift.startTime.toISOString(),
-      endTime: shift.endTime.toISOString(),
-      breakMinutes: shift.breakMinutes,
-      shiftType: normalizedShiftType,
-      comment: shift.comment,
-      googleSyncStatus:
-        shift.googleSyncStatus === "SUCCESS" ||
-        shift.googleSyncStatus === "FAILED"
-          ? shift.googleSyncStatus
-          : "PENDING",
-      googleSyncError: shift.googleSyncError,
-      googleSyncedAt: shift.googleSyncedAt?.toISOString() ?? null,
-      workedMinutes,
-      estimatedPay,
-      workplace: {
-        id: shift.workplace.id,
-        name: shift.workplace.name,
-        color: shift.workplace.color,
-        type: shift.workplace.type,
-      },
-      lessonRange: shift.lessonRange
-        ? {
-            id: shift.lessonRange.id,
-            shiftId: shift.lessonRange.shiftId,
-            timetableSetId:
-              (
-                shift.lessonRange as {
-                  timetableSetId?: string;
-                }
-              ).timetableSetId ?? "",
-            startPeriod: shift.lessonRange.startPeriod,
-            endPeriod: shift.lessonRange.endPeriod,
-          }
-        : null,
-    };
-  });
 }
 
 async function getUserWorkplaceIds(userId: string): Promise<string[]> {
@@ -212,7 +71,13 @@ async function DashboardPageContent({ month }: { month: Date }) {
   const endDate = toDateOnlyString(endOfMonth(month));
   const workplaceIds = await getUserWorkplaceIds(current.user.id);
   const [initialMonthShifts, initialUnconfirmedShiftCount] = await Promise.all([
-    getMonthShiftsWithEstimate(workplaceIds, startDate, endDate),
+    getMonthShifts({
+      userId: current.user.id,
+      startDate,
+      endDate,
+      includeEstimate: true,
+      workplaceIds,
+    }),
     getUnconfirmedShiftCount(workplaceIds),
   ]);
 

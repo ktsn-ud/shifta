@@ -1,4 +1,3 @@
-import { type Prisma } from "@/lib/generated/prisma/client";
 import { after } from "next/server";
 import { revalidatePath } from "next/cache";
 import { z } from "zod";
@@ -6,18 +5,9 @@ import { requireCurrentUser } from "@/lib/api/current-user";
 import { DATE_ONLY_REGEX, parseDateOnly } from "@/lib/api/date-time";
 import { jsonError, parseJsonBody } from "@/lib/api/http";
 import { requireOwnedWorkplace } from "@/lib/api/workplace";
-import { calculateWorkedMinutes } from "@/lib/payroll/estimate";
-import {
-  calculateShiftPayrollResultByRule,
-  findApplicablePayrollRule,
-  groupPayrollRulesByWorkplace,
-} from "@/lib/payroll/summarizeByPeriod";
-import {
-  buildPayrollRuleWhereForDateRange,
-  resolvePayrollRuleDateRange,
-} from "@/lib/payroll/rule-query";
 import { prisma } from "@/lib/prisma";
 import { jsonNoStore } from "@/lib/api/cache-control";
+import { getMonthShifts } from "@/lib/shifts/month-shifts";
 import {
   syncShiftAfterCreate,
   syncShiftDeletion,
@@ -190,113 +180,17 @@ export async function GET(request: Request) {
       }
     }
 
-    const where: Prisma.ShiftWhereInput = {
-      workplace: { userId: current.user.id },
-    };
-
-    if (query.data.workplaceId) {
-      where.workplaceId = query.data.workplaceId;
-    }
-
-    if (query.data.startDate || query.data.endDate) {
-      where.date = {
-        ...(query.data.startDate
-          ? { gte: parseDateOnly(query.data.startDate) }
-          : {}),
-        ...(query.data.endDate
-          ? { lte: parseDateOnly(query.data.endDate) }
-          : {}),
-      };
-    }
-
-    const shifts = await prisma.shift.findMany({
-      where,
-      include: {
-        lessonRange: true,
-        workplace: {
-          select: {
-            id: true,
-            name: true,
-            color: true,
-            type: true,
-          },
-        },
-      },
-      orderBy: [{ date: "desc" }, { startTime: "desc" }],
+    const shifts = await getMonthShifts({
+      userId: current.user.id,
+      startDate: query.data.startDate ?? "1900-01-01",
+      endDate: query.data.endDate ?? "2999-12-31",
+      includeEstimate: query.data.includeEstimate === "true",
+      workplaceIds: query.data.workplaceId
+        ? [query.data.workplaceId]
+        : undefined,
     });
 
-    const shiftsWithWorkedMinutes = shifts.map((shift) => {
-      const normalizedShiftType =
-        shift.shiftType === "LESSON" ? "LESSON" : "NORMAL";
-      const workedMinutes = calculateWorkedMinutes({
-        date: shift.date,
-        startTime: shift.startTime,
-        endTime: shift.endTime,
-        breakMinutes: shift.breakMinutes,
-        shiftType: normalizedShiftType,
-        lessonRange: shift.lessonRange
-          ? {
-              timetableSetId:
-                (
-                  shift.lessonRange as {
-                    timetableSetId?: string;
-                  }
-                ).timetableSetId ?? "",
-              startPeriod: shift.lessonRange.startPeriod,
-              endPeriod: shift.lessonRange.endPeriod,
-            }
-          : null,
-      });
-
-      return {
-        ...shift,
-        workedMinutes,
-        estimatedPay: null as number | null,
-      };
-    });
-
-    if (query.data.includeEstimate !== "true") {
-      return jsonNoStore({ data: shiftsWithWorkedMinutes });
-    }
-
-    const workplaceIds = Array.from(
-      new Set(shiftsWithWorkedMinutes.map((shift) => shift.workplaceId)),
-    );
-    const payrollRuleDateRange = resolvePayrollRuleDateRange(
-      shiftsWithWorkedMinutes,
-    );
-
-    if (workplaceIds.length === 0 || !payrollRuleDateRange) {
-      return jsonNoStore({ data: [] });
-    }
-
-    const payrollRules = await prisma.payrollRule.findMany({
-      where: buildPayrollRuleWhereForDateRange(
-        workplaceIds,
-        payrollRuleDateRange,
-      ),
-      orderBy: [{ workplaceId: "asc" }, { startDate: "desc" }],
-    });
-
-    const rulesByWorkplace = groupPayrollRulesByWorkplace(payrollRules);
-
-    const withEstimate = shiftsWithWorkedMinutes.map((shift) => {
-      const selectedRule = findApplicablePayrollRule(
-        rulesByWorkplace,
-        shift.workplaceId,
-        shift.date,
-      );
-      const estimatedPay = selectedRule
-        ? calculateShiftPayrollResultByRule(shift, selectedRule).totalWage
-        : null;
-
-      return {
-        ...shift,
-        estimatedPay,
-      };
-    });
-
-    return jsonNoStore({ data: withEstimate });
+    return jsonNoStore({ data: shifts });
   } catch (error) {
     console.error("GET /api/shifts failed", error);
     return jsonError("シフト一覧の取得に失敗しました", 500);

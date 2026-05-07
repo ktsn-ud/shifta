@@ -37,7 +37,62 @@ export default async function TimetableListPage({
     notFound();
   }
 
+  const initialTimetables =
+    workplace.type === "CRAM_SCHOOL"
+      ? (
+          await prisma.timetableSet.findMany({
+            where: {
+              workplaceId: workplace.id,
+            },
+            include: {
+              timetables: {
+                orderBy: {
+                  period: "asc",
+                },
+              },
+            },
+            orderBy: [{ sortOrder: "asc" }, { createdAt: "asc" }],
+          })
+        ).map((set) => ({
+          id: set.id,
+          workplaceId: set.workplaceId,
+          name: set.name,
+          sortOrder: set.sortOrder,
+          createdAt: set.createdAt.toISOString(),
+          updatedAt: set.updatedAt.toISOString(),
+          items: set.timetables.map((item) => {
+            const startHour = String(item.startTime.getUTCHours()).padStart(
+              2,
+              "0",
+            );
+            const startMinute = String(item.startTime.getUTCMinutes()).padStart(
+              2,
+              "0",
+            );
+            const endHour = String(item.endTime.getUTCHours()).padStart(2, "0");
+            const endMinute = String(item.endTime.getUTCMinutes()).padStart(
+              2,
+              "0",
+            );
+
+            return {
+              id: item.id,
+              timetableSetId: item.timetableSetId,
+              period: item.period,
+              startTime: item.startTime.toISOString(),
+              endTime: item.endTime.toISOString(),
+              startTimeLabel: `${startHour}:${startMinute}`,
+              endTimeLabel: `${endHour}:${endMinute}`,
+            };
+          }),
+        }))
+      : [];
+
   return (
-    <TimetableList workplaceId={workplace.id} initialWorkplace={workplace} />
+    <TimetableList
+      workplaceId={workplace.id}
+      initialWorkplace={workplace}
+      initialTimetables={initialTimetables}
+    />
   );
 }
