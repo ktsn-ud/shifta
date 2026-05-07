@@ -1,7 +1,7 @@
 "use client";
 
 import Link from "next/link";
-import { useEffect, useMemo, useState } from "react";
+import { useMemo, useState } from "react";
 import { toast } from "sonner";
 import { Button, buttonVariants } from "@/components/ui/button";
 import {
@@ -32,6 +32,11 @@ import { dateKeyFromApiDate } from "@/lib/calendar/date";
 import { messages, toErrorMessage } from "@/lib/messages";
 import { getBrowserQueryClient } from "@/lib/query/query-client";
 import { invalidateAfterPayrollRuleMutation } from "@/lib/query/invalidation";
+import {
+  useWorkplaceDetailQuery,
+  useWorkplacePayrollRulesQuery,
+} from "@/lib/query/queries/workplaces";
+import { queryKeys } from "@/lib/query/query-keys";
 import { resolveUserFacingErrorFromResponse } from "@/lib/user-facing-error";
 
 type PayrollRuleListProps = {
@@ -50,15 +55,6 @@ type WorkplaceType = "GENERAL" | "CRAM_SCHOOL";
 type HolidayType = "NONE" | "WEEKEND" | "HOLIDAY" | "WEEKEND_HOLIDAY";
 type NumericValue = number | string;
 
-type WorkplaceResponse = {
-  data: {
-    id: string;
-    name: string;
-    type: WorkplaceType;
-    color: string;
-  };
-};
-
 type PayrollRule = {
   id: string;
   workplaceId: string;
@@ -71,116 +67,6 @@ type PayrollRule = {
   dailyOvertimeThreshold: NumericValue;
   holidayType: HolidayType;
 };
-
-type PayrollRuleListResponse = {
-  data: PayrollRule[];
-};
-
-const WORKPLACE_TYPES: WorkplaceType[] = ["GENERAL", "CRAM_SCHOOL"];
-const HOLIDAY_TYPES: HolidayType[] = [
-  "NONE",
-  "WEEKEND",
-  "HOLIDAY",
-  "WEEKEND_HOLIDAY",
-];
-
-function isRecord(value: unknown): value is Record<string, unknown> {
-  return typeof value === "object" && value !== null;
-}
-
-function isWorkplaceType(value: unknown): value is WorkplaceType {
-  return (
-    typeof value === "string" &&
-    WORKPLACE_TYPES.includes(value as WorkplaceType)
-  );
-}
-
-function isHolidayType(value: unknown): value is HolidayType {
-  return (
-    typeof value === "string" && HOLIDAY_TYPES.includes(value as HolidayType)
-  );
-}
-
-function isNumericValue(value: unknown): value is NumericValue {
-  return typeof value === "number" || typeof value === "string";
-}
-
-function parseWorkplaceResponse(value: unknown): WorkplaceResponse | null {
-  if (!isRecord(value) || !isRecord(value.data)) {
-    return null;
-  }
-
-  if (
-    typeof value.data.id !== "string" ||
-    typeof value.data.name !== "string" ||
-    !isWorkplaceType(value.data.type) ||
-    typeof value.data.color !== "string"
-  ) {
-    return null;
-  }
-
-  return {
-    data: {
-      id: value.data.id,
-      name: value.data.name,
-      type: value.data.type,
-      color: value.data.color,
-    },
-  };
-}
-
-function parsePayrollRule(value: unknown): PayrollRule | null {
-  if (!isRecord(value)) {
-    return null;
-  }
-
-  if (
-    typeof value.id !== "string" ||
-    typeof value.workplaceId !== "string" ||
-    typeof value.startDate !== "string" ||
-    (value.endDate !== null && typeof value.endDate !== "string") ||
-    !isNumericValue(value.baseHourlyWage) ||
-    !isNumericValue(value.holidayAllowanceHourly) ||
-    !isNumericValue(value.nightPremiumRate) ||
-    !isNumericValue(value.overtimePremiumRate) ||
-    !isNumericValue(value.dailyOvertimeThreshold) ||
-    !isHolidayType(value.holidayType)
-  ) {
-    return null;
-  }
-
-  return {
-    id: value.id,
-    workplaceId: value.workplaceId,
-    startDate: value.startDate,
-    endDate: value.endDate,
-    baseHourlyWage: value.baseHourlyWage,
-    holidayAllowanceHourly: value.holidayAllowanceHourly,
-    nightPremiumRate: value.nightPremiumRate,
-    overtimePremiumRate: value.overtimePremiumRate,
-    dailyOvertimeThreshold: value.dailyOvertimeThreshold,
-    holidayType: value.holidayType,
-  };
-}
-
-function parsePayrollRuleListResponse(
-  value: unknown,
-): PayrollRuleListResponse | null {
-  if (!isRecord(value) || !Array.isArray(value.data)) {
-    return null;
-  }
-
-  const rules: PayrollRule[] = [];
-  for (const item of value.data) {
-    const parsed = parsePayrollRule(item);
-    if (!parsed) {
-      return null;
-    }
-    rules.push(parsed);
-  }
-
-  return { data: rules };
-}
 
 async function readApiErrorMessage(
   response: Response,
@@ -256,17 +142,22 @@ export function PayrollRuleList({
   initialInfoMessage,
 }: PayrollRuleListProps) {
   const queryClient = getBrowserQueryClient();
-  const hasInitialData =
-    initialWorkplace !== undefined && initialRules !== undefined;
-  const [workplace, setWorkplace] = useState<{
-    id: string;
-    name: string;
-    type: WorkplaceType;
-    color: string;
-  } | null>(() => initialWorkplace ?? null);
-  const [rules, setRules] = useState<PayrollRule[]>(() => initialRules ?? []);
-  const [isLoading, setIsLoading] = useState(() => !hasInitialData);
-  const [errorMessage, setErrorMessage] = useState<string | null>(null);
+  const workplaceQuery = useWorkplaceDetailQuery({
+    workplaceId,
+    initialData: initialWorkplace ?? null,
+  });
+  const rulesQuery = useWorkplacePayrollRulesQuery({
+    workplaceId,
+    initialData: initialRules,
+  });
+  const workplace = workplaceQuery.data ?? null;
+  const rules = useMemo(() => rulesQuery.data ?? [], [rulesQuery.data]);
+  const isLoading = workplaceQuery.isLoading || rulesQuery.isLoading;
+  const errorMessage = workplaceQuery.error
+    ? toErrorMessage(workplaceQuery.error, "勤務先情報の取得に失敗しました。")
+    : rulesQuery.error
+      ? toErrorMessage(rulesQuery.error, "給与ルール一覧の取得に失敗しました。")
+      : null;
   const [infoMessage, setInfoMessage] = useState<string | null>(
     initialInfoMessage ?? null,
   );
@@ -278,88 +169,6 @@ export function PayrollRuleList({
     () => rules.find((rule) => rule.id === deletingRuleId) ?? null,
     [deletingRuleId, rules],
   );
-
-  useEffect(() => {
-    if (hasInitialData) {
-      setErrorMessage(null);
-      setIsLoading(false);
-      return;
-    }
-
-    const abortController = new AbortController();
-
-    async function fetchData() {
-      setIsLoading(true);
-      setErrorMessage(null);
-
-      try {
-        const [workplaceResponse, rulesResponse] = await Promise.all([
-          fetch(`/api/workplaces/${workplaceId}`, {
-            signal: abortController.signal,
-          }),
-          fetch(`/api/workplaces/${workplaceId}/payroll-rules`, {
-            signal: abortController.signal,
-          }),
-        ]);
-
-        if (workplaceResponse.ok === false) {
-          throw new Error(
-            await readApiErrorMessage(
-              workplaceResponse,
-              "勤務先情報の取得に失敗しました。",
-            ),
-          );
-        }
-
-        if (rulesResponse.ok === false) {
-          throw new Error(
-            await readApiErrorMessage(
-              rulesResponse,
-              "給与ルール一覧の取得に失敗しました。",
-            ),
-          );
-        }
-
-        const parsedWorkplace = parseWorkplaceResponse(
-          (await workplaceResponse.json()) as unknown,
-        );
-        if (!parsedWorkplace) {
-          throw new Error("勤務先情報レスポンスの形式が不正です。");
-        }
-
-        const parsedRules = parsePayrollRuleListResponse(
-          (await rulesResponse.json()) as unknown,
-        );
-        if (!parsedRules) {
-          throw new Error("給与ルール一覧レスポンスの形式が不正です。");
-        }
-
-        setWorkplace(parsedWorkplace.data);
-        setRules(parsedRules.data);
-      } catch (error) {
-        if (abortController.signal.aborted) {
-          return;
-        }
-
-        console.error("failed to fetch payroll rules", error);
-        setWorkplace(null);
-        setRules([]);
-        setErrorMessage(
-          toErrorMessage(error, "給与ルール一覧の取得に失敗しました。"),
-        );
-      } finally {
-        if (abortController.signal.aborted === false) {
-          setIsLoading(false);
-        }
-      }
-    }
-
-    void fetchData();
-
-    return () => {
-      abortController.abort();
-    };
-  }, [hasInitialData, workplaceId]);
 
   const handleDelete = async () => {
     if (!deletingRule) {
@@ -387,9 +196,10 @@ export function PayrollRuleList({
       }
 
       await invalidateAfterPayrollRuleMutation(queryClient, workplaceId);
-
-      setRules((current) =>
-        current.filter((rule) => rule.id !== deletingRule.id),
+      queryClient.setQueryData<PayrollRule[]>(
+        queryKeys.workplaces.payrollRules({ workplaceId }),
+        (current) =>
+          (current ?? []).filter((rule) => rule.id !== deletingRule.id),
       );
       setDeletingRuleId(null);
       setInfoMessage("給与ルールを削除しました。");

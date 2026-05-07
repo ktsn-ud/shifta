@@ -1,7 +1,7 @@
 "use client";
 
 import Link from "next/link";
-import { useEffect, useMemo, useState } from "react";
+import { useMemo, useState } from "react";
 import { toast } from "sonner";
 import { Button, buttonVariants } from "@/components/ui/button";
 import {
@@ -32,6 +32,8 @@ import { formatWorkplaceType } from "@/lib/enum-labels";
 import { messages, toErrorMessage } from "@/lib/messages";
 import { getBrowserQueryClient } from "@/lib/query/query-client";
 import { invalidateAfterWorkplaceMutation } from "@/lib/query/invalidation";
+import { useWorkplacesQuery } from "@/lib/query/queries/workplaces";
+import { queryKeys } from "@/lib/query/query-keys";
 import { resolveUserFacingErrorFromResponse } from "@/lib/user-facing-error";
 
 type WorkplaceType = "GENERAL" | "CRAM_SCHOOL";
@@ -50,10 +52,6 @@ type Workplace = {
   _count: RelatedCounts;
 };
 
-type WorkplaceListResponse = {
-  data: Workplace[];
-};
-
 type WorkplaceDeleteResponse = {
   data: {
     id: string;
@@ -64,20 +62,12 @@ type WorkplaceDeleteResponse = {
 };
 
 type WorkplaceListProps = {
+  currentUserId: string;
   initialWorkplaces?: Workplace[];
 };
 
-const WORKPLACE_TYPES: WorkplaceType[] = ["GENERAL", "CRAM_SCHOOL"];
-
 function isRecord(value: unknown): value is Record<string, unknown> {
   return typeof value === "object" && value !== null;
-}
-
-function isWorkplaceType(value: unknown): value is WorkplaceType {
-  return (
-    typeof value === "string" &&
-    WORKPLACE_TYPES.includes(value as WorkplaceType)
-  );
 }
 
 function isNonNegativeInteger(value: unknown): value is number {
@@ -102,53 +92,6 @@ function parseRelatedCounts(value: unknown): RelatedCounts | null {
     payrollRules: value.payrollRules,
     timetableSets: value.timetableSets,
   };
-}
-
-function parseWorkplace(value: unknown): Workplace | null {
-  if (!isRecord(value)) {
-    return null;
-  }
-
-  if (
-    typeof value.id !== "string" ||
-    typeof value.name !== "string" ||
-    !isWorkplaceType(value.type) ||
-    typeof value.color !== "string"
-  ) {
-    return null;
-  }
-
-  const relatedCounts = parseRelatedCounts(value._count);
-  if (!relatedCounts) {
-    return null;
-  }
-
-  return {
-    id: value.id,
-    name: value.name,
-    type: value.type,
-    color: value.color,
-    _count: relatedCounts,
-  };
-}
-
-function parseWorkplaceListResponse(
-  value: unknown,
-): WorkplaceListResponse | null {
-  if (!isRecord(value) || !Array.isArray(value.data)) {
-    return null;
-  }
-
-  const workplaces: Workplace[] = [];
-  for (const item of value.data) {
-    const workplace = parseWorkplace(item);
-    if (!workplace) {
-      return null;
-    }
-    workplaces.push(workplace);
-  }
-
-  return { data: workplaces };
 }
 
 function parseWorkplaceDeleteResponse(
@@ -193,82 +136,33 @@ async function readApiErrorMessage(
   return resolved.message;
 }
 
-export function WorkplaceList({ initialWorkplaces }: WorkplaceListProps) {
+export function WorkplaceList({
+  currentUserId,
+  initialWorkplaces,
+}: WorkplaceListProps) {
   const queryClient = getBrowserQueryClient();
-  const hasInitialData = initialWorkplaces !== undefined;
-  const [workplaces, setWorkplaces] = useState<Workplace[]>(
-    () => initialWorkplaces ?? [],
-  );
-  const [isLoading, setIsLoading] = useState(() => !hasInitialData);
-  const [errorMessage, setErrorMessage] = useState<string | null>(null);
+  const workplacesQuery = useWorkplacesQuery({
+    userId: currentUserId,
+    includeCounts: true,
+    initialData: initialWorkplaces,
+  });
   const [infoMessage, setInfoMessage] = useState<string | null>(null);
   const [deletingId, setDeletingId] = useState<string | null>(null);
   const [isDeleting, setIsDeleting] = useState(false);
   const [deleteError, setDeleteError] = useState<string | null>(null);
+  const workplaces = useMemo(
+    () => workplacesQuery.data ?? [],
+    [workplacesQuery.data],
+  );
+  const isLoading = workplacesQuery.isLoading;
+  const errorMessage = workplacesQuery.error
+    ? toErrorMessage(workplacesQuery.error, "勤務先一覧の取得に失敗しました。")
+    : null;
 
   const deletingTarget = useMemo(
     () => workplaces.find((workplace) => workplace.id === deletingId) ?? null,
     [deletingId, workplaces],
   );
-
-  useEffect(() => {
-    if (hasInitialData) {
-      setErrorMessage(null);
-      setIsLoading(false);
-      return;
-    }
-
-    const abortController = new AbortController();
-
-    async function fetchWorkplaces() {
-      setIsLoading(true);
-      setErrorMessage(null);
-
-      try {
-        const response = await fetch("/api/workplaces", {
-          signal: abortController.signal,
-        });
-
-        if (response.ok === false) {
-          throw new Error(
-            await readApiErrorMessage(
-              response,
-              "勤務先一覧の取得に失敗しました。",
-            ),
-          );
-        }
-
-        const parsed = parseWorkplaceListResponse(
-          (await response.json()) as unknown,
-        );
-        if (!parsed) {
-          throw new Error("勤務先一覧レスポンスの形式が不正です。");
-        }
-
-        setWorkplaces(parsed.data);
-      } catch (error) {
-        if (abortController.signal.aborted) {
-          return;
-        }
-
-        console.error("failed to fetch workplaces", error);
-        setWorkplaces([]);
-        setErrorMessage(
-          toErrorMessage(error, "勤務先一覧の取得に失敗しました。"),
-        );
-      } finally {
-        if (abortController.signal.aborted === false) {
-          setIsLoading(false);
-        }
-      }
-    }
-
-    void fetchWorkplaces();
-
-    return () => {
-      abortController.abort();
-    };
-  }, [hasInitialData]);
 
   const confirmDelete = async () => {
     if (!deletingTarget) {
@@ -298,9 +192,15 @@ export function WorkplaceList({ initialWorkplaces }: WorkplaceListProps) {
       }
 
       await invalidateAfterWorkplaceMutation(queryClient);
-
-      setWorkplaces((current) =>
-        current.filter((workplace) => workplace.id !== deletingTarget.id),
+      queryClient.setQueryData<Workplace[]>(
+        queryKeys.workplaces.list({
+          userId: currentUserId,
+          includeCounts: true,
+        }),
+        (current) =>
+          (current ?? []).filter(
+            (workplace) => workplace.id !== deletingTarget.id,
+          ),
       );
 
       if (parsed.warning) {

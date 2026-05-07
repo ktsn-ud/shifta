@@ -28,5 +28,10 @@ export default async function WorkplacesPage() {
     },
   }));
 
-  return <WorkplaceList initialWorkplaces={initialWorkplaces} />;
+  return (
+    <WorkplaceList
+      currentUserId={current.user.id}
+      initialWorkplaces={initialWorkplaces}
+    />
+  );
 }
