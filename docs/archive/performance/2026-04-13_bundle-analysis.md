@@ -2,7 +2,7 @@
 
 ## 1. 目的
 
-`docs/PERFORMANCE_INVESTIGATION_2026-04-13.md` の改善実装前後で、`next experimental-analyze` の圧縮後クライアント JS サイズを比較する。
+`docs/archive/performance/2026-04-13_investigation.md` の改善実装前後で、`next experimental-analyze` の圧縮後クライアント JS サイズを比較する。
 
 ## 2. 計測方法
 
