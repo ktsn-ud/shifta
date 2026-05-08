@@ -1,4 +1,5 @@
 import { type QueryClient } from "@tanstack/react-query";
+import { queryKeys } from "@/lib/query/query-keys";
 
 export async function invalidateAfterShiftMutation(
   queryClient: QueryClient,
@@ -28,7 +29,16 @@ export async function invalidateAfterPayrollRuleMutation(
 ): Promise<void> {
   await Promise.all([
     queryClient.invalidateQueries({
-      queryKey: ["workplaces", "detail", { workplaceId }],
+      queryKey: queryKeys.workplaces.detailSummary({ workplaceId }),
+    }),
+    queryClient.invalidateQueries({
+      queryKey: queryKeys.workplaces.editDetail({ workplaceId }),
+    }),
+    queryClient.invalidateQueries({
+      queryKey: queryKeys.workplaces.payrollRules({ workplaceId }),
+    }),
+    queryClient.invalidateQueries({
+      queryKey: ["workplaces", "payrollRuleDetail"],
     }),
     queryClient.invalidateQueries({ queryKey: ["payroll", "summary"] }),
     queryClient.invalidateQueries({ queryKey: ["payroll", "details"] }),
@@ -42,7 +52,13 @@ export async function invalidateAfterTimetableMutation(
 ): Promise<void> {
   await Promise.all([
     queryClient.invalidateQueries({
-      queryKey: ["workplaces", "timetables", { workplaceId }],
+      queryKey: queryKeys.workplaces.timetables({ workplaceId }),
+    }),
+    queryClient.invalidateQueries({
+      queryKey: queryKeys.workplaces.detailSummary({ workplaceId }),
+    }),
+    queryClient.invalidateQueries({
+      queryKey: queryKeys.workplaces.editDetail({ workplaceId }),
     }),
     queryClient.invalidateQueries({ queryKey: ["shifts"] }),
   ]);

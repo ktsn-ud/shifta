@@ -24,6 +24,8 @@ import { Input } from "@/components/ui/input";
 import { SpinnerPanel } from "@/components/ui/spinner";
 import { messages, toErrorMessage } from "@/lib/messages";
 import { fetchJson } from "@/lib/query/fetch-json";
+import { invalidateAfterTimetableMutation } from "@/lib/query/invalidation";
+import { getBrowserQueryClient } from "@/lib/query/query-client";
 import { queryKeys } from "@/lib/query/query-keys";
 import {
   resolveUserFacingErrorFromResponse,
@@ -285,6 +287,7 @@ export function TimetableForm({
   timetableId,
 }: TimetableFormProps) {
   const router = useRouter();
+  const queryClient = getBrowserQueryClient();
   const isEdit = mode === "edit";
 
   const [values, setValues] = useState<FormValues>(createEmptyFormValues);
@@ -626,6 +629,7 @@ export function TimetableForm({
       }
 
       const createdCount = isEdit ? 1 : createTargets.length;
+      await invalidateAfterTimetableMutation(queryClient, workplaceId);
       toast.success(
         isEdit
           ? messages.success.timetableUpdated

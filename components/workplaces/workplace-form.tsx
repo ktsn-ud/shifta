@@ -18,6 +18,8 @@ import { RadioGroup, RadioGroupItem } from "@/components/ui/radio-group";
 import { toDateOnlyString } from "@/lib/calendar/date";
 import { formatHolidayType, formatWorkplaceType } from "@/lib/enum-labels";
 import { messages, toErrorMessage } from "@/lib/messages";
+import { invalidateAfterWorkplaceMutation } from "@/lib/query/invalidation";
+import { getBrowserQueryClient } from "@/lib/query/query-client";
 import { useWorkplaceEditDetailQuery } from "@/lib/query/queries/workplaces";
 import {
   resolveUserFacingErrorFromResponse,
@@ -191,6 +193,7 @@ function validate(
 
 export function WorkplaceForm({ mode, workplaceId }: WorkplaceFormProps) {
   const router = useRouter();
+  const queryClient = getBrowserQueryClient();
   const isEdit = mode === "edit";
 
   const [values, setValues] = useState<FormValues>({
@@ -346,6 +349,7 @@ export function WorkplaceForm({ mode, workplaceId }: WorkplaceFormProps) {
           type?: WorkplaceType;
         };
       };
+      await invalidateAfterWorkplaceMutation(queryClient);
 
       if (
         !isEdit &&

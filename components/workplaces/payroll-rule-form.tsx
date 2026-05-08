@@ -20,6 +20,8 @@ import { dateKeyFromApiDate } from "@/lib/calendar/date";
 import { formatHolidayType, formatWorkplaceType } from "@/lib/enum-labels";
 import { messages, toErrorMessage } from "@/lib/messages";
 import { fetchJson } from "@/lib/query/fetch-json";
+import { invalidateAfterPayrollRuleMutation } from "@/lib/query/invalidation";
+import { getBrowserQueryClient } from "@/lib/query/query-client";
 import { queryKeys } from "@/lib/query/query-keys";
 import {
   buildActionableErrorMessage,
@@ -321,6 +323,7 @@ export function PayrollRuleForm({
   ruleId,
 }: PayrollRuleFormProps) {
   const router = useRouter();
+  const queryClient = getBrowserQueryClient();
   const isEdit = mode === "edit";
 
   const [values, setValues] = useState<FormValues>({
@@ -488,9 +491,9 @@ export function PayrollRuleForm({
         return;
       }
 
-      const warningMessage = parseUpsertWarningMessage(
-        (await response.json()) as unknown,
-      );
+      const responsePayload = (await response.json()) as unknown;
+      await invalidateAfterPayrollRuleMutation(queryClient, workplaceId);
+      const warningMessage = parseUpsertWarningMessage(responsePayload);
 
       if (warningMessage) {
         toast.warning(messages.warning.payrollRuleOverlap, {
