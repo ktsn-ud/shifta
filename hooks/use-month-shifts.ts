@@ -59,6 +59,9 @@ type UseMonthShiftsOptions = {
   deferEstimate?: boolean;
 };
 
+const MONTH_SHIFTS_STALE_TIME_MS = 60 * 1000;
+const MONTH_SHIFTS_GC_TIME_MS = 10 * 60 * 1000;
+
 function isShiftListResponse(value: unknown): value is ShiftListResponse {
   if (typeof value === "object" && value !== null) {
     return "data" in value;
@@ -254,6 +257,8 @@ export function useMonthShifts(month: Date, options: UseMonthShiftsOptions) {
         signal,
       }),
     initialData: hasInitialData ? (initialShifts ?? []) : undefined,
+    staleTime: MONTH_SHIFTS_STALE_TIME_MS,
+    gcTime: MONTH_SHIFTS_GC_TIME_MS,
   });
 
   const estimatedMonthShiftsQuery = useQuery({
@@ -266,6 +271,8 @@ export function useMonthShifts(month: Date, options: UseMonthShiftsOptions) {
         signal,
       }),
     enabled: deferEstimate,
+    staleTime: MONTH_SHIFTS_STALE_TIME_MS,
+    gcTime: MONTH_SHIFTS_GC_TIME_MS,
   });
 
   useEffect(() => {
