@@ -1,6 +1,5 @@
 "use client";
 import { useEffect, useMemo, useState } from "react";
-import { useQuery } from "@tanstack/react-query";
 import { useRouter } from "next/navigation";
 import { toast } from "sonner";
 import { FormErrorMessage } from "@/components/form/form-error-message";
@@ -19,8 +18,7 @@ import { RadioGroup, RadioGroupItem } from "@/components/ui/radio-group";
 import { toDateOnlyString } from "@/lib/calendar/date";
 import { formatHolidayType, formatWorkplaceType } from "@/lib/enum-labels";
 import { messages, toErrorMessage } from "@/lib/messages";
-import { fetchJson } from "@/lib/query/fetch-json";
-import { queryKeys } from "@/lib/query/query-keys";
+import { useWorkplaceEditDetailQuery } from "@/lib/query/queries/workplaces";
 import {
   resolveUserFacingErrorFromResponse,
   toUserFacingMessage,
@@ -62,58 +60,6 @@ type InitialRuleValues = {
 
 type FormErrorKey = keyof FormValues | keyof InitialRuleValues | "form";
 type FormErrors = Partial<Record<FormErrorKey, string>>;
-type WorkplaceDetail = {
-  id: string;
-  name: string;
-  type: WorkplaceType;
-  color: string;
-  closingDayType: ClosingDayType;
-  closingDay: number | null;
-  payday: number;
-};
-
-function isRecord(value: unknown): value is Record<string, unknown> {
-  return typeof value === "object" && value !== null;
-}
-
-function isWorkplaceType(value: unknown): value is WorkplaceType {
-  return value === "GENERAL" || value === "CRAM_SCHOOL";
-}
-
-function isClosingDayType(value: unknown): value is ClosingDayType {
-  return value === "DAY_OF_MONTH" || value === "END_OF_MONTH";
-}
-
-function parseWorkplaceDetailResponse(
-  payload: unknown,
-): WorkplaceDetail | null {
-  if (!isRecord(payload) || !isRecord(payload.data)) {
-    return null;
-  }
-
-  const data = payload.data;
-  if (
-    typeof data.id !== "string" ||
-    typeof data.name !== "string" ||
-    !isWorkplaceType(data.type) ||
-    typeof data.color !== "string" ||
-    !isClosingDayType(data.closingDayType) ||
-    (typeof data.closingDay !== "number" && data.closingDay !== null) ||
-    typeof data.payday !== "number"
-  ) {
-    return null;
-  }
-
-  return {
-    id: data.id,
-    name: data.name,
-    type: data.type,
-    color: data.color,
-    closingDayType: data.closingDayType,
-    closingDay: data.closingDay,
-    payday: data.payday,
-  };
-}
 
 async function readApiErrorMessage(
   response: Response,
@@ -276,27 +222,9 @@ export function WorkplaceForm({ mode, workplaceId }: WorkplaceFormProps) {
     [isEdit],
   );
 
-  const workplaceQuery = useQuery({
-    queryKey: queryKeys.workplaces.detail({
-      workplaceId: workplaceId ?? "",
-    }),
-    queryFn: ({ signal }) =>
-      fetchJson(`/api/workplaces/${workplaceId}`, {
-        init: { signal, cache: "no-store" },
-        fallbackMessage: "勤務先の取得に失敗しました。",
-        parse: (payload) => {
-          const parsed = parseWorkplaceDetailResponse(payload);
-          if (!parsed) {
-            throw new Error("WORKPLACE_DETAIL_RESPONSE_INVALID");
-          }
-          return parsed;
-        },
-      }),
+  const workplaceQuery = useWorkplaceEditDetailQuery({
+    workplaceId: workplaceId ?? "",
     enabled: isEdit && Boolean(workplaceId),
-    staleTime: 5 * 60 * 1000,
-    gcTime: 15 * 60 * 1000,
-    refetchOnWindowFocus: false,
-    refetchOnReconnect: false,
   });
 
   const isLoading = isEdit && Boolean(workplaceId) && workplaceQuery.isPending;

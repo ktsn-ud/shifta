@@ -40,7 +40,10 @@ describe("queryKeys", () => {
       userId: "user-1",
       includeCounts: true,
     });
-    const detail = queryKeys.workplaces.detail({
+    const detailSummary = queryKeys.workplaces.detailSummary({
+      workplaceId: "wp-1",
+    });
+    const editDetail = queryKeys.workplaces.editDetail({
       workplaceId: "wp-1",
     });
     const payrollRules = queryKeys.workplaces.payrollRules({
@@ -55,7 +58,9 @@ describe("queryKeys", () => {
     });
 
     expect(list[1]).toBe("list");
-    expect(detail[1]).toBe("detail");
+    expect(detailSummary[1]).toBe("detailSummary");
+    expect(editDetail[1]).toBe("editDetail");
+    expect(detailSummary).not.toEqual(editDetail);
     expect(payrollRules[1]).toBe("payrollRules");
     expect(payrollRuleDetail[1]).toBe("payrollRuleDetail");
     expect(timetables[1]).toBe("timetables");

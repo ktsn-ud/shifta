@@ -300,7 +300,7 @@ export function TimetableForm({
   const listHref = `/my/workplaces/${workplaceId}/timetables`;
 
   const workplaceQuery = useQuery({
-    queryKey: queryKeys.workplaces.detail({
+    queryKey: queryKeys.workplaces.detailSummary({
       workplaceId,
     }),
     queryFn: ({ signal }) =>

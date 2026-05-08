@@ -25,6 +25,12 @@ export type WorkplaceDetailItem = {
   color: string;
 };
 
+export type WorkplaceEditDetailItem = WorkplaceDetailItem & {
+  closingDayType: "DAY_OF_MONTH" | "END_OF_MONTH";
+  closingDay: number | null;
+  payday: number;
+};
+
 export type PayrollRuleListItem = {
   id: string;
   workplaceId: string;
@@ -81,6 +87,51 @@ function parseItemPayload<TData>(payload: unknown): TData {
   return (payload as { data: TData }).data;
 }
 
+function isRecord(value: unknown): value is Record<string, unknown> {
+  return typeof value === "object" && value !== null;
+}
+
+function isWorkplaceType(value: unknown): value is WorkplaceType {
+  return value === "GENERAL" || value === "CRAM_SCHOOL";
+}
+
+function isClosingDayType(
+  value: unknown,
+): value is WorkplaceEditDetailItem["closingDayType"] {
+  return value === "DAY_OF_MONTH" || value === "END_OF_MONTH";
+}
+
+function parseWorkplaceEditDetailPayload(
+  payload: unknown,
+): WorkplaceEditDetailItem {
+  const item = parseItemPayload<unknown>(payload);
+  if (!isRecord(item)) {
+    throw new Error("WORKPLACE_ITEM_RESPONSE_INVALID");
+  }
+
+  if (
+    typeof item.id !== "string" ||
+    typeof item.name !== "string" ||
+    !isWorkplaceType(item.type) ||
+    typeof item.color !== "string" ||
+    !isClosingDayType(item.closingDayType) ||
+    (typeof item.closingDay !== "number" && item.closingDay !== null) ||
+    typeof item.payday !== "number"
+  ) {
+    throw new Error("WORKPLACE_EDIT_DETAIL_RESPONSE_INVALID");
+  }
+
+  return {
+    id: item.id,
+    name: item.name,
+    type: item.type,
+    color: item.color,
+    closingDayType: item.closingDayType,
+    closingDay: item.closingDay,
+    payday: item.payday,
+  };
+}
+
 export function useWorkplacesQuery(input: {
   userId: string;
   includeCounts: boolean;
@@ -113,13 +164,35 @@ export function useWorkplaceDetailQuery(input: {
   const { initialData, workplaceId } = input;
 
   return useQuery({
-    queryKey: queryKeys.workplaces.detail({ workplaceId }),
+    queryKey: queryKeys.workplaces.detailSummary({ workplaceId }),
     queryFn: ({ signal }) =>
       fetchJson(`/api/workplaces/${workplaceId}`, {
         init: { signal },
         fallbackMessage: "勤務先の取得に失敗しました。",
         parse: (payload) => parseItemPayload<WorkplaceDetailItem>(payload),
       }),
+    initialData: initialData ?? undefined,
+    staleTime: 5 * 60 * 1000,
+    gcTime: 15 * 60 * 1000,
+  });
+}
+
+export function useWorkplaceEditDetailQuery(input: {
+  workplaceId: string;
+  enabled?: boolean;
+  initialData?: WorkplaceEditDetailItem | null;
+}) {
+  const { enabled = true, initialData, workplaceId } = input;
+
+  return useQuery({
+    queryKey: queryKeys.workplaces.editDetail({ workplaceId }),
+    queryFn: ({ signal }) =>
+      fetchJson(`/api/workplaces/${workplaceId}`, {
+        init: { signal },
+        fallbackMessage: "勤務先の取得に失敗しました。",
+        parse: parseWorkplaceEditDetailPayload,
+      }),
+    enabled,
     initialData: initialData ?? undefined,
     staleTime: 5 * 60 * 1000,
     gcTime: 15 * 60 * 1000,

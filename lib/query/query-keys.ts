@@ -30,7 +30,11 @@ type WorkplacesListQueryInput = {
   includeCounts: boolean;
 };
 
-type WorkplaceDetailQueryInput = {
+type WorkplaceDetailSummaryQueryInput = {
+  workplaceId: string;
+};
+
+type WorkplaceEditDetailQueryInput = {
   workplaceId: string;
 };
 
@@ -69,8 +73,10 @@ export const queryKeys = {
   workplaces: {
     list: (input: WorkplacesListQueryInput) =>
       ["workplaces", "list", input] as const,
-    detail: (input: WorkplaceDetailQueryInput) =>
-      ["workplaces", "detail", input] as const,
+    detailSummary: (input: WorkplaceDetailSummaryQueryInput) =>
+      ["workplaces", "detailSummary", input] as const,
+    editDetail: (input: WorkplaceEditDetailQueryInput) =>
+      ["workplaces", "editDetail", input] as const,
     payrollRules: (input: WorkplacePayrollRulesQueryInput) =>
       ["workplaces", "payrollRules", input] as const,
     payrollRuleDetail: (input: WorkplacePayrollRuleDetailQueryInput) =>
