@@ -1,3 +1,4 @@
+import { connection } from "next/server";
 import { requireCurrentUser } from "@/lib/api/current-user";
 import { jsonError } from "@/lib/api/http";
 import { getOwnedShiftSyncStatus } from "@/lib/google-calendar/syncStatus";
@@ -8,6 +9,7 @@ type Context = {
 };
 
 export async function GET(_: Request, context: Context) {
+  await connection();
   try {
     const current = await requireCurrentUser();
     if ("response" in current) {

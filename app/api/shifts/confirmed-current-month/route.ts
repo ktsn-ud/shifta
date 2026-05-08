@@ -1,3 +1,4 @@
+import { connection } from "next/server";
 import { requireCurrentUser } from "@/lib/api/current-user";
 import { jsonError } from "@/lib/api/http";
 import { calculateWorkedMinutes } from "@/lib/payroll/estimate";
@@ -35,6 +36,7 @@ function getCurrentMonthRangeUtc(base: Date): { start: Date; end: Date } {
 }
 
 export async function GET() {
+  await connection();
   try {
     const current = await requireCurrentUser();
     if ("response" in current) {

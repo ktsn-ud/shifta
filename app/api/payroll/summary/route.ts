@@ -1,3 +1,4 @@
+import { connection } from "next/server";
 import { z } from "zod";
 import { requireCurrentUser } from "@/lib/api/current-user";
 import { parseDateOnly } from "@/lib/api/date-time";
@@ -16,6 +17,7 @@ const summaryQuerySchema = z
   .strict();
 
 export async function GET(request: Request) {
+  await connection();
   try {
     const current = await requireCurrentUser();
     if ("response" in current) {

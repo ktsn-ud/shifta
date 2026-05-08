@@ -1,3 +1,4 @@
+import { connection } from "next/server";
 import { type Prisma } from "@/lib/generated/prisma/client";
 import { z } from "zod";
 import { requireCurrentUser } from "@/lib/api/current-user";
@@ -230,6 +231,7 @@ export async function POST(request: Request, context: Context) {
 }
 
 export async function GET(_: Request, context: Context) {
+  await connection();
   try {
     const current = await requireCurrentUser();
     if ("response" in current) {

@@ -1,3 +1,4 @@
+import { connection } from "next/server";
 import { z } from "zod";
 import { requireCurrentUser } from "@/lib/api/current-user";
 import {
@@ -64,6 +65,7 @@ async function findOwnedWorkplace(id: string, userId: string) {
 }
 
 export async function GET(_: Request, context: Context) {
+  await connection();
   try {
     const current = await requireCurrentUser();
     if ("response" in current) {

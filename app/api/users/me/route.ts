@@ -1,3 +1,4 @@
+import { connection } from "next/server";
 import { z } from "zod";
 import { getSessionEmail, requireCurrentUser } from "@/lib/api/current-user";
 import { jsonError, parseJsonBody } from "@/lib/api/http";
@@ -16,6 +17,7 @@ const updateUserSchema = z
   });
 
 export async function GET() {
+  await connection();
   try {
     const result = await requireCurrentUser();
     if ("response" in result) {
