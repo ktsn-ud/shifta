@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useMemo, useState } from "react";
+import { useQuery } from "@tanstack/react-query";
 import { useRouter } from "next/navigation";
 import { toast } from "sonner";
 import { ConfirmDialog } from "@/components/modal/confirm-dialog";
@@ -40,8 +41,11 @@ import {
   readGoogleSyncFailureFromErrorResponse,
 } from "@/lib/google-calendar/clientSync";
 import { CALENDAR_SETUP_PATH } from "@/lib/google-calendar/constants";
-import { clearShiftDerivedCaches } from "@/lib/client-cache/shift-derived-cache";
 import { messages, toErrorMessage } from "@/lib/messages";
+import { fetchJson } from "@/lib/query/fetch-json";
+import { getBrowserQueryClient } from "@/lib/query/query-client";
+import { invalidateAfterShiftMutation } from "@/lib/query/invalidation";
+import { queryKeys } from "@/lib/query/query-keys";
 import {
   formatShiftTimeRange,
   isOvernightShift,
@@ -49,7 +53,7 @@ import {
   shiftDateKeyAddDays,
   toComparableShiftRange,
 } from "@/lib/shifts/time";
-import { resolveUserFacingErrorFromResponse } from "@/lib/user-facing-error";
+import { toUserFacingMessage } from "@/lib/user-facing-error";
 import { useGoogleTokenExpiredSignOut } from "@/hooks/use-google-token-expired-signout";
 
 const LAST_WORKPLACE_ID_KEY = "shifta:last-workplace-id";
@@ -453,11 +457,6 @@ export function ShiftForm({
     startPeriod: "",
     endPeriod: "",
   });
-  const [workplaces, setWorkplaces] = useState<Workplace[]>([]);
-  const [timetableSets, setTimetableSets] = useState<TimetableSet[]>([]);
-  const [isWorkplaceLoading, setIsWorkplaceLoading] = useState(true);
-  const [isTimetableLoading, setIsTimetableLoading] = useState(false);
-  const [isShiftLoading, setIsShiftLoading] = useState(mode === "edit");
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [errors, setErrors] = useState<FormErrors>({});
   const [warningMessage, setWarningMessage] = useState<string | null>(null);
@@ -468,6 +467,8 @@ export function ShiftForm({
     useState<ShiftTimePair | null>(null);
   const { isSignOutScheduled, scheduleSignOut } =
     useGoogleTokenExpiredSignOut();
+  const queryClient = getBrowserQueryClient();
+  const loadQueryUserId = "self";
 
   const returnPath = useMemo(() => {
     const basePath = returnTo === "list" ? "/my/shifts/list" : "/my";
@@ -484,11 +485,106 @@ export function ShiftForm({
     return `${basePath}?month=${toMonthInputValue(parsed)}`;
   }, [returnMonth, returnTo]);
 
+  const workplacesQuery = useQuery({
+    queryKey: queryKeys.workplaces.list({
+      userId: loadQueryUserId,
+      includeCounts: false,
+    }),
+    queryFn: ({ signal }) =>
+      fetchJson("/api/workplaces?includeCounts=false", {
+        init: { signal, cache: "no-store" },
+        fallbackMessage: "勤務先一覧の取得に失敗しました。",
+        parse: (payload) => {
+          const parsed = parseWorkplaceListResponse(payload);
+          if (!parsed) {
+            throw new Error("WORKPLACE_RESPONSE_INVALID");
+          }
+          return parsed;
+        },
+      }),
+    staleTime: 5 * 60 * 1000,
+    gcTime: 15 * 60 * 1000,
+    refetchOnWindowFocus: false,
+    refetchOnReconnect: false,
+  });
+
+  const shiftDetailQuery = useQuery({
+    queryKey: queryKeys.shifts.detail({
+      shiftId: shiftId ?? "",
+    }),
+    queryFn: ({ signal }) =>
+      fetchJson(`/api/shifts/${shiftId}`, {
+        init: { signal, cache: "no-store" },
+        fallbackMessage: "シフトの取得に失敗しました。",
+        parse: (payload) => {
+          const parsed = parseShiftDetailResponse(payload);
+          if (!parsed) {
+            throw new Error("SHIFT_DETAIL_RESPONSE_INVALID");
+          }
+          return parsed;
+        },
+      }),
+    enabled: mode === "edit" && Boolean(shiftId),
+    staleTime: 5 * 60 * 1000,
+    gcTime: 15 * 60 * 1000,
+    refetchOnWindowFocus: false,
+    refetchOnReconnect: false,
+  });
+
+  const workplaces = useMemo(
+    () => workplacesQuery.data ?? [],
+    [workplacesQuery.data],
+  );
+  const isWorkplaceLoading = workplacesQuery.isPending;
+  const isShiftLoading =
+    mode === "edit" && Boolean(shiftId) && shiftDetailQuery.isPending;
+
   const selectedWorkplace = useMemo(() => {
     return workplaces.find((workplace) => workplace.id === form.workplaceId);
   }, [form.workplaceId, workplaces]);
   const selectedWorkplaceId = form.workplaceId;
   const selectedWorkplaceType = selectedWorkplace?.type;
+
+  const timetableSetsQuery = useQuery({
+    queryKey: queryKeys.workplaces.timetables({
+      workplaceId: selectedWorkplaceId,
+    }),
+    queryFn: ({ signal }) =>
+      fetchJson(`/api/workplaces/${selectedWorkplaceId}/timetables`, {
+        init: { signal, cache: "no-store" },
+        fallbackMessage: "時間割一覧の取得に失敗しました。",
+        parse: (payload) => {
+          const parsed = parseTimetableSetListResponse(payload);
+          if (!parsed) {
+            throw new Error("TIMETABLE_RESPONSE_INVALID");
+          }
+          return parsed;
+        },
+      }),
+    enabled:
+      selectedWorkplaceType === "CRAM_SCHOOL" && Boolean(selectedWorkplaceId),
+    staleTime: 5 * 60 * 1000,
+    gcTime: 15 * 60 * 1000,
+    refetchOnWindowFocus: false,
+    refetchOnReconnect: false,
+  });
+
+  const timetableSets = useMemo(() => {
+    if (selectedWorkplaceType !== "CRAM_SCHOOL") {
+      return [] as TimetableSet[];
+    }
+
+    const items = timetableSetsQuery.data ?? [];
+    return items.slice().sort((left, right) => {
+      if (left.sortOrder !== right.sortOrder) {
+        return left.sortOrder - right.sortOrder;
+      }
+
+      return left.createdAt.localeCompare(right.createdAt);
+    });
+  }, [selectedWorkplaceType, timetableSetsQuery.data]);
+  const isTimetableLoading =
+    selectedWorkplaceType === "CRAM_SCHOOL" && timetableSetsQuery.isPending;
 
   const selectedSet = useMemo(
     () => findSetById(timetableSets, form.timetableSetId),
@@ -515,140 +611,39 @@ export function ShiftForm({
   );
 
   useEffect(() => {
-    const abortController = new AbortController();
-
-    async function fetchWorkplaces() {
-      setIsWorkplaceLoading(true);
-
-      try {
-        const response = await fetch("/api/workplaces?includeCounts=false", {
-          signal: abortController.signal,
-          cache: "no-store",
-        });
-
-        if (response.ok === false) {
-          throw new Error("WORKPLACE_FETCH_FAILED");
-        }
-
-        const workplacesPayload = parseWorkplaceListResponse(
-          (await response.json()) as unknown,
-        );
-        if (!workplacesPayload) {
-          throw new Error("WORKPLACE_RESPONSE_INVALID");
-        }
-
-        setWorkplaces(workplacesPayload);
-      } catch (error) {
-        if (abortController.signal.aborted) {
-          return;
-        }
-
-        console.error("failed to fetch workplaces", error);
-        setWorkplaces([]);
-        setErrors({
-          form: "勤務先一覧の取得に失敗しました。時間を置いて再度お試しください。",
-        });
-      } finally {
-        if (abortController.signal.aborted === false) {
-          setIsWorkplaceLoading(false);
-        }
-      }
-    }
-
-    void fetchWorkplaces();
-
-    return () => {
-      abortController.abort();
-    };
-  }, []);
-
-  useEffect(() => {
     if (mode !== "edit") {
-      setIsShiftLoading(false);
       setInitialShiftTimes(null);
       return;
     }
-
-    if (!shiftId) {
-      setIsShiftLoading(false);
-      setErrors({
-        form: "編集対象のシフトIDが指定されていません。",
-      });
+    if (!shiftDetailQuery.data) {
       return;
     }
 
-    const abortController = new AbortController();
+    const parsedStartTime = toTimeOnly(shiftDetailQuery.data.startTime);
+    const parsedEndTime = toTimeOnly(shiftDetailQuery.data.endTime);
 
-    async function fetchShift() {
-      setIsShiftLoading(true);
-
-      try {
-        const response = await fetch(`/api/shifts/${shiftId}`, {
-          signal: abortController.signal,
-          cache: "no-store",
-        });
-
-        if (response.ok === false) {
-          const resolved = await resolveUserFacingErrorFromResponse(
-            response,
-            "シフトの取得に失敗しました。",
-          );
-          throw new Error(resolved.message);
-        }
-
-        const shift = parseShiftDetailResponse(
-          (await response.json()) as unknown,
-        );
-        if (!shift) {
-          throw new Error("シフトデータの形式が不正です");
-        }
-
-        const parsedStartTime = toTimeOnly(shift.startTime);
-        const parsedEndTime = toTimeOnly(shift.endTime);
-
-        setForm((current) => ({
-          ...current,
-          workplaceId: shift.workplaceId,
-          date: dateKeyFromApiDate(shift.date),
-          shiftType: shift.shiftType,
-          comment: shift.comment ?? "",
-          startTime: parsedStartTime,
-          endTime: parsedEndTime,
-          breakMinutes: String(shift.breakMinutes),
-          timetableSetId: shift.lessonRange?.timetableSetId ?? "",
-          startPeriod: shift.lessonRange
-            ? String(shift.lessonRange.startPeriod)
-            : "",
-          endPeriod: shift.lessonRange
-            ? String(shift.lessonRange.endPeriod)
-            : "",
-        }));
-        setInitialShiftTimes({
-          startTime: parsedStartTime,
-          endTime: parsedEndTime,
-        });
-      } catch (error) {
-        if (abortController.signal.aborted) {
-          return;
-        }
-
-        console.error("failed to fetch shift", error);
-        setErrors({
-          form: toErrorMessage(error, "シフトの取得に失敗しました。"),
-        });
-      } finally {
-        if (abortController.signal.aborted === false) {
-          setIsShiftLoading(false);
-        }
-      }
-    }
-
-    void fetchShift();
-
-    return () => {
-      abortController.abort();
-    };
-  }, [mode, shiftId]);
+    setForm((current) => ({
+      ...current,
+      workplaceId: shiftDetailQuery.data.workplaceId,
+      date: dateKeyFromApiDate(shiftDetailQuery.data.date),
+      shiftType: shiftDetailQuery.data.shiftType,
+      comment: shiftDetailQuery.data.comment ?? "",
+      startTime: parsedStartTime,
+      endTime: parsedEndTime,
+      breakMinutes: String(shiftDetailQuery.data.breakMinutes),
+      timetableSetId: shiftDetailQuery.data.lessonRange?.timetableSetId ?? "",
+      startPeriod: shiftDetailQuery.data.lessonRange
+        ? String(shiftDetailQuery.data.lessonRange.startPeriod)
+        : "",
+      endPeriod: shiftDetailQuery.data.lessonRange
+        ? String(shiftDetailQuery.data.lessonRange.endPeriod)
+        : "",
+    }));
+    setInitialShiftTimes({
+      startTime: parsedStartTime,
+      endTime: parsedEndTime,
+    });
+  }, [mode, shiftDetailQuery.data]);
 
   useEffect(() => {
     if (workplaces.length === 0) {
@@ -681,112 +676,35 @@ export function ShiftForm({
   }, [form.workplaceId, mode, workplaces]);
 
   useEffect(() => {
-    if (!selectedWorkplaceId) {
-      setTimetableSets([]);
-
-      setForm((current) => {
-        if (
-          current.shiftType === "NORMAL" &&
-          !current.timetableSetId &&
-          !current.startPeriod &&
-          !current.endPeriod
-        ) {
-          return current;
-        }
-
-        return {
-          ...current,
-          shiftType: "NORMAL",
-          timetableSetId: "",
-          startPeriod: "",
-          endPeriod: "",
-        };
-      });
+    if (selectedWorkplaceType === "CRAM_SCHOOL") {
       return;
     }
 
-    if (!selectedWorkplace) {
-      return;
-    }
-
-    if (selectedWorkplace.type !== "CRAM_SCHOOL") {
-      setTimetableSets([]);
-
-      setForm((current) => {
-        if (
-          current.shiftType === "NORMAL" &&
-          !current.timetableSetId &&
-          !current.startPeriod &&
-          !current.endPeriod
-        ) {
-          return current;
-        }
-
-        return {
-          ...current,
-          shiftType: "NORMAL",
-          timetableSetId: "",
-          startPeriod: "",
-          endPeriod: "",
-        };
-      });
-      return;
-    }
-
-    const abortController = new AbortController();
-
-    async function fetchTimetableSets() {
-      setIsTimetableLoading(true);
-
-      try {
-        const response = await fetch(
-          `/api/workplaces/${selectedWorkplaceId}/timetables`,
-          {
-            signal: abortController.signal,
-            cache: "no-store",
-          },
-        );
-
-        if (response.ok === false) {
-          throw new Error("TIMETABLE_FETCH_FAILED");
-        }
-
-        const payload = parseTimetableSetListResponse(
-          (await response.json()) as unknown,
-        );
-        if (!payload) {
-          throw new Error("TIMETABLE_RESPONSE_INVALID");
-        }
-
-        const sorted = payload.slice().sort((left, right) => {
-          if (left.sortOrder !== right.sortOrder) {
-            return left.sortOrder - right.sortOrder;
-          }
-
-          return left.createdAt.localeCompare(right.createdAt);
-        });
-
-        setTimetableSets(sorted);
-      } catch (error) {
-        if (abortController.signal.aborted) {
-          return;
-        }
-
-        console.error("failed to fetch timetable sets", error);
-        setTimetableSets([]);
-      } finally {
-        if (abortController.signal.aborted === false) {
-          setIsTimetableLoading(false);
-        }
+    setForm((current) => {
+      if (
+        current.shiftType === "NORMAL" &&
+        !current.timetableSetId &&
+        !current.startPeriod &&
+        !current.endPeriod
+      ) {
+        return current;
       }
+
+      return {
+        ...current,
+        shiftType: "NORMAL",
+        timetableSetId: "",
+        startPeriod: "",
+        endPeriod: "",
+      };
+    });
+  }, [selectedWorkplaceType]);
+
+  useEffect(() => {
+    if (timetableSetsQuery.error) {
+      console.error("failed to fetch timetable sets", timetableSetsQuery.error);
     }
-
-    void fetchTimetableSets();
-
-    return () => {
-      abortController.abort();
-    };
-  }, [selectedWorkplace, selectedWorkplaceId]);
+  }, [timetableSetsQuery.error]);
 
   useEffect(() => {
     if (
@@ -1273,7 +1191,7 @@ export function ShiftForm({
           return;
         }
 
-        clearShiftDerivedCaches();
+        await invalidateAfterShiftMutation(queryClient);
         router.push(returnPath);
         return;
       }
@@ -1290,7 +1208,7 @@ export function ShiftForm({
           )}`,
         },
       );
-      clearShiftDerivedCaches();
+      await invalidateAfterShiftMutation(queryClient);
       router.push(returnPath);
     } catch (error) {
       console.error("failed to save shift", error);
@@ -1352,6 +1270,21 @@ export function ShiftForm({
     selectedWorkplace?.name,
     form.comment,
   );
+  const formErrorMessage =
+    errors.form ??
+    (mode === "edit" && !shiftId
+      ? "編集対象のシフトIDが指定されていません。"
+      : shiftDetailQuery.error
+        ? toUserFacingMessage(
+            shiftDetailQuery.error,
+            "シフトの取得に失敗しました。",
+          )
+        : workplacesQuery.error
+          ? toUserFacingMessage(
+              workplacesQuery.error,
+              "勤務先一覧の取得に失敗しました。時間を置いて再度お試しください。",
+            )
+          : null);
   const disabled =
     isSubmitting ||
     isSignOutScheduled ||
@@ -1390,9 +1323,9 @@ export function ShiftForm({
         </p>
       </header>
 
-      {errors.form ? (
+      {formErrorMessage ? (
         <p className="rounded-md border border-destructive/40 bg-destructive/5 px-3 py-2 text-sm text-destructive">
-          {errors.form}
+          {formErrorMessage}
         </p>
       ) : null}
 

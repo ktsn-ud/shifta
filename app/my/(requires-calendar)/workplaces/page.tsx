@@ -2,7 +2,7 @@ import type { Metadata } from "next";
 import { redirect } from "next/navigation";
 import { WorkplaceList } from "@/components/workplaces/workplace-list";
 import { requireCurrentUser } from "@/lib/api/current-user";
-import { prisma } from "@/lib/prisma";
+import { getCachedWorkplaces } from "@/lib/cache/workplace-read-cache";
 
 export const metadata: Metadata = {
   title: { absolute: "勤務先一覧｜Shifta" },
@@ -14,19 +14,7 @@ export default async function WorkplacesPage() {
     redirect("/login");
   }
 
-  const workplaces = await prisma.workplace.findMany({
-    where: { userId: current.user.id },
-    include: {
-      _count: {
-        select: {
-          shifts: true,
-          payrollRules: true,
-          timetableSets: true,
-        },
-      },
-    },
-    orderBy: { createdAt: "desc" },
-  });
+  const workplaces = await getCachedWorkplaces(current.user.id);
 
   const initialWorkplaces = workplaces.map((workplace) => ({
     id: workplace.id,
@@ -40,5 +28,10 @@ export default async function WorkplacesPage() {
     },
   }));
 
-  return <WorkplaceList initialWorkplaces={initialWorkplaces} />;
+  return (
+    <WorkplaceList
+      currentUserId={current.user.id}
+      initialWorkplaces={initialWorkplaces}
+    />
+  );
 }

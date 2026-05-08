@@ -11,6 +11,7 @@ import {
 import { requireOwnedWorkplace } from "@/lib/api/workplace";
 import { prisma } from "@/lib/prisma";
 import { jsonNoStore } from "@/lib/api/cache-control";
+import { revalidateWorkplaceDomainTags } from "@/lib/cache/revalidate";
 
 const timetableItemSchema = z
   .object({
@@ -200,6 +201,11 @@ export async function PUT(request: Request, context: Context) {
       return jsonError("時間割セットの更新に失敗しました", 500);
     }
 
+    revalidateWorkplaceDomainTags({
+      userId: current.user.id,
+      workplaceId,
+    });
+
     return jsonNoStore({ data: buildSetResponse(updated) });
   } catch (error) {
     if (
@@ -275,6 +281,11 @@ export async function DELETE(request: Request, context: Context) {
         id,
         workplaceId,
       },
+    });
+
+    revalidateWorkplaceDomainTags({
+      userId: current.user.id,
+      workplaceId,
     });
 
     return jsonNoStore({

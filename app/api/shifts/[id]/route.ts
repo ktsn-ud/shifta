@@ -1,5 +1,4 @@
 import { after } from "next/server";
-import { revalidatePath } from "next/cache";
 import { requireCurrentUser } from "@/lib/api/current-user";
 import {
   jsonError,
@@ -13,6 +12,7 @@ import {
 } from "@/lib/google-calendar/syncStatus";
 import { prisma } from "@/lib/prisma";
 import { jsonNoStore } from "@/lib/api/cache-control";
+import { revalidateShiftDomainTags } from "@/lib/cache/revalidate";
 import {
   buildShiftData,
   ShiftValidationError,
@@ -22,15 +22,6 @@ import {
 type Context = {
   params: Promise<{ id: string }>;
 };
-
-function revalidateShiftRelatedPaths(): void {
-  revalidatePath("/my");
-  revalidatePath("/my/shifts/list");
-  revalidatePath("/my/shifts/confirm");
-  revalidatePath("/my/summary");
-  revalidatePath("/my/payroll-details/monthly");
-  revalidatePath("/my/payroll-details/workplace-yearly");
-}
 
 async function findOwnedShift(shiftId: string, userId: string) {
   return prisma.shift.findFirst({
@@ -165,7 +156,14 @@ export async function PUT(request: Request, context: Context) {
       });
     }
 
-    revalidateShiftRelatedPaths();
+    revalidateShiftDomainTags({
+      userId: current.user.id,
+      workplaceId: existing.workplace.id,
+    });
+    revalidateShiftDomainTags({
+      userId: current.user.id,
+      workplaceId: built.shiftData.workplaceId,
+    });
 
     return jsonNoStore({
       data: updated,
@@ -197,6 +195,7 @@ export async function DELETE(request: Request, context: Context) {
         workplace: {
           select: {
             userId: true,
+            id: true,
           },
         },
       },
@@ -211,7 +210,10 @@ export async function DELETE(request: Request, context: Context) {
 
     await prisma.shift.delete({ where: { id } });
 
-    revalidateShiftRelatedPaths();
+    revalidateShiftDomainTags({
+      userId: current.user.id,
+      workplaceId: existing.workplace.id,
+    });
 
     after(async () => {
       try {

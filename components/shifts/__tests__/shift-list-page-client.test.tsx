@@ -7,8 +7,10 @@ import {
 } from "@testing-library/react";
 import type { ComponentProps } from "react";
 import userEvent from "@testing-library/user-event";
+import { QueryClientProvider } from "@tanstack/react-query";
 import { ShiftListPageClient } from "@/components/shifts/shift-list-page-client";
 import { clearMonthShiftsCache } from "@/hooks/use-month-shifts";
+import { createQueryClient } from "@/lib/query/query-client";
 
 const pushMock = jest.fn();
 const toastSuccessMock = jest.fn();
@@ -79,15 +81,19 @@ function getBodyRows(): HTMLTableRowElement[] {
 function renderShiftListPage(
   override: Partial<ComponentProps<typeof ShiftListPageClient>> = {},
 ) {
+  const queryClient = createQueryClient();
+
   return render(
-    <ShiftListPageClient
-      currentUserId="user-test"
-      initialMonth="2026-03"
-      initialMonthShifts={[]}
-      initialMonthStartDate="2026-02-01"
-      initialMonthEndDate="2026-02-28"
-      {...override}
-    />,
+    <QueryClientProvider client={queryClient}>
+      <ShiftListPageClient
+        currentUserId="user-test"
+        initialMonth="2026-03"
+        initialMonthShifts={[]}
+        initialMonthStartDate="2026-02-01"
+        initialMonthEndDate="2026-02-28"
+        {...override}
+      />
+    </QueryClientProvider>,
   );
 }
 

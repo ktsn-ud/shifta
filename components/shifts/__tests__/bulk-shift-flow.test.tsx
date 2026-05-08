@@ -1,6 +1,8 @@
+import { type ReactElement } from "react";
+import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import {
   fireEvent,
-  render,
+  render as baseRender,
   screen,
   waitFor,
   within,
@@ -19,6 +21,19 @@ jest.mock("next/navigation", () => ({
     refresh: refreshMock,
   }),
 }));
+
+function render(ui: ReactElement) {
+  const queryClient = new QueryClient({
+    defaultOptions: {
+      queries: { retry: false },
+      mutations: { retry: false },
+    },
+  });
+
+  return baseRender(
+    <QueryClientProvider client={queryClient}>{ui}</QueryClientProvider>,
+  );
+}
 
 function jsonResponse(payload: unknown, status = 200): Response {
   return {

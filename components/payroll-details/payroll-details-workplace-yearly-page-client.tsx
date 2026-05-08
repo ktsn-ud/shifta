@@ -1,10 +1,6 @@
 "use client";
 
-import { useEffect, useMemo, useState } from "react";
-import {
-  readPayrollDetailsYearlyCache,
-  writePayrollDetailsYearlyCache,
-} from "@/lib/client-cache/payroll-details-cache";
+import { useMemo, useState } from "react";
 import { Input } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
 import {
@@ -26,6 +22,7 @@ import { SpinnerPanel } from "@/components/ui/spinner";
 import { PayrollDetailsViewSwitch } from "@/components/payroll-details/payroll-details-view-switch";
 import { formatCurrency } from "@/components/payroll-details/format";
 import { toErrorMessage } from "@/lib/messages";
+import { usePayrollDetailsWorkplaceYearlyQuery } from "@/lib/query/queries/payroll";
 import { type PayrollDetailsWorkplaceYearlyResult } from "@/lib/payroll/details";
 
 type PayrollDetailsWorkplaceYearlyPageClientProps = {
@@ -34,13 +31,8 @@ type PayrollDetailsWorkplaceYearlyPageClientProps = {
   initialDetails: PayrollDetailsWorkplaceYearlyResult;
 };
 
-const YEARLY_CACHE_TTL_MS = 5 * 60 * 1000;
 const MIN_YEAR = 2000;
 const MAX_YEAR = 2100;
-
-function toYearlyCacheKey(userId: string, year: number): string {
-  return `${userId}:${year}`;
-}
 
 function isValidYearInput(value: string): boolean {
   if (!/^\d{4}$/.test(value)) {
@@ -89,10 +81,6 @@ export function PayrollDetailsWorkplaceYearlyPageClient({
 }: PayrollDetailsWorkplaceYearlyPageClientProps) {
   const [draftYearValue, setDraftYearValue] = useState(String(initialYear));
   const [appliedYearValue, setAppliedYearValue] = useState(String(initialYear));
-  const [details, setDetails] =
-    useState<PayrollDetailsWorkplaceYearlyResult | null>(initialDetails);
-  const [isLoading, setIsLoading] = useState(false);
-  const [errorMessage, setErrorMessage] = useState<string | null>(null);
 
   const currentYearValue = String(new Date().getFullYear());
   const canApplyYear =
@@ -102,13 +90,6 @@ export function PayrollDetailsWorkplaceYearlyPageClient({
     () => toYearNumber(appliedYearValue),
     [appliedYearValue],
   );
-
-  const hasAnyShift =
-    details?.workplaces.some((workplace) =>
-      workplace.months.some(
-        (month) => month.totalWorkHours > 0 || month.totalWage > 0,
-      ),
-    ) ?? false;
 
   const monthlyHref = "/my/payroll-details/monthly";
 
@@ -125,101 +106,33 @@ export function PayrollDetailsWorkplaceYearlyPageClient({
     setAppliedYearValue(currentYearValue);
   };
 
-  useEffect(() => {
-    const nextYear = toYearNumber(appliedYearValue);
-    if (nextYear === null) {
-      setDetails(null);
-      setErrorMessage("年は YYYY 形式（2000〜2100）で指定してください。");
-      setIsLoading(false);
-      return;
-    }
+  const detailsQuery = usePayrollDetailsWorkplaceYearlyQuery({
+    userId: currentUserId,
+    year: appliedYearNumber ?? initialYear,
+    enabled: appliedYearNumber !== null,
+    initialData:
+      appliedYearNumber !== null && appliedYearNumber === initialYear
+        ? initialDetails
+        : undefined,
+  });
 
-    if (nextYear === initialYear) {
-      writePayrollDetailsYearlyCache(
-        toYearlyCacheKey(currentUserId, initialYear),
-        initialDetails,
-        YEARLY_CACHE_TTL_MS,
-      );
-      setErrorMessage(null);
-      setDetails(initialDetails);
-      setIsLoading(false);
-      return;
-    }
-
-    const cacheKey = toYearlyCacheKey(currentUserId, nextYear);
-    const cached =
-      readPayrollDetailsYearlyCache<PayrollDetailsWorkplaceYearlyResult>(
-        cacheKey,
-      );
-    if (cached) {
-      setErrorMessage(null);
-      setDetails(cached);
-      setIsLoading(false);
-      return;
-    }
-
-    const abortController = new AbortController();
-
-    async function fetchDetails() {
-      setIsLoading(true);
-      setErrorMessage(null);
-
-      try {
-        const params = new URLSearchParams({ year: String(nextYear) });
-        const response = await fetch(
-          `/api/payroll/details/workplace-yearly?${params.toString()}`,
-          {
-            signal: abortController.signal,
-            cache: "no-store",
-          },
-        );
-
-        if (!response.ok) {
-          throw new Error("PAYROLL_DETAILS_WORKPLACE_YEARLY_FETCH_FAILED");
-        }
-
-        const payload = (await response.json()) as unknown;
-        if (
-          typeof payload !== "object" ||
-          payload === null ||
-          typeof (payload as { year?: unknown }).year !== "number" ||
-          !Array.isArray((payload as { workplaces?: unknown[] }).workplaces)
-        ) {
-          throw new Error("PAYROLL_DETAILS_WORKPLACE_YEARLY_RESPONSE_INVALID");
-        }
-
-        const parsed = payload as PayrollDetailsWorkplaceYearlyResult;
-        writePayrollDetailsYearlyCache(cacheKey, parsed, YEARLY_CACHE_TTL_MS);
-        setDetails(parsed);
-      } catch (error) {
-        if (abortController.signal.aborted) {
-          return;
-        }
-
-        console.error(
-          "failed to fetch payroll details workplace yearly",
-          error,
-        );
-        setDetails(null);
-        setErrorMessage(
-          toErrorMessage(
-            error,
+  const details = detailsQuery.data ?? null;
+  const isLoading = appliedYearNumber !== null ? detailsQuery.isLoading : false;
+  const errorMessage =
+    appliedYearNumber === null
+      ? "年は YYYY 形式（2000〜2100）で指定してください。"
+      : detailsQuery.error
+        ? toErrorMessage(
+            detailsQuery.error,
             "給与詳細（勤務先毎表示）の取得に失敗しました。",
-          ),
-        );
-      } finally {
-        if (!abortController.signal.aborted) {
-          setIsLoading(false);
-        }
-      }
-    }
-
-    void fetchDetails();
-
-    return () => {
-      abortController.abort();
-    };
-  }, [appliedYearValue, currentUserId, initialDetails, initialYear]);
+          )
+        : null;
+  const hasAnyShift =
+    details?.workplaces.some((workplace) =>
+      workplace.months.some(
+        (month) => month.totalWorkHours > 0 || month.totalWage > 0,
+      ),
+    ) ?? false;
 
   return (
     <section className="space-y-6 p-4 md:p-6">

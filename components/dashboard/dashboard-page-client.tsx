@@ -8,11 +8,6 @@ import {
   RefreshCwIcon,
 } from "lucide-react";
 import { toast } from "sonner";
-import {
-  readNextPaymentCache,
-  writeNextPaymentCache,
-} from "@/lib/client-cache/next-payment-cache";
-import { clearShiftDerivedCaches } from "@/lib/client-cache/shift-derived-cache";
 import { MonthCalendar } from "@/components/calendar/MonthCalendar";
 import { ShiftListModal } from "@/components/calendar/ShiftListModal";
 import { Button } from "@/components/ui/button";
@@ -39,6 +34,9 @@ import {
 } from "@/lib/google-calendar/clientSync";
 import { CALENDAR_SETUP_PATH } from "@/lib/google-calendar/constants";
 import { messages } from "@/lib/messages";
+import { getBrowserQueryClient } from "@/lib/query/query-client";
+import { invalidateAfterShiftMutation } from "@/lib/query/invalidation";
+import { usePayrollSummaryQuery } from "@/lib/query/queries/payroll";
 import { useGoogleTokenExpiredSignOut } from "@/hooks/use-google-token-expired-signout";
 import {
   type MonthShift,
@@ -55,7 +53,6 @@ type DashboardPageClientProps = {
   nextMonthPaymentAmount: number | null;
 };
 
-const NEXT_PAYMENT_CACHE_TTL_MS = 5 * 60 * 1000;
 const GOOGLE_TOKEN_EXPIRED_DESCRIPTION =
   "3秒後にログアウトします。再度Googleアカウントでログインしてください。";
 const currencyFormatter = new Intl.NumberFormat("ja-JP", {
@@ -88,20 +85,6 @@ function formatSummaryPeriodLabel(month: Date): string {
   return isSameYear ? monthLabel : `${month.getFullYear()}年${monthLabel}`;
 }
 
-function toNextPaymentCacheKey(userKey: string, paymentMonth: string): string {
-  return `${userKey}:${paymentMonth}`;
-}
-
-function isPayrollSummaryResponse(
-  value: unknown,
-): value is { totalWage: number } {
-  return (
-    typeof value === "object" &&
-    value !== null &&
-    typeof (value as { totalWage?: unknown }).totalWage === "number"
-  );
-}
-
 export function DashboardPageLoadingSkeleton() {
   return (
     <section className="space-y-6 p-4 md:p-6">
@@ -130,6 +113,7 @@ export function DashboardPageClient({
   nextMonthPaymentAmount,
 }: DashboardPageClientProps) {
   const router = useRouter();
+  const queryClient = getBrowserQueryClient();
   const searchParams = useSearchParams();
   const [month, setMonth] = useState(() => {
     const initialMonthDate = dateFromDateKey(initialMonthStartDate);
@@ -137,10 +121,6 @@ export function DashboardPageClient({
   });
   const [selectedDate, setSelectedDate] = useState(() => new Date());
   const [modalOpen, setModalOpen] = useState(false);
-  const [nextPaymentAmount, setNextPaymentAmount] = useState(
-    nextMonthPaymentAmount,
-  );
-  const [isNextPaymentLoading, setIsNextPaymentLoading] = useState(false);
   const now = new Date();
   const isCurrentMonth =
     month.getFullYear() === now.getFullYear() &&
@@ -175,6 +155,16 @@ export function DashboardPageClient({
     [month],
   );
   const nextPaymentMonthDate = useMemo(() => addMonths(month, 1), [month]);
+  const initialDashboardMonth = useMemo(
+    () => startOfMonth(dateFromDateKey(initialMonthStartDate) ?? new Date()),
+    [initialMonthStartDate],
+  );
+  const isInitialDashboardMonth = useMemo(() => {
+    return (
+      month.getFullYear() === initialDashboardMonth.getFullYear() &&
+      month.getMonth() === initialDashboardMonth.getMonth()
+    );
+  }, [initialDashboardMonth, month]);
   const selectedDateKey = toDateKey(selectedDate);
   const selectedDateShifts = shiftsByDate.get(selectedDateKey) ?? [];
   const failedShiftIds = useMemo(() => {
@@ -224,95 +214,16 @@ export function DashboardPageClient({
     });
   }, [monthFromQuery]);
 
-  useEffect(() => {
-    const initialMonthDate = startOfMonth(
-      dateFromDateKey(initialMonthStartDate) ?? new Date(),
-    );
-    const isInitialMonth =
-      month.getFullYear() === initialMonthDate.getFullYear() &&
-      month.getMonth() === initialMonthDate.getMonth();
+  const nextPaymentSummaryQuery = usePayrollSummaryQuery({
+    userId: currentUserId,
+    month: nextPaymentMonthValue,
+  });
 
-    const cacheKey = toNextPaymentCacheKey(
-      currentUserId,
-      nextPaymentMonthValue,
-    );
-    if (isInitialMonth) {
-      if (nextMonthPaymentAmount !== null) {
-        writeNextPaymentCache(
-          cacheKey,
-          nextMonthPaymentAmount,
-          NEXT_PAYMENT_CACHE_TTL_MS,
-        );
-        setNextPaymentAmount(nextMonthPaymentAmount);
-        setIsNextPaymentLoading(false);
-        return;
-      }
-    }
-
-    const cachedAmount = readNextPaymentCache(cacheKey);
-    if (cachedAmount !== null) {
-      setNextPaymentAmount(cachedAmount);
-      setIsNextPaymentLoading(false);
-      return;
-    }
-
-    const abortController = new AbortController();
-    async function fetchNextPaymentAmount() {
-      setIsNextPaymentLoading(true);
-
-      try {
-        const params = new URLSearchParams({
-          month: nextPaymentMonthValue,
-        });
-
-        const response = await fetch(
-          `/api/payroll/summary?${params.toString()}`,
-          {
-            signal: abortController.signal,
-            cache: "no-store",
-          },
-        );
-
-        if (response.ok === false) {
-          throw new Error("PAYROLL_SUMMARY_FETCH_FAILED");
-        }
-
-        const payload = (await response.json()) as unknown;
-        if (!isPayrollSummaryResponse(payload)) {
-          throw new Error("PAYROLL_SUMMARY_RESPONSE_INVALID");
-        }
-
-        writeNextPaymentCache(
-          cacheKey,
-          payload.totalWage,
-          NEXT_PAYMENT_CACHE_TTL_MS,
-        );
-        setNextPaymentAmount(payload.totalWage);
-      } catch (error) {
-        if (abortController.signal.aborted) {
-          return;
-        }
-
-        console.error("failed to fetch next payment amount", error);
-      } finally {
-        if (abortController.signal.aborted === false) {
-          setIsNextPaymentLoading(false);
-        }
-      }
-    }
-
-    void fetchNextPaymentAmount();
-
-    return () => {
-      abortController.abort();
-    };
-  }, [
-    currentUserId,
-    initialMonthStartDate,
-    month,
-    nextMonthPaymentAmount,
-    nextPaymentMonthValue,
-  ]);
+  const nextPaymentAmount =
+    nextPaymentSummaryQuery.data?.totalWage ??
+    (isInitialDashboardMonth ? nextMonthPaymentAmount : null);
+  const isNextPaymentLoading =
+    nextPaymentSummaryQuery.isLoading && nextPaymentAmount === null;
 
   const handleCreateShift = (date: Date) => {
     const dateString = toDateKey(date);
@@ -390,7 +301,7 @@ export function DashboardPageClient({
         },
       );
 
-      await reload();
+      await invalidateAfterShiftMutation(queryClient);
 
       if (summary.failureCount === 0) {
         toast.success("Google Calendar の一括再同期が完了しました", {
@@ -627,8 +538,10 @@ export function DashboardPageClient({
             messages.error.calendarSyncFailed,
           );
 
-          clearShiftDerivedCaches();
-          await reload();
+          await Promise.all([
+            invalidateAfterShiftMutation(queryClient),
+            reload(),
+          ]);
 
           if (syncFailure) {
             if (syncFailure.requiresSignOut) {
@@ -688,7 +601,10 @@ export function DashboardPageClient({
             throw new Error(apiError.message);
           }
 
-          await reload();
+          await Promise.all([
+            invalidateAfterShiftMutation(queryClient),
+            reload(),
+          ]);
           toast.success(messages.success.calendarSyncRetried);
         }}
       />
