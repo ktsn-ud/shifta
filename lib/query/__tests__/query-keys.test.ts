@@ -46,6 +46,10 @@ describe("queryKeys", () => {
     const payrollRules = queryKeys.workplaces.payrollRules({
       workplaceId: "wp-1",
     });
+    const payrollRuleDetail = queryKeys.workplaces.payrollRuleDetail({
+      workplaceId: "wp-1",
+      ruleId: "rule-1",
+    });
     const timetables = queryKeys.workplaces.timetables({
       workplaceId: "wp-1",
     });
@@ -53,6 +57,21 @@ describe("queryKeys", () => {
     expect(list[1]).toBe("list");
     expect(detail[1]).toBe("detail");
     expect(payrollRules[1]).toBe("payrollRules");
+    expect(payrollRuleDetail[1]).toBe("payrollRuleDetail");
     expect(timetables[1]).toBe("timetables");
+  });
+
+  it("シフト詳細キーを分離できる", () => {
+    expect(
+      queryKeys.shifts.detail({
+        shiftId: "shift-1",
+      }),
+    ).toEqual([
+      "shifts",
+      "detail",
+      {
+        shiftId: "shift-1",
+      },
+    ]);
   });
 });

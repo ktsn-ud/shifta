@@ -1,4 +1,11 @@
-import { fireEvent, render, screen, waitFor } from "@testing-library/react";
+import { type ReactElement } from "react";
+import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
+import {
+  fireEvent,
+  render as baseRender,
+  screen,
+  waitFor,
+} from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { ShiftListModal } from "@/components/calendar/ShiftListModal";
 import { ShiftForm } from "@/components/shifts/ShiftForm";
@@ -15,6 +22,19 @@ jest.mock("next/navigation", () => ({
   }),
   usePathname: () => "/my",
 }));
+
+function render(ui: ReactElement) {
+  const queryClient = new QueryClient({
+    defaultOptions: {
+      queries: { retry: false },
+      mutations: { retry: false },
+    },
+  });
+
+  return baseRender(
+    <QueryClientProvider client={queryClient}>{ui}</QueryClientProvider>,
+  );
+}
 
 function jsonResponse(payload: unknown, status = 200): Response {
   return {

@@ -1,5 +1,6 @@
 "use client";
 import { useEffect, useMemo, useState } from "react";
+import { useQuery } from "@tanstack/react-query";
 import { useRouter } from "next/navigation";
 import { toast } from "sonner";
 import { FormErrorMessage } from "@/components/form/form-error-message";
@@ -18,7 +19,12 @@ import { RadioGroup, RadioGroupItem } from "@/components/ui/radio-group";
 import { toDateOnlyString } from "@/lib/calendar/date";
 import { formatHolidayType, formatWorkplaceType } from "@/lib/enum-labels";
 import { messages, toErrorMessage } from "@/lib/messages";
-import { resolveUserFacingErrorFromResponse } from "@/lib/user-facing-error";
+import { fetchJson } from "@/lib/query/fetch-json";
+import { queryKeys } from "@/lib/query/query-keys";
+import {
+  resolveUserFacingErrorFromResponse,
+  toUserFacingMessage,
+} from "@/lib/user-facing-error";
 
 const colorRegex = /^#[0-9A-Fa-f]{6}$/;
 const PAYROLL_DAY_MIN = 1;
@@ -250,7 +256,6 @@ export function WorkplaceForm({ mode, workplaceId }: WorkplaceFormProps) {
     payday: "25",
   });
   const [errors, setErrors] = useState<FormErrors>({});
-  const [isLoading, setIsLoading] = useState(isEdit);
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [createInitialRule, setCreateInitialRule] = useState(true);
   const [initialRuleValues, setInitialRuleValues] = useState<InitialRuleValues>(
@@ -271,74 +276,48 @@ export function WorkplaceForm({ mode, workplaceId }: WorkplaceFormProps) {
     [isEdit],
   );
 
+  const workplaceQuery = useQuery({
+    queryKey: queryKeys.workplaces.detail({
+      workplaceId: workplaceId ?? "",
+    }),
+    queryFn: ({ signal }) =>
+      fetchJson(`/api/workplaces/${workplaceId}`, {
+        init: { signal, cache: "no-store" },
+        fallbackMessage: "勤務先の取得に失敗しました。",
+        parse: (payload) => {
+          const parsed = parseWorkplaceDetailResponse(payload);
+          if (!parsed) {
+            throw new Error("WORKPLACE_DETAIL_RESPONSE_INVALID");
+          }
+          return parsed;
+        },
+      }),
+    enabled: isEdit && Boolean(workplaceId),
+    staleTime: 5 * 60 * 1000,
+    gcTime: 15 * 60 * 1000,
+    refetchOnWindowFocus: false,
+    refetchOnReconnect: false,
+  });
+
+  const isLoading = isEdit && Boolean(workplaceId) && workplaceQuery.isPending;
+
   useEffect(() => {
-    if (!isEdit) {
-      setIsLoading(false);
+    if (!isEdit || !workplaceQuery.data) {
       return;
     }
 
-    if (!workplaceId) {
-      setIsLoading(false);
-      setErrors({ form: "編集対象の勤務先IDが指定されていません。" });
-      return;
-    }
-
-    const abortController = new AbortController();
-
-    async function fetchWorkplace() {
-      setIsLoading(true);
-      setErrors({});
-
-      try {
-        const response = await fetch(`/api/workplaces/${workplaceId}`, {
-          cache: "no-store",
-          signal: abortController.signal,
-        });
-
-        if (response.ok === false) {
-          throw new Error(
-            await readApiErrorMessage(response, "勤務先の取得に失敗しました。"),
-          );
-        }
-
-        const workplace = parseWorkplaceDetailResponse(
-          (await response.json()) as unknown,
-        );
-        if (!workplace) {
-          throw new Error("勤務先データの形式が不正です。");
-        }
-
-        setValues({
-          name: workplace.name,
-          type: workplace.type,
-          color: workplace.color,
-          closingDayType: workplace.closingDayType,
-          closingDay:
-            workplace.closingDay === null ? "" : String(workplace.closingDay),
-          payday: String(workplace.payday),
-        });
-      } catch (error) {
-        if (abortController.signal.aborted) {
-          return;
-        }
-
-        console.error("failed to fetch workplace", error);
-        setErrors({
-          form: toErrorMessage(error, "勤務先の取得に失敗しました。"),
-        });
-      } finally {
-        if (abortController.signal.aborted === false) {
-          setIsLoading(false);
-        }
-      }
-    }
-
-    void fetchWorkplace();
-
-    return () => {
-      abortController.abort();
-    };
-  }, [isEdit, workplaceId]);
+    setValues({
+      name: workplaceQuery.data.name,
+      type: workplaceQuery.data.type,
+      color: workplaceQuery.data.color,
+      closingDayType: workplaceQuery.data.closingDayType,
+      closingDay:
+        workplaceQuery.data.closingDay === null
+          ? ""
+          : String(workplaceQuery.data.closingDay),
+      payday: String(workplaceQuery.data.payday),
+    });
+  }, [isEdit, workplaceQuery.data]);
 
   const handleSubmit = async () => {
     const validationErrors = validate(
@@ -477,6 +456,17 @@ export function WorkplaceForm({ mode, workplaceId }: WorkplaceFormProps) {
       setIsSubmitting(false);
     }
   };
+
+  const formErrorMessage =
+    errors.form ??
+    (isEdit && !workplaceId
+      ? "編集対象の勤務先IDが指定されていません。"
+      : workplaceQuery.error
+        ? toUserFacingMessage(
+            workplaceQuery.error,
+            "勤務先の取得に失敗しました。",
+          )
+        : undefined);
 
   return (
     <section className="space-y-6 p-4 md:p-6">
@@ -967,7 +957,7 @@ export function WorkplaceForm({ mode, workplaceId }: WorkplaceFormProps) {
             </>
           ) : null}
 
-          <FormErrorMessage message={errors.form} />
+          <FormErrorMessage message={formErrorMessage} />
 
           <div className="flex flex-wrap gap-2">
             <Button type="submit" disabled={isSubmitting}>

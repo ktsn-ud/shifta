@@ -10,6 +10,10 @@ type PayrollSummaryQueryInput = {
   month: string;
 };
 
+type ShiftDetailQueryInput = {
+  shiftId: string;
+};
+
 type PayrollDetailsMonthlyQueryInput = {
   userId: string;
   month: string;
@@ -34,6 +38,11 @@ type WorkplacePayrollRulesQueryInput = {
   workplaceId: string;
 };
 
+type WorkplacePayrollRuleDetailQueryInput = {
+  workplaceId: string;
+  ruleId: string;
+};
+
 type WorkplaceTimetablesQueryInput = {
   workplaceId: string;
 };
@@ -42,6 +51,8 @@ export const queryKeys = {
   shifts: {
     month: (input: MonthShiftsQueryInput) =>
       ["shifts", "month", input] as const,
+    detail: (input: ShiftDetailQueryInput) =>
+      ["shifts", "detail", input] as const,
     unconfirmed: (input: { userId: string }) =>
       ["shifts", "unconfirmed", input] as const,
     confirmedCurrentMonth: (input: { userId: string }) =>
@@ -62,6 +73,8 @@ export const queryKeys = {
       ["workplaces", "detail", input] as const,
     payrollRules: (input: WorkplacePayrollRulesQueryInput) =>
       ["workplaces", "payrollRules", input] as const,
+    payrollRuleDetail: (input: WorkplacePayrollRuleDetailQueryInput) =>
+      ["workplaces", "payrollRuleDetail", input] as const,
     timetables: (input: WorkplaceTimetablesQueryInput) =>
       ["workplaces", "timetables", input] as const,
   },

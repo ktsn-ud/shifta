@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useMemo, useState } from "react";
+import { useQuery } from "@tanstack/react-query";
 import { useRouter } from "next/navigation";
 import { ChevronLeftIcon, ChevronRightIcon, Trash2Icon } from "lucide-react";
 import { toast } from "sonner";
@@ -50,15 +51,20 @@ import {
 } from "@/lib/google-calendar/clientSync";
 import { CALENDAR_SETUP_PATH } from "@/lib/google-calendar/constants";
 import { messages, toErrorMessage } from "@/lib/messages";
+import { fetchJson } from "@/lib/query/fetch-json";
 import { getBrowserQueryClient } from "@/lib/query/query-client";
 import { invalidateAfterShiftMutation } from "@/lib/query/invalidation";
+import { queryKeys } from "@/lib/query/query-keys";
 import {
   formatShiftTimeRange,
   getShiftEndDate,
   isOvernightShift,
   isSameTimeShift,
 } from "@/lib/shifts/time";
-import { resolveUserFacingErrorFromResponse } from "@/lib/user-facing-error";
+import {
+  resolveUserFacingErrorFromResponse,
+  toUserFacingMessage,
+} from "@/lib/user-facing-error";
 import { cn } from "@/lib/utils";
 import { useGoogleTokenExpiredSignOut } from "@/hooks/use-google-token-expired-signout";
 
@@ -626,9 +632,7 @@ export function BulkShiftForm() {
   const [month, setMonth] = useState(
     () => new Date(new Date().getFullYear(), new Date().getMonth(), 1),
   );
-  const [workplaces, setWorkplaces] = useState<Workplace[]>([]);
   const [selectedWorkplaceId, setSelectedWorkplaceId] = useState("");
-  const [timetableSets, setTimetableSets] = useState<TimetableSet[]>([]);
   const [selectedDateKeys, setSelectedDateKeys] = useState<string[]>([]);
   const [rowsByDate, setRowsByDate] = useState<Record<string, BulkShiftRow>>(
     {},
@@ -653,8 +657,6 @@ export function BulkShiftForm() {
   );
   const [defaults, setDefaults] = useState<BulkDefaults>(DEFAULT_BULK_VALUES);
   const [errors, setErrors] = useState<FormErrors>({});
-  const [isWorkplaceLoading, setIsWorkplaceLoading] = useState(true);
-  const [isTimetableLoading, setIsTimetableLoading] = useState(false);
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [isOvernightConfirmOpen, setIsOvernightConfirmOpen] = useState(false);
   const [pendingPayload, setPendingPayload] = useState<
@@ -665,12 +667,80 @@ export function BulkShiftForm() {
   >([]);
   const { isSignOutScheduled, scheduleSignOut } =
     useGoogleTokenExpiredSignOut();
+  const loadQueryUserId = "self";
 
   const todayKey = toDateKey(new Date());
+
+  const workplacesQuery = useQuery({
+    queryKey: queryKeys.workplaces.list({
+      userId: loadQueryUserId,
+      includeCounts: false,
+    }),
+    queryFn: ({ signal }) =>
+      fetchJson("/api/workplaces?includeCounts=false", {
+        init: { signal },
+        fallbackMessage: "勤務先一覧の取得に失敗しました。",
+        parse: (payload) => {
+          const parsed = parseWorkplaceListResponse(payload);
+          if (!parsed) {
+            throw new Error("WORKPLACE_RESPONSE_INVALID");
+          }
+          return parsed;
+        },
+      }),
+    staleTime: 5 * 60 * 1000,
+    gcTime: 15 * 60 * 1000,
+    refetchOnWindowFocus: false,
+    refetchOnReconnect: false,
+  });
+
+  const workplaces = useMemo(
+    () => workplacesQuery.data ?? [],
+    [workplacesQuery.data],
+  );
+  const isWorkplaceLoading = workplacesQuery.isPending;
 
   const selectedWorkplace = useMemo(() => {
     return workplaces.find((workplace) => workplace.id === selectedWorkplaceId);
   }, [selectedWorkplaceId, workplaces]);
+
+  const timetableSetsQuery = useQuery({
+    queryKey: queryKeys.workplaces.timetables({
+      workplaceId: selectedWorkplace?.id ?? "",
+    }),
+    queryFn: ({ signal }) =>
+      fetchJson(`/api/workplaces/${selectedWorkplace?.id}/timetables`, {
+        init: { signal },
+        fallbackMessage: "時間割の取得に失敗しました。",
+        parse: (payload) => {
+          const parsed = parseTimetableSetListResponse(payload);
+          if (!parsed) {
+            throw new Error("TIMETABLE_RESPONSE_INVALID");
+          }
+          return parsed;
+        },
+      }),
+    enabled: selectedWorkplace?.type === "CRAM_SCHOOL",
+    staleTime: 5 * 60 * 1000,
+    gcTime: 15 * 60 * 1000,
+    refetchOnWindowFocus: false,
+    refetchOnReconnect: false,
+  });
+
+  const timetableSets = useMemo(() => {
+    if (selectedWorkplace?.type !== "CRAM_SCHOOL") {
+      return [] as TimetableSet[];
+    }
+
+    return (timetableSetsQuery.data ?? []).slice().sort((left, right) => {
+      if (left.sortOrder !== right.sortOrder) {
+        return left.sortOrder - right.sortOrder;
+      }
+      return left.createdAt.localeCompare(right.createdAt);
+    });
+  }, [selectedWorkplace?.type, timetableSetsQuery.data]);
+  const isTimetableLoading =
+    selectedWorkplace?.type === "CRAM_SCHOOL" && timetableSetsQuery.isPending;
   const firstTimetableSetId = timetableSets[0]?.id ?? "";
 
   const lessonPeriodsBySetId = useMemo(() => {
@@ -754,71 +824,24 @@ export function BulkShiftForm() {
   }, [hasUserCalendarSelection, isCalendarSelectionReady, selectedCalendarIds]);
 
   useEffect(() => {
-    const abortController = new AbortController();
-
-    async function fetchWorkplaces() {
-      setIsWorkplaceLoading(true);
-
-      try {
-        const response = await fetch("/api/workplaces?includeCounts=false", {
-          signal: abortController.signal,
-        });
-
-        if (response.ok === false) {
-          throw new Error("勤務先一覧の取得に失敗しました。");
-        }
-
-        const nextWorkplaces = parseWorkplaceListResponse(
-          (await response.json()) as unknown,
-        );
-        if (!nextWorkplaces) {
-          throw new Error("勤務先一覧レスポンスの形式が不正です。");
-        }
-
-        setWorkplaces(nextWorkplaces);
-
-        setSelectedWorkplaceId((current) => {
-          if (
-            current &&
-            nextWorkplaces.some((workplace) => workplace.id === current)
-          ) {
-            return current;
-          }
-
-          const lastId = localStorage.getItem(LAST_WORKPLACE_ID_KEY);
-          if (
-            lastId &&
-            nextWorkplaces.some((workplace) => workplace.id === lastId)
-          ) {
-            return lastId;
-          }
-
-          return nextWorkplaces[0]?.id ?? "";
-        });
-      } catch (error) {
-        if (abortController.signal.aborted) {
-          return;
-        }
-
-        console.error("failed to fetch workplaces", error);
-        setWorkplaces([]);
-        setSelectedWorkplaceId("");
-        setErrors({
-          form: "勤務先一覧の取得に失敗しました。時間を置いて再度お試しください。",
-        });
-      } finally {
-        if (abortController.signal.aborted === false) {
-          setIsWorkplaceLoading(false);
-        }
-      }
+    if (workplaces.length === 0) {
+      setSelectedWorkplaceId("");
+      return;
     }
 
-    void fetchWorkplaces();
+    setSelectedWorkplaceId((current) => {
+      if (current && workplaces.some((workplace) => workplace.id === current)) {
+        return current;
+      }
 
-    return () => {
-      abortController.abort();
-    };
-  }, []);
+      const lastId = localStorage.getItem(LAST_WORKPLACE_ID_KEY);
+      if (lastId && workplaces.some((workplace) => workplace.id === lastId)) {
+        return lastId;
+      }
+
+      return workplaces[0]?.id ?? "";
+    });
+  }, [workplaces]);
 
   useEffect(() => {
     if (!isCalendarSelectionReady) {
@@ -941,74 +964,10 @@ export function BulkShiftForm() {
   }, [selectedWorkplaceId]);
 
   useEffect(() => {
-    if (!selectedWorkplace) {
-      setTimetableSets([]);
-      return;
+    if (timetableSetsQuery.error) {
+      console.error("failed to fetch timetableSets", timetableSetsQuery.error);
     }
-
-    if (selectedWorkplace.type !== "CRAM_SCHOOL") {
-      setTimetableSets([]);
-      return;
-    }
-
-    const workplaceId = selectedWorkplace.id;
-    const abortController = new AbortController();
-
-    async function fetchTimetables() {
-      setIsTimetableLoading(true);
-
-      try {
-        const response = await fetch(
-          `/api/workplaces/${workplaceId}/timetables`,
-          {
-            signal: abortController.signal,
-          },
-        );
-
-        if (response.ok === false) {
-          throw new Error("時間割の取得に失敗しました。");
-        }
-
-        const timetablesPayload = parseTimetableSetListResponse(
-          (await response.json()) as unknown,
-        );
-        if (!timetablesPayload) {
-          throw new Error("時間割レスポンスの形式が不正です。");
-        }
-
-        setTimetableSets(
-          timetablesPayload.slice().sort((left, right) => {
-            if (left.sortOrder !== right.sortOrder) {
-              return left.sortOrder - right.sortOrder;
-            }
-
-            return left.createdAt.localeCompare(right.createdAt);
-          }),
-        );
-      } catch (error) {
-        if (abortController.signal.aborted) {
-          return;
-        }
-
-        console.error("failed to fetch timetableSets", error);
-        setTimetableSets([]);
-        setErrors((current) => ({
-          ...current,
-          form: "時間割の取得に失敗しました。時間を置いて再度お試しください。",
-        }));
-      } finally {
-        if (abortController.signal.aborted === false) {
-          setIsTimetableLoading(false);
-        }
-      }
-    }
-
-    void fetchTimetables();
-
-    return () => {
-      abortController.abort();
-    };
-  }, [selectedWorkplace]);
+  }, [timetableSetsQuery.error]);
 
   useEffect(() => {
     const workplaceType = selectedWorkplace?.type;
@@ -1578,6 +1537,20 @@ export function BulkShiftForm() {
 
     await submitBulk(validated.payload);
   };
+
+  const formErrorMessage =
+    errors.form ??
+    (timetableSetsQuery.error
+      ? toUserFacingMessage(
+          timetableSetsQuery.error,
+          "時間割の取得に失敗しました。時間を置いて再度お試しください。",
+        )
+      : workplacesQuery.error
+        ? toUserFacingMessage(
+            workplacesQuery.error,
+            "勤務先一覧の取得に失敗しました。時間を置いて再度お試しください。",
+          )
+        : undefined);
 
   return (
     <section className="space-y-6 p-4 md:p-6">
@@ -2580,7 +2553,7 @@ export function BulkShiftForm() {
 
         <Field>
           <FieldContent>
-            <FormErrorMessage message={errors.form} />
+            <FormErrorMessage message={formErrorMessage} />
           </FieldContent>
         </Field>
 
