@@ -4,9 +4,9 @@
 
 ## 1. 実装前チェック
 
-1. `docs/IMPLEMENTATION_TASKS.md` で対象タスクを確認
-2. `docs/DESIGN_SPECIFICATION.md` で仕様を確認
-3. 仕様差分がある場合は `IMPLEMENTATION_TASKS.md` を優先
+1. `docs/DESIGN_SPECIFICATION.md` と改訂仕様書で対象仕様を確認
+2. API 変更がある場合は `docs/API_REFERENCE.md` を確認
+3. 旧経緯が必要な場合のみアーカイブの初期タスク分割書を参照
 
 ## 2. 実装ポリシー
 
@@ -57,5 +57,5 @@ DB スキーマ変更時は以下を実施します。
 ## 8. 参考ドキュメント
 
 - 仕様: [DESIGN_SPECIFICATION.md](./DESIGN_SPECIFICATION.md)
-- タスク分割: [IMPLEMENTATION_TASKS.md](./IMPLEMENTATION_TASKS.md)
+- 初期タスク分割（アーカイブ）: [legacy_initial-implementation-tasks.md](./archive/implementation/legacy_initial-implementation-tasks.md)
 - API: [API_REFERENCE.md](./API_REFERENCE.md)

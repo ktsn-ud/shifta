@@ -2,8 +2,8 @@
 
 ## 監査対象
 
-- `docs/PERFORMANCE_SECURITY_UX_CACHE_STRATEGY_2026-05-02.md`
-- `docs/TANSTACK_QUERY_ADOPTION_EVALUATION_2026-05-07.md`
+- `docs/archive/performance/2026-05-02_security-ux-cache-strategy.md`
+- `docs/archive/performance/2026-05-07_tanstack-query-adoption-evaluation.md`
 
 ## 残課題
 
