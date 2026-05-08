@@ -1,3 +1,4 @@
+import { connection } from "next/server";
 import { z } from "zod";
 import { requireCurrentUser } from "@/lib/api/current-user";
 import { DATE_ONLY_REGEX, parseDateOnly } from "@/lib/api/date-time";
@@ -231,6 +232,7 @@ function shouldIncludeCounts(request: Request): boolean {
 }
 
 export async function GET(request: Request) {
+  await connection();
   try {
     const current = await requireCurrentUser();
     if ("response" in current) {

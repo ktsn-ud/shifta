@@ -1,4 +1,4 @@
-import { after } from "next/server";
+import { after, connection } from "next/server";
 import { requireCurrentUser } from "@/lib/api/current-user";
 import {
   jsonError,
@@ -46,6 +46,7 @@ async function findOwnedShift(shiftId: string, userId: string) {
 }
 
 export async function GET(_: Request, context: Context) {
+  await connection();
   try {
     const current = await requireCurrentUser();
     if ("response" in current) {

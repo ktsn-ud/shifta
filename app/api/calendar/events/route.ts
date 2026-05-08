@@ -1,3 +1,4 @@
+import { connection } from "next/server";
 import { createHash } from "node:crypto";
 import { calendar_v3 } from "googleapis";
 import { requireCurrentUser } from "@/lib/api/current-user";
@@ -526,6 +527,7 @@ function aggregateEvent(
 }
 
 export async function GET(request: Request) {
+  await connection();
   let cacheKey: string | null = null;
 
   try {

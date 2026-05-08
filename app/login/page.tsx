@@ -1,4 +1,5 @@
 import type { Metadata } from "next";
+import { Suspense } from "react";
 import { LogIn } from "@/components/auth/login-button";
 import { GOOGLE_TOKEN_EXPIRED_REASON } from "@/lib/google-calendar/constants";
 import {
@@ -22,11 +23,27 @@ type LoginPageProps = {
   searchParams?: LoginPageSearchParams | Promise<LoginPageSearchParams>;
 };
 
-export default async function Page({ searchParams }: LoginPageProps) {
+export default function Page({ searchParams }: LoginPageProps) {
+  return (
+    <Suspense fallback={<LoginCard isTokenExpiredReason={false} />}>
+      <LoginContent searchParams={searchParams} />
+    </Suspense>
+  );
+}
+
+async function LoginContent({ searchParams }: LoginPageProps) {
   const resolvedSearchParams = searchParams ? await searchParams : undefined;
   const reason = resolvedSearchParams?.reason;
   const isTokenExpiredReason = reason === GOOGLE_TOKEN_EXPIRED_REASON;
 
+  return <LoginCard isTokenExpiredReason={isTokenExpiredReason} />;
+}
+
+function LoginCard({
+  isTokenExpiredReason,
+}: {
+  isTokenExpiredReason: boolean;
+}) {
   return (
     <main className="flex min-h-svh items-center justify-center bg-muted/30 p-4">
       <Card className="w-full max-w-md">
