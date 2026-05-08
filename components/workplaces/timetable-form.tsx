@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useMemo, useState } from "react";
+import { useQuery } from "@tanstack/react-query";
 import { useRouter } from "next/navigation";
 import { PlusIcon, Trash2Icon } from "lucide-react";
 import { toast } from "sonner";
@@ -22,7 +23,14 @@ import {
 import { Input } from "@/components/ui/input";
 import { SpinnerPanel } from "@/components/ui/spinner";
 import { messages, toErrorMessage } from "@/lib/messages";
-import { resolveUserFacingErrorFromResponse } from "@/lib/user-facing-error";
+import { fetchJson } from "@/lib/query/fetch-json";
+import { invalidateAfterTimetableMutation } from "@/lib/query/invalidation";
+import { getBrowserQueryClient } from "@/lib/query/query-client";
+import { queryKeys } from "@/lib/query/query-keys";
+import {
+  resolveUserFacingErrorFromResponse,
+  toUserFacingMessage,
+} from "@/lib/user-facing-error";
 
 const timeRegex = /^([01]\d|2[0-3]):([0-5]\d)$/;
 
@@ -279,14 +287,13 @@ export function TimetableForm({
   timetableId,
 }: TimetableFormProps) {
   const router = useRouter();
+  const queryClient = getBrowserQueryClient();
   const isEdit = mode === "edit";
 
-  const [workplace, setWorkplace] = useState<WorkplaceSummary | null>(null);
   const [values, setValues] = useState<FormValues>(createEmptyFormValues);
   const [queuedSets, setQueuedSets] = useState<FormValues[]>([]);
   const [errors, setErrors] = useState<FormErrors>({});
   const [rowErrors, setRowErrors] = useState<RowErrors[]>([]);
-  const [isLoading, setIsLoading] = useState(true);
   const [isSubmitting, setIsSubmitting] = useState(false);
 
   const pageTitle = useMemo(
@@ -295,111 +302,84 @@ export function TimetableForm({
   );
   const listHref = `/my/workplaces/${workplaceId}/timetables`;
 
+  const workplaceQuery = useQuery({
+    queryKey: queryKeys.workplaces.detailSummary({
+      workplaceId,
+    }),
+    queryFn: ({ signal }) =>
+      fetchJson(`/api/workplaces/${workplaceId}`, {
+        init: { signal },
+        fallbackMessage: "勤務先情報の取得に失敗しました。",
+        parse: (payload) => {
+          const parsed = parseWorkplaceResponse(payload);
+          if (!parsed) {
+            throw new Error("WORKPLACE_RESPONSE_INVALID");
+          }
+          return parsed;
+        },
+      }),
+    staleTime: 5 * 60 * 1000,
+    gcTime: 15 * 60 * 1000,
+    refetchOnWindowFocus: false,
+    refetchOnReconnect: false,
+  });
+
+  const workplace = workplaceQuery.data ?? null;
+
+  const timetablesQuery = useQuery({
+    queryKey: queryKeys.workplaces.timetables({
+      workplaceId,
+    }),
+    queryFn: ({ signal }) =>
+      fetchJson(`/api/workplaces/${workplaceId}/timetables`, {
+        init: { signal },
+        fallbackMessage: "時間割一覧の取得に失敗しました。",
+        parse: (payload) => {
+          const parsed = parseTimetableSetListResponse(payload);
+          if (!parsed) {
+            throw new Error("TIMETABLE_LIST_RESPONSE_INVALID");
+          }
+          return parsed;
+        },
+      }),
+    enabled:
+      isEdit &&
+      Boolean(timetableId) &&
+      workplaceQuery.data?.type === "CRAM_SCHOOL",
+    staleTime: 5 * 60 * 1000,
+    gcTime: 15 * 60 * 1000,
+    refetchOnWindowFocus: false,
+    refetchOnReconnect: false,
+  });
+
+  const editingTarget = useMemo(() => {
+    if (!isEdit || !timetableId || !timetablesQuery.data) {
+      return null;
+    }
+
+    return timetablesQuery.data.find((set) => set.id === timetableId) ?? null;
+  }, [isEdit, timetableId, timetablesQuery.data]);
+
+  const isLoading =
+    workplaceQuery.isPending ||
+    (isEdit &&
+      Boolean(timetableId) &&
+      workplace?.type === "CRAM_SCHOOL" &&
+      timetablesQuery.isPending);
+
   useEffect(() => {
-    if (isEdit && !timetableId) {
-      setIsLoading(false);
-      setErrors({
-        form: "編集対象の時間割セットIDが指定されていません。",
-      });
+    if (!isEdit || !editingTarget) {
       return;
     }
 
-    const abortController = new AbortController();
-
-    async function fetchInitialData() {
-      setIsLoading(true);
-      setErrors({});
-
-      try {
-        const workplaceResponse = await fetch(
-          `/api/workplaces/${workplaceId}`,
-          {
-            signal: abortController.signal,
-          },
-        );
-
-        if (workplaceResponse.ok === false) {
-          throw new Error(
-            await readApiErrorMessage(
-              workplaceResponse,
-              "勤務先情報の取得に失敗しました。",
-            ),
-          );
-        }
-
-        const parsedWorkplace = parseWorkplaceResponse(
-          (await workplaceResponse.json()) as unknown,
-        );
-        if (!parsedWorkplace) {
-          throw new Error("勤務先情報レスポンスの形式が不正です。");
-        }
-
-        setWorkplace(parsedWorkplace);
-
-        if (parsedWorkplace.type !== "CRAM_SCHOOL") {
-          throw new Error("時間割は塾タイプ勤務先でのみ操作できます。");
-        }
-
-        if (!isEdit) {
-          return;
-        }
-
-        const response = await fetch(
-          `/api/workplaces/${workplaceId}/timetables`,
-          {
-            signal: abortController.signal,
-          },
-        );
-        if (response.ok === false) {
-          throw new Error(
-            await readApiErrorMessage(
-              response,
-              "時間割一覧の取得に失敗しました。",
-            ),
-          );
-        }
-
-        const list = parseTimetableSetListResponse(
-          (await response.json()) as unknown,
-        );
-        if (!list) {
-          throw new Error("時間割一覧レスポンスの形式が不正です。");
-        }
-
-        const target = list.find((set) => set.id === timetableId);
-        if (!target) {
-          throw new Error("編集対象の時間割セットが見つかりません。");
-        }
-
-        setValues({
-          name: target.name,
-          items:
-            target.items.length > 0
-              ? normalizeItems(target.items)
-              : [createEmptyItem()],
-        });
-      } catch (error) {
-        if (abortController.signal.aborted) {
-          return;
-        }
-
-        console.error("failed to fetch timetable form data", error);
-        setErrors({
-          form: toErrorMessage(error, "時間割データの読み込みに失敗しました。"),
-        });
-      } finally {
-        if (abortController.signal.aborted === false) {
-          setIsLoading(false);
-        }
-      }
-    }
-
-    void fetchInitialData();
-
-    return () => {
-      abortController.abort();
-    };
-  }, [isEdit, timetableId, workplaceId]);
+    setValues({
+      name: editingTarget.name,
+      items:
+        editingTarget.items.length > 0
+          ? normalizeItems(editingTarget.items)
+          : [createEmptyItem()],
+    });
+  }, [editingTarget, isEdit]);
 
   function updateValue(key: "name", value: string) {
     setValues((current) => ({
@@ -649,6 +629,7 @@ export function TimetableForm({
       }
 
       const createdCount = isEdit ? 1 : createTargets.length;
+      await invalidateAfterTimetableMutation(queryClient, workplaceId);
       toast.success(
         isEdit
           ? messages.success.timetableUpdated
@@ -673,6 +654,28 @@ export function TimetableForm({
     }
   }
 
+  const formErrorMessage =
+    errors.form ??
+    (isEdit && !timetableId
+      ? "編集対象の時間割セットIDが指定されていません。"
+      : workplaceQuery.error
+        ? toUserFacingMessage(
+            workplaceQuery.error,
+            "勤務先情報の取得に失敗しました。",
+          )
+        : timetablesQuery.error
+          ? toUserFacingMessage(
+              timetablesQuery.error,
+              "時間割データの読み込みに失敗しました。",
+            )
+          : isEdit &&
+              timetableId &&
+              workplace?.type === "CRAM_SCHOOL" &&
+              timetablesQuery.data &&
+              !editingTarget
+            ? "編集対象の時間割セットが見つかりません。"
+            : null);
+
   if (isLoading) {
     return (
       <section className="space-y-4 p-4 md:p-6">
@@ -687,7 +690,7 @@ export function TimetableForm({
     );
   }
 
-  if (workplace?.type !== "CRAM_SCHOOL") {
+  if (workplace && workplace.type !== "CRAM_SCHOOL") {
     return (
       <section className="space-y-4 p-4 md:p-6">
         <header>
@@ -727,9 +730,9 @@ export function TimetableForm({
         </p>
       </header>
 
-      {errors.form ? (
+      {formErrorMessage ? (
         <p className="rounded-md border border-destructive/40 bg-destructive/5 px-3 py-2 text-sm text-destructive">
-          {errors.form}
+          {formErrorMessage}
         </p>
       ) : null}
 

@@ -7,6 +7,7 @@ import {
 } from "@/lib/api/http";
 import { prisma } from "@/lib/prisma";
 import { jsonNoStore } from "@/lib/api/cache-control";
+import { revalidateWorkplaceDomainTags } from "@/lib/cache/revalidate";
 
 const colorRegex = /^#[0-9A-Fa-f]{6}$/;
 const PAYROLL_DAY_MIN = 1;
@@ -151,6 +152,11 @@ export async function PUT(request: Request, context: Context) {
       },
     });
 
+    revalidateWorkplaceDomainTags({
+      userId: current.user.id,
+      workplaceId,
+    });
+
     return jsonNoStore({ data: workplace });
   } catch (error) {
     console.error("PUT /api/workplaces/:id failed", error);
@@ -183,6 +189,11 @@ export async function DELETE(request: Request, context: Context) {
     };
 
     await prisma.workplace.delete({ where: { id: workplaceId } });
+
+    revalidateWorkplaceDomainTags({
+      userId: current.user.id,
+      workplaceId,
+    });
 
     return jsonNoStore({
       data: {

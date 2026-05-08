@@ -10,6 +10,7 @@ import {
 import { requireOwnedWorkplace } from "@/lib/api/workplace";
 import { prisma } from "@/lib/prisma";
 import { jsonNoStore } from "@/lib/api/cache-control";
+import { revalidateWorkplaceDomainTags } from "@/lib/cache/revalidate";
 
 const payrollRuleSchema = z
   .object({
@@ -220,6 +221,11 @@ export async function PUT(request: Request, context: Context) {
       },
     });
 
+    revalidateWorkplaceDomainTags({
+      userId: current.user.id,
+      workplaceId,
+    });
+
     return jsonNoStore({
       data: rule,
       warning:
@@ -266,6 +272,11 @@ export async function DELETE(request: Request, context: Context) {
     }
 
     await prisma.payrollRule.delete({ where: { id } });
+
+    revalidateWorkplaceDomainTags({
+      userId: current.user.id,
+      workplaceId,
+    });
 
     return jsonNoStore({
       data: {

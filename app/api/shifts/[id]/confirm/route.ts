@@ -1,5 +1,4 @@
 import { after } from "next/server";
-import { revalidatePath } from "next/cache";
 import { z } from "zod";
 import { requireCurrentUser } from "@/lib/api/current-user";
 import { TIME_ONLY_REGEX } from "@/lib/api/date-time";
@@ -8,6 +7,7 @@ import { isSameTimeShift } from "@/lib/shifts/time";
 import { syncShiftAfterUpdate } from "@/lib/google-calendar/syncStatus";
 import { prisma } from "@/lib/prisma";
 import { jsonNoStore } from "@/lib/api/cache-control";
+import { revalidateShiftDomainTags } from "@/lib/cache/revalidate";
 
 type Context = {
   params: Promise<{ id: string }>;
@@ -45,15 +45,6 @@ function parseTimeOnly(value: string): Date {
   const [hour, minute] = value.split(":");
 
   return new Date(Date.UTC(1970, 0, 1, Number(hour), Number(minute), 0));
-}
-
-function revalidateShiftRelatedPaths(): void {
-  revalidatePath("/my");
-  revalidatePath("/my/shifts/list");
-  revalidatePath("/my/shifts/confirm");
-  revalidatePath("/my/summary");
-  revalidatePath("/my/payroll-details/monthly");
-  revalidatePath("/my/payroll-details/workplace-yearly");
 }
 
 export async function PATCH(request: Request, context: Context) {
@@ -106,7 +97,10 @@ export async function PATCH(request: Request, context: Context) {
       },
     });
 
-    revalidateShiftRelatedPaths();
+    revalidateShiftDomainTags({
+      userId: current.user.id,
+      workplaceId: updated.workplaceId,
+    });
 
     after(async () => {
       try {

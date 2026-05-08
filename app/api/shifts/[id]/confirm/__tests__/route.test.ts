@@ -31,12 +31,12 @@ jest.mock("next/server", () => ({
   },
 }));
 
-jest.mock("next/cache", () => ({
-  revalidatePath: jest.fn(),
-}));
-
 jest.mock("@/lib/api/current-user", () => ({
   requireCurrentUser: jest.fn(),
+}));
+
+jest.mock("@/lib/cache/revalidate", () => ({
+  revalidateShiftDomainTags: jest.fn(),
 }));
 
 jest.mock("@/lib/google-calendar/syncStatus", () => ({

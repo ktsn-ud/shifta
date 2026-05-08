@@ -1,6 +1,5 @@
 import { randomUUID } from "node:crypto";
 import { after } from "next/server";
-import { revalidatePath } from "next/cache";
 import { z } from "zod";
 import { requireCurrentUser } from "@/lib/api/current-user";
 import { DATE_ONLY_REGEX, TIME_ONLY_REGEX } from "@/lib/api/date-time";
@@ -9,6 +8,7 @@ import { requireOwnedWorkplace } from "@/lib/api/workplace";
 import { syncShiftsAfterBulkCreate } from "@/lib/google-calendar/syncStatus";
 import { prisma } from "@/lib/prisma";
 import { jsonNoStore } from "@/lib/api/cache-control";
+import { revalidateShiftDomainTags } from "@/lib/cache/revalidate";
 import {
   buildShiftData,
   type BuiltShiftData,
@@ -52,15 +52,6 @@ type CreatedShift = {
 };
 
 type BulkShiftItem = z.infer<typeof bulkShiftItemSchema>;
-
-function revalidateShiftRelatedPaths(): void {
-  revalidatePath("/my");
-  revalidatePath("/my/shifts/list");
-  revalidatePath("/my/shifts/confirm");
-  revalidatePath("/my/summary");
-  revalidatePath("/my/payroll-details/monthly");
-  revalidatePath("/my/payroll-details/workplace-yearly");
-}
 
 async function createBulkLessonTimeRangeResolver(
   workplaceId: string,
@@ -317,7 +308,10 @@ export async function POST(request: Request) {
       }
     });
 
-    revalidateShiftRelatedPaths();
+    revalidateShiftDomainTags({
+      userId: current.user.id,
+      workplaceId: body.data.workplaceId,
+    });
 
     return jsonNoStore(
       {

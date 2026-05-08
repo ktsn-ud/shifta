@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useMemo, useState } from "react";
+import { useQuery } from "@tanstack/react-query";
 import { useRouter } from "next/navigation";
 import { toast } from "sonner";
 import { FormErrorMessage } from "@/components/form/form-error-message";
@@ -18,9 +19,14 @@ import { RadioGroup, RadioGroupItem } from "@/components/ui/radio-group";
 import { dateKeyFromApiDate } from "@/lib/calendar/date";
 import { formatHolidayType, formatWorkplaceType } from "@/lib/enum-labels";
 import { messages, toErrorMessage } from "@/lib/messages";
+import { fetchJson } from "@/lib/query/fetch-json";
+import { invalidateAfterPayrollRuleMutation } from "@/lib/query/invalidation";
+import { getBrowserQueryClient } from "@/lib/query/query-client";
+import { queryKeys } from "@/lib/query/query-keys";
 import {
   buildActionableErrorMessage,
   classifyApiErrorKind,
+  toUserFacingMessage,
 } from "@/lib/user-facing-error";
 
 type WorkplaceType = "GENERAL" | "CRAM_SCHOOL";
@@ -317,9 +323,9 @@ export function PayrollRuleForm({
   ruleId,
 }: PayrollRuleFormProps) {
   const router = useRouter();
+  const queryClient = getBrowserQueryClient();
   const isEdit = mode === "edit";
 
-  const [workplace, setWorkplace] = useState<WorkplaceSummary | null>(null);
   const [values, setValues] = useState<FormValues>({
     startDate: "",
     endDate: "",
@@ -331,7 +337,6 @@ export function PayrollRuleForm({
     holidayType: "NONE",
   });
   const [errors, setErrors] = useState<FormErrors>({});
-  const [isLoading, setIsLoading] = useState(true);
   const [isSubmitting, setIsSubmitting] = useState(false);
 
   const listHref = `/my/workplaces/${workplaceId}/payroll-rules`;
@@ -340,112 +345,84 @@ export function PayrollRuleForm({
     [isEdit],
   );
 
+  const workplaceQuery = useQuery({
+    queryKey: queryKeys.workplaces.detailSummary({
+      workplaceId,
+    }),
+    queryFn: ({ signal }) =>
+      fetchJson(`/api/workplaces/${workplaceId}`, {
+        init: { signal, cache: "no-store" },
+        fallbackMessage: "勤務先情報の取得に失敗しました。",
+        parse: (payload) => {
+          const parsed = parseWorkplaceResponse(payload);
+          if (!parsed) {
+            throw new Error("WORKPLACE_RESPONSE_INVALID");
+          }
+          return parsed;
+        },
+      }),
+    staleTime: 5 * 60 * 1000,
+    gcTime: 15 * 60 * 1000,
+    refetchOnWindowFocus: false,
+    refetchOnReconnect: false,
+  });
+
+  const payrollRuleQuery = useQuery({
+    queryKey: queryKeys.workplaces.payrollRuleDetail({
+      workplaceId,
+      ruleId: ruleId ?? "",
+    }),
+    queryFn: ({ signal }) =>
+      fetchJson(`/api/workplaces/${workplaceId}/payroll-rules/${ruleId}`, {
+        init: { signal, cache: "no-store" },
+        fallbackMessage: "給与ルールの取得に失敗しました。",
+        parse: (payload) => {
+          const parsed = parsePayrollRuleResponse(payload);
+          if (!parsed) {
+            throw new Error("PAYROLL_RULE_RESPONSE_INVALID");
+          }
+          return parsed;
+        },
+      }),
+    enabled: isEdit && Boolean(ruleId),
+    staleTime: 5 * 60 * 1000,
+    gcTime: 15 * 60 * 1000,
+    refetchOnWindowFocus: false,
+    refetchOnReconnect: false,
+  });
+
+  const workplace = workplaceQuery.data ?? null;
+  const isLoading =
+    workplaceQuery.isPending ||
+    (isEdit && Boolean(ruleId) && payrollRuleQuery.isPending);
+
   useEffect(() => {
-    if (isEdit && !ruleId) {
-      setIsLoading(false);
-      setErrors({
-        form: "編集対象の給与ルールIDが指定されていません。",
-      });
+    if (!isEdit || !payrollRuleQuery.data) {
       return;
     }
 
-    const abortController = new AbortController();
-
-    async function fetchData() {
-      setIsLoading(true);
-      setErrors({});
-
-      try {
-        const workplacePromise = fetch(`/api/workplaces/${workplaceId}`, {
-          cache: "no-store",
-          signal: abortController.signal,
-        });
-
-        const rulePromise =
-          isEdit && ruleId
-            ? fetch(`/api/workplaces/${workplaceId}/payroll-rules/${ruleId}`, {
-                cache: "no-store",
-                signal: abortController.signal,
-              })
-            : Promise.resolve(null);
-
-        const [workplaceResponse, ruleResponse] = await Promise.all([
-          workplacePromise,
-          rulePromise,
-        ]);
-
-        if (workplaceResponse.ok === false) {
-          throw new Error(
-            (
-              await parseApiError(
-                workplaceResponse,
-                "勤務先情報の取得に失敗しました。",
-              )
-            ).message,
-          );
-        }
-
-        const workplacePayload = parseWorkplaceResponse(
-          (await workplaceResponse.json()) as unknown,
-        );
-        if (!workplacePayload) {
-          throw new Error("勤務先情報レスポンスの形式が不正です。");
-        }
-        setWorkplace(workplacePayload);
-
-        if (ruleResponse) {
-          if (ruleResponse.ok === false) {
-            throw new Error(
-              (
-                await parseApiError(
-                  ruleResponse,
-                  "給与ルールの取得に失敗しました。",
-                )
-              ).message,
-            );
-          }
-
-          const rule = parsePayrollRuleResponse(
-            (await ruleResponse.json()) as unknown,
-          );
-          if (!rule) {
-            throw new Error("給与ルールレスポンスの形式が不正です。");
-          }
-          setValues({
-            startDate: dateKeyFromApiDate(rule.startDate),
-            endDate: rule.endDate
-              ? shiftDateKeyByDays(dateKeyFromApiDate(rule.endDate), -1)
-              : "",
-            baseHourlyWage: toNumberString(rule.baseHourlyWage),
-            holidayAllowanceHourly: toNumberString(rule.holidayAllowanceHourly),
-            nightPremiumRate: toNumberString(rule.nightPremiumRate),
-            overtimePremiumRate: toNumberString(rule.overtimePremiumRate),
-            dailyOvertimeThreshold: toNumberString(rule.dailyOvertimeThreshold),
-            holidayType: rule.holidayType,
-          });
-        }
-      } catch (error) {
-        if (abortController.signal.aborted) {
-          return;
-        }
-
-        console.error("failed to fetch payroll rule form data", error);
-        setErrors({
-          form: toErrorMessage(error, "給与ルール情報の取得に失敗しました。"),
-        });
-      } finally {
-        if (abortController.signal.aborted === false) {
-          setIsLoading(false);
-        }
-      }
-    }
-
-    void fetchData();
-
-    return () => {
-      abortController.abort();
-    };
-  }, [isEdit, ruleId, workplaceId]);
+    setValues({
+      startDate: dateKeyFromApiDate(payrollRuleQuery.data.startDate),
+      endDate: payrollRuleQuery.data.endDate
+        ? shiftDateKeyByDays(
+            dateKeyFromApiDate(payrollRuleQuery.data.endDate),
+            -1,
+          )
+        : "",
+      baseHourlyWage: toNumberString(payrollRuleQuery.data.baseHourlyWage),
+      holidayAllowanceHourly: toNumberString(
+        payrollRuleQuery.data.holidayAllowanceHourly,
+      ),
+      nightPremiumRate: toNumberString(payrollRuleQuery.data.nightPremiumRate),
+      overtimePremiumRate: toNumberString(
+        payrollRuleQuery.data.overtimePremiumRate,
+      ),
+      dailyOvertimeThreshold: toNumberString(
+        payrollRuleQuery.data.dailyOvertimeThreshold,
+      ),
+      holidayType: payrollRuleQuery.data.holidayType,
+    });
+  }, [isEdit, payrollRuleQuery.data]);
 
   const handleSubmit = async () => {
     const validationErrors = validate(values);
@@ -514,9 +491,9 @@ export function PayrollRuleForm({
         return;
       }
 
-      const warningMessage = parseUpsertWarningMessage(
-        (await response.json()) as unknown,
-      );
+      const responsePayload = (await response.json()) as unknown;
+      await invalidateAfterPayrollRuleMutation(queryClient, workplaceId);
+      const warningMessage = parseUpsertWarningMessage(responsePayload);
 
       if (warningMessage) {
         toast.warning(messages.warning.payrollRuleOverlap, {
@@ -554,6 +531,22 @@ export function PayrollRuleForm({
       setIsSubmitting(false);
     }
   };
+
+  const formErrorMessage =
+    errors.form ??
+    (isEdit && !ruleId
+      ? "編集対象の給与ルールIDが指定されていません。"
+      : payrollRuleQuery.error
+        ? toUserFacingMessage(
+            payrollRuleQuery.error,
+            "給与ルール情報の取得に失敗しました。",
+          )
+        : workplaceQuery.error
+          ? toUserFacingMessage(
+              workplaceQuery.error,
+              "勤務先情報の取得に失敗しました。",
+            )
+          : undefined);
 
   return (
     <section className="space-y-6 p-4 md:p-6">
@@ -830,7 +823,7 @@ export function PayrollRuleForm({
             </Field>
           ) : null}
 
-          <FormErrorMessage message={errors.form} />
+          <FormErrorMessage message={formErrorMessage} />
 
           <div className="flex flex-wrap gap-2">
             <Button type="submit" disabled={isSubmitting}>

@@ -227,6 +227,7 @@ async function ShiftConfirmPageContent() {
 
   return (
     <ShiftConfirmPageClient
+      currentUserId={current.user.id}
       initialUnconfirmedShifts={initialData.unconfirmedShifts}
       initialConfirmedShiftGroups={initialData.confirmedShiftGroups}
     />

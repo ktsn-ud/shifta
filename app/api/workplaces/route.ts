@@ -4,6 +4,7 @@ import { DATE_ONLY_REGEX, parseDateOnly } from "@/lib/api/date-time";
 import { jsonError, parseJsonBody } from "@/lib/api/http";
 import { prisma } from "@/lib/prisma";
 import { jsonNoStore } from "@/lib/api/cache-control";
+import { revalidateWorkplaceDomainTags } from "@/lib/cache/revalidate";
 
 const colorRegex = /^#[0-9A-Fa-f]{6}$/;
 const PAYROLL_DAY_MIN = 1;
@@ -202,6 +203,11 @@ export async function POST(request: Request) {
       }
 
       return { workplace, initialPayrollRule };
+    });
+
+    revalidateWorkplaceDomainTags({
+      userId: current.user.id,
+      workplaceId: result.workplace.id,
     });
 
     return jsonNoStore(
