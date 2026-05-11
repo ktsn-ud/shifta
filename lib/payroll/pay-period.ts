@@ -39,6 +39,14 @@ function shiftMonth(monthDate: Date, monthOffset: number): Date {
   );
 }
 
+function isWithinPeriod(date: Date, period: PayrollPeriod): boolean {
+  const time = date.getTime();
+  return (
+    time >= period.periodStartDate.getTime() &&
+    time <= period.periodEndDate.getTime()
+  );
+}
+
 function addDays(date: Date, days: number): Date {
   return createUtcDate(
     date.getUTCFullYear(),
@@ -124,4 +132,22 @@ export function resolvePayrollPeriodForMonth(
     periodStartDate: addDays(previousClosingDate, 1),
     periodEndDate,
   };
+}
+
+export function resolvePaymentMonthForShiftDate(
+  shiftDate: Date,
+  setting: PayrollCycleSetting,
+): Date {
+  const anchorMonth = normalizeMonthDate(shiftDate);
+  const targetOffsets = [-1, 0, 1, 2];
+
+  for (const offset of targetOffsets) {
+    const paymentMonth = shiftMonth(anchorMonth, offset);
+    const period = resolvePayrollPeriodForMonth(paymentMonth, setting);
+    if (isWithinPeriod(shiftDate, period)) {
+      return paymentMonth;
+    }
+  }
+
+  throw new Error("PAYMENT_MONTH_RESOLUTION_FAILED");
 }

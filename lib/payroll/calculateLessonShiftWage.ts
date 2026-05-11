@@ -1,17 +1,21 @@
-import type {
-  PayrollRule,
-  Shift,
-  ShiftLessonRange,
-} from "@/lib/generated/prisma/client";
+import type { ShiftLessonRange } from "@/lib/generated/prisma/client";
 import {
   calculateShiftWage,
+  type PayrollRuleWageInput,
   type PayrollResult,
+  type ShiftWageInput,
 } from "@/lib/payroll/calculateShiftWage";
 
+type LessonShiftInput = ShiftWageInput & {
+  shiftType: string;
+};
+
+type LessonRangeInput = Pick<ShiftLessonRange, "startPeriod" | "endPeriod">;
+
 export function calculateLessonShiftWage(
-  shift: Shift,
-  shiftLessonRange: ShiftLessonRange,
-  payrollRule: PayrollRule,
+  shift: LessonShiftInput,
+  shiftLessonRange: LessonRangeInput,
+  payrollRule: PayrollRuleWageInput,
 ): PayrollResult {
   if (shift.shiftType !== "LESSON") {
     throw new Error("calculateLessonShiftWage は LESSON 型シフト専用です");
