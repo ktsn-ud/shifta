@@ -10,6 +10,11 @@ type PayrollSummaryQueryInput = {
   month: string;
 };
 
+type PayrollPreviewBaselineQueryInput = {
+  userId: string;
+  months: string[];
+};
+
 type ShiftDetailQueryInput = {
   shiftId: string;
 };
@@ -51,6 +56,12 @@ type WorkplaceTimetablesQueryInput = {
   workplaceId: string;
 };
 
+function normalizeMonths(months: string[]): string[] {
+  return Array.from(new Set(months)).sort((left, right) =>
+    left.localeCompare(right),
+  );
+}
+
 export const queryKeys = {
   shifts: {
     month: (input: MonthShiftsQueryInput) =>
@@ -65,6 +76,15 @@ export const queryKeys = {
   payroll: {
     summary: (input: PayrollSummaryQueryInput) =>
       ["payroll", "summary", input] as const,
+    previewBaseline: (input: PayrollPreviewBaselineQueryInput) =>
+      [
+        "payroll",
+        "previewBaseline",
+        {
+          userId: input.userId,
+          months: normalizeMonths(input.months),
+        },
+      ] as const,
     detailsMonthly: (input: PayrollDetailsMonthlyQueryInput) =>
       ["payroll", "details", "monthly", input] as const,
     detailsWorkplaceYearly: (input: PayrollDetailsWorkplaceYearlyQueryInput) =>

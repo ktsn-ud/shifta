@@ -44,6 +44,64 @@ function jsonResponse(payload: unknown, status = 200): Response {
   } as Response;
 }
 
+function handleShiftPreviewFetch(input: string): Response | null {
+  const workplaceDetailMatch = input.match(/^\/api\/workplaces\/([^/]+)$/);
+  if (workplaceDetailMatch) {
+    return jsonResponse({
+      data: {
+        id: workplaceDetailMatch[1],
+        name: "勤務先A",
+        type: "GENERAL",
+        color: "#3366FF",
+        closingDayType: "DAY_OF_MONTH",
+        closingDay: 15,
+        payday: 25,
+      },
+    });
+  }
+
+  const payrollRulesMatch = input.match(
+    /^\/api\/workplaces\/([^/]+)\/payroll-rules$/,
+  );
+  if (payrollRulesMatch) {
+    return jsonResponse({
+      data: [
+        {
+          workplaceId: payrollRulesMatch[1],
+          startDate: "2026-01-01",
+          endDate: null,
+          baseHourlyWage: 1200,
+          holidayAllowanceHourly: 0,
+          nightPremiumRate: 0.25,
+          overtimePremiumRate: 0.25,
+          dailyOvertimeThreshold: 8,
+          holidayType: "NONE",
+        },
+      ],
+    });
+  }
+
+  if (input.startsWith("/api/payroll/preview-baseline?")) {
+    const url = new URL(`http://localhost${input}`);
+    const months = (url.searchParams.get("months") ?? "")
+      .split(",")
+      .map((value) => value.trim())
+      .filter((value) => value.length > 0);
+
+    return jsonResponse({
+      data: {
+        months: months.map((month) => ({
+          month,
+          totalWage: 0,
+          byWorkplace: [],
+        })),
+      },
+    });
+  }
+
+  return null;
+}
+
 describe("major flow integration", () => {
   beforeEach(() => {
     jest.useFakeTimers().setSystemTime(new Date("2026-03-15T09:00:00.000Z"));
@@ -79,7 +137,12 @@ describe("major flow integration", () => {
         );
       }
 
-      throw new Error(`Unexpected fetch: ${input}`);
+      const previewResponse = handleShiftPreviewFetch(input);
+      if (previewResponse) {
+        return previewResponse;
+      }
+
+      throw new Error("Unexpected fetch: " + input);
     });
 
     render(<WorkplaceForm mode="create" />);
@@ -178,7 +241,12 @@ describe("major flow integration", () => {
           return jsonResponse({ data: { id: "shift-lesson-1" } }, 201);
         }
 
-        throw new Error(`Unexpected fetch: ${input}`);
+        const previewResponse = handleShiftPreviewFetch(input);
+        if (previewResponse) {
+          return previewResponse;
+        }
+
+        throw new Error("Unexpected fetch: " + input);
       },
     );
 

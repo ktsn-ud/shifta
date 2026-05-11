@@ -35,6 +35,22 @@ describe("queryKeys", () => {
     expect(monthly).not.toEqual(yearly);
   });
 
+  it("給与プレビューbaselineキーは月配列を正規化する", () => {
+    expect(
+      queryKeys.payroll.previewBaseline({
+        userId: "user-1",
+        months: ["2026-07", "2026-06", "2026-07"],
+      }),
+    ).toEqual([
+      "payroll",
+      "previewBaseline",
+      {
+        userId: "user-1",
+        months: ["2026-06", "2026-07"],
+      },
+    ]);
+  });
+
   it("勤務先関連キーは機能ごとに分かれる", () => {
     const list = queryKeys.workplaces.list({
       userId: "user-1",

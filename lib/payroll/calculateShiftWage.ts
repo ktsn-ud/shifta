@@ -1,4 +1,4 @@
-import type { PayrollRule, Shift } from "@/lib/generated/prisma/client";
+import type { HolidayType } from "@/lib/generated/prisma/enums";
 import {
   calculateNightHours,
   calculateOvertimeHours,
@@ -6,6 +6,24 @@ import {
 } from "@/lib/payroll/timeClassification";
 
 type DecimalLike = number | string | { toString: () => string };
+
+export type ShiftWageInput = {
+  date: Date;
+  startTime: Date;
+  endTime: Date;
+  breakMinutes: number;
+};
+
+export type PayrollRuleWageInput = {
+  baseHourlyWage: DecimalLike;
+  holidayAllowanceHourly?: DecimalLike;
+  holidayHourlyWage?: DecimalLike;
+  nightPremiumRate?: DecimalLike;
+  nightMultiplier?: DecimalLike;
+  overtimePremiumRate?: DecimalLike;
+  dailyOvertimeThreshold: DecimalLike;
+  holidayType: HolidayType;
+};
 
 export type PayrollResult = {
   totalWage: number;
@@ -50,7 +68,7 @@ function toMinutes(time: Date): number {
   return time.getUTCHours() * 60 + time.getUTCMinutes();
 }
 
-function calculateWorkedHours(shift: Shift): number {
+function calculateWorkedHours(shift: ShiftWageInput): number {
   const start = toMinutes(shift.startTime);
   const end = toMinutes(shift.endTime);
   const adjustedEnd = end <= start ? end + 24 * 60 : end;
@@ -59,7 +77,7 @@ function calculateWorkedHours(shift: Shift): number {
 }
 
 function readPayrollRuleDecimal(
-  payrollRule: PayrollRule,
+  payrollRule: PayrollRuleWageInput,
   keys: string[],
   fallback = 0,
 ): number {
@@ -82,8 +100,8 @@ function readPayrollRuleDecimal(
 }
 
 export function calculateShiftWage(
-  shift: Shift,
-  payrollRule: PayrollRule,
+  shift: ShiftWageInput,
+  payrollRule: PayrollRuleWageInput,
 ): PayrollResult {
   const workHours = calculateWorkedHours(shift);
   const nightHoursRaw = calculateNightHours(shift.startTime, shift.endTime);
