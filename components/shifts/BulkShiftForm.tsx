@@ -7,6 +7,8 @@ import { ChevronLeftIcon, ChevronRightIcon, Trash2Icon } from "lucide-react";
 import { toast } from "sonner";
 import holidayJp from "@holiday-jp/holiday_jp";
 import { FormErrorMessage } from "@/components/form/form-error-message";
+import { ShiftPayrollPreviewFloating } from "@/components/shifts/ShiftPayrollPreviewFloating";
+import { useShiftPayrollPreview } from "@/components/shifts/use-shift-payroll-preview";
 import { Button } from "@/components/ui/button";
 import { Checkbox } from "@/components/ui/checkbox";
 import {
@@ -94,6 +96,25 @@ type Workplace = {
   type: "GENERAL" | "CRAM_SCHOOL";
 };
 
+type WorkplacePayrollCycleDetail = {
+  id: string;
+  closingDayType: "DAY_OF_MONTH" | "END_OF_MONTH";
+  closingDay: number | null;
+  payday: number;
+};
+
+type PreviewPayrollRule = {
+  workplaceId: string;
+  startDate: string;
+  endDate: string | null;
+  baseHourlyWage: number | string;
+  holidayAllowanceHourly: number | string;
+  nightPremiumRate: number | string;
+  overtimePremiumRate: number | string;
+  dailyOvertimeThreshold: number | string;
+  holidayType: "NONE" | "WEEKEND" | "HOLIDAY" | "WEEKEND_HOLIDAY";
+};
+
 type TimetableSetItem = {
   id: string;
   timetableSetId: string;
@@ -150,6 +171,12 @@ function isRecord(value: unknown): value is Record<string, unknown> {
 
 function isShiftWorkplaceType(value: unknown): value is Workplace["type"] {
   return value === "GENERAL" || value === "CRAM_SCHOOL";
+}
+
+function isClosingDayType(
+  value: unknown,
+): value is WorkplacePayrollCycleDetail["closingDayType"] {
+  return value === "DAY_OF_MONTH" || value === "END_OF_MONTH";
 }
 
 function isWorkplace(value: unknown): value is Workplace {
@@ -270,6 +297,86 @@ function parseTimetableSetListResponse(
   }
 
   return payload.data;
+}
+
+function parseWorkplacePayrollCycleResponse(
+  payload: unknown,
+): WorkplacePayrollCycleDetail | null {
+  if (!isRecord(payload) || !isRecord(payload.data)) {
+    return null;
+  }
+
+  const data = payload.data;
+  if (
+    typeof data.id !== "string" ||
+    !isClosingDayType(data.closingDayType) ||
+    (typeof data.closingDay !== "number" && data.closingDay !== null) ||
+    typeof data.payday !== "number"
+  ) {
+    return null;
+  }
+
+  return {
+    id: data.id,
+    closingDayType: data.closingDayType,
+    closingDay: data.closingDay,
+    payday: data.payday,
+  };
+}
+
+function isPreviewPayrollRule(value: unknown): value is PreviewPayrollRule {
+  if (!isRecord(value)) {
+    return false;
+  }
+
+  return (
+    typeof value.workplaceId === "string" &&
+    typeof value.startDate === "string" &&
+    (typeof value.endDate === "string" || value.endDate === null) &&
+    (typeof value.baseHourlyWage === "number" ||
+      typeof value.baseHourlyWage === "string") &&
+    (typeof value.holidayAllowanceHourly === "number" ||
+      typeof value.holidayAllowanceHourly === "string") &&
+    (typeof value.nightPremiumRate === "number" ||
+      typeof value.nightPremiumRate === "string") &&
+    (typeof value.overtimePremiumRate === "number" ||
+      typeof value.overtimePremiumRate === "string") &&
+    (typeof value.dailyOvertimeThreshold === "number" ||
+      typeof value.dailyOvertimeThreshold === "string") &&
+    (value.holidayType === "NONE" ||
+      value.holidayType === "WEEKEND" ||
+      value.holidayType === "HOLIDAY" ||
+      value.holidayType === "WEEKEND_HOLIDAY")
+  );
+}
+
+function parsePreviewPayrollRuleListResponse(
+  payload: unknown,
+): PreviewPayrollRule[] | null {
+  if (!isRecord(payload) || !Array.isArray(payload.data)) {
+    return null;
+  }
+
+  if (payload.data.every(isPreviewPayrollRule) === false) {
+    return null;
+  }
+
+  return payload.data;
+}
+
+function normalizeTimeOnly(value: string): string {
+  if (TIME_ONLY_REGEX.test(value)) {
+    return value.length >= 5 ? value.slice(0, 5) : value;
+  }
+
+  const asDate = new Date(value);
+  if (Number.isNaN(asDate.getTime())) {
+    return "";
+  }
+
+  const hours = String(asDate.getUTCHours()).padStart(2, "0");
+  const minutes = String(asDate.getUTCMinutes()).padStart(2, "0");
+  return `${hours}:${minutes}`;
 }
 
 function parseGoogleCalendarEventsResponse(payload: unknown): {
@@ -704,6 +811,52 @@ export function BulkShiftForm() {
     return workplaces.find((workplace) => workplace.id === selectedWorkplaceId);
   }, [selectedWorkplaceId, workplaces]);
 
+  const workplacePayrollCycleQuery = useQuery({
+    queryKey: queryKeys.workplaces.editDetail({
+      workplaceId: selectedWorkplaceId,
+    }),
+    queryFn: ({ signal }) =>
+      fetchJson(`/api/workplaces/${selectedWorkplaceId}`, {
+        init: { signal, cache: "no-store" },
+        fallbackMessage: "勤務先情報の取得に失敗しました。",
+        parse: (payload) => {
+          const parsed = parseWorkplacePayrollCycleResponse(payload);
+          if (!parsed) {
+            throw new Error("WORKPLACE_PAYROLL_CYCLE_RESPONSE_INVALID");
+          }
+          return parsed;
+        },
+      }),
+    enabled: Boolean(selectedWorkplaceId),
+    staleTime: 5 * 60 * 1000,
+    gcTime: 15 * 60 * 1000,
+    refetchOnWindowFocus: false,
+    refetchOnReconnect: false,
+  });
+
+  const previewPayrollRulesQuery = useQuery({
+    queryKey: queryKeys.workplaces.payrollRules({
+      workplaceId: selectedWorkplaceId,
+    }),
+    queryFn: ({ signal }) =>
+      fetchJson(`/api/workplaces/${selectedWorkplaceId}/payroll-rules`, {
+        init: { signal, cache: "no-store" },
+        fallbackMessage: "給与ルール一覧の取得に失敗しました。",
+        parse: (payload) => {
+          const parsed = parsePreviewPayrollRuleListResponse(payload);
+          if (!parsed) {
+            throw new Error("PREVIEW_PAYROLL_RULES_RESPONSE_INVALID");
+          }
+          return parsed;
+        },
+      }),
+    enabled: Boolean(selectedWorkplaceId),
+    staleTime: 5 * 60 * 1000,
+    gcTime: 15 * 60 * 1000,
+    refetchOnWindowFocus: false,
+    refetchOnReconnect: false,
+  });
+
   const timetableSetsQuery = useQuery({
     queryKey: queryKeys.workplaces.timetables({
       workplaceId: selectedWorkplace?.id ?? "",
@@ -779,6 +932,69 @@ export function BulkShiftForm() {
       .map((dateKey) => rowsByDate[dateKey])
       .filter((row): row is BulkShiftRow => Boolean(row));
   }, [rowsByDate, selectedDateKeys]);
+
+  const previewWorkplaces = useMemo(() => {
+    const detail = workplacePayrollCycleQuery.data;
+    if (!detail) {
+      return [];
+    }
+
+    return [
+      {
+        id: detail.id,
+        closingDayType: detail.closingDayType,
+        closingDay: detail.closingDay,
+        payday: detail.payday,
+      },
+    ];
+  }, [workplacePayrollCycleQuery.data]);
+
+  const previewTimetableSets = useMemo(
+    () =>
+      timetableSets.map((set) => ({
+        id: set.id,
+        workplaceId: set.workplaceId,
+        items: set.items.map((item) => ({
+          timetableSetId: item.timetableSetId,
+          period: item.period,
+          startTime: normalizeTimeOnly(item.startTime),
+          endTime: normalizeTimeOnly(item.endTime),
+        })),
+      })),
+    [timetableSets],
+  );
+
+  const previewInputShifts = useMemo(() => {
+    if (!selectedWorkplaceId || previewWorkplaces.length === 0) {
+      return [];
+    }
+
+    return selectedRows.map((row) => ({
+      temporaryId: row.date,
+      workplaceId: selectedWorkplaceId,
+      date: row.date,
+      shiftType: row.shiftType,
+      startTime: row.startTime,
+      endTime: row.endTime,
+      breakMinutes: Number(row.breakMinutes) || 0,
+      lessonRange:
+        row.shiftType === "LESSON"
+          ? {
+              timetableSetId: row.timetableSetId,
+              startPeriod: Number(row.startPeriod),
+              endPeriod: Number(row.endPeriod),
+            }
+          : undefined,
+    }));
+  }, [previewWorkplaces.length, selectedRows, selectedWorkplaceId]);
+
+  const shiftPayrollPreview = useShiftPayrollPreview({
+    userId: loadQueryUserId,
+    shifts: previewInputShifts,
+    workplaces: previewWorkplaces,
+    payrollRules: previewPayrollRulesQuery.data ?? [],
+    timetableSets: previewTimetableSets,
+  });
 
   const calendarFilterKey = useMemo(
     () =>
@@ -1552,8 +1768,14 @@ export function BulkShiftForm() {
           )
         : undefined);
 
+  const previewEmptyMessage =
+    selectedRows.length === 0
+      ? "日付とシフト情報を入力すると支給額を確認できます"
+      : (shiftPayrollPreview.items.find((item) => item.status !== "ready")
+          ?.message ?? "日付とシフト情報を入力すると支給額を確認できます");
+
   return (
-    <section className="space-y-6 p-4 md:p-6">
+    <section className="space-y-6 p-4 pb-32 md:p-6 md:pb-6">
       <header className="space-y-1">
         <h2 className="text-xl font-semibold">シフト一括登録</h2>
         <p className="text-sm text-muted-foreground">
@@ -2576,6 +2798,13 @@ export function BulkShiftForm() {
           </Button>
         </div>
       </Form>
+
+      <ShiftPayrollPreviewFloating
+        months={shiftPayrollPreview.months}
+        unresolvedCount={shiftPayrollPreview.unresolvedCount}
+        emptyMessage={previewEmptyMessage}
+        baselineErrorMessage={shiftPayrollPreview.baselineErrorMessage}
+      />
 
       <Dialog
         open={isOvernightConfirmOpen}

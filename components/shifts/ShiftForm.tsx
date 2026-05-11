@@ -6,6 +6,8 @@ import { useRouter } from "next/navigation";
 import { toast } from "sonner";
 import { ConfirmDialog } from "@/components/modal/confirm-dialog";
 import { FormErrorMessage } from "@/components/form/form-error-message";
+import { ShiftPayrollPreviewFloating } from "@/components/shifts/ShiftPayrollPreviewFloating";
+import { useShiftPayrollPreview } from "@/components/shifts/use-shift-payroll-preview";
 import { Button } from "@/components/ui/button";
 import { DatePicker } from "@/components/ui/date-picker";
 import {
@@ -70,6 +72,25 @@ type Workplace = {
   name: string;
   color: string;
   type: "GENERAL" | "CRAM_SCHOOL";
+};
+
+type WorkplacePayrollCycleDetail = {
+  id: string;
+  closingDayType: "DAY_OF_MONTH" | "END_OF_MONTH";
+  closingDay: number | null;
+  payday: number;
+};
+
+type PreviewPayrollRule = {
+  workplaceId: string;
+  startDate: string;
+  endDate: string | null;
+  baseHourlyWage: number | string;
+  holidayAllowanceHourly: number | string;
+  nightPremiumRate: number | string;
+  overtimePremiumRate: number | string;
+  dailyOvertimeThreshold: number | string;
+  holidayType: "NONE" | "WEEKEND" | "HOLIDAY" | "WEEKEND_HOLIDAY";
 };
 
 type TimetableSetItem = {
@@ -164,6 +185,12 @@ function isShiftWorkplaceType(value: unknown): value is Workplace["type"] {
   return value === "GENERAL" || value === "CRAM_SCHOOL";
 }
 
+function isClosingDayType(
+  value: unknown,
+): value is WorkplacePayrollCycleDetail["closingDayType"] {
+  return value === "DAY_OF_MONTH" || value === "END_OF_MONTH";
+}
+
 function isShiftType(value: unknown): value is ShiftType {
   return value === "NORMAL" || value === "LESSON";
 }
@@ -237,6 +264,71 @@ function parseTimetableSetListResponse(
   }
 
   if (payload.data.every(isTimetableSet) === false) {
+    return null;
+  }
+
+  return payload.data;
+}
+
+function parseWorkplacePayrollCycleResponse(
+  payload: unknown,
+): WorkplacePayrollCycleDetail | null {
+  if (!isRecord(payload) || !isRecord(payload.data)) {
+    return null;
+  }
+
+  const data = payload.data;
+  if (
+    typeof data.id !== "string" ||
+    !isClosingDayType(data.closingDayType) ||
+    (typeof data.closingDay !== "number" && data.closingDay !== null) ||
+    typeof data.payday !== "number"
+  ) {
+    return null;
+  }
+
+  return {
+    id: data.id,
+    closingDayType: data.closingDayType,
+    closingDay: data.closingDay,
+    payday: data.payday,
+  };
+}
+
+function isPreviewPayrollRule(value: unknown): value is PreviewPayrollRule {
+  if (!isRecord(value)) {
+    return false;
+  }
+
+  return (
+    typeof value.workplaceId === "string" &&
+    typeof value.startDate === "string" &&
+    (typeof value.endDate === "string" || value.endDate === null) &&
+    (typeof value.baseHourlyWage === "number" ||
+      typeof value.baseHourlyWage === "string") &&
+    (typeof value.holidayAllowanceHourly === "number" ||
+      typeof value.holidayAllowanceHourly === "string") &&
+    (typeof value.nightPremiumRate === "number" ||
+      typeof value.nightPremiumRate === "string") &&
+    (typeof value.overtimePremiumRate === "number" ||
+      typeof value.overtimePremiumRate === "string") &&
+    (typeof value.dailyOvertimeThreshold === "number" ||
+      typeof value.dailyOvertimeThreshold === "string") &&
+    (value.holidayType === "NONE" ||
+      value.holidayType === "WEEKEND" ||
+      value.holidayType === "HOLIDAY" ||
+      value.holidayType === "WEEKEND_HOLIDAY")
+  );
+}
+
+function parsePreviewPayrollRuleListResponse(
+  payload: unknown,
+): PreviewPayrollRule[] | null {
+  if (!isRecord(payload) || !Array.isArray(payload.data)) {
+    return null;
+  }
+
+  if (payload.data.every(isPreviewPayrollRule) === false) {
     return null;
   }
 
@@ -545,6 +637,52 @@ export function ShiftForm({
   const selectedWorkplaceId = form.workplaceId;
   const selectedWorkplaceType = selectedWorkplace?.type;
 
+  const workplacePayrollCycleQuery = useQuery({
+    queryKey: queryKeys.workplaces.editDetail({
+      workplaceId: selectedWorkplaceId,
+    }),
+    queryFn: ({ signal }) =>
+      fetchJson(`/api/workplaces/${selectedWorkplaceId}`, {
+        init: { signal, cache: "no-store" },
+        fallbackMessage: "勤務先情報の取得に失敗しました。",
+        parse: (payload) => {
+          const parsed = parseWorkplacePayrollCycleResponse(payload);
+          if (!parsed) {
+            throw new Error("WORKPLACE_PAYROLL_CYCLE_RESPONSE_INVALID");
+          }
+          return parsed;
+        },
+      }),
+    enabled: Boolean(selectedWorkplaceId),
+    staleTime: 5 * 60 * 1000,
+    gcTime: 15 * 60 * 1000,
+    refetchOnWindowFocus: false,
+    refetchOnReconnect: false,
+  });
+
+  const previewPayrollRulesQuery = useQuery({
+    queryKey: queryKeys.workplaces.payrollRules({
+      workplaceId: selectedWorkplaceId,
+    }),
+    queryFn: ({ signal }) =>
+      fetchJson(`/api/workplaces/${selectedWorkplaceId}/payroll-rules`, {
+        init: { signal, cache: "no-store" },
+        fallbackMessage: "給与ルール一覧の取得に失敗しました。",
+        parse: (payload) => {
+          const parsed = parsePreviewPayrollRuleListResponse(payload);
+          if (!parsed) {
+            throw new Error("PREVIEW_PAYROLL_RULES_RESPONSE_INVALID");
+          }
+          return parsed;
+        },
+      }),
+    enabled: Boolean(selectedWorkplaceId),
+    staleTime: 5 * 60 * 1000,
+    gcTime: 15 * 60 * 1000,
+    refetchOnWindowFocus: false,
+    refetchOnReconnect: false,
+  });
+
   const timetableSetsQuery = useQuery({
     queryKey: queryKeys.workplaces.timetables({
       workplaceId: selectedWorkplaceId,
@@ -609,6 +747,94 @@ export function ShiftForm({
     () => findSetItemByPeriod(selectedSet, form.endPeriod),
     [form.endPeriod, selectedSet],
   );
+
+  const previewWorkplaces = useMemo(() => {
+    const detail = workplacePayrollCycleQuery.data;
+    if (!detail) {
+      return [];
+    }
+
+    return [
+      {
+        id: detail.id,
+        closingDayType: detail.closingDayType,
+        closingDay: detail.closingDay,
+        payday: detail.payday,
+      },
+    ];
+  }, [workplacePayrollCycleQuery.data]);
+
+  const previewTimetableSets = useMemo(
+    () =>
+      timetableSets.map((set) => ({
+        id: set.id,
+        workplaceId: set.workplaceId,
+        items: set.items.map((item) => ({
+          timetableSetId: item.timetableSetId,
+          period: item.period,
+          startTime: toTimeOnly(item.startTime),
+          endTime: toTimeOnly(item.endTime),
+        })),
+      })),
+    [timetableSets],
+  );
+
+  const previewInputShifts = useMemo(() => {
+    if (
+      mode !== "create" ||
+      !form.workplaceId ||
+      !form.date ||
+      previewWorkplaces.length === 0
+    ) {
+      return [];
+    }
+
+    const shiftType: "LESSON" | "NORMAL" =
+      selectedWorkplaceType === "CRAM_SCHOOL" && form.shiftType === "LESSON"
+        ? "LESSON"
+        : "NORMAL";
+
+    return [
+      {
+        temporaryId: "new-shift",
+        workplaceId: form.workplaceId,
+        date: form.date,
+        shiftType,
+        startTime: form.startTime,
+        endTime: form.endTime,
+        breakMinutes: Number(form.breakMinutes) || 0,
+        lessonRange:
+          shiftType === "LESSON"
+            ? {
+                timetableSetId: form.timetableSetId,
+                startPeriod: Number(form.startPeriod),
+                endPeriod: Number(form.endPeriod),
+              }
+            : undefined,
+      },
+    ];
+  }, [
+    form.breakMinutes,
+    form.date,
+    form.endPeriod,
+    form.endTime,
+    form.shiftType,
+    form.startPeriod,
+    form.startTime,
+    form.timetableSetId,
+    form.workplaceId,
+    mode,
+    previewWorkplaces.length,
+    selectedWorkplaceType,
+  ]);
+
+  const shiftPayrollPreview = useShiftPayrollPreview({
+    userId: loadQueryUserId,
+    shifts: previewInputShifts,
+    workplaces: previewWorkplaces,
+    payrollRules: previewPayrollRulesQuery.data ?? [],
+    timetableSets: previewTimetableSets,
+  });
 
   useEffect(() => {
     if (mode !== "edit") {
@@ -1310,8 +1536,12 @@ export function ShiftForm({
     );
   }
 
+  const previewEmptyMessage =
+    shiftPayrollPreview.items.find((item) => item.status !== "ready")
+      ?.message ?? "シフト情報を入力すると支給額を確認できます";
+
   return (
-    <section className="space-y-6 p-4 md:p-6">
+    <section className="space-y-6 p-4 pb-28 md:p-6 md:pb-6">
       <header className="space-y-2">
         <h2 className="text-xl font-semibold">
           {mode === "create" ? "シフト入力" : "シフト編集"}
@@ -1664,6 +1894,15 @@ export function ShiftForm({
           </Button>
         </div>
       </Form>
+
+      {mode === "create" ? (
+        <ShiftPayrollPreviewFloating
+          months={shiftPayrollPreview.months}
+          unresolvedCount={shiftPayrollPreview.unresolvedCount}
+          emptyMessage={previewEmptyMessage}
+          baselineErrorMessage={shiftPayrollPreview.baselineErrorMessage}
+        />
+      ) : null}
 
       <ConfirmDialog
         open={isOvernightDialogOpen}
