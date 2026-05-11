@@ -5,6 +5,7 @@
 - Base: `/api`
 - 認証: NextAuth セッション必須（`/api/auth/*` を除く）
 - レスポンス形式: 成功時 `data` または `success`、失敗時 `error`
+- 予定 API は、設計済みだが未実装のエンドポイントとして明記する
 
 ## Auth
 
@@ -70,8 +71,50 @@
 
 主なクエリパラメータ:
 
-- `startDate` (`YYYY-MM-DD`)
-- `endDate` (`YYYY-MM-DD`)
+- `month` (`YYYY-MM`)
+  - 支給月を指定する。
+  - 例: `2026-06`
+
+## Payroll Preview
+
+シフト登録画面で、入力中の未保存シフトを反映した支給月別プレビューを表示するための軽量 baseline API。
+
+| Method | Path                            | 概要                                           |
+| ------ | ------------------------------- | ---------------------------------------------- |
+| `GET`  | `/api/payroll/preview-baseline` | 支給月ごとの既存支給見込を取得（プレビュー用） |
+
+主なクエリパラメータ:
+
+- `months` (`YYYY-MM,YYYY-MM`)
+  - 取得対象の支給月をカンマ区切りで指定する
+  - 例: `2026-06,2026-07`
+
+レスポンス主要項目:
+
+```ts
+type PayrollPreviewBaselineResponse = {
+  data: {
+    months: {
+      month: string;
+      totalWage: number;
+      byWorkplace: {
+        workplaceId: string;
+        wage: number;
+        periodStartDate: string;
+        periodEndDate: string;
+      }[];
+    }[];
+  };
+};
+```
+
+仕様:
+
+- 認証済みユーザーの DB 保存済みシフトだけを対象にする。
+- 未確定シフトも含める。
+- Google Calendar 側の予定は含めない。
+- 入力中の未保存シフト分は API では計算せず、クライアント側で差分計算する。
+- 不正な `months` は `400` を返す。
 
 ## Google Calendar
 

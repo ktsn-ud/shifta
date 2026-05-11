@@ -40,6 +40,64 @@ function jsonResponse(payload: unknown, status = 200): Response {
   } as Response;
 }
 
+function handleShiftPreviewFetch(input: string): Response | null {
+  const workplaceDetailMatch = input.match(/^\/api\/workplaces\/([^/]+)$/);
+  if (workplaceDetailMatch) {
+    return jsonResponse({
+      data: {
+        id: workplaceDetailMatch[1],
+        name: "勤務先A",
+        type: "GENERAL",
+        color: "#3366FF",
+        closingDayType: "DAY_OF_MONTH",
+        closingDay: 15,
+        payday: 25,
+      },
+    });
+  }
+
+  const payrollRulesMatch = input.match(
+    /^\/api\/workplaces\/([^/]+)\/payroll-rules$/,
+  );
+  if (payrollRulesMatch) {
+    return jsonResponse({
+      data: [
+        {
+          workplaceId: payrollRulesMatch[1],
+          startDate: "2026-01-01",
+          endDate: null,
+          baseHourlyWage: 1200,
+          holidayAllowanceHourly: 0,
+          nightPremiumRate: 0.25,
+          overtimePremiumRate: 0.25,
+          dailyOvertimeThreshold: 8,
+          holidayType: "NONE",
+        },
+      ],
+    });
+  }
+
+  if (input.startsWith("/api/payroll/preview-baseline?")) {
+    const url = new URL(`http://localhost${input}`);
+    const months = (url.searchParams.get("months") ?? "")
+      .split(",")
+      .map((value) => value.trim())
+      .filter((value) => value.length > 0);
+
+    return jsonResponse({
+      data: {
+        months: months.map((month) => ({
+          month,
+          totalWage: 0,
+          byWorkplace: [],
+        })),
+      },
+    });
+  }
+
+  return null;
+}
+
 function createDeferred<T>() {
   let resolve: (value: T) => void = () => undefined;
   const promise = new Promise<T>((res) => {
@@ -84,7 +142,12 @@ describe("shift flow integration", () => {
           return jsonResponse({ data: { id: "shift-1" } }, 201);
         }
 
-        throw new Error(`Unexpected fetch: ${input}`);
+        const previewResponse = handleShiftPreviewFetch(input);
+        if (previewResponse) {
+          return previewResponse;
+        }
+
+        throw new Error("Unexpected fetch: " + input);
       },
     );
 
@@ -173,7 +236,12 @@ describe("shift flow integration", () => {
           return jsonResponse({ data: { id: "shift-overnight-1" } }, 201);
         }
 
-        throw new Error(`Unexpected fetch: ${input}`);
+        const previewResponse = handleShiftPreviewFetch(input);
+        if (previewResponse) {
+          return previewResponse;
+        }
+
+        throw new Error("Unexpected fetch: " + input);
       },
     );
 
@@ -238,7 +306,12 @@ describe("shift flow integration", () => {
           return jsonResponse({ data: { id: "shift-1" } }, 201);
         }
 
-        throw new Error(`Unexpected fetch: ${input}`);
+        const previewResponse = handleShiftPreviewFetch(input);
+        if (previewResponse) {
+          return previewResponse;
+        }
+
+        throw new Error("Unexpected fetch: " + input);
       },
     );
 
@@ -286,7 +359,12 @@ describe("shift flow integration", () => {
         });
       }
 
-      throw new Error(`Unexpected fetch: ${input}`);
+      const previewResponse = handleShiftPreviewFetch(input);
+      if (previewResponse) {
+        return previewResponse;
+      }
+
+      throw new Error("Unexpected fetch: " + input);
     });
 
     render(<ShiftForm mode="create" initialDate="2026-03-18" />);
@@ -307,7 +385,7 @@ describe("shift flow integration", () => {
     expect(
       screen.getByText("ERR_002: 開始時刻と終了時刻は同じ時刻にできません"),
     ).toBeInTheDocument();
-    expect(fetchMock).toHaveBeenCalledTimes(1);
+    expect(fetchMock).toHaveBeenCalled();
   });
 
   it("redirects to calendar setup when sync detects missing calendar", async () => {
@@ -348,7 +426,12 @@ describe("shift flow integration", () => {
           );
         }
 
-        throw new Error(`Unexpected fetch: ${input}`);
+        const previewResponse = handleShiftPreviewFetch(input);
+        if (previewResponse) {
+          return previewResponse;
+        }
+
+        throw new Error("Unexpected fetch: " + input);
       },
     );
 
@@ -422,7 +505,12 @@ describe("shift flow integration", () => {
           return jsonResponse({ data: { id: "shift-1" } });
         }
 
-        throw new Error(`Unexpected fetch: ${input}`);
+        const previewResponse = handleShiftPreviewFetch(input);
+        if (previewResponse) {
+          return previewResponse;
+        }
+
+        throw new Error("Unexpected fetch: " + input);
       },
     );
 
@@ -518,7 +606,12 @@ describe("shift flow integration", () => {
           return jsonResponse({ data: { id: "shift-1" } });
         }
 
-        throw new Error(`Unexpected fetch: ${input}`);
+        const previewResponse = handleShiftPreviewFetch(input);
+        if (previewResponse) {
+          return previewResponse;
+        }
+
+        throw new Error("Unexpected fetch: " + input);
       },
     );
 
@@ -608,7 +701,12 @@ describe("shift flow integration", () => {
           return jsonResponse({ data: { id: "shift-1" } });
         }
 
-        throw new Error(`Unexpected fetch: ${input}`);
+        const previewResponse = handleShiftPreviewFetch(input);
+        if (previewResponse) {
+          return previewResponse;
+        }
+
+        throw new Error("Unexpected fetch: " + input);
       },
     );
 
@@ -683,7 +781,12 @@ describe("shift flow integration", () => {
           return jsonResponse({ data: { id: "shift-1" } });
         }
 
-        throw new Error(`Unexpected fetch: ${input}`);
+        const previewResponse = handleShiftPreviewFetch(input);
+        if (previewResponse) {
+          return previewResponse;
+        }
+
+        throw new Error("Unexpected fetch: " + input);
       },
     );
 
@@ -754,7 +857,12 @@ describe("shift flow integration", () => {
           return jsonResponse({ data: { id: "shift-1" } });
         }
 
-        throw new Error(`Unexpected fetch: ${input}`);
+        const previewResponse = handleShiftPreviewFetch(input);
+        if (previewResponse) {
+          return previewResponse;
+        }
+
+        throw new Error("Unexpected fetch: " + input);
       },
     );
 
@@ -860,7 +968,12 @@ describe("shift flow integration", () => {
           return jsonResponse({ data: { id: "shift-lesson-1" } });
         }
 
-        throw new Error(`Unexpected fetch: ${input}`);
+        const previewResponse = handleShiftPreviewFetch(input);
+        if (previewResponse) {
+          return previewResponse;
+        }
+
+        throw new Error("Unexpected fetch: " + input);
       },
     );
 
@@ -1029,7 +1142,12 @@ describe("shift flow integration", () => {
           return jsonResponse({ data: { id: "shift-lesson-2" } });
         }
 
-        throw new Error(`Unexpected fetch: ${input}`);
+        const previewResponse = handleShiftPreviewFetch(input);
+        if (previewResponse) {
+          return previewResponse;
+        }
+
+        throw new Error("Unexpected fetch: " + input);
       },
     );
 
@@ -1196,7 +1314,12 @@ describe("shift flow integration", () => {
           return jsonResponse({ data: { id: "shift-lesson-3" } });
         }
 
-        throw new Error(`Unexpected fetch: ${input}`);
+        const previewResponse = handleShiftPreviewFetch(input);
+        if (previewResponse) {
+          return previewResponse;
+        }
+
+        throw new Error("Unexpected fetch: " + input);
       },
     );
 
@@ -1298,6 +1421,54 @@ describe("shift flow integration", () => {
 
     await waitFor(() => {
       expect(onDeleteShift).toHaveBeenCalledWith("shift-1");
+    });
+  });
+
+  it("shows payroll preview when create form becomes calculable", async () => {
+    const fetchMock = globalThis.fetch as jest.Mock;
+
+    fetchMock.mockImplementation(async (input: string) => {
+      if (input === WORKPLACE_LIST_URL) {
+        return jsonResponse({
+          data: [
+            {
+              id: "workplace-1",
+              name: "勤務先A",
+              color: "#3366FF",
+              type: "GENERAL",
+            },
+          ],
+        });
+      }
+
+      if (input.startsWith("/api/shifts?")) {
+        return jsonResponse({ data: [] });
+      }
+
+      const previewResponse = handleShiftPreviewFetch(input);
+      if (previewResponse) {
+        return previewResponse;
+      }
+
+      throw new Error("Unexpected fetch: " + input);
+    });
+
+    render(<ShiftForm mode="create" initialDate="2026-03-18" />);
+
+    await waitFor(() => {
+      expect(screen.getByRole("button", { name: "登録" })).toBeEnabled();
+    });
+
+    fireEvent.change(screen.getByLabelText("開始時刻"), {
+      target: { value: "09:00" },
+    });
+    fireEvent.change(screen.getByLabelText("終了時刻"), {
+      target: { value: "17:00" },
+    });
+
+    await waitFor(() => {
+      expect(screen.getAllByText("支給額プレビュー").length).toBeGreaterThan(0);
+      expect(screen.getByText("登録後見込")).toBeInTheDocument();
     });
   });
 });

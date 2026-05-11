@@ -7,6 +7,7 @@ export async function invalidateAfterShiftMutation(
   await Promise.all([
     queryClient.invalidateQueries({ queryKey: ["shifts"] }),
     queryClient.invalidateQueries({ queryKey: ["payroll", "summary"] }),
+    queryClient.invalidateQueries({ queryKey: ["payroll", "previewBaseline"] }),
     queryClient.invalidateQueries({ queryKey: ["payroll", "details"] }),
     queryClient.invalidateQueries({ queryKey: ["workplaces"] }),
   ]);
@@ -19,6 +20,7 @@ export async function invalidateAfterWorkplaceMutation(
     queryClient.invalidateQueries({ queryKey: ["workplaces"] }),
     queryClient.invalidateQueries({ queryKey: ["shifts"] }),
     queryClient.invalidateQueries({ queryKey: ["payroll", "summary"] }),
+    queryClient.invalidateQueries({ queryKey: ["payroll", "previewBaseline"] }),
     queryClient.invalidateQueries({ queryKey: ["payroll", "details"] }),
   ]);
 }
@@ -41,6 +43,7 @@ export async function invalidateAfterPayrollRuleMutation(
       queryKey: ["workplaces", "payrollRuleDetail"],
     }),
     queryClient.invalidateQueries({ queryKey: ["payroll", "summary"] }),
+    queryClient.invalidateQueries({ queryKey: ["payroll", "previewBaseline"] }),
     queryClient.invalidateQueries({ queryKey: ["payroll", "details"] }),
     queryClient.invalidateQueries({ queryKey: ["shifts"] }),
   ]);

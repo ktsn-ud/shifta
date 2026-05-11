@@ -43,6 +43,64 @@ function jsonResponse(payload: unknown, status = 200): Response {
   } as Response;
 }
 
+function handleBulkPreviewFetch(input: string): Response | null {
+  const workplaceDetailMatch = input.match(/^\/api\/workplaces\/([^/]+)$/);
+  if (workplaceDetailMatch) {
+    return jsonResponse({
+      data: {
+        id: workplaceDetailMatch[1],
+        name: "勤務先A",
+        type: "GENERAL",
+        color: "#3366FF",
+        closingDayType: "DAY_OF_MONTH",
+        closingDay: 15,
+        payday: 25,
+      },
+    });
+  }
+
+  const payrollRulesMatch = input.match(
+    /^\/api\/workplaces\/([^/]+)\/payroll-rules$/,
+  );
+  if (payrollRulesMatch) {
+    return jsonResponse({
+      data: [
+        {
+          workplaceId: payrollRulesMatch[1],
+          startDate: "2026-01-01",
+          endDate: null,
+          baseHourlyWage: 1200,
+          holidayAllowanceHourly: 0,
+          nightPremiumRate: 0.25,
+          overtimePremiumRate: 0.25,
+          dailyOvertimeThreshold: 8,
+          holidayType: "NONE",
+        },
+      ],
+    });
+  }
+
+  if (input.startsWith("/api/payroll/preview-baseline?")) {
+    const url = new URL(`http://localhost${input}`);
+    const months = (url.searchParams.get("months") ?? "")
+      .split(",")
+      .map((value) => value.trim())
+      .filter((value) => value.length > 0);
+
+    return jsonResponse({
+      data: {
+        months: months.map((month) => ({
+          month,
+          totalWage: 0,
+          byWorkplace: [],
+        })),
+      },
+    });
+  }
+
+  return null;
+}
+
 function dateKeyFromDay(day: number): string {
   const year = 2026;
   const month = 3;
@@ -125,7 +183,12 @@ describe("bulk shift flow integration", () => {
           );
         }
 
-        throw new Error(`Unexpected fetch: ${input}`);
+        const previewResponse = handleBulkPreviewFetch(input);
+        if (previewResponse) {
+          return previewResponse;
+        }
+
+        throw new Error("Unexpected fetch: " + input);
       },
     );
 
@@ -285,7 +348,12 @@ describe("bulk shift flow integration", () => {
           );
         }
 
-        throw new Error(`Unexpected fetch: ${input}`);
+        const previewResponse = handleBulkPreviewFetch(input);
+        if (previewResponse) {
+          return previewResponse;
+        }
+
+        throw new Error("Unexpected fetch: " + input);
       },
     );
 
@@ -392,7 +460,12 @@ describe("bulk shift flow integration", () => {
           );
         }
 
-        throw new Error(`Unexpected fetch: ${input}`);
+        const previewResponse = handleBulkPreviewFetch(input);
+        if (previewResponse) {
+          return previewResponse;
+        }
+
+        throw new Error("Unexpected fetch: " + input);
       },
     );
 
@@ -465,7 +538,12 @@ describe("bulk shift flow integration", () => {
         });
       }
 
-      throw new Error(`Unexpected fetch: ${input}`);
+      const previewResponse = handleBulkPreviewFetch(input);
+      if (previewResponse) {
+        return previewResponse;
+      }
+
+      throw new Error("Unexpected fetch: " + input);
     });
 
     render(<BulkShiftForm />);
@@ -525,7 +603,12 @@ describe("bulk shift flow integration", () => {
         });
       }
 
-      throw new Error(`Unexpected fetch: ${input}`);
+      const previewResponse = handleBulkPreviewFetch(input);
+      if (previewResponse) {
+        return previewResponse;
+      }
+
+      throw new Error("Unexpected fetch: " + input);
     });
 
     render(<BulkShiftForm />);
@@ -603,7 +686,12 @@ describe("bulk shift flow integration", () => {
         });
       }
 
-      throw new Error(`Unexpected fetch: ${input}`);
+      const previewResponse = handleBulkPreviewFetch(input);
+      if (previewResponse) {
+        return previewResponse;
+      }
+
+      throw new Error("Unexpected fetch: " + input);
     });
 
     render(<BulkShiftForm />);
@@ -624,6 +712,61 @@ describe("bulk shift flow integration", () => {
       expect(
         localStorage.getItem(BULK_CALENDAR_SELECTION_STORAGE_KEY),
       ).toBeNull();
+    });
+  });
+
+  it("shows payroll preview after selecting a date row", async () => {
+    const user = userEvent.setup({
+      advanceTimers: jest.advanceTimersByTime,
+    });
+    const fetchMock = globalThis.fetch as jest.Mock;
+
+    fetchMock.mockImplementation(async (input: string) => {
+      if (input.startsWith("/api/calendar/events?month=")) {
+        return jsonResponse({
+          data: {
+            month: "2026-03",
+            calendars: [],
+            selectedCalendarIds: [],
+            dates: [],
+          },
+        });
+      }
+
+      if (input === WORKPLACE_LIST_URL) {
+        return jsonResponse({
+          data: [
+            {
+              id: "workplace-1",
+              name: "勤務先A",
+              color: "#3366FF",
+              type: "GENERAL",
+            },
+          ],
+        });
+      }
+
+      const previewResponse = handleBulkPreviewFetch(input);
+      if (previewResponse) {
+        return previewResponse;
+      }
+
+      throw new Error("Unexpected fetch: " + input);
+    });
+
+    render(<BulkShiftForm />);
+
+    await waitFor(() => {
+      expect(
+        screen.getByRole("combobox", { name: "勤務先" }),
+      ).toHaveTextContent("勤務先A");
+    });
+
+    await user.click(findEnabledDayButton(20));
+
+    await waitFor(() => {
+      expect(screen.getAllByText("支給額プレビュー").length).toBeGreaterThan(0);
+      expect(screen.getByText("登録後見込")).toBeInTheDocument();
     });
   });
 });

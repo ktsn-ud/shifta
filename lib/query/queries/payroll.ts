@@ -3,6 +3,7 @@ import { fetchJson } from "@/lib/query/fetch-json";
 import { queryKeys } from "@/lib/query/query-keys";
 import { type PayrollDetailsMonthlyResult } from "@/lib/payroll/details";
 import { type PayrollDetailsWorkplaceYearlyResult } from "@/lib/payroll/details";
+import { type PayrollPreviewBaselineResult } from "@/lib/payroll/preview-baseline";
 import { type PayrollSummaryResult } from "@/lib/payroll/summary";
 
 const PAYROLL_STALE_TIME_MS = 2 * 60 * 1000;
@@ -50,6 +51,22 @@ function parsePayrollDetailsWorkplaceYearlyPayload(
   }
 
   return payload as PayrollDetailsWorkplaceYearlyResult;
+}
+
+function parsePayrollPreviewBaselinePayload(
+  payload: unknown,
+): PayrollPreviewBaselineResult {
+  if (
+    typeof payload !== "object" ||
+    payload === null ||
+    typeof (payload as { data?: unknown }).data !== "object" ||
+    (payload as { data?: { months?: unknown } }).data === null ||
+    !Array.isArray((payload as { data?: { months?: unknown[] } }).data?.months)
+  ) {
+    throw new Error("PAYROLL_PREVIEW_BASELINE_RESPONSE_INVALID");
+  }
+
+  return payload as PayrollPreviewBaselineResult;
 }
 
 export function usePayrollSummaryQuery(input: {
@@ -139,6 +156,42 @@ export function usePayrollDetailsWorkplaceYearlyQuery(input: {
     enabled,
     initialData,
     staleTime: PAYROLL_STALE_TIME_MS,
+    gcTime: PAYROLL_GC_TIME_MS,
+  });
+}
+
+export function usePayrollPreviewBaselineQuery(input: {
+  userId: string;
+  months: string[];
+  enabled?: boolean;
+  initialData?: PayrollPreviewBaselineResult;
+}) {
+  const { enabled = true, initialData, months, userId } = input;
+  const normalizedMonths = Array.from(new Set(months)).sort((left, right) =>
+    left.localeCompare(right),
+  );
+
+  return useQuery({
+    queryKey: queryKeys.payroll.previewBaseline({
+      userId,
+      months: normalizedMonths,
+    }),
+    queryFn: ({ signal }) => {
+      const params = new URLSearchParams({
+        months: normalizedMonths.join(","),
+      });
+      return fetchJson(`/api/payroll/preview-baseline?${params.toString()}`, {
+        init: {
+          signal,
+          cache: "no-store",
+        },
+        fallbackMessage: "プレビュー用支給見込の取得に失敗しました。",
+        parse: parsePayrollPreviewBaselinePayload,
+      });
+    },
+    enabled: enabled && normalizedMonths.length > 0,
+    initialData,
+    staleTime: 30 * 1000,
     gcTime: PAYROLL_GC_TIME_MS,
   });
 }
