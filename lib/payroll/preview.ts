@@ -6,6 +6,7 @@ import {
 } from "@/lib/api/date-time";
 import { calculateShiftWage } from "@/lib/payroll/calculateShiftWage";
 import { resolvePaymentMonthForShiftDate } from "@/lib/payroll/pay-period";
+import { resolveLessonTimeRangeFromRows } from "@/lib/shifts/lesson-time-range";
 
 type ShiftType = "NORMAL" | "LESSON" | "OTHER";
 type HolidayType = "NONE" | "WEEKEND" | "HOLIDAY" | "WEEKEND_HOLIDAY";
@@ -100,6 +101,12 @@ function toMonthKey(date: Date): string {
   const year = String(date.getUTCFullYear());
   const month = String(date.getUTCMonth() + 1).padStart(2, "0");
   return `${year}-${month}`;
+}
+
+function toTimeOnlyString(date: Date): string {
+  const hours = String(date.getUTCHours()).padStart(2, "0");
+  const minutes = String(date.getUTCMinutes()).padStart(2, "0");
+  return `${hours}:${minutes}`;
 }
 
 function isValidDateOnly(value: string): boolean {
@@ -234,8 +241,11 @@ function resolveShiftTime(
       };
     }
 
-    let startTime = "";
-    let endTime = "";
+    const timetableRows: Array<{
+      period: number;
+      startTime: Date;
+      endTime: Date;
+    }> = [];
     for (let period = startPeriod; period <= endPeriod; period += 1) {
       const key = `${timetableSetId}:${period}`;
       const item = timetableByPeriod.get(key);
@@ -246,15 +256,43 @@ function resolveShiftTime(
           message: "塾の時間割が登録されていません",
         };
       }
-      if (period === startPeriod) {
-        startTime = item.startTime;
+
+      if (
+        !TIME_ONLY_REGEX.test(item.startTime) ||
+        !TIME_ONLY_REGEX.test(item.endTime)
+      ) {
+        return {
+          value: null,
+          status: "invalid",
+          message: "塾の時間割が登録されていません",
+        };
       }
-      if (period === endPeriod) {
-        endTime = item.endTime;
+
+      try {
+        timetableRows.push({
+          period,
+          startTime: parseTimeOnly(item.startTime),
+          endTime: parseTimeOnly(item.endTime),
+        });
+      } catch {
+        return {
+          value: null,
+          status: "invalid",
+          message: "塾の時間割が登録されていません",
+        };
       }
     }
 
-    if (!TIME_ONLY_REGEX.test(startTime) || !TIME_ONLY_REGEX.test(endTime)) {
+    let lessonTimeRange;
+    try {
+      lessonTimeRange = resolveLessonTimeRangeFromRows(
+        {
+          startPeriod,
+          endPeriod,
+        },
+        timetableRows,
+      );
+    } catch {
       return {
         value: null,
         status: "invalid",
@@ -264,9 +302,9 @@ function resolveShiftTime(
 
     return {
       value: {
-        startTime,
-        endTime,
-        breakMinutes: 0,
+        startTime: toTimeOnlyString(lessonTimeRange.startTime),
+        endTime: toTimeOnlyString(lessonTimeRange.endTime),
+        breakMinutes: lessonTimeRange.breakMinutes,
       },
       status: "ready",
     };

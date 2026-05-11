@@ -195,4 +195,58 @@ describe("calculateShiftPayrollPreview", () => {
       }),
     ]);
   });
+
+  it("LESSONは時間割ギャップを休憩時間として自動計算する", () => {
+    const result = calculateShiftPayrollPreview({
+      shifts: [
+        {
+          temporaryId: "tmp-lesson-break",
+          workplaceId: "workplace-a",
+          date: "2026-06-10",
+          shiftType: "LESSON",
+          lessonRange: {
+            timetableSetId: "set-1",
+            startPeriod: 1,
+            endPeriod: 2,
+          },
+        },
+      ],
+      workplaces,
+      payrollRules,
+      timetableSets: [
+        {
+          id: "set-1",
+          workplaceId: "workplace-a",
+          items: [
+            {
+              timetableSetId: "set-1",
+              period: 1,
+              startTime: "09:00",
+              endTime: "10:00",
+            },
+            {
+              timetableSetId: "set-1",
+              period: 2,
+              startTime: "10:30",
+              endTime: "12:00",
+            },
+          ],
+        },
+      ],
+    });
+
+    expect(result.items).toEqual([
+      expect.objectContaining({
+        temporaryId: "tmp-lesson-break",
+        status: "ready",
+        wage: 2500,
+      }),
+    ]);
+    expect(result.months).toEqual([
+      expect.objectContaining({
+        month: "2026-07",
+        additionalWage: 2500,
+      }),
+    ]);
+  });
 });

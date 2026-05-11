@@ -7,22 +7,17 @@ import {
   toMinutes,
 } from "@/lib/api/date-time";
 import { prisma } from "@/lib/prisma";
+import {
+  resolveLessonTimeRangeFromRows as resolveLessonTimeRangeFromRowsShared,
+  type LessonRangeInput,
+  type LessonTimeRange,
+} from "@/lib/shifts/lesson-time-range";
 
 export class ShiftValidationError extends Error {
   constructor(message: string) {
     super(message);
     this.name = "ShiftValidationError";
   }
-}
-
-type TimetableRow = {
-  period: number;
-  startTime: Date;
-  endTime: Date;
-};
-
-function timeToMinutes(value: Date): number {
-  return value.getUTCHours() * 60 + value.getUTCMinutes();
 }
 
 export const lessonRangeSchema = z
@@ -80,12 +75,6 @@ export type BuiltShiftData = {
   } | null;
 };
 
-export type LessonTimeRange = {
-  startTime: Date;
-  endTime: Date;
-  breakMinutes: number;
-};
-
 export type LessonTimeRangeResolver = (
   workplaceId: string,
   lessonRange: z.infer<typeof lessonRangeSchema>,
@@ -139,63 +128,18 @@ function normalizeShiftComment(comment: ShiftInput["comment"]): string | null {
 }
 
 export function resolveLessonTimeRangeFromRows(
-  lessonRange: z.infer<typeof lessonRangeSchema>,
-  timetables: TimetableRow[],
+  lessonRange: LessonRangeInput,
+  timetables: Array<{
+    period: number;
+    startTime: Date;
+    endTime: Date;
+  }>,
 ): LessonTimeRange {
-  const expectedCount = lessonRange.endPeriod - lessonRange.startPeriod + 1;
-  if (timetables.length !== expectedCount) {
-    throw new ShiftValidationError("指定コマ範囲の時間割が不足しています");
-  }
-
-  for (let index = 0; index < timetables.length; index += 1) {
-    const expectedPeriod = lessonRange.startPeriod + index;
-    if (timetables[index]?.period !== expectedPeriod) {
-      throw new ShiftValidationError("コマ範囲に連続した時間割が存在しません");
-    }
-  }
-
-  const first = timetables[0];
-  const last = timetables[timetables.length - 1];
-
-  if (!first || !last) {
-    throw new ShiftValidationError("指定コマ範囲の時間割が見つかりません");
-  }
-
-  if (first.startTime.getTime() === last.endTime.getTime()) {
-    throw new ShiftValidationError("コマ範囲から算出された時刻が不正です");
-  }
-
-  let breakMinutes = 0;
-  let previousEndAbsoluteMinutes: number | null = null;
-
-  for (const timetable of timetables) {
-    let startAbsoluteMinutes = timeToMinutes(timetable.startTime);
-    let endAbsoluteMinutes = timeToMinutes(timetable.endTime);
-
-    if (endAbsoluteMinutes <= startAbsoluteMinutes) {
-      endAbsoluteMinutes += 24 * 60;
-    }
-
-    if (previousEndAbsoluteMinutes !== null) {
-      while (startAbsoluteMinutes < previousEndAbsoluteMinutes) {
-        startAbsoluteMinutes += 24 * 60;
-        endAbsoluteMinutes += 24 * 60;
-      }
-
-      breakMinutes += Math.max(
-        0,
-        startAbsoluteMinutes - previousEndAbsoluteMinutes,
-      );
-    }
-
-    previousEndAbsoluteMinutes = endAbsoluteMinutes;
-  }
-
-  return {
-    startTime: first.startTime,
-    endTime: last.endTime,
-    breakMinutes,
-  };
+  return resolveLessonTimeRangeFromRowsShared(
+    lessonRange,
+    timetables,
+    (message) => new ShiftValidationError(message),
+  );
 }
 
 async function resolveLessonTimeRangeFromDatabase(
