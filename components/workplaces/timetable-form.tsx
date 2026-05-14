@@ -31,6 +31,7 @@ import {
   resolveUserFacingErrorFromResponse,
   toUserFacingMessage,
 } from "@/lib/user-facing-error";
+import { useResetOnRouteHidden } from "@/hooks/use-reset-on-route-hidden";
 
 const timeRegex = /^([01]\d|2[0-3]):([0-5]\d)$/;
 
@@ -295,6 +296,13 @@ export function TimetableForm({
   const [errors, setErrors] = useState<FormErrors>({});
   const [rowErrors, setRowErrors] = useState<RowErrors[]>([]);
   const [isSubmitting, setIsSubmitting] = useState(false);
+  const { markForResetOnRouteHidden } = useResetOnRouteHidden(() => {
+    setValues(createEmptyFormValues());
+    setQueuedSets([]);
+    setErrors({});
+    setRowErrors([]);
+    setIsSubmitting(false);
+  });
 
   const pageTitle = useMemo(
     () => (isEdit ? "時間割セット編集" : "時間割セット作成"),
@@ -636,6 +644,7 @@ export function TimetableForm({
           : messages.success.timetableCreated(createdCount),
         { id: loadingToastId },
       );
+      markForResetOnRouteHidden();
       router.push(listHref);
     } catch (error) {
       console.error("failed to save timetable set", error);
@@ -707,7 +716,10 @@ export function TimetableForm({
         <Button
           type="button"
           variant="outline"
-          onClick={() => router.push(listHref)}
+          onClick={() => {
+            markForResetOnRouteHidden();
+            router.push(listHref);
+          }}
         >
           時間割一覧へ戻る
         </Button>
@@ -921,7 +933,10 @@ export function TimetableForm({
           <Button
             type="button"
             variant="outline"
-            onClick={() => router.push(listHref)}
+            onClick={() => {
+              markForResetOnRouteHidden();
+              router.push(listHref);
+            }}
             disabled={isSubmitting}
           >
             キャンセル

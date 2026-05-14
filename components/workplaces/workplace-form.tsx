@@ -25,6 +25,7 @@ import {
   resolveUserFacingErrorFromResponse,
   toUserFacingMessage,
 } from "@/lib/user-facing-error";
+import { useResetOnRouteHidden } from "@/hooks/use-reset-on-route-hidden";
 
 const colorRegex = /^#[0-9A-Fa-f]{6}$/;
 const PAYROLL_DAY_MIN = 1;
@@ -62,6 +63,30 @@ type InitialRuleValues = {
 
 type FormErrorKey = keyof FormValues | keyof InitialRuleValues | "form";
 type FormErrors = Partial<Record<FormErrorKey, string>>;
+
+function createInitialWorkplaceValues(): FormValues {
+  return {
+    name: "",
+    type: "GENERAL",
+    color: "#3B82F6",
+    closingDayType: "END_OF_MONTH",
+    closingDay: "",
+    payday: "25",
+  };
+}
+
+function createInitialRuleValues(): InitialRuleValues {
+  return {
+    startDate: toDateOnlyString(new Date()),
+    endDate: "",
+    baseHourlyWage: "1000",
+    holidayAllowanceHourly: "0",
+    nightPremiumRate: "0.25",
+    overtimePremiumRate: "0.25",
+    dailyOvertimeThreshold: "8",
+    holidayType: "NONE",
+  };
+}
 
 async function readApiErrorMessage(
   response: Response,
@@ -196,29 +221,22 @@ export function WorkplaceForm({ mode, workplaceId }: WorkplaceFormProps) {
   const queryClient = getBrowserQueryClient();
   const isEdit = mode === "edit";
 
-  const [values, setValues] = useState<FormValues>({
-    name: "",
-    type: "GENERAL",
-    color: "#3B82F6",
-    closingDayType: "END_OF_MONTH",
-    closingDay: "",
-    payday: "25",
-  });
+  const [values, setValues] = useState<FormValues>(() =>
+    createInitialWorkplaceValues(),
+  );
   const [errors, setErrors] = useState<FormErrors>({});
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [createInitialRule, setCreateInitialRule] = useState(true);
   const [initialRuleValues, setInitialRuleValues] = useState<InitialRuleValues>(
-    () => ({
-      startDate: toDateOnlyString(new Date()),
-      endDate: "",
-      baseHourlyWage: "1000",
-      holidayAllowanceHourly: "0",
-      nightPremiumRate: "0.25",
-      overtimePremiumRate: "0.25",
-      dailyOvertimeThreshold: "8",
-      holidayType: "NONE",
-    }),
+    () => createInitialRuleValues(),
   );
+  const { markForResetOnRouteHidden } = useResetOnRouteHidden(() => {
+    setValues(createInitialWorkplaceValues());
+    setErrors({});
+    setIsSubmitting(false);
+    setCreateInitialRule(true);
+    setInitialRuleValues(createInitialRuleValues());
+  });
 
   const pageTitle = useMemo(
     () => (isEdit ? "勤務先編集" : "勤務先作成"),
@@ -360,6 +378,7 @@ export function WorkplaceForm({ mode, workplaceId }: WorkplaceFormProps) {
           id: loadingToastId,
           description: payload.name,
         });
+        markForResetOnRouteHidden();
         router.push(`/my/workplaces/${responsePayload.data.id}/timetables/new`);
       } else {
         toast.success(
@@ -371,6 +390,7 @@ export function WorkplaceForm({ mode, workplaceId }: WorkplaceFormProps) {
             description: payload.name,
           },
         );
+        markForResetOnRouteHidden();
         router.push("/my/workplaces");
       }
     } catch (error) {
@@ -900,6 +920,7 @@ export function WorkplaceForm({ mode, workplaceId }: WorkplaceFormProps) {
               variant="outline"
               disabled={isSubmitting}
               onClick={() => {
+                markForResetOnRouteHidden();
                 router.push("/my/workplaces");
               }}
             >
