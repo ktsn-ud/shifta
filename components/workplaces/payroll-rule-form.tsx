@@ -28,6 +28,7 @@ import {
   classifyApiErrorKind,
   toUserFacingMessage,
 } from "@/lib/user-facing-error";
+import { useResetOnRouteHidden } from "@/hooks/use-reset-on-route-hidden";
 
 type WorkplaceType = "GENERAL" | "CRAM_SCHOOL";
 type HolidayType = "NONE" | "WEEKEND" | "HOLIDAY" | "WEEKEND_HOLIDAY";
@@ -195,6 +196,19 @@ type ParsedApiError = {
   fieldErrors: Record<string, string>;
 };
 
+function createInitialPayrollRuleValues(): FormValues {
+  return {
+    startDate: "",
+    endDate: "",
+    baseHourlyWage: "1000",
+    holidayAllowanceHourly: "0",
+    nightPremiumRate: "0.25",
+    overtimePremiumRate: "0.25",
+    dailyOvertimeThreshold: "8",
+    holidayType: "NONE",
+  };
+}
+
 async function parseApiError(
   response: Response,
   fallback: string,
@@ -326,18 +340,16 @@ export function PayrollRuleForm({
   const queryClient = getBrowserQueryClient();
   const isEdit = mode === "edit";
 
-  const [values, setValues] = useState<FormValues>({
-    startDate: "",
-    endDate: "",
-    baseHourlyWage: "1000",
-    holidayAllowanceHourly: "0",
-    nightPremiumRate: "0.25",
-    overtimePremiumRate: "0.25",
-    dailyOvertimeThreshold: "8",
-    holidayType: "NONE",
-  });
+  const [values, setValues] = useState<FormValues>(() =>
+    createInitialPayrollRuleValues(),
+  );
   const [errors, setErrors] = useState<FormErrors>({});
   const [isSubmitting, setIsSubmitting] = useState(false);
+  const { markForResetOnRouteHidden } = useResetOnRouteHidden(() => {
+    setValues(createInitialPayrollRuleValues());
+    setErrors({});
+    setIsSubmitting(false);
+  });
 
   const listHref = `/my/workplaces/${workplaceId}/payroll-rules`;
   const pageTitle = useMemo(
@@ -501,6 +513,7 @@ export function PayrollRuleForm({
           description: warningMessage,
           duration: 6000,
         });
+        markForResetOnRouteHidden();
         router.push(listHref);
       } else {
         toast.success(
@@ -511,6 +524,7 @@ export function PayrollRuleForm({
             id: loadingToastId,
           },
         );
+        markForResetOnRouteHidden();
         router.push(listHref);
       }
     } catch (error) {
@@ -834,6 +848,7 @@ export function PayrollRuleForm({
               variant="outline"
               disabled={isSubmitting}
               onClick={() => {
+                markForResetOnRouteHidden();
                 router.push(listHref);
               }}
             >

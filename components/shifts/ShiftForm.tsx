@@ -57,6 +57,7 @@ import {
 } from "@/lib/shifts/time";
 import { toUserFacingMessage } from "@/lib/user-facing-error";
 import { useGoogleTokenExpiredSignOut } from "@/hooks/use-google-token-expired-signout";
+import { useResetOnRouteHidden } from "@/hooks/use-reset-on-route-hidden";
 
 const LAST_WORKPLACE_ID_KEY = "shifta:last-workplace-id";
 const DATE_ONLY_REGEX = /^\d{4}-\d{2}-\d{2}$/;
@@ -524,6 +525,21 @@ function formatEventNamePreview(
   return `イベント名プレビュー「${eventName}」`;
 }
 
+function createInitialFormState(defaultDate: string): FormState {
+  return {
+    workplaceId: "",
+    date: defaultDate,
+    shiftType: "NORMAL",
+    comment: "",
+    startTime: "",
+    endTime: "",
+    breakMinutes: "0",
+    timetableSetId: "",
+    startPeriod: "",
+    endPeriod: "",
+  };
+}
+
 export function ShiftForm({
   mode,
   shiftId,
@@ -537,18 +553,9 @@ export function ShiftForm({
     ? initialDate
     : toDateKey(new Date());
 
-  const [form, setForm] = useState<FormState>({
-    workplaceId: "",
-    date: defaultDate,
-    shiftType: "NORMAL",
-    comment: "",
-    startTime: "",
-    endTime: "",
-    breakMinutes: "0",
-    timetableSetId: "",
-    startPeriod: "",
-    endPeriod: "",
-  });
+  const [form, setForm] = useState<FormState>(() =>
+    createInitialFormState(defaultDate),
+  );
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [errors, setErrors] = useState<FormErrors>({});
   const [warningMessage, setWarningMessage] = useState<string | null>(null);
@@ -559,6 +566,15 @@ export function ShiftForm({
     useState<ShiftTimePair | null>(null);
   const { isSignOutScheduled, scheduleSignOut } =
     useGoogleTokenExpiredSignOut();
+  const { markForResetOnRouteHidden } = useResetOnRouteHidden(() => {
+    setForm(createInitialFormState(defaultDate));
+    setIsSubmitting(false);
+    setErrors({});
+    setWarningMessage(null);
+    setInitialShiftTimes(null);
+    setIsOvernightDialogOpen(false);
+    setPendingOvernightTimes(null);
+  });
   const queryClient = getBrowserQueryClient();
   const loadQueryUserId = "self";
 
@@ -1418,6 +1434,7 @@ export function ShiftForm({
         }
 
         await invalidateAfterShiftMutation(queryClient);
+        markForResetOnRouteHidden();
         router.push(returnPath);
         return;
       }
@@ -1435,6 +1452,7 @@ export function ShiftForm({
         },
       );
       await invalidateAfterShiftMutation(queryClient);
+      markForResetOnRouteHidden();
       router.push(returnPath);
     } catch (error) {
       console.error("failed to save shift", error);
@@ -1887,7 +1905,10 @@ export function ShiftForm({
           <Button
             type="button"
             variant="outline"
-            onClick={() => router.push(returnPath)}
+            onClick={() => {
+              markForResetOnRouteHidden();
+              router.push(returnPath);
+            }}
             disabled={isSubmitting}
           >
             キャンセル

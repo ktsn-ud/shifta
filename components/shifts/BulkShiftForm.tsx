@@ -69,6 +69,7 @@ import {
 } from "@/lib/user-facing-error";
 import { cn } from "@/lib/utils";
 import { useGoogleTokenExpiredSignOut } from "@/hooks/use-google-token-expired-signout";
+import { useResetOnRouteHidden } from "@/hooks/use-reset-on-route-hidden";
 
 const LAST_WORKPLACE_ID_KEY = "shifta:last-workplace-id";
 const BULK_CALENDAR_SELECTION_STORAGE_KEY = "shifta:bulk-calendar-selection";
@@ -579,6 +580,11 @@ function createRow(date: string, defaults: BulkDefaults): BulkShiftRow {
   };
 }
 
+function createCurrentMonthStart(): Date {
+  const current = new Date();
+  return new Date(current.getFullYear(), current.getMonth(), 1);
+}
+
 function addDays(base: Date, days: number): Date {
   return new Date(base.getFullYear(), base.getMonth(), base.getDate() + days);
 }
@@ -736,9 +742,7 @@ export function BulkShiftForm() {
   const router = useRouter();
   const queryClient = getBrowserQueryClient();
 
-  const [month, setMonth] = useState(
-    () => new Date(new Date().getFullYear(), new Date().getMonth(), 1),
-  );
+  const [month, setMonth] = useState(() => createCurrentMonthStart());
   const [selectedWorkplaceId, setSelectedWorkplaceId] = useState("");
   const [selectedDateKeys, setSelectedDateKeys] = useState<string[]>([]);
   const [rowsByDate, setRowsByDate] = useState<Record<string, BulkShiftRow>>(
@@ -774,6 +778,24 @@ export function BulkShiftForm() {
   >([]);
   const { isSignOutScheduled, scheduleSignOut } =
     useGoogleTokenExpiredSignOut();
+  const { markForResetOnRouteHidden } = useResetOnRouteHidden(() => {
+    setMonth(createCurrentMonthStart());
+    setSelectedWorkplaceId("");
+    setSelectedDateKeys([]);
+    setRowsByDate({});
+    setGoogleEventsByDate({});
+    setSelectedCalendarIds([]);
+    setHasUserCalendarSelection(false);
+    setIsGoogleEventsLoading(true);
+    setGoogleEventsError(null);
+    setGoogleEventsWarning(null);
+    setDefaults(DEFAULT_BULK_VALUES);
+    setErrors({});
+    setIsSubmitting(false);
+    setIsOvernightConfirmOpen(false);
+    setPendingPayload(null);
+    setOvernightSummaries([]);
+  });
   const loadQueryUserId = "self";
 
   const todayKey = toDateKey(new Date());
@@ -1694,6 +1716,7 @@ export function BulkShiftForm() {
         }
 
         await invalidateAfterShiftMutation(queryClient);
+        markForResetOnRouteHidden();
         router.push("/my");
         return;
       }
@@ -1705,6 +1728,7 @@ export function BulkShiftForm() {
           : undefined,
       });
       await invalidateAfterShiftMutation(queryClient);
+      markForResetOnRouteHidden();
       router.push("/my");
     } catch (error) {
       console.error("failed to submit bulk shifts", error);
@@ -2779,11 +2803,12 @@ export function BulkShiftForm() {
           </FieldContent>
         </Field>
 
-        <div className="flex flex-wrap justify-end gap-2">
+        <div className="flex flex-wrap gap-2">
           <Button
             type="button"
             variant="outline"
             onClick={() => {
+              markForResetOnRouteHidden();
               router.push("/my");
             }}
             disabled={isSubmitting || isSignOutScheduled}
