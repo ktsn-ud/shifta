@@ -24,7 +24,7 @@ import { Input } from "@/components/ui/input";
 
 type ConfirmShiftCardProps = {
   shift: UnconfirmedShiftItem;
-  onActionCompleted?: () => Promise<void> | void;
+  onActionCompleted?: (input: { shiftId: string }) => Promise<void> | void;
 };
 
 type ValidationResult = {
@@ -158,8 +158,22 @@ export function ConfirmShiftCard({
         messages.error.calendarSyncFailed,
       );
 
-      await invalidateAfterShiftMutation(queryClient);
-      await onActionCompleted?.();
+      void invalidateAfterShiftMutation(queryClient).catch((error) => {
+        console.error("failed to invalidate queries after shift confirmation", {
+          shiftId: shift.id,
+          error,
+        });
+      });
+      void Promise.resolve(
+        onActionCompleted?.({
+          shiftId: shift.id,
+        }),
+      ).catch((error) => {
+        console.error("failed to refresh shift confirmation data", {
+          shiftId: shift.id,
+          error,
+        });
+      });
 
       if (syncFailure) {
         if (syncFailure.requiresSignOut) {
