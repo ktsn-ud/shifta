@@ -77,6 +77,19 @@ export function ShiftConfirmPageClient({
     }
   }, [currentUserId, queryClient]);
 
+  const handleActionCompleted = useCallback(
+    (input: { shiftId: string }) => {
+      queryClient.setQueryData<UnconfirmedShiftItem[]>(
+        queryKeys.shifts.unconfirmed({ userId: currentUserId }),
+        (previous) =>
+          (previous ?? []).filter((shift) => shift.id !== input.shiftId),
+      );
+
+      void loadShiftConfirmationData();
+    },
+    [currentUserId, loadShiftConfirmationData, queryClient],
+  );
+
   return (
     <section className="flex flex-col gap-6 p-4 md:h-[calc(100svh-var(--header-height))] md:overflow-hidden md:p-6">
       <header>
@@ -113,7 +126,7 @@ export function ShiftConfirmPageClient({
                       <ConfirmShiftCard
                         key={shift.id}
                         shift={shift}
-                        onActionCompleted={loadShiftConfirmationData}
+                        onActionCompleted={handleActionCompleted}
                       />
                     ))}
                   </div>

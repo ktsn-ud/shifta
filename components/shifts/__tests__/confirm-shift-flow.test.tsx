@@ -202,6 +202,51 @@ describe("shift confirm page and card flow", () => {
     expect(toast.success).toHaveBeenCalledWith("シフトを確定しました。");
   });
 
+  it("shows success toast without waiting for post-confirm reload", async () => {
+    const user = userEvent.setup();
+    const fetchMock = globalThis.fetch as jest.Mock;
+    let resolveReload: (() => void) | undefined;
+    const onActionCompleted = jest.fn(
+      () =>
+        new Promise<void>((resolve) => {
+          resolveReload = resolve;
+        }),
+    );
+
+    fetchMock.mockResolvedValueOnce(
+      jsonResponse({
+        id: "shift-1",
+        isConfirmed: true,
+        date: "2026-03-05",
+        startTime: "10:00",
+        endTime: "18:00",
+        breakMinutes: 60,
+        syncStatus: "pending",
+      }),
+    );
+
+    render(
+      <ConfirmShiftCard
+        shift={createUnconfirmedShift()}
+        onActionCompleted={onActionCompleted}
+      />,
+    );
+
+    await user.click(screen.getByRole("button", { name: "確定" }));
+
+    await waitFor(() => {
+      expect(toast.success).toHaveBeenCalledWith("シフトを確定しました。");
+    });
+    expect(onActionCompleted).toHaveBeenCalledWith({ shiftId: "shift-1" });
+    expect(
+      screen.getByRole("button", {
+        name: "確定",
+      }),
+    ).toBeEnabled();
+
+    resolveReload?.();
+  });
+
   it("shows overnight confirmation before confirming shift", async () => {
     const user = userEvent.setup();
     const fetchMock = globalThis.fetch as jest.Mock;
