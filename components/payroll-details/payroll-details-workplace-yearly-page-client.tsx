@@ -321,7 +321,6 @@ export function PayrollDetailsWorkplaceYearlyPageClient({
                           {workplace.months.map((month) => (
                             <TableRow
                               key={`${workplace.workplaceId}-${month.monthKey}`}
-                              className="transition-colors hover:bg-muted/20"
                             >
                               <TableCell className="sticky left-0 z-10 border-r bg-card">
                                 {month.month}月

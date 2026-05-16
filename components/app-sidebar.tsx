@@ -103,16 +103,7 @@ const navSections: NavSection[] = [
         title: "勤務先・ルール",
         href: "/my/workplaces",
         icon: <LandmarkIcon />,
-        matchHrefs: ["/my/workplace", "/my/payroll", "/my/timetable"],
-        subItems: [
-          {
-            title: "勤務先管理",
-            href: "/my/workplaces",
-            matchHrefs: ["/my/workplace"],
-          },
-          { title: "給与ルール", href: "/my/payroll" },
-          { title: "時間割", href: "/my/timetable" },
-        ],
+        matchHrefs: ["/my/workplace"],
       },
     ],
   },
@@ -163,20 +154,14 @@ function isItemActive(pathname: string, item: NavItem): boolean {
   );
 }
 
-function isSubItemClusterActive(pathname: string, item: NavItem): boolean {
-  return (
-    item.subItems?.some((subItem) =>
-      isSubItemActive(pathname, subItem.href, subItem.matchHrefs),
-    ) ?? false
-  );
-}
-
 function shouldShowTopLevelSubLabel(pathname: string, item: NavItem): boolean {
   if (!item.subItems || item.subItems.length === 0) {
     return false;
   }
 
-  return isSubItemClusterActive(pathname, item);
+  return item.subItems.some((subItem) =>
+    isSubItemActive(pathname, subItem.href, subItem.matchHrefs),
+  );
 }
 
 export function AppSidebar({
@@ -196,25 +181,19 @@ export function AppSidebar({
   return (
     <Sidebar collapsible="offcanvas" {...props}>
       <SidebarHeader className="gap-2 border-b border-sidebar-border/70 pb-4">
-        <SidebarMenu>
-          <SidebarMenuItem>
-            <SidebarMenuButton
-              size="lg"
-              className="data-[slot=sidebar-menu-button]:h-12 data-[slot=sidebar-menu-button]:rounded-xl data-[slot=sidebar-menu-button]:px-3 data-[slot=sidebar-menu-button]:font-semibold"
-              render={<Link href="/my" />}
-              isActive={pathname.startsWith("/my")}
-              onClick={handleMenuItemClick}
-            >
-              <CommandIcon className="size-5" />
-              <div className="grid text-left leading-tight">
-                <span className="text-base font-semibold">Shifta</span>
-                <span className="text-xs text-sidebar-foreground/65">
-                  Shift & Payroll
-                </span>
-              </div>
-            </SidebarMenuButton>
-          </SidebarMenuItem>
-        </SidebarMenu>
+        <Link
+          href="/my"
+          onClick={handleMenuItemClick}
+          className="flex h-12 items-center gap-3 rounded-xl px-3 text-sidebar-foreground"
+        >
+          <CommandIcon className="size-5" />
+          <div className="grid text-left leading-tight">
+            <span className="text-base font-semibold">Shifta</span>
+            <span className="text-xs text-sidebar-foreground/65">
+              Shift & Payroll
+            </span>
+          </div>
+        </Link>
       </SidebarHeader>
 
       <SidebarContent className="pt-1">

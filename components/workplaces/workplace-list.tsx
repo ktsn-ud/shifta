@@ -295,10 +295,7 @@ export function WorkplaceList({
                     </TableRow>
                   ) : (
                     workplaces.map((workplace) => (
-                      <TableRow
-                        key={workplace.id}
-                        className="transition-colors hover:bg-muted/20"
-                      >
+                      <TableRow key={workplace.id}>
                         <TableCell className="font-medium">
                           {workplace.name}
                         </TableCell>

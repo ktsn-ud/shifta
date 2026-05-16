@@ -301,10 +301,7 @@ export function SummaryPageClient({
                     <TableBody>
                       {summary.byWorkplace.length > 0 ? (
                         summary.byWorkplace.map((item) => (
-                          <TableRow
-                            key={item.workplaceId}
-                            className="transition-colors hover:bg-muted/20"
-                          >
+                          <TableRow key={item.workplaceId}>
                             <TableCell>
                               <span className="inline-flex items-center gap-2">
                                 <span

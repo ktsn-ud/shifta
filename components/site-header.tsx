@@ -64,10 +64,6 @@ function buildBreadcrumbs(pathname: string): Crumb[] {
       }
       return [root, detailRoot];
     }
-    case "payroll":
-      return [root, { title: "給与ルール" }];
-    case "timetable":
-      return [root, { title: "時間割" }];
     case "bulk":
       return [root, { title: "シフト一括登録" }];
     case "workplace":
@@ -166,7 +162,6 @@ function buildBreadcrumbs(pathname: string): Crumb[] {
 export function SiteHeader() {
   const pathname = usePathname();
   const breadcrumbs = buildBreadcrumbs(pathname);
-  const currentTitle = breadcrumbs[breadcrumbs.length - 1]?.title ?? "Shifta";
   const shouldCollapseMiddle = breadcrumbs.length > 3;
 
   return (
@@ -177,9 +172,6 @@ export function SiteHeader() {
           orientation="vertical"
           className="mx-1 h-6 bg-border/80 data-vertical:self-auto"
         />
-        <span className="hidden rounded-full border border-border/70 bg-muted/40 px-2 py-1 text-[11px] font-semibold tracking-[0.06em] text-muted-foreground uppercase sm:inline-flex">
-          現在地
-        </span>
         <Breadcrumb className="min-w-0 flex-1">
           <BreadcrumbList className="inline-flex min-w-0 items-center rounded-full border border-border/70 bg-muted/40 px-3 py-1.5 text-sm">
             {breadcrumbs.map((item, index) => {
@@ -233,11 +225,6 @@ export function SiteHeader() {
             })}
           </BreadcrumbList>
         </Breadcrumb>
-        <div className="hidden min-w-0 items-center justify-end lg:flex">
-          <span className="truncate text-sm font-medium text-foreground/85">
-            {currentTitle}
-          </span>
-        </div>
       </div>
     </header>
   );
