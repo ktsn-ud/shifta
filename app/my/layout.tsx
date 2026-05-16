@@ -32,8 +32,8 @@ async function AuthenticatedLayout({
       <SidebarProvider
         style={
           {
-            "--sidebar-width": "calc(var(--spacing) * 72)",
-            "--header-height": "calc(var(--spacing) * 12)",
+            "--sidebar-width": "18rem",
+            "--header-height": "4.25rem",
           } as React.CSSProperties
         }
       >

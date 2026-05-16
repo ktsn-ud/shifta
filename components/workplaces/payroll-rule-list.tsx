@@ -222,10 +222,13 @@ export function PayrollRuleList({
 
   return (
     <section className="space-y-6 p-4 md:p-6">
-      <header className="flex flex-wrap items-start justify-between gap-3">
-        <div>
-          <h2 className="text-xl font-semibold">給与ルール</h2>
-          <p className="mt-1 text-sm text-muted-foreground">
+      <header className="flex flex-wrap items-start justify-between gap-4 rounded-xl border border-border/80 bg-card/95 p-5 shadow-sm">
+        <div className="space-y-2">
+          <p className="text-xs font-medium uppercase tracking-[0.12em] text-muted-foreground">
+            Payroll Rules
+          </p>
+          <h2 className="text-2xl font-semibold tracking-tight">給与ルール</h2>
+          <p className="text-sm text-muted-foreground">
             {workplace
               ? `${workplace.name} の給与ルールを管理します。`
               : "勤務先ごとの給与ルールを管理します。"}
