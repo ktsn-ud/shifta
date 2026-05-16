@@ -7,6 +7,13 @@
 @theme inline {
   --color-background: var(--background);
   --color-foreground: var(--foreground);
+  --color-surface-1: var(--surface-1);
+  --color-surface-2: var(--surface-2);
+  --color-surface-3: var(--surface-3);
+  --color-success: var(--success);
+  --color-success-foreground: var(--success-foreground);
+  --color-warning: var(--warning);
+  --color-warning-foreground: var(--warning-foreground);
   --font-sans: var(--font-sans);
   --font-mono: var(--font-mono);
   --color-sidebar-ring: var(--sidebar-ring);
@@ -49,24 +56,31 @@
 
 :root {
   --background: #f8f9fa;
-  --foreground: #191c1d;
+  --foreground: #171b21;
+  --surface-1: #ffffff;
+  --surface-2: #f3f5f8;
+  --surface-3: #e9edf3;
   --card: #ffffff;
-  --card-foreground: #191c1d;
+  --card-foreground: #171b21;
   --popover: #ffffff;
-  --popover-foreground: #191c1d;
-  --primary: #1a73e8;
+  --popover-foreground: #171b21;
+  --primary: #005bbf;
   --primary-foreground: #ffffff;
-  --secondary: #dde0e6;
-  --secondary-foreground: #414754;
-  --muted: #f3f4f5;
-  --muted-foreground: #5f6368;
+  --secondary: #dde3eb;
+  --secondary-foreground: #243243;
+  --muted: #eef1f4;
+  --muted-foreground: #566173;
   --accent: #e8f0fe;
-  --accent-foreground: #004493;
-  --destructive: #ba1a1a;
-  --border: #d9dadb;
-  --input: #c1c6d6;
-  --ring: #1a73e8;
-  --chart-1: #1a73e8;
+  --accent-foreground: #003a80;
+  --destructive: #b42318;
+  --success: #027a48;
+  --success-foreground: #ffffff;
+  --warning: #b54708;
+  --warning-foreground: #ffffff;
+  --border: #cdd4de;
+  --input: #b7c0cd;
+  --ring: #005bbf;
+  --chart-1: #005bbf;
   --chart-2: #005bbf;
   --chart-3: #adc7ff;
   --chart-4: #5f6368;
@@ -88,6 +102,9 @@
 .dark {
   --background: #191c1d;
   --foreground: #f0f1f2;
+  --surface-1: #2b2f35;
+  --surface-2: #23272e;
+  --surface-3: #1d2128;
   --card: #2e3132;
   --card-foreground: #f0f1f2;
   --popover: #2e3132;
@@ -101,6 +118,10 @@
   --accent: #004493;
   --accent-foreground: #d8e2ff;
   --destructive: #ffb4ab;
+  --success: #6ce9b2;
+  --success-foreground: #043825;
+  --warning: #ffd29d;
+  --warning-foreground: #4b2e00;
   --border: #5b5f64;
   --input: #727785;
   --ring: #adc7ff;
@@ -123,11 +144,15 @@
   * {
     @apply border-border outline-ring/50;
   }
+  *::selection {
+    @apply bg-primary/20 text-foreground;
+  }
   body {
     @apply bg-background text-foreground antialiased;
+    text-rendering: optimizeLegibility;
   }
   html {
-    @apply font-sans;
+    @apply scroll-smooth font-sans;
   }
   button:not(:disabled),
   input[type="button"]:not(:disabled),
