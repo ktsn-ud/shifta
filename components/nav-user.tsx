@@ -1,5 +1,6 @@
 "use client";
 
+import Link from "next/link";
 import { useTheme } from "next-themes";
 import { signOutAction } from "@/lib/actions/auth";
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
@@ -20,7 +21,12 @@ import {
   SidebarMenuItem,
   useSidebar,
 } from "@/components/ui/sidebar";
-import { EllipsisVerticalIcon, LogOutIcon } from "lucide-react";
+import {
+  CalendarCogIcon,
+  EllipsisVerticalIcon,
+  LogOutIcon,
+  Settings2Icon,
+} from "lucide-react";
 
 export function NavUser({
   user,
@@ -86,6 +92,18 @@ export function NavUser({
                   </div>
                 </div>
               </DropdownMenuLabel>
+            </DropdownMenuGroup>
+
+            <DropdownMenuSeparator />
+            <DropdownMenuGroup>
+              <DropdownMenuItem render={<Link href="/my/settings" />}>
+                <Settings2Icon />
+                表示設定
+              </DropdownMenuItem>
+              <DropdownMenuItem render={<Link href="/my/calendar-setup" />}>
+                <CalendarCogIcon />
+                カレンダー設定
+              </DropdownMenuItem>
             </DropdownMenuGroup>
 
             <DropdownMenuSeparator />

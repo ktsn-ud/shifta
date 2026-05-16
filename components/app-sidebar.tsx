@@ -21,11 +21,11 @@ import {
   useSidebar,
 } from "@/components/ui/sidebar";
 import {
-  CheckCheckIcon,
   CommandIcon,
   LandmarkIcon,
   LayoutDashboardIcon,
   ListIcon,
+  Settings2Icon,
   WalletCardsIcon,
 } from "lucide-react";
 
@@ -39,51 +39,155 @@ type NavItem = {
   title: string;
   href: string;
   icon: React.ReactNode;
+  matchHrefs?: string[];
   subItems?: Array<{
     title: string;
     href: string;
+    matchHrefs?: string[];
   }>;
 };
 
-const mainNavItems: NavItem[] = [
-  { title: "ダッシュボード", href: "/my", icon: <LayoutDashboardIcon /> },
+type NavSection = {
+  label: string;
+  items: NavItem[];
+};
+
+const navSections: NavSection[] = [
   {
-    title: "シフト一覧",
-    href: "/my/shifts/list",
-    icon: <ListIcon />,
-  },
-  {
-    title: "シフト確定",
-    href: "/my/shifts/confirm",
-    icon: <CheckCheckIcon />,
-  },
-  {
-    title: "給与サマリー",
-    href: "/my/summary",
-    icon: <WalletCardsIcon />,
-  },
-  {
-    title: "給与詳細",
-    href: "/my/payroll-details",
-    icon: <WalletCardsIcon />,
-    subItems: [
-      { title: "月毎表示", href: "/my/payroll-details/monthly" },
-      { title: "勤務先毎表示", href: "/my/payroll-details/workplace-yearly" },
+    label: "主要メニュー",
+    items: [
+      {
+        title: "ダッシュボード",
+        href: "/my",
+        icon: <LayoutDashboardIcon />,
+      },
+      {
+        title: "シフト管理",
+        href: "/my/shifts/list",
+        icon: <ListIcon />,
+        matchHrefs: ["/my/shifts", "/my/bulk"],
+        subItems: [
+          { title: "シフト一覧", href: "/my/shifts/list" },
+          { title: "シフト登録", href: "/my/shifts/new" },
+          {
+            title: "一括登録",
+            href: "/my/shifts/bulk",
+            matchHrefs: ["/my/bulk"],
+          },
+          { title: "シフト確定", href: "/my/shifts/confirm" },
+        ],
+      },
+      {
+        title: "給与管理",
+        href: "/my/summary",
+        icon: <WalletCardsIcon />,
+        matchHrefs: ["/my/payroll-details"],
+        subItems: [
+          { title: "給与サマリー", href: "/my/summary" },
+          {
+            title: "給与詳細（月毎）",
+            href: "/my/payroll-details/monthly",
+            matchHrefs: ["/my/payroll-details"],
+          },
+          {
+            title: "給与詳細（勤務先毎）",
+            href: "/my/payroll-details/workplace-yearly",
+          },
+        ],
+      },
     ],
   },
   {
-    title: "勤務先管理",
-    href: "/my/workplaces",
-    icon: <LandmarkIcon />,
+    label: "設定",
+    items: [
+      {
+        title: "勤務先・ルール",
+        href: "/my/workplaces",
+        icon: <LandmarkIcon />,
+        matchHrefs: ["/my/workplace", "/my/payroll", "/my/timetable"],
+        subItems: [
+          {
+            title: "勤務先管理",
+            href: "/my/workplaces",
+            matchHrefs: ["/my/workplace"],
+          },
+          { title: "給与ルール", href: "/my/payroll" },
+          { title: "時間割", href: "/my/timetable" },
+        ],
+      },
+      {
+        title: "表示・連携設定",
+        href: "/my/settings",
+        icon: <Settings2Icon />,
+        matchHrefs: ["/my/calendar-setup"],
+        subItems: [
+          { title: "表示設定", href: "/my/settings" },
+          { title: "カレンダー設定", href: "/my/calendar-setup" },
+        ],
+      },
+    ],
   },
 ];
 
 function isActivePath(pathname: string, href: string): boolean {
-  if (href === "/my") {
-    return pathname === "/my";
+  const normalizedPathname =
+    pathname.length > 1 && pathname.endsWith("/")
+      ? pathname.slice(0, -1)
+      : pathname;
+  const normalizedHref =
+    href.length > 1 && href.endsWith("/") ? href.slice(0, -1) : href;
+
+  if (normalizedHref === "/my") {
+    return normalizedPathname === "/my";
   }
 
-  return pathname === href || pathname.startsWith(`${href}/`);
+  return (
+    normalizedPathname === normalizedHref ||
+    normalizedPathname.startsWith(`${normalizedHref}/`)
+  );
+}
+
+function isSubItemActive(
+  pathname: string,
+  href: string,
+  matchHrefs: string[] = [],
+): boolean {
+  return (
+    isActivePath(pathname, href) ||
+    matchHrefs.some((matchHref) => isActivePath(pathname, matchHref))
+  );
+}
+
+function isItemActive(pathname: string, item: NavItem): boolean {
+  if (isActivePath(pathname, item.href)) {
+    return true;
+  }
+
+  if (item.matchHrefs?.some((matchHref) => isActivePath(pathname, matchHref))) {
+    return true;
+  }
+
+  return (
+    item.subItems?.some((subItem) =>
+      isSubItemActive(pathname, subItem.href, subItem.matchHrefs),
+    ) ?? false
+  );
+}
+
+function isSubItemClusterActive(pathname: string, item: NavItem): boolean {
+  return (
+    item.subItems?.some((subItem) =>
+      isSubItemActive(pathname, subItem.href, subItem.matchHrefs),
+    ) ?? false
+  );
+}
+
+function shouldShowTopLevelSubLabel(pathname: string, item: NavItem): boolean {
+  if (!item.subItems || item.subItems.length === 0) {
+    return false;
+  }
+
+  return isSubItemClusterActive(pathname, item);
 }
 
 export function AppSidebar({
@@ -102,61 +206,78 @@ export function AppSidebar({
 
   return (
     <Sidebar collapsible="offcanvas" {...props}>
-      <SidebarHeader className="border-b border-sidebar-border/70 pb-4">
+      <SidebarHeader className="gap-2 border-b border-sidebar-border/70 pb-4">
         <SidebarMenu>
           <SidebarMenuItem>
             <SidebarMenuButton
               size="lg"
-              className="data-[slot=sidebar-menu-button]:h-11 data-[slot=sidebar-menu-button]:rounded-xl data-[slot=sidebar-menu-button]:px-3 data-[slot=sidebar-menu-button]:font-semibold"
+              className="data-[slot=sidebar-menu-button]:h-12 data-[slot=sidebar-menu-button]:rounded-xl data-[slot=sidebar-menu-button]:px-3 data-[slot=sidebar-menu-button]:font-semibold"
               render={<Link href="/my" />}
-              isActive={pathname === "/my"}
+              isActive={pathname.startsWith("/my")}
               onClick={handleMenuItemClick}
             >
               <CommandIcon className="size-5" />
-              <span className="text-base font-semibold">Shifta</span>
+              <div className="grid text-left leading-tight">
+                <span className="text-base font-semibold">Shifta</span>
+                <span className="text-xs text-sidebar-foreground/65">
+                  Shift & Payroll
+                </span>
+              </div>
             </SidebarMenuButton>
           </SidebarMenuItem>
         </SidebarMenu>
       </SidebarHeader>
 
       <SidebarContent className="pt-1">
-        <SidebarGroup>
-          <SidebarGroupLabel>メニュー</SidebarGroupLabel>
-          <SidebarGroupContent>
-            <SidebarMenu>
-              {mainNavItems.map((item) => (
-                <SidebarMenuItem key={item.href}>
-                  <SidebarMenuButton
-                    tooltip={item.title}
-                    isActive={isActivePath(pathname, item.href)}
-                    className="text-sidebar-foreground/90"
-                    render={<Link href={item.href} />}
-                    onClick={handleMenuItemClick}
-                  >
-                    {item.icon}
-                    <span>{item.title}</span>
-                  </SidebarMenuButton>
-                  {item.subItems && item.subItems.length > 0 ? (
-                    <SidebarMenuSub>
-                      {item.subItems.map((subItem) => (
-                        <SidebarMenuSubItem key={subItem.href}>
-                          <SidebarMenuSubButton
-                            isActive={isActivePath(pathname, subItem.href)}
-                            className="text-sidebar-foreground/80"
-                            render={<Link href={subItem.href} />}
-                            onClick={handleMenuItemClick}
-                          >
-                            <span>{subItem.title}</span>
-                          </SidebarMenuSubButton>
-                        </SidebarMenuSubItem>
-                      ))}
-                    </SidebarMenuSub>
-                  ) : null}
-                </SidebarMenuItem>
-              ))}
-            </SidebarMenu>
-          </SidebarGroupContent>
-        </SidebarGroup>
+        {navSections.map((section) => (
+          <SidebarGroup key={section.label}>
+            <SidebarGroupLabel>{section.label}</SidebarGroupLabel>
+            <SidebarGroupContent>
+              <SidebarMenu>
+                {section.items.map((item) => (
+                  <SidebarMenuItem key={item.href}>
+                    <SidebarMenuButton
+                      tooltip={item.title}
+                      isActive={isItemActive(pathname, item)}
+                      className="text-sidebar-foreground/90"
+                      render={<Link href={item.href} />}
+                      onClick={handleMenuItemClick}
+                    >
+                      {item.icon}
+                      <span>{item.title}</span>
+                    </SidebarMenuButton>
+                    {item.subItems && item.subItems.length > 0 ? (
+                      <SidebarMenuSub
+                        className={
+                          shouldShowTopLevelSubLabel(pathname, item)
+                            ? ""
+                            : "opacity-90"
+                        }
+                      >
+                        {item.subItems.map((subItem) => (
+                          <SidebarMenuSubItem key={subItem.href}>
+                            <SidebarMenuSubButton
+                              isActive={isSubItemActive(
+                                pathname,
+                                subItem.href,
+                                subItem.matchHrefs,
+                              )}
+                              className="text-sidebar-foreground/80"
+                              render={<Link href={subItem.href} />}
+                              onClick={handleMenuItemClick}
+                            >
+                              <span>{subItem.title}</span>
+                            </SidebarMenuSubButton>
+                          </SidebarMenuSubItem>
+                        ))}
+                      </SidebarMenuSub>
+                    ) : null}
+                  </SidebarMenuItem>
+                ))}
+              </SidebarMenu>
+            </SidebarGroupContent>
+          </SidebarGroup>
+        ))}
       </SidebarContent>
 
       <SidebarFooter className="border-t border-sidebar-border/70 pt-3">
