@@ -45,26 +45,34 @@ function LoginCard({
   isTokenExpiredReason: boolean;
 }) {
   return (
-    <main className="flex min-h-svh items-center justify-center bg-muted/30 p-4">
-      <Card className="w-full max-w-md">
-        <CardHeader>
-          <CardTitle>
+    <main className="relative flex min-h-svh items-center justify-center overflow-hidden bg-background px-4 py-10 sm:px-6">
+      <div
+        aria-hidden
+        className="pointer-events-none absolute inset-0 bg-gradient-to-b from-background via-muted/35 to-muted/60"
+      />
+      <div
+        aria-hidden
+        className="pointer-events-none absolute inset-x-0 top-0 h-52 bg-primary/10 blur-3xl"
+      />
+      <Card className="relative w-full max-w-lg border-border/80 bg-card/95 shadow-sm backdrop-blur-sm">
+        <CardHeader className="flex flex-col gap-2 pb-4">
+          <CardTitle className="text-2xl font-semibold tracking-tight">
             {isTokenExpiredReason
               ? "Google 連携の再ログインが必要です"
               : "Shifta へようこそ"}
           </CardTitle>
-          <CardDescription>
+          <CardDescription className="text-sm leading-6">
             {isTokenExpiredReason
               ? "Google Calendar と同期するため、Google アカウントで再ログインしてください。"
               : "ログインすると、シフト登録と給与の確認を始められます。"}
           </CardDescription>
         </CardHeader>
-        <CardContent>
-          <p className="text-sm text-muted-foreground">
+        <CardContent className="pb-4">
+          <p className="text-sm leading-6 text-muted-foreground">
             カレンダーと連携する Google アカウントでサインインしてください。
           </p>
         </CardContent>
-        <CardFooter>
+        <CardFooter className="border-t border-border/70 pt-5">
           <LogIn
             label={isTokenExpiredReason ? "Google で再ログイン" : undefined}
           />
