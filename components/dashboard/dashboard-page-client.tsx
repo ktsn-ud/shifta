@@ -87,16 +87,14 @@ function formatSummaryPeriodLabel(month: Date): string {
 
 export function DashboardPageLoadingSkeleton() {
   return (
-    <section className="space-y-8 p-4 md:p-6 lg:p-8">
-      <header>
-        <div>
-          <h2 className="text-2xl font-semibold tracking-tight">
-            ダッシュボード
-          </h2>
-          <p className="mt-2 text-sm text-muted-foreground">
-            当月のシフト状況と概算値を確認できます。
-          </p>
-        </div>
+    <section className="space-y-6 p-4 md:p-6 lg:p-8">
+      <header className="rounded-xl border border-border/80 bg-card/95 p-5 shadow-sm">
+        <h2 className="text-2xl font-semibold tracking-tight">
+          ダッシュボード
+        </h2>
+        <p className="mt-2 text-sm text-muted-foreground">
+          当月のシフト状況と概算値を確認できます。
+        </p>
       </header>
       <SpinnerPanel
         className="min-h-[360px]"
@@ -335,17 +333,20 @@ export function DashboardPageClient({
   };
 
   return (
-    <section className="space-y-8 p-4 md:p-6 lg:p-8">
-      <header className="flex flex-wrap items-start justify-between gap-4 rounded-xl border border-border/80 bg-card/90 p-4 shadow-sm md:p-6">
-        <div>
+    <section className="space-y-6 p-4 md:p-6 lg:p-8">
+      <header className="flex flex-wrap items-start justify-between gap-4 rounded-xl border border-border/80 bg-card/95 p-5 shadow-sm md:p-6">
+        <div className="space-y-2">
+          <p className="text-xs font-medium uppercase tracking-[0.12em] text-muted-foreground">
+            Home
+          </p>
           <h2 className="text-2xl font-semibold tracking-tight">
             ダッシュボード
           </h2>
-          <p className="mt-2 text-sm text-muted-foreground">
+          <p className="text-sm text-muted-foreground">
             当月のシフト状況と概算値を確認できます。
           </p>
         </div>
-        <div className="flex flex-wrap gap-2">
+        <div className="flex flex-wrap items-center gap-2">
           <Button
             type="button"
             variant="outline"
@@ -375,7 +376,7 @@ export function DashboardPageClient({
       ) : null}
 
       {!isLoading && initialUnconfirmedShiftCount > 0 ? (
-        <Card className="border-amber-300/60 bg-amber-50/60 shadow-sm">
+        <Card className="border-amber-300/70 bg-amber-50/70 shadow-sm">
           <CardHeader className="gap-3 md:flex sm:flex-row sm:items-center sm:justify-between">
             <div className="flex flex-col gap-1">
               <CardTitle>シフト確定待ちがあります</CardTitle>
@@ -399,8 +400,8 @@ export function DashboardPageClient({
         <Card
           className={
             failedShiftCount > 0
-              ? "border-amber-300/60 bg-amber-50/60 shadow-sm"
-              : "border-emerald-300/60 bg-emerald-50/60 shadow-sm"
+              ? "border-amber-300/70 bg-amber-50/70 shadow-sm"
+              : "border-emerald-300/70 bg-emerald-50/70 shadow-sm"
           }
         >
           <CardContent className="flex flex-wrap items-center justify-between gap-3 py-4">
@@ -438,7 +439,10 @@ export function DashboardPageClient({
 
       {!isLoading ? (
         <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
-          <Card size="sm" className="border-border/80 bg-card/95 shadow-sm">
+          <Card
+            size="sm"
+            className="border-primary/30 bg-primary/5 shadow-sm sm:col-span-2 lg:col-span-1"
+          >
             <CardHeader className="gap-2">
               <CardTitle className="text-base">翌月支給額</CardTitle>
               <CardDescription>
@@ -446,7 +450,7 @@ export function DashboardPageClient({
                 に受け取る見込み額
               </CardDescription>
             </CardHeader>
-            <CardContent className="text-2xl font-semibold tracking-tight">
+            <CardContent className="text-3xl font-semibold tracking-tight">
               {isNextPaymentLoading || nextPaymentAmount === null
                 ? "読み込み中..."
                 : formatCurrency(nextPaymentAmount)}
@@ -480,7 +484,7 @@ export function DashboardPageClient({
       ) : null}
 
       {errorMessage ? (
-        <p className="rounded-md border border-destructive/40 bg-destructive/5 px-3 py-2 text-sm text-destructive">
+        <p className="rounded-lg border border-destructive/40 bg-destructive/5 px-3 py-2 text-sm text-destructive">
           {errorMessage}
         </p>
       ) : null}
