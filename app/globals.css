@@ -39,6 +39,7 @@
   --color-muted: var(--muted);
   --color-secondary-foreground: var(--secondary-foreground);
   --color-secondary: var(--secondary);
+  --color-destructive-foreground: var(--destructive-foreground);
   --color-primary-foreground: var(--primary-foreground);
   --color-primary: var(--primary);
   --color-popover-foreground: var(--popover-foreground);
@@ -73,6 +74,7 @@
   --accent: #e8f0fe;
   --accent-foreground: #003a80;
   --destructive: #b42318;
+  --destructive-foreground: #ffffff;
   --success: #027a48;
   --success-foreground: #ffffff;
   --warning: #b54708;
@@ -118,6 +120,7 @@
   --accent: #004493;
   --accent-foreground: #d8e2ff;
   --destructive: #ffb4ab;
+  --destructive-foreground: #690005;
   --success: #6ce9b2;
   --success-foreground: #043825;
   --warning: #ffd29d;
