@@ -88,13 +88,29 @@ function formatSummaryPeriodLabel(month: Date): string {
 export function DashboardPageLoadingSkeleton() {
   return (
     <section className="space-y-6 p-4 md:p-6 lg:p-8">
-      <header className="rounded-xl border border-border/80 bg-card/95 p-5 shadow-sm">
-        <h2 className="text-2xl font-semibold tracking-tight">
-          ダッシュボード
-        </h2>
-        <p className="mt-2 text-sm text-muted-foreground">
-          当月のシフト状況と概算値を確認できます。
-        </p>
+      <header className="flex flex-wrap items-start justify-between gap-4 rounded-xl border border-border/80 bg-card/95 p-5 shadow-sm md:p-6">
+        <div className="space-y-2">
+          <p className="text-xs font-medium uppercase tracking-[0.12em] text-muted-foreground">
+            Home
+          </p>
+          <h2 className="text-2xl font-semibold tracking-tight">
+            ダッシュボード
+          </h2>
+          <p className="text-sm text-muted-foreground">
+            当月のシフト状況と概算値を確認できます。
+          </p>
+        </div>
+        <div className="flex flex-wrap items-center gap-2">
+          <Button type="button" variant="outline" disabled>
+            今月に戻る
+          </Button>
+          <Button type="button" variant="outline" disabled>
+            新規シフト登録
+          </Button>
+          <Button type="button" disabled>
+            一括登録
+          </Button>
+        </div>
       </header>
       <SpinnerPanel
         className="min-h-[360px]"
