@@ -68,10 +68,6 @@ function buildBreadcrumbs(pathname: string): Crumb[] {
       return [root, { title: "給与ルール" }];
     case "timetable":
       return [root, { title: "時間割" }];
-    case "calendar-setup":
-      return [root, { title: "カレンダー設定" }];
-    case "settings":
-      return [root, { title: "表示設定" }];
     case "bulk":
       return [root, { title: "シフト一括登録" }];
     case "workplace":

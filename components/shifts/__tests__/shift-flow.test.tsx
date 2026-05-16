@@ -451,7 +451,7 @@ describe("shift flow integration", () => {
     await userEvent.click(screen.getByRole("button", { name: "登録" }));
 
     await waitFor(() => {
-      expect(pushMock).toHaveBeenCalledWith("/my/calendar-setup");
+      expect(pushMock).toHaveBeenCalledWith("/my");
     });
   });
 

@@ -481,7 +481,7 @@ describe("bulk shift flow integration", () => {
     await user.click(screen.getByRole("button", { name: "確定" }));
 
     await waitFor(() => {
-      expect(pushMock).toHaveBeenCalledWith("/my/calendar-setup");
+      expect(pushMock).toHaveBeenCalledWith("/my");
     });
   });
 

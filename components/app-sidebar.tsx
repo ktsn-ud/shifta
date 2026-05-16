@@ -25,7 +25,6 @@ import {
   LandmarkIcon,
   LayoutDashboardIcon,
   ListIcon,
-  Settings2Icon,
   WalletCardsIcon,
 } from "lucide-react";
 
@@ -113,16 +112,6 @@ const navSections: NavSection[] = [
           },
           { title: "給与ルール", href: "/my/payroll" },
           { title: "時間割", href: "/my/timetable" },
-        ],
-      },
-      {
-        title: "表示・連携設定",
-        href: "/my/settings",
-        icon: <Settings2Icon />,
-        matchHrefs: ["/my/calendar-setup"],
-        subItems: [
-          { title: "表示設定", href: "/my/settings" },
-          { title: "カレンダー設定", href: "/my/calendar-setup" },
         ],
       },
     ],
