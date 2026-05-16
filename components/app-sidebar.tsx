@@ -102,12 +102,12 @@ export function AppSidebar({
 
   return (
     <Sidebar collapsible="offcanvas" {...props}>
-      <SidebarHeader>
+      <SidebarHeader className="border-b border-sidebar-border/70 pb-4">
         <SidebarMenu>
           <SidebarMenuItem>
             <SidebarMenuButton
               size="lg"
-              className="data-[slot=sidebar-menu-button]:p-1.5!"
+              className="data-[slot=sidebar-menu-button]:h-11 data-[slot=sidebar-menu-button]:rounded-xl data-[slot=sidebar-menu-button]:px-3 data-[slot=sidebar-menu-button]:font-semibold"
               render={<Link href="/my" />}
               isActive={pathname === "/my"}
               onClick={handleMenuItemClick}
@@ -119,7 +119,7 @@ export function AppSidebar({
         </SidebarMenu>
       </SidebarHeader>
 
-      <SidebarContent>
+      <SidebarContent className="pt-1">
         <SidebarGroup>
           <SidebarGroupLabel>メニュー</SidebarGroupLabel>
           <SidebarGroupContent>
@@ -129,6 +129,7 @@ export function AppSidebar({
                   <SidebarMenuButton
                     tooltip={item.title}
                     isActive={isActivePath(pathname, item.href)}
+                    className="text-sidebar-foreground/90"
                     render={<Link href={item.href} />}
                     onClick={handleMenuItemClick}
                   >
@@ -141,6 +142,7 @@ export function AppSidebar({
                         <SidebarMenuSubItem key={subItem.href}>
                           <SidebarMenuSubButton
                             isActive={isActivePath(pathname, subItem.href)}
+                            className="text-sidebar-foreground/80"
                             render={<Link href={subItem.href} />}
                             onClick={handleMenuItemClick}
                           >
@@ -157,7 +159,7 @@ export function AppSidebar({
         </SidebarGroup>
       </SidebarContent>
 
-      <SidebarFooter>
+      <SidebarFooter className="border-t border-sidebar-border/70 pt-3">
         <NavUser user={user} />
       </SidebarFooter>
     </Sidebar>

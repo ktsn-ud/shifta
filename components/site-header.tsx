@@ -178,15 +178,15 @@ export function SiteHeader() {
   const breadcrumbs = buildBreadcrumbs(pathname);
 
   return (
-    <header className="flex h-(--header-height) shrink-0 items-center gap-2 border-b transition-[width,height] ease-linear group-has-data-[collapsible=icon]/sidebar-wrapper:h-(--header-height)">
-      <div className="flex w-full items-center gap-1 px-4 lg:gap-2 lg:px-6">
-        <SidebarTrigger className="-ml-1" />
+    <header className="sticky top-0 z-20 flex h-(--header-height) shrink-0 items-center gap-2 border-b border-border/70 bg-background/90 transition-[width,height] ease-linear backdrop-blur supports-[backdrop-filter]:bg-background/75 group-has-data-[collapsible=icon]/sidebar-wrapper:h-(--header-height)">
+      <div className="flex w-full items-center gap-2 px-4 lg:px-6">
+        <SidebarTrigger className="-ml-1 rounded-lg border border-border/70 bg-background shadow-none hover:bg-muted/60" />
         <Separator
           orientation="vertical"
-          className="mx-2 h-4 data-vertical:self-auto"
+          className="mx-1 h-5 bg-border/80 data-vertical:self-auto"
         />
-        <Breadcrumb>
-          <BreadcrumbList>
+        <Breadcrumb className="min-w-0">
+          <BreadcrumbList className="inline-flex min-w-0 items-center rounded-full border border-border/70 bg-muted/40 px-3 py-1.5 text-sm">
             {breadcrumbs.map((item, index) => {
               const isLast = index === breadcrumbs.length - 1;
               const key = `${item.title}-${index}`;
@@ -198,9 +198,14 @@ export function SiteHeader() {
                   ) : null}
                   <BreadcrumbItem>
                     {isLast || item.href === undefined ? (
-                      <BreadcrumbPage>{item.title}</BreadcrumbPage>
+                      <BreadcrumbPage className="font-medium text-foreground">
+                        {item.title}
+                      </BreadcrumbPage>
                     ) : (
-                      <BreadcrumbLink render={<Link href={item.href} />}>
+                      <BreadcrumbLink
+                        className="text-muted-foreground transition-colors hover:text-foreground"
+                        render={<Link href={item.href} />}
+                      >
                         {item.title}
                       </BreadcrumbLink>
                     )}
