@@ -33,9 +33,14 @@ type PayrollDetailsMonthlyPageClientProps = {
 export function PayrollDetailsMonthlyPageLoadingSkeleton() {
   return (
     <section className="space-y-6 p-4 md:p-6">
-      <header>
-        <h2 className="text-xl font-semibold">給与詳細（月毎表示）</h2>
-        <p className="mt-1 text-sm text-muted-foreground">
+      <header className="rounded-xl border border-border/80 bg-card/95 p-5 shadow-sm">
+        <p className="text-xs font-medium uppercase tracking-[0.12em] text-muted-foreground">
+          Payroll Details
+        </p>
+        <h2 className="mt-2 text-2xl font-semibold tracking-tight">
+          給与詳細（月毎表示）
+        </h2>
+        <p className="mt-2 text-sm text-muted-foreground">
           月毎の内訳と計算根拠を読み込み中です。
         </p>
       </header>
@@ -105,10 +110,15 @@ export function PayrollDetailsMonthlyPageClient({
 
   return (
     <section className="space-y-6 p-4 md:p-6">
-      <header className="space-y-3">
-        <div>
-          <h2 className="text-xl font-semibold">給与詳細（月毎表示）</h2>
-          <p className="mt-1 text-sm text-muted-foreground">
+      <header className="space-y-4 rounded-xl border border-border/80 bg-card/95 p-5 shadow-sm">
+        <div className="space-y-2">
+          <p className="text-xs font-medium uppercase tracking-[0.12em] text-muted-foreground">
+            Payroll Details
+          </p>
+          <h2 className="text-2xl font-semibold tracking-tight">
+            給与詳細（月毎表示）
+          </h2>
+          <p className="text-sm text-muted-foreground">
             {selectedMonthLabel}支給分の内訳を確認できます。
           </p>
         </div>
@@ -155,7 +165,7 @@ export function PayrollDetailsMonthlyPageClient({
       </header>
 
       {errorMessage ? (
-        <p className="rounded-md border border-destructive/40 bg-destructive/5 px-3 py-2 text-sm text-destructive">
+        <p className="rounded-lg border border-destructive/40 bg-destructive/5 px-3 py-2 text-sm text-destructive">
           {errorMessage}
         </p>
       ) : null}
@@ -168,18 +178,18 @@ export function PayrollDetailsMonthlyPageClient({
       ) : details ? (
         <>
           {!hasAnyShift ? (
-            <p className="rounded-md border bg-muted/30 px-3 py-2 text-sm text-muted-foreground">
+            <p className="rounded-lg border border-border/70 bg-muted/30 px-3 py-2 text-sm text-muted-foreground">
               対象月のシフトはありません
             </p>
           ) : null}
 
           <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-5">
-            <Card size="sm">
+            <Card size="sm" className="border-primary/30 bg-primary/5">
               <CardHeader>
                 <CardTitle>支給合計</CardTitle>
                 <CardDescription>{selectedMonthLabel}支給分</CardDescription>
               </CardHeader>
-              <CardContent className="text-2xl font-semibold">
+              <CardContent className="text-3xl font-semibold tracking-tight">
                 {formatCurrency(details.totals.totalWage)}
               </CardContent>
             </Card>
@@ -232,7 +242,7 @@ export function PayrollDetailsMonthlyPageClient({
             </Card>
           </div>
 
-          <Card>
+          <Card className="border-border/80 bg-card/95 shadow-sm">
             <CardHeader>
               <CardTitle>勤務先別内訳</CardTitle>
               <CardDescription>図は横スクロールが可能です。</CardDescription>
@@ -241,7 +251,7 @@ export function PayrollDetailsMonthlyPageClient({
               {details.byWorkplace.map((item) => (
                 <div
                   key={`${item.workplaceId}-formula`}
-                  className="space-y-3 rounded-lg border p-3"
+                  className="space-y-3 rounded-lg border border-border/70 bg-muted/10 p-3"
                 >
                   <div className="flex flex-wrap items-center gap-8">
                     <p className="font-medium">

@@ -5,6 +5,7 @@
 ## フォルダ構成
 
 - `performance/`: パフォーマンス調査・最適化計画・監査
+- `design/`: デザインシステム、UXリデザイン計画などの完了済み設計資料
 - `google-calendar/`: Google Calendar 連携の実装計画
 - `feature-plans/`: 機能仕様案・実装計画（履歴）
 - `issues/`: 過去 issue 起点の実装依頼メモ

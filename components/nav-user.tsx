@@ -1,5 +1,4 @@
 "use client";
-
 import { useTheme } from "next-themes";
 import { signOutAction } from "@/lib/actions/auth";
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
@@ -42,23 +41,26 @@ export function NavUser({
         <DropdownMenu>
           <DropdownMenuTrigger
             render={
-              <SidebarMenuButton size="lg" className="aria-expanded:bg-muted" />
+              <SidebarMenuButton
+                size="lg"
+                className="h-12 rounded-xl border border-sidebar-border/70 bg-sidebar-accent/30 px-2.5 aria-expanded:bg-sidebar-accent/70"
+              />
             }
           >
-            <Avatar className="size-8 rounded-lg">
+            <Avatar className="size-8 rounded-md">
               <AvatarImage src={user.avatar ?? undefined} alt={user.name} />
-              <AvatarFallback className="rounded-lg">{fallback}</AvatarFallback>
+              <AvatarFallback className="rounded-md">{fallback}</AvatarFallback>
             </Avatar>
             <div className="grid flex-1 text-left text-sm leading-tight">
-              <span className="truncate font-medium">{user.name}</span>
-              <span className="truncate text-xs text-foreground/70">
+              <span className="truncate font-semibold">{user.name}</span>
+              <span className="truncate text-xs text-sidebar-foreground/70">
                 {user.email}
               </span>
             </div>
             <EllipsisVerticalIcon className="ml-auto size-4" />
           </DropdownMenuTrigger>
           <DropdownMenuContent
-            className="min-w-56"
+            className="min-w-56 rounded-xl border-border/70"
             side={isMobile ? "bottom" : "right"}
             align="end"
             sideOffset={4}
@@ -66,12 +68,12 @@ export function NavUser({
             <DropdownMenuGroup>
               <DropdownMenuLabel className="p-0 font-normal">
                 <div className="flex items-center gap-2 px-1 py-1.5 text-left text-sm">
-                  <Avatar className="size-8">
+                  <Avatar className="size-8 rounded-md">
                     <AvatarImage
                       src={user.avatar ?? undefined}
                       alt={user.name}
                     />
-                    <AvatarFallback className="rounded-lg">
+                    <AvatarFallback className="rounded-md">
                       {fallback}
                     </AvatarFallback>
                   </Avatar>

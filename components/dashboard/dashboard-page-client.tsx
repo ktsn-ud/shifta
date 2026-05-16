@@ -87,13 +87,29 @@ function formatSummaryPeriodLabel(month: Date): string {
 
 export function DashboardPageLoadingSkeleton() {
   return (
-    <section className="space-y-6 p-4 md:p-6">
-      <header>
-        <div>
-          <h2 className="text-xl font-semibold">ダッシュボード</h2>
-          <p className="mt-1 text-sm text-muted-foreground">
+    <section className="space-y-6 p-4 md:p-6 lg:p-8">
+      <header className="flex flex-wrap items-start justify-between gap-4 rounded-xl border border-border/80 bg-card/95 p-5 shadow-sm md:p-6">
+        <div className="space-y-2">
+          <p className="text-xs font-medium uppercase tracking-[0.12em] text-muted-foreground">
+            Home
+          </p>
+          <h2 className="text-2xl font-semibold tracking-tight">
+            ダッシュボード
+          </h2>
+          <p className="text-sm text-muted-foreground">
             当月のシフト状況と概算値を確認できます。
           </p>
+        </div>
+        <div className="flex flex-wrap items-center gap-2">
+          <Button type="button" variant="outline" disabled>
+            今月に戻る
+          </Button>
+          <Button type="button" variant="outline" disabled>
+            新規シフト登録
+          </Button>
+          <Button type="button" disabled>
+            一括登録
+          </Button>
         </div>
       </header>
       <SpinnerPanel
@@ -333,15 +349,20 @@ export function DashboardPageClient({
   };
 
   return (
-    <section className="space-y-6 p-4 md:p-6">
-      <header className="flex flex-wrap items-center justify-between gap-3">
-        <div>
-          <h2 className="text-xl font-semibold">ダッシュボード</h2>
-          <p className="mt-1 text-sm text-muted-foreground">
+    <section className="space-y-6 p-4 md:p-6 lg:p-8">
+      <header className="flex flex-wrap items-start justify-between gap-4 rounded-xl border border-border/80 bg-card/95 p-5 shadow-sm md:p-6">
+        <div className="space-y-2">
+          <p className="text-xs font-medium uppercase tracking-[0.12em] text-muted-foreground">
+            Home
+          </p>
+          <h2 className="text-2xl font-semibold tracking-tight">
+            ダッシュボード
+          </h2>
+          <p className="text-sm text-muted-foreground">
             当月のシフト状況と概算値を確認できます。
           </p>
         </div>
-        <div className="flex gap-2">
+        <div className="flex flex-wrap items-center gap-2">
           <Button
             type="button"
             variant="outline"
@@ -371,9 +392,9 @@ export function DashboardPageClient({
       ) : null}
 
       {!isLoading && initialUnconfirmedShiftCount > 0 ? (
-        <Card className="border-amber-300/70 bg-amber-50/70">
+        <Card className="border-amber-300/70 bg-amber-50/70 shadow-sm">
           <CardHeader className="gap-3 md:flex sm:flex-row sm:items-center sm:justify-between">
-            <div className="space-y-1">
+            <div className="flex flex-col gap-1">
               <CardTitle>シフト確定待ちがあります</CardTitle>
               <CardDescription>
                 本日以前の未確定シフトが {initialUnconfirmedShiftCount}{" "}
@@ -395,11 +416,11 @@ export function DashboardPageClient({
         <Card
           className={
             failedShiftCount > 0
-              ? "border-amber-300/70 bg-amber-50/70"
-              : "border-emerald-300/70 bg-emerald-50/70"
+              ? "border-amber-300/70 bg-amber-50/70 shadow-sm"
+              : "border-emerald-300/70 bg-emerald-50/70 shadow-sm"
           }
         >
-          <CardContent className="flex items-center justify-between gap-3 py-1">
+          <CardContent className="flex flex-wrap items-center justify-between gap-3 py-4">
             <div className="flex items-center gap-2 text-sm">
               {failedShiftCount > 0 ? (
                 <AlertTriangleIcon className="size-4 text-amber-700" />
@@ -422,7 +443,8 @@ export function DashboardPageClient({
                 disabled={isBulkRetrying || isSignOutScheduled}
               >
                 <RefreshCwIcon
-                  className={`size-4 ${isBulkRetrying ? "animate-spin" : ""}`}
+                  data-icon="inline-start"
+                  className={isBulkRetrying ? "animate-spin" : undefined}
                 />
                 {isBulkRetrying ? "再同期中..." : "一括して再同期"}
               </Button>
@@ -433,37 +455,44 @@ export function DashboardPageClient({
 
       {!isLoading ? (
         <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
-          <Card size="sm">
-            <CardHeader>
-              <CardTitle>翌月支給額</CardTitle>
+          <Card
+            size="sm"
+            className="border-primary/30 bg-primary/5 shadow-sm sm:col-span-2 lg:col-span-1"
+          >
+            <CardHeader className="gap-2">
+              <CardTitle className="text-base">翌月支給額</CardTitle>
               <CardDescription>
                 {formatCalendarMonthLabel(nextPaymentMonthDate)}
                 に受け取る見込み額
               </CardDescription>
             </CardHeader>
-            <CardContent className="text-2xl font-semibold">
+            <CardContent className="text-3xl font-semibold tracking-tight">
               {isNextPaymentLoading || nextPaymentAmount === null
                 ? "読み込み中..."
                 : formatCurrency(nextPaymentAmount)}
             </CardContent>
           </Card>
 
-          <Card size="sm">
-            <CardHeader>
-              <CardTitle>{summaryPeriodLabel}の勤務時間</CardTitle>
+          <Card size="sm" className="border-border/80 bg-card/95 shadow-sm">
+            <CardHeader className="gap-2">
+              <CardTitle className="text-base">
+                {summaryPeriodLabel}の勤務時間
+              </CardTitle>
               <CardDescription>休憩控除後の合計時間</CardDescription>
             </CardHeader>
-            <CardContent className="text-2xl font-semibold">
+            <CardContent className="text-2xl font-semibold tracking-tight">
               {(summary.totalWorkedMinutes / 60).toFixed(1)} 時間
             </CardContent>
           </Card>
 
-          <Card size="sm">
-            <CardHeader>
-              <CardTitle>{summaryPeriodLabel}のシフト件数</CardTitle>
+          <Card size="sm" className="border-border/80 bg-card/95 shadow-sm">
+            <CardHeader className="gap-2">
+              <CardTitle className="text-base">
+                {summaryPeriodLabel}のシフト件数
+              </CardTitle>
               <CardDescription>登録済み件数</CardDescription>
             </CardHeader>
-            <CardContent className="text-2xl font-semibold">
+            <CardContent className="text-2xl font-semibold tracking-tight">
               {summary.shiftCount} 件
             </CardContent>
           </Card>
@@ -471,7 +500,7 @@ export function DashboardPageClient({
       ) : null}
 
       {errorMessage ? (
-        <p className="rounded-md border border-destructive/40 bg-destructive/5 px-3 py-2 text-sm text-destructive">
+        <p className="rounded-lg border border-destructive/40 bg-destructive/5 px-3 py-2 text-sm text-destructive">
           {errorMessage}
         </p>
       ) : null}

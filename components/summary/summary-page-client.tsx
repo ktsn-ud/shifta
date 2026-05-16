@@ -66,13 +66,16 @@ function formatHours(value: number): string {
 export function SummaryPageLoadingSkeleton() {
   return (
     <section className="space-y-6 p-4 md:p-6">
-      <header>
-        <div>
-          <h2 className="text-xl font-semibold">給与サマリー</h2>
-          <p className="mt-1 text-sm text-muted-foreground">
-            支給月別の概算給与と勤務時間を確認できます。
-          </p>
-        </div>
+      <header className="rounded-xl border border-border/80 bg-card/95 p-5 shadow-sm">
+        <p className="text-xs font-medium uppercase tracking-[0.12em] text-muted-foreground">
+          Summary
+        </p>
+        <h2 className="mt-2 text-2xl font-semibold tracking-tight">
+          給与サマリー
+        </h2>
+        <p className="mt-2 text-sm text-muted-foreground">
+          支給月別の概算給与と勤務時間を確認できます。
+        </p>
       </header>
 
       <SpinnerPanel
@@ -135,10 +138,15 @@ export function SummaryPageClient({
 
   return (
     <section className="space-y-6 p-4 md:p-6">
-      <header className="space-y-3">
-        <div>
-          <h2 className="text-xl font-semibold">給与サマリー</h2>
-          <p className="mt-1 text-sm text-muted-foreground">
+      <header className="space-y-4 rounded-xl border border-border/80 bg-card/95 p-5 shadow-sm">
+        <div className="space-y-2">
+          <p className="text-xs font-medium uppercase tracking-[0.12em] text-muted-foreground">
+            Summary
+          </p>
+          <h2 className="text-2xl font-semibold tracking-tight">
+            給与サマリー
+          </h2>
+          <p className="text-sm text-muted-foreground">
             支給月別の概算給与と勤務時間を確認できます。
           </p>
         </div>
@@ -180,7 +188,7 @@ export function SummaryPageClient({
       </header>
 
       {errorMessage ? (
-        <p className="rounded-md border border-destructive/40 bg-destructive/5 px-3 py-2 text-sm text-destructive">
+        <p className="rounded-lg border border-destructive/40 bg-destructive/5 px-3 py-2 text-sm text-destructive">
           {errorMessage}
         </p>
       ) : null}
@@ -193,12 +201,12 @@ export function SummaryPageClient({
       ) : summary ? (
         <>
           <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
-            <Card size="sm">
+            <Card size="sm" className="border-primary/30 bg-primary/5">
               <CardHeader>
                 <CardTitle>概算給与</CardTitle>
                 <CardDescription>{selectedMonthLabel}支給分</CardDescription>
               </CardHeader>
-              <CardContent className="text-2xl font-semibold">
+              <CardContent className="text-3xl font-semibold tracking-tight">
                 {formatCurrency(summary.totalWage)}
               </CardContent>
             </Card>
@@ -264,7 +272,7 @@ export function SummaryPageClient({
           </div>
 
           <div className="grid gap-4 xl:grid-cols-2">
-            <Card>
+            <Card className="border-border/80 bg-card/95 shadow-sm">
               <CardHeader>
                 <CardTitle>勤務先別給与</CardTitle>
                 <CardDescription>選択月支給分の給与内訳グラフ</CardDescription>
@@ -274,54 +282,61 @@ export function SummaryPageClient({
               </CardContent>
             </Card>
 
-            <Card>
+            <Card className="border-border/80 bg-card/95 shadow-sm">
               <CardHeader>
                 <CardTitle>勤務先別内訳</CardTitle>
                 <CardDescription>勤務時間と給与の明細</CardDescription>
               </CardHeader>
               <CardContent>
-                <Table>
-                  <TableHeader>
-                    <TableRow>
-                      <TableHead>勤務先</TableHead>
-                      <TableHead>対象期間</TableHead>
-                      <TableHead className="text-right">勤務時間</TableHead>
-                      <TableHead className="text-right">給与</TableHead>
-                    </TableRow>
-                  </TableHeader>
-                  <TableBody>
-                    {summary.byWorkplace.length > 0 ? (
-                      summary.byWorkplace.map((item) => (
-                        <TableRow key={item.workplaceId}>
-                          <TableCell>
-                            <span className="inline-flex items-center gap-2">
-                              <span
-                                className="h-2.5 w-2.5 rounded-full"
-                                style={{ backgroundColor: item.workplaceColor }}
-                              />
-                              {item.workplaceName}
-                            </span>
-                          </TableCell>
-                          <TableCell>
-                            {item.periodStartDate} 〜 {item.periodEndDate}
-                          </TableCell>
-                          <TableCell className="text-right">
-                            {formatHours(item.workHours)}
-                          </TableCell>
-                          <TableCell className="text-right font-medium">
-                            {formatCurrency(item.wage)}
+                <div className="overflow-hidden rounded-lg border border-border/70">
+                  <Table>
+                    <TableHeader className="bg-muted/35">
+                      <TableRow>
+                        <TableHead>勤務先</TableHead>
+                        <TableHead>対象期間</TableHead>
+                        <TableHead className="text-right">勤務時間</TableHead>
+                        <TableHead className="text-right">給与</TableHead>
+                      </TableRow>
+                    </TableHeader>
+                    <TableBody>
+                      {summary.byWorkplace.length > 0 ? (
+                        summary.byWorkplace.map((item) => (
+                          <TableRow key={item.workplaceId}>
+                            <TableCell>
+                              <span className="inline-flex items-center gap-2">
+                                <span
+                                  className="h-2.5 w-2.5 rounded-full"
+                                  style={{
+                                    backgroundColor: item.workplaceColor,
+                                  }}
+                                />
+                                {item.workplaceName}
+                              </span>
+                            </TableCell>
+                            <TableCell>
+                              {item.periodStartDate} 〜 {item.periodEndDate}
+                            </TableCell>
+                            <TableCell className="text-right">
+                              {formatHours(item.workHours)}
+                            </TableCell>
+                            <TableCell className="text-right font-medium">
+                              {formatCurrency(item.wage)}
+                            </TableCell>
+                          </TableRow>
+                        ))
+                      ) : (
+                        <TableRow>
+                          <TableCell
+                            colSpan={4}
+                            className="h-24 text-center text-muted-foreground"
+                          >
+                            対象期間のシフトはありません
                           </TableCell>
                         </TableRow>
-                      ))
-                    ) : (
-                      <TableRow>
-                        <TableCell colSpan={4} className="h-20 text-center">
-                          対象期間のシフトはありません
-                        </TableCell>
-                      </TableRow>
-                    )}
-                  </TableBody>
-                </Table>
+                      )}
+                    </TableBody>
+                  </Table>
+                </div>
               </CardContent>
             </Card>
           </div>
