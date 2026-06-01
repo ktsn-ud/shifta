@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { useRouter } from "next/navigation";
 import { ChevronLeftIcon, ChevronRightIcon, Trash2Icon } from "lucide-react";
@@ -28,6 +28,7 @@ import {
   Form,
 } from "@/components/ui/form";
 import { Input } from "@/components/ui/input";
+import { LoadingOverlay } from "@/components/ui/loading-overlay";
 import { RadioGroup, RadioGroupItem } from "@/components/ui/radio-group";
 import {
   Select,
@@ -743,6 +744,9 @@ export function BulkShiftForm() {
   const queryClient = getBrowserQueryClient();
 
   const [month, setMonth] = useState(() => createCurrentMonthStart());
+  const [displayMonth, setDisplayMonth] = useState(() =>
+    createCurrentMonthStart(),
+  );
   const [selectedWorkplaceId, setSelectedWorkplaceId] = useState("");
   const [selectedDateKeys, setSelectedDateKeys] = useState<string[]>([]);
   const [rowsByDate, setRowsByDate] = useState<Record<string, BulkShiftRow>>(
@@ -760,6 +764,8 @@ export function BulkShiftForm() {
   const [isCalendarSelectionReady, setIsCalendarSelectionReady] =
     useState(false);
   const [isGoogleEventsLoading, setIsGoogleEventsLoading] = useState(true);
+  const [hasLoadedGoogleEvents, setHasLoadedGoogleEvents] = useState(false);
+  const hasLoadedGoogleEventsRef = useRef(false);
   const [googleEventsError, setGoogleEventsError] = useState<string | null>(
     null,
   );
@@ -780,6 +786,7 @@ export function BulkShiftForm() {
     useGoogleTokenExpiredSignOut();
   const { markForResetOnRouteHidden } = useResetOnRouteHidden(() => {
     setMonth(createCurrentMonthStart());
+    setDisplayMonth(createCurrentMonthStart());
     setSelectedWorkplaceId("");
     setSelectedDateKeys([]);
     setRowsByDate({});
@@ -787,6 +794,8 @@ export function BulkShiftForm() {
     setSelectedCalendarIds([]);
     setHasUserCalendarSelection(false);
     setIsGoogleEventsLoading(true);
+    setHasLoadedGoogleEvents(false);
+    hasLoadedGoogleEventsRef.current = false;
     setGoogleEventsError(null);
     setGoogleEventsWarning(null);
     setDefaults(DEFAULT_BULK_VALUES);
@@ -946,8 +955,8 @@ export function BulkShiftForm() {
   );
 
   const calendarCells = useMemo(() => {
-    return toMonthGrid(month);
-  }, [month]);
+    return toMonthGrid(displayMonth);
+  }, [displayMonth]);
 
   const selectedRows = useMemo(() => {
     return selectedDateKeys
@@ -1023,8 +1032,11 @@ export function BulkShiftForm() {
       hasUserCalendarSelection ? selectedCalendarIds.join(",") : "default",
     [hasUserCalendarSelection, selectedCalendarIds],
   );
-  const isGoogleCalendarLoading =
-    !isCalendarSelectionReady || isGoogleEventsLoading;
+  const isInitialGoogleCalendarLoading =
+    !isCalendarSelectionReady ||
+    (isGoogleEventsLoading && !hasLoadedGoogleEvents);
+  const isRefreshingGoogleEvents =
+    isCalendarSelectionReady && isGoogleEventsLoading && hasLoadedGoogleEvents;
 
   useEffect(() => {
     const persistedSelection = readPersistedBulkCalendarSelection();
@@ -1161,18 +1173,25 @@ export function BulkShiftForm() {
           return isSameSelection ? current : nextIds;
         });
         setGoogleEventsByDate(nextByDate);
+        setDisplayMonth(month);
+        hasLoadedGoogleEventsRef.current = true;
+        setHasLoadedGoogleEvents(true);
       } catch (error) {
         if (abortController.signal.aborted) {
           return;
         }
 
         console.error("failed to fetch google calendar events", error);
-        setCalendarOptions([]);
-        setGoogleEventsByDate({});
-        setGoogleEventsWarning(null);
+        if (!hasLoadedGoogleEventsRef.current) {
+          setCalendarOptions([]);
+          setGoogleEventsByDate({});
+          setGoogleEventsWarning(null);
+        }
         setGoogleEventsError(
           toErrorMessage(error, "Google予定の取得に失敗しました。"),
         );
+        hasLoadedGoogleEventsRef.current = true;
+        setHasLoadedGoogleEvents(true);
       } finally {
         if (abortController.signal.aborted === false) {
           setIsGoogleEventsLoading(false);
@@ -1895,177 +1914,186 @@ export function BulkShiftForm() {
             </div>
           </div>
 
-          {isGoogleCalendarLoading ? (
+          {isInitialGoogleCalendarLoading ? (
             <SpinnerPanel
               className="min-h-[360px]"
               label="Google予定を読み込み中..."
             />
           ) : (
-            <>
-              {calendarOptions.length > 0 ? (
-                <div className="space-y-2 rounded-md border border-dashed px-3 py-2">
-                  <div className="flex flex-wrap items-center justify-between gap-2">
-                    <p className="text-xs text-muted-foreground">
-                      Google予定の表示対象カレンダー（
-                      {selectedCalendarIds.length}/{calendarOptions.length}）
+            <LoadingOverlay
+              isLoading={isRefreshingGoogleEvents}
+              className="rounded-lg"
+            >
+              <>
+                {calendarOptions.length > 0 ? (
+                  <div className="space-y-2 rounded-md border border-dashed px-3 py-2">
+                    <div className="flex flex-wrap items-center justify-between gap-2">
+                      <p className="text-xs text-muted-foreground">
+                        Google予定の表示対象カレンダー（
+                        {selectedCalendarIds.length}/{calendarOptions.length}）
+                      </p>
+                      <Button
+                        type="button"
+                        variant="ghost"
+                        size="sm"
+                        onClick={resetCalendarSelectionToDefault}
+                      >
+                        デフォルトに戻す
+                      </Button>
+                    </div>
+                    <div className="grid gap-2 md:grid-cols-2 xl:grid-cols-3">
+                      {calendarOptions.map((calendar) => (
+                        <label
+                          key={calendar.id}
+                          className="flex items-center gap-2 rounded-md border px-2 py-1.5 text-xs"
+                        >
+                          <Checkbox
+                            checked={selectedCalendarIds.includes(calendar.id)}
+                            onCheckedChange={(checked) => {
+                              toggleCalendarSelection(
+                                calendar.id,
+                                checked === true,
+                              );
+                            }}
+                          />
+                          <span
+                            className="size-2 shrink-0 rounded-full"
+                            style={{
+                              backgroundColor: getGoogleEventBadgeColor(
+                                calendar.color,
+                              ),
+                            }}
+                          />
+                          <span className="truncate">{calendar.summary}</span>
+                        </label>
+                      ))}
+                    </div>
+                  </div>
+                ) : null}
+
+                <div className="rounded-lg border">
+                  <div className="flex items-center justify-between border-b px-3 py-2 md:px-4">
+                    <Button
+                      type="button"
+                      variant="outline"
+                      size="sm"
+                      onClick={() =>
+                        setMonth((current) => addMonths(current, -1))
+                      }
+                    >
+                      <ChevronLeftIcon className="size-4" />
+                      前月
+                    </Button>
+                    <p className="text-sm font-semibold">
+                      {formatMonthLabel(displayMonth)}
                     </p>
                     <Button
                       type="button"
-                      variant="ghost"
+                      variant="outline"
                       size="sm"
-                      onClick={resetCalendarSelectionToDefault}
+                      onClick={() =>
+                        setMonth((current) => addMonths(current, 1))
+                      }
                     >
-                      デフォルトに戻す
+                      次月
+                      <ChevronRightIcon className="size-4" />
                     </Button>
                   </div>
-                  <div className="grid gap-2 md:grid-cols-2 xl:grid-cols-3">
-                    {calendarOptions.map((calendar) => (
-                      <label
-                        key={calendar.id}
-                        className="flex items-center gap-2 rounded-md border px-2 py-1.5 text-xs"
-                      >
-                        <Checkbox
-                          checked={selectedCalendarIds.includes(calendar.id)}
-                          onCheckedChange={(checked) => {
-                            toggleCalendarSelection(
-                              calendar.id,
-                              checked === true,
-                            );
-                          }}
-                        />
-                        <span
-                          className="size-2 shrink-0 rounded-full"
-                          style={{
-                            backgroundColor: getGoogleEventBadgeColor(
-                              calendar.color,
-                            ),
-                          }}
-                        />
-                        <span className="truncate">{calendar.summary}</span>
-                      </label>
+
+                  <div className="grid grid-cols-7 border-b bg-muted/30">
+                    {WEEKDAY_LABELS.map((label) => (
+                      <div key={label} className="py-2 text-center text-xs">
+                        {label}
+                      </div>
                     ))}
                   </div>
-                </div>
-              ) : null}
 
-              <div className="rounded-lg border">
-                <div className="flex items-center justify-between border-b px-3 py-2 md:px-4">
-                  <Button
-                    type="button"
-                    variant="outline"
-                    size="sm"
-                    onClick={() =>
-                      setMonth((current) => addMonths(current, -1))
-                    }
-                  >
-                    <ChevronLeftIcon className="size-4" />
-                    前月
-                  </Button>
-                  <p className="text-sm font-semibold">
-                    {formatMonthLabel(month)}
-                  </p>
-                  <Button
-                    type="button"
-                    variant="outline"
-                    size="sm"
-                    onClick={() => setMonth((current) => addMonths(current, 1))}
-                  >
-                    次月
-                    <ChevronRightIcon className="size-4" />
-                  </Button>
-                </div>
+                  <div className="grid grid-cols-7">
+                    {calendarCells.map((cell) => {
+                      const isSelected = selectedDateKeys.includes(cell.key);
+                      const isToday = cell.key === todayKey;
+                      const dayOfWeek = cell.date.getDay();
+                      const isHoliday = holidayJp.isHoliday(cell.key);
+                      const isSunday = dayOfWeek === 0;
+                      const isSaturday = dayOfWeek === 6;
+                      const isRedDate = isSunday || isHoliday;
+                      const googleEventDay = googleEventsByDate[cell.key];
+                      const { visible: visibleGoogleEvents, hiddenCount } =
+                        getVisibleGoogleEvents(googleEventDay);
 
-                <div className="grid grid-cols-7 border-b bg-muted/30">
-                  {WEEKDAY_LABELS.map((label) => (
-                    <div key={label} className="py-2 text-center text-xs">
-                      {label}
-                    </div>
-                  ))}
-                </div>
-
-                <div className="grid grid-cols-7">
-                  {calendarCells.map((cell) => {
-                    const isSelected = selectedDateKeys.includes(cell.key);
-                    const isToday = cell.key === todayKey;
-                    const dayOfWeek = cell.date.getDay();
-                    const isHoliday = holidayJp.isHoliday(cell.key);
-                    const isSunday = dayOfWeek === 0;
-                    const isSaturday = dayOfWeek === 6;
-                    const isRedDate = isSunday || isHoliday;
-                    const googleEventDay = googleEventsByDate[cell.key];
-                    const { visible: visibleGoogleEvents, hiddenCount } =
-                      getVisibleGoogleEvents(googleEventDay);
-
-                    return (
-                      <button
-                        key={cell.key}
-                        type="button"
-                        onClick={() => {
-                          if (!cell.isCurrentMonth) {
-                            return;
-                          }
-                          toggleDateSelection(cell.key);
-                        }}
-                        className={cn(
-                          "relative flex min-h-24 flex-col border-b border-r px-1 py-2 text-left text-sm last:border-r-0 md:min-h-28",
-                          cell.isCurrentMonth
-                            ? "cursor-pointer hover:bg-muted/50"
-                            : "cursor-not-allowed bg-muted/20 text-muted-foreground/60",
-                          isSelected &&
-                            "bg-zinc-200 font-semibold hover:bg-zinc-200 ring-2 ring-inset ring-zinc-400 dark:bg-zinc-800/50 dark:hover:bg-zinc-800/50 dark:ring-zinc-600",
-                        )}
-                        disabled={cell.isCurrentMonth === false}
-                        aria-label={String(cell.date.getDate())}
-                      >
-                        {isToday ? (
-                          <span className="pointer-events-none absolute top-0.5 left-1/2 size-8 -translate-x-1/2 rounded-full bg-primary/20" />
-                        ) : null}
-
-                        <span
+                      return (
+                        <button
+                          key={cell.key}
+                          type="button"
+                          onClick={() => {
+                            if (!cell.isCurrentMonth) {
+                              return;
+                            }
+                            toggleDateSelection(cell.key);
+                          }}
                           className={cn(
-                            "relative z-10 self-center text-sm font-medium",
-                            cell.isCurrentMonth && isRedDate && "text-red-600",
-                            cell.isCurrentMonth &&
-                              !isRedDate &&
-                              isSaturday &&
-                              "text-blue-600",
-                            !cell.isCurrentMonth && "text-muted-foreground",
+                            "relative flex min-h-24 flex-col border-b border-r px-1 py-2 text-left text-sm last:border-r-0 md:min-h-28",
+                            cell.isCurrentMonth
+                              ? "cursor-pointer hover:bg-muted/50"
+                              : "cursor-not-allowed bg-muted/20 text-muted-foreground/60",
+                            isSelected &&
+                              "bg-zinc-200 font-semibold hover:bg-zinc-200 ring-2 ring-inset ring-zinc-400 dark:bg-zinc-800/50 dark:hover:bg-zinc-800/50 dark:ring-zinc-600",
                           )}
+                          disabled={cell.isCurrentMonth === false}
+                          aria-label={String(cell.date.getDate())}
                         >
-                          {cell.date.getDate()}
-                        </span>
-
-                        <ul className="mt-2 w-full space-y-1 px-1">
-                          {visibleGoogleEvents.map((item, index) => (
-                            <li
-                              key={`${cell.key}:${item.calendarId}:${item.title}:${index}`}
-                              className="flex items-center gap-1 text-[10px] leading-none"
-                            >
-                              <span
-                                className="size-2 shrink-0 rounded-full"
-                                style={{
-                                  backgroundColor: getGoogleEventBadgeColor(
-                                    item.calendarColor,
-                                  ),
-                                }}
-                              />
-                              <span className="truncate text-foreground">
-                                {formatGoogleEventLabel(item)}
-                              </span>
-                            </li>
-                          ))}
-                          {hiddenCount > 0 ? (
-                            <li className="text-[10px] font-medium text-muted-foreground">
-                              +{hiddenCount}
-                            </li>
+                          {isToday ? (
+                            <span className="pointer-events-none absolute top-0.5 left-1/2 size-8 -translate-x-1/2 rounded-full bg-primary/20" />
                           ) : null}
-                        </ul>
-                      </button>
-                    );
-                  })}
+
+                          <span
+                            className={cn(
+                              "relative z-10 self-center text-sm font-medium",
+                              cell.isCurrentMonth &&
+                                isRedDate &&
+                                "text-red-600",
+                              cell.isCurrentMonth &&
+                                !isRedDate &&
+                                isSaturday &&
+                                "text-blue-600",
+                              !cell.isCurrentMonth && "text-muted-foreground",
+                            )}
+                          >
+                            {cell.date.getDate()}
+                          </span>
+
+                          <ul className="mt-2 w-full space-y-1 px-1">
+                            {visibleGoogleEvents.map((item, index) => (
+                              <li
+                                key={`${cell.key}:${item.calendarId}:${item.title}:${index}`}
+                                className="flex items-center gap-1 text-[10px] leading-none"
+                              >
+                                <span
+                                  className="size-2 shrink-0 rounded-full"
+                                  style={{
+                                    backgroundColor: getGoogleEventBadgeColor(
+                                      item.calendarColor,
+                                    ),
+                                  }}
+                                />
+                                <span className="truncate text-foreground">
+                                  {formatGoogleEventLabel(item)}
+                                </span>
+                              </li>
+                            ))}
+                            {hiddenCount > 0 ? (
+                              <li className="text-[10px] font-medium text-muted-foreground">
+                                +{hiddenCount}
+                              </li>
+                            ) : null}
+                          </ul>
+                        </button>
+                      );
+                    })}
+                  </div>
                 </div>
-              </div>
-            </>
+              </>
+            </LoadingOverlay>
           )}
 
           {googleEventsError ? (

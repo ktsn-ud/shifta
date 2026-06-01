@@ -18,6 +18,7 @@ import {
   CardHeader,
   CardTitle,
 } from "@/components/ui/card";
+import { LoadingOverlay } from "@/components/ui/loading-overlay";
 import { SpinnerPanel } from "@/components/ui/spinner";
 import {
   addMonths,
@@ -135,14 +136,22 @@ export function DashboardPageClient({
     const initialMonthDate = dateFromDateKey(initialMonthStartDate);
     return startOfMonth(initialMonthDate ?? new Date());
   });
+  const [displayMonth, setDisplayMonth] = useState(() => {
+    const initialMonthDate = dateFromDateKey(initialMonthStartDate);
+    return startOfMonth(initialMonthDate ?? new Date());
+  });
   const [selectedDate, setSelectedDate] = useState(() => new Date());
   const [modalOpen, setModalOpen] = useState(false);
   const now = new Date();
-  const isCurrentMonth =
-    month.getFullYear() === now.getFullYear() &&
-    month.getMonth() === now.getMonth();
 
-  const { shifts, isLoading, errorMessage, reload } = useMonthShifts(month, {
+  const {
+    shifts,
+    isInitialLoading,
+    isRefreshing,
+    isPlaceholderData,
+    errorMessage,
+    reload,
+  } = useMonthShifts(month, {
     cacheUserKey: currentUserId,
     initialShifts: initialMonthShifts,
     initialStartDate: initialMonthStartDate,
@@ -163,24 +172,30 @@ export function DashboardPageClient({
 
   const summary = useMemo(() => summarizeShifts(shifts), [shifts]);
   const summaryPeriodLabel = useMemo(
-    () => formatSummaryPeriodLabel(month),
-    [month],
+    () => formatSummaryPeriodLabel(displayMonth),
+    [displayMonth],
   );
   const nextPaymentMonthValue = useMemo(
-    () => toMonthInputValue(addMonths(month, 1)),
-    [month],
+    () => toMonthInputValue(addMonths(displayMonth, 1)),
+    [displayMonth],
   );
-  const nextPaymentMonthDate = useMemo(() => addMonths(month, 1), [month]);
+  const nextPaymentMonthDate = useMemo(
+    () => addMonths(displayMonth, 1),
+    [displayMonth],
+  );
   const initialDashboardMonth = useMemo(
     () => startOfMonth(dateFromDateKey(initialMonthStartDate) ?? new Date()),
     [initialMonthStartDate],
   );
   const isInitialDashboardMonth = useMemo(() => {
     return (
-      month.getFullYear() === initialDashboardMonth.getFullYear() &&
-      month.getMonth() === initialDashboardMonth.getMonth()
+      displayMonth.getFullYear() === initialDashboardMonth.getFullYear() &&
+      displayMonth.getMonth() === initialDashboardMonth.getMonth()
     );
-  }, [initialDashboardMonth, month]);
+  }, [displayMonth, initialDashboardMonth]);
+  const isCurrentMonth =
+    displayMonth.getFullYear() === now.getFullYear() &&
+    displayMonth.getMonth() === now.getMonth();
   const selectedDateKey = toDateKey(selectedDate);
   const selectedDateShifts = shiftsByDate.get(selectedDateKey) ?? [];
   const failedShiftIds = useMemo(() => {
@@ -214,6 +229,13 @@ export function DashboardPageClient({
 
       return isSameMonth ? current : nextMonth;
     });
+    setDisplayMonth((current) => {
+      const isSameMonth =
+        current.getFullYear() === nextMonth.getFullYear() &&
+        current.getMonth() === nextMonth.getMonth();
+
+      return isSameMonth ? current : nextMonth;
+    });
   }, [initialMonthStartDate]);
 
   useEffect(() => {
@@ -230,6 +252,20 @@ export function DashboardPageClient({
     });
   }, [monthFromQuery]);
 
+  useEffect(() => {
+    if (isPlaceholderData) {
+      return;
+    }
+
+    setDisplayMonth((current) => {
+      const isSameMonth =
+        current.getFullYear() === month.getFullYear() &&
+        current.getMonth() === month.getMonth();
+
+      return isSameMonth ? current : month;
+    });
+  }, [isPlaceholderData, month]);
+
   const nextPaymentSummaryQuery = usePayrollSummaryQuery({
     userId: currentUserId,
     month: nextPaymentMonthValue,
@@ -245,7 +281,7 @@ export function DashboardPageClient({
     const dateString = toDateKey(date);
     const params = new URLSearchParams({
       date: dateString,
-      month: toMonthInputValue(month),
+      month: toMonthInputValue(displayMonth),
     });
     router.push(`/my/shifts/new?${params.toString()}`);
   };
@@ -384,14 +420,14 @@ export function DashboardPageClient({
         </div>
       </header>
 
-      {isLoading ? (
+      {isInitialLoading ? (
         <SpinnerPanel
           className="min-h-[360px]"
           label="ダッシュボードを読み込み中..."
         />
       ) : null}
 
-      {!isLoading && initialUnconfirmedShiftCount > 0 ? (
+      {!isInitialLoading && initialUnconfirmedShiftCount > 0 ? (
         <Card className="border-amber-300/70 bg-amber-50/70 shadow-sm">
           <CardHeader className="gap-3 md:flex sm:flex-row sm:items-center sm:justify-between">
             <div className="flex flex-col gap-1">
@@ -412,7 +448,7 @@ export function DashboardPageClient({
         </Card>
       ) : null}
 
-      {!isLoading ? (
+      {!isInitialLoading ? (
         <Card
           className={
             failedShiftCount > 0
@@ -453,7 +489,7 @@ export function DashboardPageClient({
         </Card>
       ) : null}
 
-      {!isLoading ? (
+      {!isInitialLoading ? (
         <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
           <Card
             size="sm"
@@ -505,22 +541,24 @@ export function DashboardPageClient({
         </p>
       ) : null}
 
-      {!isLoading ? (
-        <MonthCalendar
-          month={month}
-          shifts={shifts}
-          onNavigatePrev={() => setMonth((current) => addMonths(current, -1))}
-          onNavigateNext={() => setMonth((current) => addMonths(current, 1))}
-          onDateClick={(date) => {
-            setSelectedDate(date);
-            const dayShifts = shiftsByDate.get(toDateKey(date)) ?? [];
-            if (dayShifts.length === 0) {
-              handleCreateShift(date);
-              return;
-            }
-            setModalOpen(true);
-          }}
-        />
+      {!isInitialLoading ? (
+        <LoadingOverlay isLoading={isRefreshing} className="rounded-xl">
+          <MonthCalendar
+            month={displayMonth}
+            shifts={shifts}
+            onNavigatePrev={() => setMonth((current) => addMonths(current, -1))}
+            onNavigateNext={() => setMonth((current) => addMonths(current, 1))}
+            onDateClick={(date) => {
+              setSelectedDate(date);
+              const dayShifts = shiftsByDate.get(toDateKey(date)) ?? [];
+              if (dayShifts.length === 0) {
+                handleCreateShift(date);
+                return;
+              }
+              setModalOpen(true);
+            }}
+          />
+        </LoadingOverlay>
       ) : null}
 
       <ShiftListModal
@@ -531,7 +569,7 @@ export function DashboardPageClient({
         onCreateShift={handleCreateShift}
         onEditShift={(shiftId) => {
           const params = new URLSearchParams({
-            month: toMonthInputValue(month),
+            month: toMonthInputValue(displayMonth),
           });
           router.push(`/my/shifts/${shiftId}/edit?${params.toString()}`);
         }}

@@ -92,6 +92,7 @@ export function usePayrollSummaryQuery(input: {
     },
     enabled,
     initialData,
+    placeholderData: (previousData) => previousData,
     staleTime: PAYROLL_STALE_TIME_MS,
     gcTime: PAYROLL_GC_TIME_MS,
   });
@@ -120,6 +121,7 @@ export function usePayrollDetailsMonthlyQuery(input: {
     },
     enabled,
     initialData,
+    placeholderData: (previousData) => previousData,
     staleTime: PAYROLL_STALE_TIME_MS,
     gcTime: PAYROLL_GC_TIME_MS,
   });
@@ -155,6 +157,7 @@ export function usePayrollDetailsWorkplaceYearlyQuery(input: {
     },
     enabled,
     initialData,
+    placeholderData: (previousData) => previousData,
     staleTime: PAYROLL_STALE_TIME_MS,
     gcTime: PAYROLL_GC_TIME_MS,
   });
