@@ -12,6 +12,18 @@ export type SyncResponsePayload = {
   requiresSignOut: boolean;
 };
 
+export function buildSuccessSyncResponse(): SyncResponsePayload {
+  return {
+    status: "success",
+    ok: true,
+    pending: false,
+    errorMessage: null,
+    errorCode: null,
+    requiresCalendarSetup: false,
+    requiresSignOut: false,
+  };
+}
+
 export function buildPendingSyncResponse(): SyncResponsePayload {
   return {
     status: "pending",
@@ -28,15 +40,7 @@ export function buildSyncResponseFromResult(
   result: SyncResult,
 ): SyncResponsePayload {
   if (result.ok) {
-    return {
-      status: "success",
-      ok: true,
-      pending: false,
-      errorMessage: null,
-      errorCode: null,
-      requiresCalendarSetup: false,
-      requiresSignOut: false,
-    };
+    return buildSuccessSyncResponse();
   }
 
   return {

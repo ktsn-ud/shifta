@@ -29,8 +29,10 @@ import {
   TableRow,
 } from "@/components/ui/table";
 import { formatWorkplaceType } from "@/lib/enum-labels";
+import { parseGoogleSyncStateFromPayload } from "@/lib/google-calendar/clientSync";
 import { messages, toErrorMessage } from "@/lib/messages";
 import { getBrowserQueryClient } from "@/lib/query/query-client";
+import { buildMutationSuccessDescription } from "@/lib/query/mutation-toast";
 import { invalidateAfterWorkplaceMutation } from "@/lib/query/invalidation";
 import { useWorkplacesQuery } from "@/lib/query/queries/workplaces";
 import { queryKeys } from "@/lib/query/query-keys";
@@ -184,9 +186,12 @@ export function WorkplaceList({
         );
       }
 
-      const parsed = parseWorkplaceDeleteResponse(
-        (await response.json()) as unknown,
+      const responsePayload = (await response.json()) as unknown;
+      const syncState = parseGoogleSyncStateFromPayload(
+        responsePayload,
+        messages.error.calendarSyncFailed,
       );
+      const parsed = parseWorkplaceDeleteResponse(responsePayload);
       if (!parsed) {
         throw new Error("勤務先削除レスポンスの形式が不正です。");
       }
@@ -213,7 +218,10 @@ export function WorkplaceList({
         );
       } else {
         toast.success(messages.success.workplaceDeleted, {
-          description: deletingTarget.name,
+          description: buildMutationSuccessDescription({
+            baseDescription: deletingTarget.name,
+            syncPending: syncState.pending,
+          }),
         });
         setInfoMessage(`${deletingTarget.name} を削除しました。`);
       }

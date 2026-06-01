@@ -12,6 +12,7 @@ import {
 import { CALENDAR_SETUP_PATH } from "@/lib/google-calendar/constants";
 import { messages, toErrorMessage } from "@/lib/messages";
 import { getBrowserQueryClient } from "@/lib/query/query-client";
+import { buildMutationSuccessDescription } from "@/lib/query/mutation-toast";
 import { invalidateAfterShiftMutation } from "@/lib/query/invalidation";
 import { formatShiftWorkplaceLabel } from "@/lib/shifts/format";
 import { isOvernightShift, isSameTimeShift } from "@/lib/shifts/time";
@@ -201,9 +202,12 @@ export function ConfirmShiftCard({
         return;
       }
 
-      if (syncState.pending) {
+      const successDescription = buildMutationSuccessDescription({
+        syncPending: syncState.pending,
+      });
+      if (successDescription) {
         toast.success(messages.success.shiftConfirmed, {
-          description: "Google Calendar 同期はバックグラウンドで実行中です。",
+          description: successDescription,
         });
       } else {
         toast.success(messages.success.shiftConfirmed);

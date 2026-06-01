@@ -42,6 +42,7 @@ import {
 import { parseGoogleSyncStateFromPayload } from "@/lib/google-calendar/clientSync";
 import { messages, toErrorMessage } from "@/lib/messages";
 import { getBrowserQueryClient } from "@/lib/query/query-client";
+import { buildMutationSuccessDescription } from "@/lib/query/mutation-toast";
 import { invalidateAfterShiftMutation } from "@/lib/query/invalidation";
 import { formatShiftTimeRange } from "@/lib/shifts/time";
 import { formatShiftWorkplaceLabel } from "@/lib/shifts/format";
@@ -426,10 +427,10 @@ export function ShiftListPageClient({
       await Promise.all([invalidateAfterShiftMutation(queryClient), reload()]);
 
       toast.success(messages.success.shiftDeleted, {
-        description: syncState.pending
-          ? String(deletedCount) +
-            "件のシフトを削除しました。 Google Calendar 同期はバックグラウンドで実行中です。"
-          : String(deletedCount) + "件のシフトを削除しました。",
+        description: buildMutationSuccessDescription({
+          baseDescription: `${deletedCount}件のシフトを削除しました。`,
+          syncPending: syncState.pending,
+        }),
       });
     } catch (error) {
       console.error("failed to bulk delete shifts", error);

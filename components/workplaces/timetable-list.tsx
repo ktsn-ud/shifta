@@ -28,8 +28,10 @@ import {
   TableHeader,
   TableRow,
 } from "@/components/ui/table";
+import { parseGoogleSyncStateFromPayload } from "@/lib/google-calendar/clientSync";
 import { messages, toErrorMessage } from "@/lib/messages";
 import { getBrowserQueryClient } from "@/lib/query/query-client";
+import { buildMutationSuccessDescription } from "@/lib/query/mutation-toast";
 import { invalidateAfterTimetableMutation } from "@/lib/query/invalidation";
 import {
   useWorkplaceDetailQuery,
@@ -151,6 +153,12 @@ export function TimetableList({
         );
       }
 
+      const responsePayload = (await response.json()) as unknown;
+      const syncState = parseGoogleSyncStateFromPayload(
+        responsePayload,
+        messages.error.calendarSyncFailed,
+      );
+
       await invalidateAfterTimetableMutation(queryClient, workplaceId);
       queryClient.setQueryData<TimetableSet[]>(
         queryKeys.workplaces.timetables({ workplaceId }),
@@ -159,7 +167,11 @@ export function TimetableList({
       );
       setDeletingId(null);
       setInfoMessage("時間割セットを削除しました。");
-      toast.success(messages.success.timetableDeleted);
+      toast.success(messages.success.timetableDeleted, {
+        description: buildMutationSuccessDescription({
+          syncPending: syncState.pending,
+        }),
+      });
     } catch (error) {
       console.error("failed to delete timetable set", error);
       const message = toErrorMessage(

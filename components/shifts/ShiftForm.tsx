@@ -46,6 +46,7 @@ import { CALENDAR_SETUP_PATH } from "@/lib/google-calendar/constants";
 import { messages, toErrorMessage } from "@/lib/messages";
 import { fetchJson } from "@/lib/query/fetch-json";
 import { getBrowserQueryClient } from "@/lib/query/query-client";
+import { buildMutationSuccessDescription } from "@/lib/query/mutation-toast";
 import { invalidateAfterShiftMutation } from "@/lib/query/invalidation";
 import { queryKeys } from "@/lib/query/query-keys";
 import {
@@ -1454,10 +1455,10 @@ export function ShiftForm({
           : messages.success.shiftUpdated,
         {
           id: loadingToastId,
-          description: syncState.pending
-            ? successDescription +
-              " Google Calendar 同期はバックグラウンドで実行中です。"
-            : successDescription,
+          description: buildMutationSuccessDescription({
+            baseDescription: successDescription,
+            syncPending: syncState.pending,
+          }),
         },
       );
       await invalidateAfterShiftMutation(queryClient);

@@ -11,6 +11,7 @@ import {
 import { requireOwnedWorkplace } from "@/lib/api/workplace";
 import { prisma } from "@/lib/prisma";
 import { jsonNoStore } from "@/lib/api/cache-control";
+import { buildSuccessSyncResponse } from "@/lib/google-calendar/sync-response";
 import { revalidateWorkplaceDomainTags } from "@/lib/cache/revalidate";
 
 const timetableItemSchema = z
@@ -206,7 +207,10 @@ export async function PUT(request: Request, context: Context) {
       workplaceId,
     });
 
-    return jsonNoStore({ data: buildSetResponse(updated) });
+    return jsonNoStore({
+      data: buildSetResponse(updated),
+      sync: buildSuccessSyncResponse(),
+    });
   } catch (error) {
     if (
       error instanceof Error &&
@@ -293,6 +297,7 @@ export async function DELETE(request: Request, context: Context) {
         id,
         deleted: true,
       },
+      sync: buildSuccessSyncResponse(),
     });
   } catch (error) {
     console.error(

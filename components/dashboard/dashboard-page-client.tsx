@@ -36,6 +36,7 @@ import {
 import { CALENDAR_SETUP_PATH } from "@/lib/google-calendar/constants";
 import { messages } from "@/lib/messages";
 import { getBrowserQueryClient } from "@/lib/query/query-client";
+import { buildMutationSuccessDescription } from "@/lib/query/mutation-toast";
 import { invalidateAfterShiftMutation } from "@/lib/query/invalidation";
 import { usePayrollSummaryQuery } from "@/lib/query/queries/payroll";
 import { useGoogleTokenExpiredSignOut } from "@/hooks/use-google-token-expired-signout";
@@ -637,9 +638,9 @@ export function DashboardPageClient({
           }
 
           toast.success(messages.success.shiftDeleted, {
-            description: syncState.pending
-              ? "Google Calendar 同期はバックグラウンドで実行中です。"
-              : undefined,
+            description: buildMutationSuccessDescription({
+              syncPending: syncState.pending,
+            }),
           });
         }}
         onRetrySync={async (shiftId) => {
