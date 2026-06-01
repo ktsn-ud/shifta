@@ -1,6 +1,6 @@
 "use client";
 
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { Input } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
 import {
@@ -18,6 +18,7 @@ import {
   TableHeader,
   TableRow,
 } from "@/components/ui/table";
+import { LoadingOverlay } from "@/components/ui/loading-overlay";
 import { SpinnerPanel } from "@/components/ui/spinner";
 import { PayrollDetailsViewSwitch } from "@/components/payroll-details/payroll-details-view-switch";
 import { formatCurrency } from "@/components/payroll-details/format";
@@ -85,15 +86,22 @@ export function PayrollDetailsWorkplaceYearlyPageClient({
   initialDetails,
 }: PayrollDetailsWorkplaceYearlyPageClientProps) {
   const [draftYearValue, setDraftYearValue] = useState(String(initialYear));
-  const [appliedYearValue, setAppliedYearValue] = useState(String(initialYear));
+  const [requestedYearValue, setRequestedYearValue] = useState(
+    String(initialYear),
+  );
+  const [displayYearValue, setDisplayYearValue] = useState(String(initialYear));
 
   const currentYearValue = String(new Date().getFullYear());
   const canApplyYear =
-    isValidYearInput(draftYearValue) && draftYearValue !== appliedYearValue;
+    isValidYearInput(draftYearValue) && draftYearValue !== requestedYearValue;
 
-  const appliedYearNumber = useMemo(
-    () => toYearNumber(appliedYearValue),
-    [appliedYearValue],
+  const requestedYearNumber = useMemo(
+    () => toYearNumber(requestedYearValue),
+    [requestedYearValue],
+  );
+  const displayYearNumber = useMemo(
+    () => toYearNumber(displayYearValue),
+    [displayYearValue],
   );
 
   const monthlyHref = "/my/payroll-details/monthly";
@@ -103,28 +111,41 @@ export function PayrollDetailsWorkplaceYearlyPageClient({
       return;
     }
 
-    setAppliedYearValue(nextValue);
+    setRequestedYearValue(nextValue);
   };
 
   const handleBackToCurrentYear = () => {
     setDraftYearValue(currentYearValue);
-    setAppliedYearValue(currentYearValue);
+    setRequestedYearValue(currentYearValue);
   };
 
   const detailsQuery = usePayrollDetailsWorkplaceYearlyQuery({
     userId: currentUserId,
-    year: appliedYearNumber ?? initialYear,
-    enabled: appliedYearNumber !== null,
+    year: requestedYearNumber ?? initialYear,
+    enabled: requestedYearNumber !== null,
     initialData:
-      appliedYearNumber !== null && appliedYearNumber === initialYear
+      requestedYearNumber !== null && requestedYearNumber === initialYear
         ? initialDetails
         : undefined,
   });
 
+  useEffect(() => {
+    if (detailsQuery.isPlaceholderData) {
+      return;
+    }
+
+    setDisplayYearValue((current) =>
+      current === requestedYearValue ? current : requestedYearValue,
+    );
+  }, [detailsQuery.isPlaceholderData, requestedYearValue]);
+
   const details = detailsQuery.data ?? null;
-  const isLoading = appliedYearNumber !== null ? detailsQuery.isLoading : false;
+  const isInitialLoading =
+    requestedYearNumber !== null && detailsQuery.isLoading && details === null;
+  const isRefreshing =
+    requestedYearNumber !== null && detailsQuery.isFetching && details !== null;
   const errorMessage =
-    appliedYearNumber === null
+    requestedYearNumber === null
       ? "年は YYYY 形式（2000〜2100）で指定してください。"
       : detailsQuery.error
         ? toErrorMessage(
@@ -150,7 +171,7 @@ export function PayrollDetailsWorkplaceYearlyPageClient({
             給与詳細（勤務先毎表示）
           </h2>
           <p className="text-sm text-muted-foreground">
-            {appliedYearNumber ? `${appliedYearNumber}年` : appliedYearValue}
+            {displayYearNumber ? `${displayYearNumber}年` : displayYearValue}
             受取分の勤務先別月次内訳を確認できます。
           </p>
         </div>
@@ -160,14 +181,14 @@ export function PayrollDetailsWorkplaceYearlyPageClient({
           href={monthlyHref}
         />
 
-        {!isLoading ? (
+        {!isInitialLoading ? (
           <div className="flex flex-wrap items-center gap-2">
             <Button
               type="button"
               variant="outline"
               size="sm"
               onClick={handleBackToCurrentYear}
-              disabled={appliedYearValue === currentYearValue}
+              disabled={requestedYearValue === currentYearValue || isRefreshing}
             >
               今年に戻る
             </Button>
@@ -178,6 +199,7 @@ export function PayrollDetailsWorkplaceYearlyPageClient({
               max={MAX_YEAR}
               step={1}
               value={draftYearValue}
+              disabled={isRefreshing}
               onKeyDown={(event) => {
                 if (event.key === "Enter") {
                   applyYearValue(draftYearValue);
@@ -192,7 +214,7 @@ export function PayrollDetailsWorkplaceYearlyPageClient({
               type="button"
               size="sm"
               onClick={() => applyYearValue(draftYearValue)}
-              disabled={!canApplyYear}
+              disabled={!canApplyYear || isRefreshing}
             >
               適用
             </Button>
@@ -206,164 +228,171 @@ export function PayrollDetailsWorkplaceYearlyPageClient({
         </p>
       ) : null}
 
-      {isLoading ? (
+      {isInitialLoading ? (
         <SpinnerPanel
           className="min-h-[360px]"
           label="給与詳細を読み込み中..."
         />
       ) : details ? (
-        <>
-          {!hasAnyShift ? (
-            <p className="rounded-lg border border-border/70 bg-muted/30 px-3 py-2 text-sm text-muted-foreground">
-              対象年のシフトはありません
-            </p>
-          ) : null}
+        <LoadingOverlay isLoading={isRefreshing} className="rounded-xl">
+          <div className="space-y-6">
+            {!hasAnyShift ? (
+              <p className="rounded-lg border border-border/70 bg-muted/30 px-3 py-2 text-sm text-muted-foreground">
+                対象年のシフトはありません
+              </p>
+            ) : null}
 
-          {details.workplaces.length === 0 ? (
-            <p className="rounded-lg border border-border/70 bg-muted/30 px-3 py-2 text-sm text-muted-foreground">
-              対象年のシフトはありません
-            </p>
-          ) : (
-            <div className="space-y-6">
-              {details.workplaces.map((workplace) => (
-                <Card
-                  key={workplace.workplaceId}
-                  className="border-border/80 bg-card/95 shadow-sm"
-                >
-                  <CardHeader className="border-b border-border/70">
-                    <CardTitle>
-                      <span className="inline-flex items-center gap-2">
-                        <span
-                          className="h-2.5 w-2.5 rounded-full"
-                          style={{ backgroundColor: workplace.workplaceColor }}
-                        />
-                        {workplace.workplaceName}
-                      </span>
-                    </CardTitle>
-                    <CardDescription>
-                      {appliedYearValue}年 受取見込
-                    </CardDescription>
-                  </CardHeader>
-                  <CardContent className="space-y-4">
-                    <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
-                      <Card
-                        size="sm"
-                        className="border-primary/30 bg-primary/5"
-                      >
-                        <CardHeader>
-                          <CardTitle>年間受取見込</CardTitle>
-                        </CardHeader>
-                        <CardContent className="text-xl font-semibold">
-                          {formatCurrency(workplace.yearlyTotals.totalWage)}
-                        </CardContent>
-                      </Card>
-                      <Card size="sm">
-                        <CardHeader>
-                          <CardTitle>年間 基本勤務金額</CardTitle>
-                        </CardHeader>
-                        <CardContent className="text-xl font-semibold">
-                          {formatCurrency(workplace.yearlyTotals.baseWage)}
-                        </CardContent>
-                      </Card>
-                      <Card size="sm">
-                        <CardHeader>
-                          <CardTitle>年間 深夜勤務金額</CardTitle>
-                        </CardHeader>
-                        <CardContent className="text-xl font-semibold">
-                          {formatCurrency(workplace.yearlyTotals.nightWage)}
-                        </CardContent>
-                      </Card>
-                      <Card size="sm">
-                        <CardHeader>
-                          <CardTitle>年間 休日勤務金額</CardTitle>
-                        </CardHeader>
-                        <CardContent className="text-xl font-semibold">
-                          {formatCurrency(workplace.yearlyTotals.holidayWage)}
-                        </CardContent>
-                      </Card>
-                    </div>
+            {details.workplaces.length === 0 ? (
+              <p className="rounded-lg border border-border/70 bg-muted/30 px-3 py-2 text-sm text-muted-foreground">
+                対象年のシフトはありません
+              </p>
+            ) : (
+              <div className="space-y-6">
+                {details.workplaces.map((workplace) => (
+                  <Card
+                    key={workplace.workplaceId}
+                    className="border-border/80 bg-card/95 shadow-sm"
+                  >
+                    <CardHeader className="border-b border-border/70">
+                      <CardTitle>
+                        <span className="inline-flex items-center gap-2">
+                          <span
+                            className="h-2.5 w-2.5 rounded-full"
+                            style={{
+                              backgroundColor: workplace.workplaceColor,
+                            }}
+                          />
+                          {workplace.workplaceName}
+                        </span>
+                      </CardTitle>
+                      <CardDescription>
+                        {displayYearValue}年 受取見込
+                      </CardDescription>
+                    </CardHeader>
+                    <CardContent className="space-y-4">
+                      <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
+                        <Card
+                          size="sm"
+                          className="border-primary/30 bg-primary/5"
+                        >
+                          <CardHeader>
+                            <CardTitle>年間受取見込</CardTitle>
+                          </CardHeader>
+                          <CardContent className="text-xl font-semibold">
+                            {formatCurrency(workplace.yearlyTotals.totalWage)}
+                          </CardContent>
+                        </Card>
+                        <Card size="sm">
+                          <CardHeader>
+                            <CardTitle>年間 基本勤務金額</CardTitle>
+                          </CardHeader>
+                          <CardContent className="text-xl font-semibold">
+                            {formatCurrency(workplace.yearlyTotals.baseWage)}
+                          </CardContent>
+                        </Card>
+                        <Card size="sm">
+                          <CardHeader>
+                            <CardTitle>年間 深夜勤務金額</CardTitle>
+                          </CardHeader>
+                          <CardContent className="text-xl font-semibold">
+                            {formatCurrency(workplace.yearlyTotals.nightWage)}
+                          </CardContent>
+                        </Card>
+                        <Card size="sm">
+                          <CardHeader>
+                            <CardTitle>年間 休日勤務金額</CardTitle>
+                          </CardHeader>
+                          <CardContent className="text-xl font-semibold">
+                            {formatCurrency(workplace.yearlyTotals.holidayWage)}
+                          </CardContent>
+                        </Card>
+                      </div>
 
-                    <div className="overflow-hidden rounded-lg border border-border/70">
-                      <Table>
-                        <TableHeader className="bg-muted/35">
-                          <TableRow>
-                            <TableHead className="sticky left-0 z-20 border-r bg-muted/35">
-                              月
-                            </TableHead>
-                            <TableHead className="border-r">
-                              支給対象期間
-                            </TableHead>
-                            <TableHead className="text-right">
-                              総勤務時間
-                            </TableHead>
-                            <TableHead className="text-right">
-                              基本勤務時間
-                            </TableHead>
-                            <TableHead className="text-right">
-                              深夜勤務時間
-                            </TableHead>
-                            <TableHead className="border-r text-right">
-                              休日勤務時間
-                            </TableHead>
-                            <TableHead className="text-right">
-                              基本勤務金額
-                            </TableHead>
-                            <TableHead className="text-right">
-                              深夜勤務金額
-                            </TableHead>
-                            <TableHead className="text-right">
-                              休日勤務金額
-                            </TableHead>
-                            <TableHead className="text-right">月合計</TableHead>
-                          </TableRow>
-                        </TableHeader>
-                        <TableBody>
-                          {workplace.months.map((month) => (
-                            <TableRow
-                              key={`${workplace.workplaceId}-${month.monthKey}`}
-                            >
-                              <TableCell className="sticky left-0 z-10 border-r bg-card">
-                                {month.month}月
-                              </TableCell>
-                              <TableCell className="border-r">
-                                {formatDateWithoutYear(month.periodStartDate)}{" "}
-                                〜 {formatDateWithoutYear(month.periodEndDate)}
-                              </TableCell>
-                              <TableCell className="bg-muted/40 text-right font-medium">
-                                {month.workDuration}
-                              </TableCell>
-                              <TableCell className="text-right">
-                                {month.baseDuration}
-                              </TableCell>
-                              <TableCell className="text-right">
-                                {month.nightDuration}
-                              </TableCell>
-                              <TableCell className="border-r text-right">
-                                {month.holidayDuration}
-                              </TableCell>
-                              <TableCell className="text-right">
-                                {formatCurrency(month.baseWage)}
-                              </TableCell>
-                              <TableCell className="text-right">
-                                {formatCurrency(month.nightWage)}
-                              </TableCell>
-                              <TableCell className="text-right">
-                                {formatCurrency(month.holidayWage)}
-                              </TableCell>
-                              <TableCell className="bg-muted/40 text-right font-medium">
-                                {formatCurrency(month.totalWage)}
-                              </TableCell>
+                      <div className="overflow-hidden rounded-lg border border-border/70">
+                        <Table>
+                          <TableHeader className="bg-muted/35">
+                            <TableRow>
+                              <TableHead className="sticky left-0 z-20 border-r bg-muted/35">
+                                月
+                              </TableHead>
+                              <TableHead className="border-r">
+                                支給対象期間
+                              </TableHead>
+                              <TableHead className="text-right">
+                                総勤務時間
+                              </TableHead>
+                              <TableHead className="text-right">
+                                基本勤務時間
+                              </TableHead>
+                              <TableHead className="text-right">
+                                深夜勤務時間
+                              </TableHead>
+                              <TableHead className="border-r text-right">
+                                休日勤務時間
+                              </TableHead>
+                              <TableHead className="text-right">
+                                基本勤務金額
+                              </TableHead>
+                              <TableHead className="text-right">
+                                深夜勤務金額
+                              </TableHead>
+                              <TableHead className="text-right">
+                                休日勤務金額
+                              </TableHead>
+                              <TableHead className="text-right">
+                                月合計
+                              </TableHead>
                             </TableRow>
-                          ))}
-                        </TableBody>
-                      </Table>
-                    </div>
-                  </CardContent>
-                </Card>
-              ))}
-            </div>
-          )}
-        </>
+                          </TableHeader>
+                          <TableBody>
+                            {workplace.months.map((month) => (
+                              <TableRow
+                                key={`${workplace.workplaceId}-${month.monthKey}`}
+                              >
+                                <TableCell className="sticky left-0 z-10 border-r bg-card">
+                                  {month.month}月
+                                </TableCell>
+                                <TableCell className="border-r">
+                                  {formatDateWithoutYear(month.periodStartDate)}{" "}
+                                  〜{" "}
+                                  {formatDateWithoutYear(month.periodEndDate)}
+                                </TableCell>
+                                <TableCell className="bg-muted/40 text-right font-medium">
+                                  {month.workDuration}
+                                </TableCell>
+                                <TableCell className="text-right">
+                                  {month.baseDuration}
+                                </TableCell>
+                                <TableCell className="text-right">
+                                  {month.nightDuration}
+                                </TableCell>
+                                <TableCell className="border-r text-right">
+                                  {month.holidayDuration}
+                                </TableCell>
+                                <TableCell className="text-right">
+                                  {formatCurrency(month.baseWage)}
+                                </TableCell>
+                                <TableCell className="text-right">
+                                  {formatCurrency(month.nightWage)}
+                                </TableCell>
+                                <TableCell className="text-right">
+                                  {formatCurrency(month.holidayWage)}
+                                </TableCell>
+                                <TableCell className="bg-muted/40 text-right font-medium">
+                                  {formatCurrency(month.totalWage)}
+                                </TableCell>
+                              </TableRow>
+                            ))}
+                          </TableBody>
+                        </Table>
+                      </div>
+                    </CardContent>
+                  </Card>
+                ))}
+              </div>
+            )}
+          </div>
+        </LoadingOverlay>
       ) : null}
     </section>
   );

@@ -318,4 +318,68 @@ describe("ShiftListPageClient", () => {
       expect(screen.getByText("18:00 - 翌01:00")).toBeInTheDocument();
     });
   });
+
+  it("keeps the previous month table visible while the next month is refreshing", async () => {
+    const user = userEvent.setup();
+    const fetchMock = globalThis.fetch as jest.Mock;
+
+    let resolveAprilResponse!: (value: Response) => void;
+    const aprilResponse = new Promise<Response>((resolve) => {
+      resolveAprilResponse = resolve;
+    });
+
+    fetchMock.mockImplementation((input: string) => {
+      if (input.startsWith("/api/shifts?")) {
+        const url = new URL(input, "http://localhost");
+        const startDate = url.searchParams.get("startDate");
+
+        if (startDate === "2026-04-01") {
+          return aprilResponse;
+        }
+      }
+
+      throw new Error(`Unexpected fetch: ${input}`);
+    });
+
+    renderShiftListPage({
+      initialMonth: "2026-03",
+      initialMonthShifts: [
+        createShift({
+          id: "shift-march",
+          date: "2026-03-10T00:00:00.000Z",
+          startTime: "1970-01-01T09:00:00.000Z",
+          endTime: "1970-01-01T17:00:00.000Z",
+          workplaceName: "勤務先A",
+        }),
+      ],
+      initialMonthStartDate: "2026-03-01",
+      initialMonthEndDate: "2026-03-31",
+    });
+
+    expect(screen.getByText("勤務先A")).toBeInTheDocument();
+
+    await user.click(screen.getByRole("button", { name: "次月" }));
+
+    expect(screen.getByText("勤務先A")).toBeInTheDocument();
+    expect(screen.getByText("最新データを更新中...")).toBeInTheDocument();
+
+    resolveAprilResponse(
+      jsonResponse({
+        data: [
+          createShift({
+            id: "shift-april",
+            date: "2026-04-12T00:00:00.000Z",
+            startTime: "1970-01-01T10:00:00.000Z",
+            endTime: "1970-01-01T18:00:00.000Z",
+            workplaceName: "勤務先B",
+          }),
+        ],
+      }),
+    );
+
+    await waitFor(() => {
+      expect(screen.getByText("勤務先B")).toBeInTheDocument();
+    });
+    expect(screen.queryByText("勤務先A")).not.toBeInTheDocument();
+  });
 });

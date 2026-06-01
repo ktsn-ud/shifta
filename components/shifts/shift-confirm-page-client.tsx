@@ -8,6 +8,7 @@ import {
   type ConfirmedShiftWorkplaceGroup,
   type UnconfirmedShiftItem,
 } from "@/components/shifts/shift-confirmation-types";
+import { LoadingOverlay } from "@/components/ui/loading-overlay";
 import { SpinnerPanel } from "@/components/ui/spinner";
 import { toErrorMessage } from "@/lib/messages";
 import { getBrowserQueryClient } from "@/lib/query/query-client";
@@ -40,7 +41,14 @@ export function ShiftConfirmPageClient({
 
   const unconfirmedShifts = unconfirmedQuery.data ?? [];
   const confirmedShiftGroups = confirmedQuery.data ?? [];
-  const isLoading = unconfirmedQuery.isLoading || confirmedQuery.isLoading;
+  const hasShiftConfirmationData =
+    unconfirmedQuery.data !== undefined || confirmedQuery.data !== undefined;
+  const isInitialLoading =
+    (unconfirmedQuery.isLoading || confirmedQuery.isLoading) &&
+    !hasShiftConfirmationData;
+  const isRefreshing =
+    hasShiftConfirmationData &&
+    (unconfirmedQuery.isFetching || confirmedQuery.isFetching);
   const errorMessage = unconfirmedQuery.error
     ? toErrorMessage(
         unconfirmedQuery.error,
@@ -108,54 +116,56 @@ export function ShiftConfirmPageClient({
         </p>
       ) : null}
 
-      {isLoading ? (
+      {isInitialLoading ? (
         <SpinnerPanel
           className="min-h-[360px]"
           label="シフト確定情報を読み込み中..."
         />
       ) : (
-        <div className="flex flex-col gap-6 md:min-h-0 md:flex-1 md:grid md:grid-cols-[minmax(0,1fr)_1px_minmax(0,1fr)] md:gap-6">
-          <section className="space-y-3 md:flex md:min-h-0 md:flex-col">
-            <h3 className="text-lg font-semibold">未確定シフト</h3>
-            <div className="md:min-h-0 md:overflow-y-auto md:pr-2">
-              {unconfirmedShifts.length === 0 ? (
-                <p className="text-sm text-muted-foreground">
-                  未確定シフトはまだありません
-                </p>
-              ) : (
-                <div className="p-1">
-                  <div className="flex flex-col gap-3">
-                    {unconfirmedShifts.map((shift) => (
-                      <ConfirmShiftCard
-                        key={shift.id}
-                        shift={shift}
-                        onActionCompleted={handleActionCompleted}
-                      />
-                    ))}
+        <LoadingOverlay isLoading={isRefreshing} className="rounded-xl">
+          <div className="flex flex-col gap-6 md:min-h-0 md:flex-1 md:grid md:grid-cols-[minmax(0,1fr)_1px_minmax(0,1fr)] md:gap-6">
+            <section className="space-y-3 md:flex md:min-h-0 md:flex-col">
+              <h3 className="text-lg font-semibold">未確定シフト</h3>
+              <div className="md:min-h-0 md:overflow-y-auto md:pr-2">
+                {unconfirmedShifts.length === 0 ? (
+                  <p className="text-sm text-muted-foreground">
+                    未確定シフトはまだありません
+                  </p>
+                ) : (
+                  <div className="p-1">
+                    <div className="flex flex-col gap-3">
+                      {unconfirmedShifts.map((shift) => (
+                        <ConfirmShiftCard
+                          key={shift.id}
+                          shift={shift}
+                          onActionCompleted={handleActionCompleted}
+                        />
+                      ))}
+                    </div>
                   </div>
-                </div>
-              )}
-            </div>
-          </section>
+                )}
+              </div>
+            </section>
 
-          <div
-            aria-hidden="true"
-            className="hidden w-px self-stretch bg-border md:mb-[15px] md:block"
-          />
+            <div
+              aria-hidden="true"
+              className="hidden w-px self-stretch bg-border md:mb-[15px] md:block"
+            />
 
-          <section className="space-y-3 md:flex md:min-h-0 md:flex-col">
-            <h3 className="text-lg font-semibold">今月の確定済みシフト</h3>
-            <div className="md:min-h-0 md:overflow-y-auto md:pr-2">
-              {confirmedShiftGroups.length > 0 ? (
-                <ConfirmedShiftsList groups={confirmedShiftGroups} />
-              ) : (
-                <p className="text-sm text-muted-foreground">
-                  今月の確定済みシフトはまだありません
-                </p>
-              )}
-            </div>
-          </section>
-        </div>
+            <section className="space-y-3 md:flex md:min-h-0 md:flex-col">
+              <h3 className="text-lg font-semibold">今月の確定済みシフト</h3>
+              <div className="md:min-h-0 md:overflow-y-auto md:pr-2">
+                {confirmedShiftGroups.length > 0 ? (
+                  <ConfirmedShiftsList groups={confirmedShiftGroups} />
+                ) : (
+                  <p className="text-sm text-muted-foreground">
+                    今月の確定済みシフトはまだありません
+                  </p>
+                )}
+              </div>
+            </section>
+          </div>
+        </LoadingOverlay>
       )}
     </section>
   );
