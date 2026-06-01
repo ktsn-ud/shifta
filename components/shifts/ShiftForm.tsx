@@ -39,7 +39,7 @@ import {
 } from "@/lib/calendar/date";
 import { formatShiftType } from "@/lib/enum-labels";
 import {
-  parseGoogleSyncFailureFromPayload,
+  parseGoogleSyncStateFromPayload,
   readGoogleSyncFailureFromErrorResponse,
 } from "@/lib/google-calendar/clientSync";
 import { CALENDAR_SETUP_PATH } from "@/lib/google-calendar/constants";
@@ -1402,10 +1402,11 @@ export function ShiftForm({
       }
 
       const responsePayload = (await response.json()) as unknown;
-      const syncFailure = parseGoogleSyncFailureFromPayload(
+      const syncState = parseGoogleSyncStateFromPayload(
         responsePayload,
         messages.error.calendarSyncFailed,
       );
+      const syncFailure = syncState.failure;
 
       window.localStorage.setItem(LAST_WORKPLACE_ID_KEY, form.workplaceId);
 
@@ -1439,16 +1440,24 @@ export function ShiftForm({
         return;
       }
 
+      const successDescription =
+        form.date +
+        " " +
+        formatShiftTimeRange(
+          validation.candidateTimes.startTime,
+          validation.candidateTimes.endTime,
+        );
+
       toast.success(
         mode === "create"
           ? messages.success.shiftCreated
           : messages.success.shiftUpdated,
         {
           id: loadingToastId,
-          description: `${form.date} ${formatShiftTimeRange(
-            validation.candidateTimes.startTime,
-            validation.candidateTimes.endTime,
-          )}`,
+          description: syncState.pending
+            ? successDescription +
+              " Google Calendar 同期はバックグラウンドで実行中です。"
+            : successDescription,
         },
       );
       await invalidateAfterShiftMutation(queryClient);

@@ -30,7 +30,7 @@ import {
   toDateKey,
 } from "@/lib/calendar/date";
 import {
-  parseGoogleSyncFailureFromPayload,
+  parseGoogleSyncStateFromPayload,
   readGoogleSyncFailureFromErrorResponse,
 } from "@/lib/google-calendar/clientSync";
 import { CALENDAR_SETUP_PATH } from "@/lib/google-calendar/constants";
@@ -600,10 +600,11 @@ export function DashboardPageClient({
           }
 
           const payload = (await response.json()) as unknown;
-          const syncFailure = parseGoogleSyncFailureFromPayload(
+          const syncState = parseGoogleSyncStateFromPayload(
             payload,
             messages.error.calendarSyncFailed,
           );
+          const syncFailure = syncState.failure;
 
           await Promise.all([
             invalidateAfterShiftMutation(queryClient),
@@ -635,7 +636,11 @@ export function DashboardPageClient({
             return;
           }
 
-          toast.success(messages.success.shiftDeleted);
+          toast.success(messages.success.shiftDeleted, {
+            description: syncState.pending
+              ? "Google Calendar 同期はバックグラウンドで実行中です。"
+              : undefined,
+          });
         }}
         onRetrySync={async (shiftId) => {
           if (isSignOutScheduled) {

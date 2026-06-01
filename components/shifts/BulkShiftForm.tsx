@@ -49,7 +49,7 @@ import {
 } from "@/lib/calendar/date";
 import { formatShiftType } from "@/lib/enum-labels";
 import {
-  parseGoogleSyncFailureFromPayload,
+  parseGoogleSyncStateFromPayload,
   readGoogleSyncFailureFromErrorResponse,
 } from "@/lib/google-calendar/clientSync";
 import { CALENDAR_SETUP_PATH } from "@/lib/google-calendar/constants";
@@ -1698,12 +1698,12 @@ export function BulkShiftForm() {
         };
       };
       const createdCount = payload.summary?.total ?? payloadItems.length;
-      const isSyncPending = payload.sync?.pending === true;
-
-      const syncFailure = parseGoogleSyncFailureFromPayload(
+      const syncState = parseGoogleSyncStateFromPayload(
         payload,
         messages.error.calendarSyncFailed,
       );
+      const isSyncPending = syncState.pending;
+      const syncFailure = syncState.failure;
 
       if (syncFailure) {
         if (syncFailure.requiresSignOut) {

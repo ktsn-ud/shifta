@@ -6,7 +6,7 @@ import { CheckIcon } from "lucide-react";
 import { toast } from "sonner";
 import { TIME_ONLY_REGEX } from "@/lib/api/date-time";
 import {
-  parseGoogleSyncFailureFromPayload,
+  parseGoogleSyncStateFromPayload,
   readGoogleSyncFailureFromErrorResponse,
 } from "@/lib/google-calendar/clientSync";
 import { CALENDAR_SETUP_PATH } from "@/lib/google-calendar/constants";
@@ -153,10 +153,11 @@ export function ConfirmShiftCard({
       }
 
       const payload = (await response.json()) as unknown;
-      const syncFailure = parseGoogleSyncFailureFromPayload(
+      const syncState = parseGoogleSyncStateFromPayload(
         payload,
         messages.error.calendarSyncFailed,
       );
+      const syncFailure = syncState.failure;
 
       void invalidateAfterShiftMutation(queryClient).catch((error) => {
         console.error("failed to invalidate queries after shift confirmation", {
@@ -200,7 +201,13 @@ export function ConfirmShiftCard({
         return;
       }
 
-      toast.success(messages.success.shiftConfirmed);
+      if (syncState.pending) {
+        toast.success(messages.success.shiftConfirmed, {
+          description: "Google Calendar 同期はバックグラウンドで実行中です。",
+        });
+      } else {
+        toast.success(messages.success.shiftConfirmed);
+      }
     } catch (error) {
       console.error("failed to confirm shift", error);
       setErrorMessage(toErrorMessage(error, messages.error.shiftConfirmFailed));

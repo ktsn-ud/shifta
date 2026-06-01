@@ -39,6 +39,7 @@ import {
   startOfMonth,
   toMonthInputValue,
 } from "@/lib/calendar/date";
+import { parseGoogleSyncStateFromPayload } from "@/lib/google-calendar/clientSync";
 import { messages, toErrorMessage } from "@/lib/messages";
 import { getBrowserQueryClient } from "@/lib/query/query-client";
 import { invalidateAfterShiftMutation } from "@/lib/query/invalidation";
@@ -415,13 +416,20 @@ export function ShiftListPageClient({
       } | null;
 
       const deletedCount = payload?.deletedCount ?? shiftIds.length;
+      const syncState = parseGoogleSyncStateFromPayload(
+        payload,
+        messages.error.calendarSyncFailed,
+      );
 
       setSelectedShiftIds(new Set());
       setDeleteDialogOpen(false);
       await Promise.all([invalidateAfterShiftMutation(queryClient), reload()]);
 
       toast.success(messages.success.shiftDeleted, {
-        description: `${deletedCount}件のシフトを削除しました。`,
+        description: syncState.pending
+          ? String(deletedCount) +
+            "件のシフトを削除しました。 Google Calendar 同期はバックグラウンドで実行中です。"
+          : String(deletedCount) + "件のシフトを削除しました。",
       });
     } catch (error) {
       console.error("failed to bulk delete shifts", error);

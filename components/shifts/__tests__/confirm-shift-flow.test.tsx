@@ -235,7 +235,9 @@ describe("shift confirm page and card flow", () => {
     await user.click(screen.getByRole("button", { name: "確定" }));
 
     await waitFor(() => {
-      expect(toast.success).toHaveBeenCalledWith("シフトを確定しました。");
+      expect(toast.success).toHaveBeenCalledWith("シフトを確定しました。", {
+        description: "Google Calendar 同期はバックグラウンドで実行中です。",
+      });
     });
     expect(onActionCompleted).toHaveBeenCalledWith({ shiftId: "shift-1" });
     expect(
