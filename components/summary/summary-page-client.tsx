@@ -1,7 +1,7 @@
 "use client";
 
 import dynamic from "next/dynamic";
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import {
   Card,
   CardContent,
@@ -11,6 +11,7 @@ import {
 } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
+import { LoadingOverlay } from "@/components/ui/loading-overlay";
 import { SpinnerPanel } from "@/components/ui/spinner";
 import {
   Table,
@@ -92,45 +93,60 @@ export function SummaryPageClient({
   initialMonth,
 }: SummaryPageClientProps) {
   const [draftMonthValue, setDraftMonthValue] = useState(initialMonth);
-  const [appliedMonthValue, setAppliedMonthValue] = useState(initialMonth);
+  const [requestedMonthValue, setRequestedMonthValue] = useState(initialMonth);
+  const [displayMonthValue, setDisplayMonthValue] = useState(initialMonth);
   const currentMonthValue = toMonthInputValue(startOfMonth(new Date()));
-  const isValidAppliedMonth = fromMonthInputValue(appliedMonthValue) !== null;
+  const isValidRequestedMonth =
+    fromMonthInputValue(requestedMonthValue) !== null;
 
   const canApplyMonth =
     fromMonthInputValue(draftMonthValue) !== null &&
-    draftMonthValue !== appliedMonthValue;
+    draftMonthValue !== requestedMonthValue;
 
   const selectedMonthLabel = useMemo(() => {
-    const parsed = fromMonthInputValue(appliedMonthValue);
-    return parsed ? formatMonthLabel(parsed) : appliedMonthValue;
-  }, [appliedMonthValue]);
+    const parsed = fromMonthInputValue(displayMonthValue);
+    return parsed ? formatMonthLabel(parsed) : displayMonthValue;
+  }, [displayMonthValue]);
 
   const applyMonthValue = (nextValue: string) => {
     if (fromMonthInputValue(nextValue) === null) {
       return;
     }
 
-    setAppliedMonthValue(nextValue);
+    setRequestedMonthValue(nextValue);
   };
 
   const handleBackToCurrentMonth = () => {
     setDraftMonthValue(currentMonthValue);
-    setAppliedMonthValue(currentMonthValue);
+    setRequestedMonthValue(currentMonthValue);
   };
 
   const summaryQuery = usePayrollSummaryQuery({
     userId: currentUserId,
-    month: appliedMonthValue,
-    enabled: isValidAppliedMonth,
+    month: requestedMonthValue,
+    enabled: isValidRequestedMonth,
     initialData:
-      isValidAppliedMonth && appliedMonthValue === initialMonth
+      isValidRequestedMonth && requestedMonthValue === initialMonth
         ? initialSummary
         : undefined,
   });
 
+  useEffect(() => {
+    if (summaryQuery.isPlaceholderData) {
+      return;
+    }
+
+    setDisplayMonthValue((current) =>
+      current === requestedMonthValue ? current : requestedMonthValue,
+    );
+  }, [requestedMonthValue, summaryQuery.isPlaceholderData]);
+
   const summary = summaryQuery.data ?? null;
-  const isLoading = isValidAppliedMonth ? summaryQuery.isLoading : false;
-  const errorMessage = !isValidAppliedMonth
+  const isInitialLoading =
+    isValidRequestedMonth && summaryQuery.isLoading && summary === null;
+  const isRefreshing =
+    isValidRequestedMonth && summaryQuery.isFetching && summary !== null;
+  const errorMessage = !isValidRequestedMonth
     ? "月は YYYY-MM 形式で指定してください。"
     : summaryQuery.error
       ? toErrorMessage(summaryQuery.error, "給与集計の取得に失敗しました。")
@@ -151,20 +167,23 @@ export function SummaryPageClient({
           </p>
         </div>
 
-        {!isLoading ? (
+        {!isInitialLoading ? (
           <div className="flex flex-wrap items-center gap-2">
             <Button
               type="button"
               variant="outline"
               size="sm"
               onClick={handleBackToCurrentMonth}
-              disabled={appliedMonthValue === currentMonthValue}
+              disabled={
+                requestedMonthValue === currentMonthValue || isRefreshing
+              }
             >
               今月に戻る
             </Button>
             <Input
               type="month"
               value={draftMonthValue}
+              disabled={isRefreshing}
               onKeyDown={(event) => {
                 if (event.key === "Enter") {
                   applyMonthValue(draftMonthValue);
@@ -179,7 +198,7 @@ export function SummaryPageClient({
               type="button"
               size="sm"
               onClick={() => applyMonthValue(draftMonthValue)}
-              disabled={!canApplyMonth}
+              disabled={!canApplyMonth || isRefreshing}
             >
               適用
             </Button>
@@ -193,154 +212,160 @@ export function SummaryPageClient({
         </p>
       ) : null}
 
-      {isLoading ? (
+      {isInitialLoading ? (
         <SpinnerPanel
           className="min-h-[360px]"
           label="給与サマリーを読み込み中..."
         />
       ) : summary ? (
-        <>
-          <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
-            <Card size="sm" className="border-primary/30 bg-primary/5">
-              <CardHeader>
-                <CardTitle>概算給与</CardTitle>
-                <CardDescription>{selectedMonthLabel}支給分</CardDescription>
-              </CardHeader>
-              <CardContent className="text-3xl font-semibold tracking-tight">
-                {formatCurrency(summary.totalWage)}
-              </CardContent>
-            </Card>
-            <Card size="sm">
-              <CardHeader>
-                <CardTitle>総勤務時間</CardTitle>
-                <CardDescription>休憩控除後の合計</CardDescription>
-              </CardHeader>
-              <CardContent className="text-2xl font-semibold">
-                {formatHours(summary.totalWorkHours)}
-              </CardContent>
-            </Card>
-            <Card size="sm">
-              <CardHeader>
-                <CardTitle>深夜勤務</CardTitle>
-                <CardDescription>深夜帯の合計時間</CardDescription>
-              </CardHeader>
-              <CardContent className="text-2xl font-semibold">
-                {formatHours(summary.totalNightHours)}
-              </CardContent>
-            </Card>
-            <Card size="sm">
-              <CardHeader>
-                <CardTitle>残業時間</CardTitle>
-                <CardDescription>所定時間超過分</CardDescription>
-              </CardHeader>
-              <CardContent className="text-2xl font-semibold">
-                {formatHours(summary.totalOvertimeHours)}
-              </CardContent>
-            </Card>
-          </div>
+        <LoadingOverlay isLoading={isRefreshing} className="rounded-xl">
+          <div className="space-y-4">
+            <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
+              <Card size="sm" className="border-primary/30 bg-primary/5">
+                <CardHeader>
+                  <CardTitle>概算給与</CardTitle>
+                  <CardDescription>{selectedMonthLabel}支給分</CardDescription>
+                </CardHeader>
+                <CardContent className="text-3xl font-semibold tracking-tight">
+                  {formatCurrency(summary.totalWage)}
+                </CardContent>
+              </Card>
+              <Card size="sm">
+                <CardHeader>
+                  <CardTitle>総勤務時間</CardTitle>
+                  <CardDescription>休憩控除後の合計</CardDescription>
+                </CardHeader>
+                <CardContent className="text-2xl font-semibold">
+                  {formatHours(summary.totalWorkHours)}
+                </CardContent>
+              </Card>
+              <Card size="sm">
+                <CardHeader>
+                  <CardTitle>深夜勤務</CardTitle>
+                  <CardDescription>深夜帯の合計時間</CardDescription>
+                </CardHeader>
+                <CardContent className="text-2xl font-semibold">
+                  {formatHours(summary.totalNightHours)}
+                </CardContent>
+              </Card>
+              <Card size="sm">
+                <CardHeader>
+                  <CardTitle>残業時間</CardTitle>
+                  <CardDescription>所定時間超過分</CardDescription>
+                </CardHeader>
+                <CardContent className="text-2xl font-semibold">
+                  {formatHours(summary.totalOvertimeHours)}
+                </CardContent>
+              </Card>
+            </div>
 
-          <div className="grid gap-4 lg:grid-cols-3">
-            <Card size="sm">
-              <CardHeader>
-                <CardTitle>確定済み支給額</CardTitle>
-                <CardDescription>
-                  当月支給分のうち確定済みシフト分
-                </CardDescription>
-              </CardHeader>
-              <CardContent className="text-2xl font-semibold">
-                {formatCurrency(summary.confirmedShiftWage)}
-              </CardContent>
-            </Card>
-            <Card size="sm">
-              <CardHeader>
-                <CardTitle>年内受取累計（選択月まで）</CardTitle>
-                <CardDescription>1月から選択月までの支給合計</CardDescription>
-              </CardHeader>
-              <CardContent className="text-2xl font-semibold">
-                {formatCurrency(summary.currentMonthCumulative)}
-              </CardContent>
-            </Card>
-            <Card size="sm">
-              <CardHeader>
-                <CardTitle>年間受取見込（1月〜12月）</CardTitle>
-                <CardDescription>当年1月から12月までの支給見込</CardDescription>
-              </CardHeader>
-              <CardContent className="text-2xl font-semibold">
-                {formatCurrency(summary.yearlyTotal)}
-              </CardContent>
-            </Card>
-          </div>
+            <div className="grid gap-4 lg:grid-cols-3">
+              <Card size="sm">
+                <CardHeader>
+                  <CardTitle>確定済み支給額</CardTitle>
+                  <CardDescription>
+                    当月支給分のうち確定済みシフト分
+                  </CardDescription>
+                </CardHeader>
+                <CardContent className="text-2xl font-semibold">
+                  {formatCurrency(summary.confirmedShiftWage)}
+                </CardContent>
+              </Card>
+              <Card size="sm">
+                <CardHeader>
+                  <CardTitle>年内受取累計（選択月まで）</CardTitle>
+                  <CardDescription>1月から選択月までの支給合計</CardDescription>
+                </CardHeader>
+                <CardContent className="text-2xl font-semibold">
+                  {formatCurrency(summary.currentMonthCumulative)}
+                </CardContent>
+              </Card>
+              <Card size="sm">
+                <CardHeader>
+                  <CardTitle>年間受取見込（1月〜12月）</CardTitle>
+                  <CardDescription>
+                    当年1月から12月までの支給見込
+                  </CardDescription>
+                </CardHeader>
+                <CardContent className="text-2xl font-semibold">
+                  {formatCurrency(summary.yearlyTotal)}
+                </CardContent>
+              </Card>
+            </div>
 
-          <div className="grid gap-4 xl:grid-cols-2">
-            <Card className="border-border/80 bg-card/95 shadow-sm">
-              <CardHeader>
-                <CardTitle>勤務先別給与</CardTitle>
-                <CardDescription>選択月支給分の給与内訳グラフ</CardDescription>
-              </CardHeader>
-              <CardContent>
-                <WorkplaceWageChart byWorkplace={summary.byWorkplace} />
-              </CardContent>
-            </Card>
+            <div className="grid gap-4 xl:grid-cols-2">
+              <Card className="border-border/80 bg-card/95 shadow-sm">
+                <CardHeader>
+                  <CardTitle>勤務先別給与</CardTitle>
+                  <CardDescription>
+                    選択月支給分の給与内訳グラフ
+                  </CardDescription>
+                </CardHeader>
+                <CardContent>
+                  <WorkplaceWageChart byWorkplace={summary.byWorkplace} />
+                </CardContent>
+              </Card>
 
-            <Card className="border-border/80 bg-card/95 shadow-sm">
-              <CardHeader>
-                <CardTitle>勤務先別内訳</CardTitle>
-                <CardDescription>勤務時間と給与の明細</CardDescription>
-              </CardHeader>
-              <CardContent>
-                <div className="overflow-hidden rounded-lg border border-border/70">
-                  <Table>
-                    <TableHeader className="bg-muted/35">
-                      <TableRow>
-                        <TableHead>勤務先</TableHead>
-                        <TableHead>対象期間</TableHead>
-                        <TableHead className="text-right">勤務時間</TableHead>
-                        <TableHead className="text-right">給与</TableHead>
-                      </TableRow>
-                    </TableHeader>
-                    <TableBody>
-                      {summary.byWorkplace.length > 0 ? (
-                        summary.byWorkplace.map((item) => (
-                          <TableRow key={item.workplaceId}>
-                            <TableCell>
-                              <span className="inline-flex items-center gap-2">
-                                <span
-                                  className="h-2.5 w-2.5 rounded-full"
-                                  style={{
-                                    backgroundColor: item.workplaceColor,
-                                  }}
-                                />
-                                {item.workplaceName}
-                              </span>
-                            </TableCell>
-                            <TableCell>
-                              {item.periodStartDate} 〜 {item.periodEndDate}
-                            </TableCell>
-                            <TableCell className="text-right">
-                              {formatHours(item.workHours)}
-                            </TableCell>
-                            <TableCell className="text-right font-medium">
-                              {formatCurrency(item.wage)}
+              <Card className="border-border/80 bg-card/95 shadow-sm">
+                <CardHeader>
+                  <CardTitle>勤務先別内訳</CardTitle>
+                  <CardDescription>勤務時間と給与の明細</CardDescription>
+                </CardHeader>
+                <CardContent>
+                  <div className="overflow-hidden rounded-lg border border-border/70">
+                    <Table>
+                      <TableHeader className="bg-muted/35">
+                        <TableRow>
+                          <TableHead>勤務先</TableHead>
+                          <TableHead>対象期間</TableHead>
+                          <TableHead className="text-right">勤務時間</TableHead>
+                          <TableHead className="text-right">給与</TableHead>
+                        </TableRow>
+                      </TableHeader>
+                      <TableBody>
+                        {summary.byWorkplace.length > 0 ? (
+                          summary.byWorkplace.map((item) => (
+                            <TableRow key={item.workplaceId}>
+                              <TableCell>
+                                <span className="inline-flex items-center gap-2">
+                                  <span
+                                    className="h-2.5 w-2.5 rounded-full"
+                                    style={{
+                                      backgroundColor: item.workplaceColor,
+                                    }}
+                                  />
+                                  {item.workplaceName}
+                                </span>
+                              </TableCell>
+                              <TableCell>
+                                {item.periodStartDate} 〜 {item.periodEndDate}
+                              </TableCell>
+                              <TableCell className="text-right">
+                                {formatHours(item.workHours)}
+                              </TableCell>
+                              <TableCell className="text-right font-medium">
+                                {formatCurrency(item.wage)}
+                              </TableCell>
+                            </TableRow>
+                          ))
+                        ) : (
+                          <TableRow>
+                            <TableCell
+                              colSpan={4}
+                              className="h-24 text-center text-muted-foreground"
+                            >
+                              対象期間のシフトはありません
                             </TableCell>
                           </TableRow>
-                        ))
-                      ) : (
-                        <TableRow>
-                          <TableCell
-                            colSpan={4}
-                            className="h-24 text-center text-muted-foreground"
-                          >
-                            対象期間のシフトはありません
-                          </TableCell>
-                        </TableRow>
-                      )}
-                    </TableBody>
-                  </Table>
-                </div>
-              </CardContent>
-            </Card>
+                        )}
+                      </TableBody>
+                    </Table>
+                  </div>
+                </CardContent>
+              </Card>
+            </div>
           </div>
-        </>
+        </LoadingOverlay>
       ) : null}
     </section>
   );

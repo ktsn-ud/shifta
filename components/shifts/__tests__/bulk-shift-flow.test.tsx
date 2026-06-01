@@ -769,4 +769,123 @@ describe("bulk shift flow integration", () => {
       expect(screen.getByText("登録後見込")).toBeInTheDocument();
     });
   });
+
+  it("keeps the previous calendar visible while the next month is refreshing", async () => {
+    const user = userEvent.setup({
+      advanceTimers: jest.advanceTimersByTime,
+    });
+    const fetchMock = globalThis.fetch as jest.Mock;
+
+    let resolveAprilResponse!: (value: Response) => void;
+    const aprilResponse = new Promise<Response>((resolve) => {
+      resolveAprilResponse = resolve;
+    });
+
+    fetchMock.mockImplementation((input: string) => {
+      if (input.startsWith("/api/calendar/events?month=")) {
+        const url = new URL(input, "http://localhost");
+        const month = url.searchParams.get("month");
+
+        if (month === "2026-03") {
+          return Promise.resolve(
+            jsonResponse({
+              data: {
+                month: "2026-03",
+                calendars: [],
+                selectedCalendarIds: [],
+                dates: [
+                  {
+                    date: "2026-03-20",
+                    count: 1,
+                    items: [
+                      {
+                        title: "March Event",
+                        start: "09:00",
+                        end: "10:00",
+                        allDay: false,
+                        calendarId: "cal-1",
+                        calendarSummary: "Main",
+                        calendarColor: "#3366FF",
+                      },
+                    ],
+                  },
+                ],
+              },
+            }),
+          );
+        }
+
+        if (month === "2026-04") {
+          return aprilResponse;
+        }
+      }
+
+      if (input === WORKPLACE_LIST_URL) {
+        return Promise.resolve(
+          jsonResponse({
+            data: [
+              {
+                id: "workplace-1",
+                name: "勤務先A",
+                color: "#3366FF",
+                type: "GENERAL",
+              },
+            ],
+          }),
+        );
+      }
+
+      const previewResponse = handleBulkPreviewFetch(input);
+      if (previewResponse) {
+        return Promise.resolve(previewResponse);
+      }
+
+      throw new Error("Unexpected fetch: " + input);
+    });
+
+    render(<BulkShiftForm />);
+
+    await waitFor(() => {
+      expect(screen.getByText("09:00-10:00 March Event")).toBeInTheDocument();
+    });
+
+    await user.click(screen.getByRole("button", { name: "次月" }));
+
+    expect(screen.getByText("09:00-10:00 March Event")).toBeInTheDocument();
+    expect(screen.getByText("最新データを更新中...")).toBeInTheDocument();
+
+    resolveAprilResponse(
+      jsonResponse({
+        data: {
+          month: "2026-04",
+          calendars: [],
+          selectedCalendarIds: [],
+          dates: [
+            {
+              date: "2026-04-20",
+              count: 1,
+              items: [
+                {
+                  title: "April Event",
+                  start: "11:00",
+                  end: "12:00",
+                  allDay: false,
+                  calendarId: "cal-1",
+                  calendarSummary: "Main",
+                  calendarColor: "#3366FF",
+                },
+              ],
+            },
+          ],
+        },
+      }),
+    );
+
+    await waitFor(() => {
+      expect(screen.getByText("11:00-12:00 April Event")).toBeInTheDocument();
+    });
+    expect(
+      screen.queryByText("09:00-10:00 March Event"),
+    ).not.toBeInTheDocument();
+  });
 });

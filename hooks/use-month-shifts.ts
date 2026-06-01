@@ -257,6 +257,7 @@ export function useMonthShifts(month: Date, options: UseMonthShiftsOptions) {
         signal,
       }),
     initialData: hasInitialData ? (initialShifts ?? []) : undefined,
+    placeholderData: (previousData) => previousData,
     staleTime: MONTH_SHIFTS_STALE_TIME_MS,
     gcTime: MONTH_SHIFTS_GC_TIME_MS,
   });
@@ -271,6 +272,7 @@ export function useMonthShifts(month: Date, options: UseMonthShiftsOptions) {
         signal,
       }),
     enabled: deferEstimate,
+    placeholderData: (previousData) => previousData,
     staleTime: MONTH_SHIFTS_STALE_TIME_MS,
     gcTime: MONTH_SHIFTS_GC_TIME_MS,
   });
@@ -320,6 +322,12 @@ export function useMonthShifts(month: Date, options: UseMonthShiftsOptions) {
         "シフト一覧の取得に失敗しました。",
       )
     : null;
+  const hasShiftData = monthShiftsQuery.data !== undefined;
+  const isInitialLoading = monthShiftsQuery.isLoading && !hasShiftData;
+  const isRefreshing =
+    hasShiftData &&
+    (monthShiftsQuery.isFetching ||
+      (deferEstimate && estimatedMonthShiftsQuery.isFetching));
 
   async function reload() {
     await queryClient.invalidateQueries({
@@ -335,7 +343,10 @@ export function useMonthShifts(month: Date, options: UseMonthShiftsOptions) {
 
   return {
     shifts,
-    isLoading: monthShiftsQuery.isLoading,
+    isLoading: isInitialLoading,
+    isInitialLoading,
+    isRefreshing,
+    isPlaceholderData: monthShiftsQuery.isPlaceholderData,
     errorMessage,
     reload,
   };
