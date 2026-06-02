@@ -7,6 +7,7 @@ import { queryKeys } from "@/lib/query/query-keys";
 type UnconfirmedShiftApiResponse = {
   shifts: Array<{
     id: string;
+    workplaceId: string;
     comment: string | null;
     date: string;
     startTime: string;
@@ -68,6 +69,7 @@ function parseUnconfirmedPayload(payload: unknown): UnconfirmedShiftItem[] {
 
   return (payload as UnconfirmedShiftApiResponse).shifts.map((shift) => ({
     id: shift.id,
+    workplaceId: shift.workplaceId,
     date: formatDateWithWeekday(shift.date),
     workplaceName: shift.workplace.name,
     workplaceColor: shift.workplace.color,

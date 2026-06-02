@@ -11,6 +11,7 @@ import {
 import { requireOwnedWorkplace } from "@/lib/api/workplace";
 import { prisma } from "@/lib/prisma";
 import { jsonNoStore } from "@/lib/api/cache-control";
+import { buildSuccessSyncResponse } from "@/lib/google-calendar/sync-response";
 import { revalidateWorkplaceDomainTags } from "@/lib/cache/revalidate";
 
 const payrollRuleSchema = z
@@ -230,6 +231,7 @@ export async function PUT(request: Request, context: Context) {
 
     return jsonNoStore({
       data: rule,
+      sync: buildSuccessSyncResponse(),
       warning:
         overlaps.length > 0
           ? {
@@ -285,6 +287,7 @@ export async function DELETE(request: Request, context: Context) {
         id,
         deleted: true,
       },
+      sync: buildSuccessSyncResponse(),
     });
   } catch (error) {
     console.error(

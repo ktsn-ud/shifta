@@ -29,8 +29,10 @@ import {
   TableRow,
 } from "@/components/ui/table";
 import { dateKeyFromApiDate } from "@/lib/calendar/date";
+import { parseGoogleSyncStateFromPayload } from "@/lib/google-calendar/clientSync";
 import { messages, toErrorMessage } from "@/lib/messages";
 import { getBrowserQueryClient } from "@/lib/query/query-client";
+import { buildMutationSuccessDescription } from "@/lib/query/mutation-toast";
 import { invalidateAfterPayrollRuleMutation } from "@/lib/query/invalidation";
 import {
   useWorkplaceDetailQuery,
@@ -195,6 +197,12 @@ export function PayrollRuleList({
         );
       }
 
+      const responsePayload = (await response.json()) as unknown;
+      const syncState = parseGoogleSyncStateFromPayload(
+        responsePayload,
+        messages.error.calendarSyncFailed,
+      );
+
       await invalidateAfterPayrollRuleMutation(queryClient, workplaceId);
       queryClient.setQueryData<PayrollRule[]>(
         queryKeys.workplaces.payrollRules({ workplaceId }),
@@ -203,7 +211,11 @@ export function PayrollRuleList({
       );
       setDeletingRuleId(null);
       setInfoMessage("給与ルールを削除しました。");
-      toast.success(messages.success.payrollRuleDeleted);
+      toast.success(messages.success.payrollRuleDeleted, {
+        description: buildMutationSuccessDescription({
+          syncPending: syncState.pending,
+        }),
+      });
     } catch (error) {
       console.error("failed to delete payroll rule", error);
       const message = toErrorMessage(

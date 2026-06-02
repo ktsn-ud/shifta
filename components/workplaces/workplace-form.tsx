@@ -17,9 +17,11 @@ import { FormLoadingSkeleton } from "@/components/ui/loading-skeletons";
 import { RadioGroup, RadioGroupItem } from "@/components/ui/radio-group";
 import { toDateOnlyString } from "@/lib/calendar/date";
 import { formatHolidayType, formatWorkplaceType } from "@/lib/enum-labels";
+import { parseGoogleSyncStateFromPayload } from "@/lib/google-calendar/clientSync";
 import { messages, toErrorMessage } from "@/lib/messages";
 import { invalidateAfterWorkplaceMutation } from "@/lib/query/invalidation";
 import { getBrowserQueryClient } from "@/lib/query/query-client";
+import { buildMutationSuccessDescription } from "@/lib/query/mutation-toast";
 import { useWorkplaceEditDetailQuery } from "@/lib/query/queries/workplaces";
 import {
   resolveUserFacingErrorFromResponse,
@@ -367,6 +369,10 @@ export function WorkplaceForm({ mode, workplaceId }: WorkplaceFormProps) {
           type?: WorkplaceType;
         };
       };
+      const syncState = parseGoogleSyncStateFromPayload(
+        responsePayload,
+        messages.error.calendarSyncFailed,
+      );
       await invalidateAfterWorkplaceMutation(queryClient);
 
       if (
@@ -376,7 +382,10 @@ export function WorkplaceForm({ mode, workplaceId }: WorkplaceFormProps) {
       ) {
         toast.success(messages.success.workplaceCreated, {
           id: loadingToastId,
-          description: payload.name,
+          description: buildMutationSuccessDescription({
+            baseDescription: payload.name,
+            syncPending: syncState.pending,
+          }),
         });
         markForResetOnRouteHidden();
         router.push(`/my/workplaces/${responsePayload.data.id}/timetables/new`);
@@ -387,7 +396,10 @@ export function WorkplaceForm({ mode, workplaceId }: WorkplaceFormProps) {
             : messages.success.workplaceCreated,
           {
             id: loadingToastId,
-            description: payload.name,
+            description: buildMutationSuccessDescription({
+              baseDescription: payload.name,
+              syncPending: syncState.pending,
+            }),
           },
         );
         markForResetOnRouteHidden();

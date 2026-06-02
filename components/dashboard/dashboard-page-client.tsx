@@ -30,13 +30,15 @@ import {
   toDateKey,
 } from "@/lib/calendar/date";
 import {
-  parseGoogleSyncFailureFromPayload,
+  parseGoogleSyncStateFromPayload,
   readGoogleSyncFailureFromErrorResponse,
 } from "@/lib/google-calendar/clientSync";
 import { CALENDAR_SETUP_PATH } from "@/lib/google-calendar/constants";
 import { messages } from "@/lib/messages";
 import { getBrowserQueryClient } from "@/lib/query/query-client";
+import { buildMutationSuccessDescription } from "@/lib/query/mutation-toast";
 import { invalidateAfterShiftMutation } from "@/lib/query/invalidation";
+import { removeShiftsFromMonthCachesOptimistically } from "@/lib/query/optimistic-shifts";
 import { usePayrollSummaryQuery } from "@/lib/query/queries/payroll";
 import { useGoogleTokenExpiredSignOut } from "@/hooks/use-google-token-expired-signout";
 import {
@@ -578,64 +580,85 @@ export function DashboardPageClient({
             return;
           }
 
-          const response = await fetch(`/api/shifts/${shiftId}`, {
-            method: "DELETE",
-          });
-
-          if (response.ok === false) {
-            const apiError = await readGoogleSyncFailureFromErrorResponse(
-              response,
-              "シフトの削除に失敗しました",
-            );
-
-            if (apiError.requiresSignOut) {
-              toast.error("Google 連携の有効期限が切れました", {
-                description: GOOGLE_TOKEN_EXPIRED_DESCRIPTION,
-                duration: 6000,
-              });
-              scheduleSignOut();
-              return;
-            }
-            throw new Error(apiError.message);
-          }
-
-          const payload = (await response.json()) as unknown;
-          const syncFailure = parseGoogleSyncFailureFromPayload(
-            payload,
-            messages.error.calendarSyncFailed,
+          const rollback = removeShiftsFromMonthCachesOptimistically(
+            queryClient,
+            [shiftId],
           );
+          let deletionCompleted = false;
 
-          await Promise.all([
-            invalidateAfterShiftMutation(queryClient),
-            reload(),
-          ]);
-
-          if (syncFailure) {
-            if (syncFailure.requiresSignOut) {
-              toast.error("Google 連携の有効期限が切れました", {
-                description: GOOGLE_TOKEN_EXPIRED_DESCRIPTION,
-                duration: 6000,
-              });
-              scheduleSignOut();
-              return;
-            }
-
-            toast.error(messages.error.calendarSyncFailed, {
-              description: syncFailure.requiresCalendarSetup
-                ? syncFailure.message
-                : `${syncFailure.message} シフトは削除済みです。`,
-              duration: 6000,
+          try {
+            const response = await fetch(`/api/shifts/${shiftId}`, {
+              method: "DELETE",
             });
 
-            if (syncFailure.requiresCalendarSetup) {
-              queueMicrotask(() => {
-                router.push(CALENDAR_SETUP_PATH);
-              });
-            }
-            return;
-          }
+            if (response.ok === false) {
+              const apiError = await readGoogleSyncFailureFromErrorResponse(
+                response,
+                "シフトの削除に失敗しました",
+              );
 
-          toast.success(messages.success.shiftDeleted);
+              if (apiError.requiresSignOut) {
+                rollback();
+                toast.error("Google 連携の有効期限が切れました", {
+                  description: GOOGLE_TOKEN_EXPIRED_DESCRIPTION,
+                  duration: 6000,
+                });
+                scheduleSignOut();
+                return;
+              }
+              throw new Error(apiError.message);
+            }
+
+            deletionCompleted = true;
+            const payload = (await response
+              .json()
+              .catch(() => null)) as unknown;
+            const syncState = parseGoogleSyncStateFromPayload(
+              payload,
+              messages.error.calendarSyncFailed,
+            );
+            const syncFailure = syncState.failure;
+
+            void invalidateAfterShiftMutation(queryClient, {
+              mode: "background",
+            });
+
+            if (syncFailure) {
+              if (syncFailure.requiresSignOut) {
+                toast.error("Google 連携の有効期限が切れました", {
+                  description: GOOGLE_TOKEN_EXPIRED_DESCRIPTION,
+                  duration: 6000,
+                });
+                scheduleSignOut();
+                return;
+              }
+
+              toast.error(messages.error.calendarSyncFailed, {
+                description: syncFailure.requiresCalendarSetup
+                  ? syncFailure.message
+                  : `${syncFailure.message} シフトは削除済みです。`,
+                duration: 6000,
+              });
+
+              if (syncFailure.requiresCalendarSetup) {
+                queueMicrotask(() => {
+                  router.push(CALENDAR_SETUP_PATH);
+                });
+              }
+              return;
+            }
+
+            toast.success(messages.success.shiftDeleted, {
+              description: buildMutationSuccessDescription({
+                syncPending: syncState.pending,
+              }),
+            });
+          } catch (error) {
+            if (!deletionCompleted) {
+              rollback();
+            }
+            throw error;
+          }
         }}
         onRetrySync={async (shiftId) => {
           if (isSignOutScheduled) {

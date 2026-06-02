@@ -39,9 +39,12 @@ import {
   startOfMonth,
   toMonthInputValue,
 } from "@/lib/calendar/date";
+import { parseGoogleSyncStateFromPayload } from "@/lib/google-calendar/clientSync";
 import { messages, toErrorMessage } from "@/lib/messages";
 import { getBrowserQueryClient } from "@/lib/query/query-client";
+import { buildMutationSuccessDescription } from "@/lib/query/mutation-toast";
 import { invalidateAfterShiftMutation } from "@/lib/query/invalidation";
+import { removeShiftsFromMonthCachesOptimistically } from "@/lib/query/optimistic-shifts";
 import { formatShiftTimeRange } from "@/lib/shifts/time";
 import { formatShiftWorkplaceLabel } from "@/lib/shifts/format";
 import { resolveUserFacingErrorFromResponse } from "@/lib/user-facing-error";
@@ -246,7 +249,6 @@ export function ShiftListPageClient({
     isRefreshing,
     isPlaceholderData,
     errorMessage,
-    reload,
   } = useMonthShifts(month, {
     cacheUserKey: currentUserId,
     initialShifts: initialMonthShifts,
@@ -390,8 +392,14 @@ export function ShiftListPageClient({
     }
 
     const shiftIds = Array.from(selectedShiftIds);
+    const rollback = removeShiftsFromMonthCachesOptimistically(
+      queryClient,
+      shiftIds,
+    );
+
     setIsDeleting(true);
     setDeleteErrorMessage(null);
+    setSelectedShiftIds(new Set());
 
     try {
       const response = await fetch("/api/shifts", {
@@ -415,15 +423,26 @@ export function ShiftListPageClient({
       } | null;
 
       const deletedCount = payload?.deletedCount ?? shiftIds.length;
+      const syncState = parseGoogleSyncStateFromPayload(
+        payload,
+        messages.error.calendarSyncFailed,
+      );
 
-      setSelectedShiftIds(new Set());
       setDeleteDialogOpen(false);
-      await Promise.all([invalidateAfterShiftMutation(queryClient), reload()]);
+      void invalidateAfterShiftMutation(queryClient, {
+        mode: "background",
+      });
 
       toast.success(messages.success.shiftDeleted, {
-        description: `${deletedCount}件のシフトを削除しました。`,
+        description: buildMutationSuccessDescription({
+          baseDescription: `${deletedCount}件のシフトを削除しました。`,
+          syncPending: syncState.pending,
+        }),
       });
     } catch (error) {
+      rollback();
+      setSelectedShiftIds(new Set(shiftIds));
+
       console.error("failed to bulk delete shifts", error);
       const message = toErrorMessage(error, messages.error.shiftDeleteFailed);
       setDeleteErrorMessage(message);

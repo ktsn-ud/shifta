@@ -12,6 +12,7 @@ import {
   syncShiftAfterCreate,
   syncShiftDeletion,
 } from "@/lib/google-calendar/syncStatus";
+import { buildPendingSyncResponse } from "@/lib/google-calendar/sync-response";
 import {
   buildShiftData,
   ShiftValidationError,
@@ -142,6 +143,7 @@ export async function POST(request: Request) {
     return jsonNoStore(
       {
         data: created,
+        sync: created ? buildPendingSyncResponse() : null,
         syncStatus: created ? "pending" : null,
       },
       { status: 201 },
@@ -303,6 +305,7 @@ export async function DELETE(request: Request) {
     return jsonNoStore({
       deletedIds: uniqueShiftIds,
       deletedCount: uniqueShiftIds.length,
+      sync: uniqueShiftIds.length > 0 ? buildPendingSyncResponse() : null,
       syncStatus: "pending",
     });
   } catch (error) {

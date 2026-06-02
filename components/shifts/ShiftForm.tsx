@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { useRouter } from "next/navigation";
 import { toast } from "sonner";
@@ -39,14 +39,16 @@ import {
 } from "@/lib/calendar/date";
 import { formatShiftType } from "@/lib/enum-labels";
 import {
-  parseGoogleSyncFailureFromPayload,
+  parseGoogleSyncStateFromPayload,
   readGoogleSyncFailureFromErrorResponse,
 } from "@/lib/google-calendar/clientSync";
 import { CALENDAR_SETUP_PATH } from "@/lib/google-calendar/constants";
 import { messages, toErrorMessage } from "@/lib/messages";
 import { fetchJson } from "@/lib/query/fetch-json";
 import { getBrowserQueryClient } from "@/lib/query/query-client";
+import { buildMutationSuccessDescription } from "@/lib/query/mutation-toast";
 import { invalidateAfterShiftMutation } from "@/lib/query/invalidation";
+import { upsertMonthShiftInCachesOptimistically } from "@/lib/query/optimistic-shifts";
 import { queryKeys } from "@/lib/query/query-keys";
 import {
   formatShiftTimeRange,
@@ -57,6 +59,7 @@ import {
 } from "@/lib/shifts/time";
 import { toUserFacingMessage } from "@/lib/user-facing-error";
 import { useGoogleTokenExpiredSignOut } from "@/hooks/use-google-token-expired-signout";
+import { type MonthShift, normalizeMonthShift } from "@/hooks/use-month-shifts";
 import { useResetOnRouteHidden } from "@/hooks/use-reset-on-route-hidden";
 
 const LAST_WORKPLACE_ID_KEY = "shifta:last-workplace-id";
@@ -420,6 +423,23 @@ function parseShiftDetailResponse(payload: unknown): ShiftDetail | null {
   };
 }
 
+function parseShiftMutationResult(payload: unknown): {
+  detail: ShiftDetail | null;
+  monthShift: MonthShift | null;
+} {
+  if (!isRecord(payload)) {
+    return {
+      detail: null,
+      monthShift: null,
+    };
+  }
+
+  return {
+    detail: parseShiftDetailResponse({ data: payload.data }),
+    monthShift: normalizeMonthShift(payload.data),
+  };
+}
+
 function isValidDateKey(value?: string | null): value is string {
   if (!value || DATE_ONLY_REGEX.test(value) === false) {
     return false;
@@ -564,16 +584,24 @@ export function ShiftForm({
   const [isOvernightDialogOpen, setIsOvernightDialogOpen] = useState(false);
   const [pendingOvernightTimes, setPendingOvernightTimes] =
     useState<ShiftTimePair | null>(null);
+  const createModeDateRef = useRef<string | null>(
+    mode === "create" ? defaultDate : null,
+  );
   const { isSignOutScheduled, scheduleSignOut } =
     useGoogleTokenExpiredSignOut();
-  const { markForResetOnRouteHidden } = useResetOnRouteHidden(() => {
-    setForm(createInitialFormState(defaultDate));
+
+  const resetCreateFormState = (date: string) => {
+    setForm(createInitialFormState(date));
     setIsSubmitting(false);
     setErrors({});
     setWarningMessage(null);
     setInitialShiftTimes(null);
     setIsOvernightDialogOpen(false);
     setPendingOvernightTimes(null);
+  };
+
+  const { markForResetOnRouteHidden } = useResetOnRouteHidden(() => {
+    resetCreateFormState(defaultDate);
   });
   const queryClient = getBrowserQueryClient();
   const loadQueryUserId = "self";
@@ -592,6 +620,20 @@ export function ShiftForm({
 
     return `${basePath}?month=${toMonthInputValue(parsed)}`;
   }, [returnMonth, returnTo]);
+
+  useEffect(() => {
+    if (mode !== "create") {
+      createModeDateRef.current = null;
+      return;
+    }
+
+    if (createModeDateRef.current === defaultDate) {
+      return;
+    }
+
+    createModeDateRef.current = defaultDate;
+    resetCreateFormState(defaultDate);
+  }, [defaultDate, mode]);
 
   const workplacesQuery = useQuery({
     queryKey: queryKeys.workplaces.list({
@@ -1402,11 +1444,35 @@ export function ShiftForm({
       }
 
       const responsePayload = (await response.json()) as unknown;
-      const syncFailure = parseGoogleSyncFailureFromPayload(
+      const syncState = parseGoogleSyncStateFromPayload(
         responsePayload,
         messages.error.calendarSyncFailed,
       );
+      const syncFailure = syncState.failure;
+      const mutationResult = parseShiftMutationResult(responsePayload);
 
+      if (mutationResult.monthShift) {
+        upsertMonthShiftInCachesOptimistically(
+          queryClient,
+          mutationResult.monthShift,
+          mode === "edit" && shiftId
+            ? {
+                previousShiftId: shiftId,
+              }
+            : undefined,
+        );
+      }
+
+      if (mode === "edit" && shiftId && mutationResult.detail) {
+        queryClient.setQueryData(
+          queryKeys.shifts.detail({ shiftId }),
+          mutationResult.detail,
+        );
+      }
+
+      void invalidateAfterShiftMutation(queryClient, {
+        mode: "background",
+      });
       window.localStorage.setItem(LAST_WORKPLACE_ID_KEY, form.workplaceId);
 
       if (syncFailure) {
@@ -1428,16 +1494,23 @@ export function ShiftForm({
           duration: 6000,
         });
 
+        markForResetOnRouteHidden();
         if (syncFailure.requiresCalendarSetup) {
           router.push(CALENDAR_SETUP_PATH);
           return;
         }
 
-        await invalidateAfterShiftMutation(queryClient);
-        markForResetOnRouteHidden();
         router.push(returnPath);
         return;
       }
+
+      const successDescription =
+        form.date +
+        " " +
+        formatShiftTimeRange(
+          validation.candidateTimes.startTime,
+          validation.candidateTimes.endTime,
+        );
 
       toast.success(
         mode === "create"
@@ -1445,13 +1518,12 @@ export function ShiftForm({
           : messages.success.shiftUpdated,
         {
           id: loadingToastId,
-          description: `${form.date} ${formatShiftTimeRange(
-            validation.candidateTimes.startTime,
-            validation.candidateTimes.endTime,
-          )}`,
+          description: buildMutationSuccessDescription({
+            baseDescription: successDescription,
+            syncPending: syncState.pending,
+          }),
         },
       );
-      await invalidateAfterShiftMutation(queryClient);
       markForResetOnRouteHidden();
       router.push(returnPath);
     } catch (error) {

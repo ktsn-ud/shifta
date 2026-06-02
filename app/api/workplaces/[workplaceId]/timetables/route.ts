@@ -8,6 +8,7 @@ import { jsonError, parseJsonBody } from "@/lib/api/http";
 import { requireOwnedWorkplace } from "@/lib/api/workplace";
 import { prisma } from "@/lib/prisma";
 import { jsonNoStore } from "@/lib/api/cache-control";
+import { buildSuccessSyncResponse } from "@/lib/google-calendar/sync-response";
 import { revalidateWorkplaceDomainTags } from "@/lib/cache/revalidate";
 
 const timetableItemSchema = z
@@ -258,10 +259,22 @@ export async function POST(request: Request, context: Context) {
     }
 
     if (created.length === 1 && !("sets" in body.data)) {
-      return jsonNoStore({ data: created[0] }, { status: 201 });
+      return jsonNoStore(
+        {
+          data: created[0],
+          sync: buildSuccessSyncResponse(),
+        },
+        { status: 201 },
+      );
     }
 
-    return jsonNoStore({ data: created }, { status: 201 });
+    return jsonNoStore(
+      {
+        data: created,
+        sync: buildSuccessSyncResponse(),
+      },
+      { status: 201 },
+    );
   } catch (error) {
     if (
       error instanceof Error &&

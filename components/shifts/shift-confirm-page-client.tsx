@@ -24,6 +24,60 @@ type ShiftConfirmPageClientProps = {
   initialConfirmedShiftGroups: ConfirmedShiftWorkplaceGroup[];
 };
 
+type ConfirmActionCompletedInput = {
+  shiftId: string;
+  workplaceId: string;
+  workplaceName: string;
+  workplaceColor: string;
+  date: string;
+  startTime: string;
+  endTime: string;
+  comment: string | null;
+};
+
+function upsertProvisionalConfirmedShift(
+  groups: ConfirmedShiftWorkplaceGroup[],
+  input: ConfirmActionCompletedInput,
+): ConfirmedShiftWorkplaceGroup[] {
+  const provisionalShift = {
+    id: input.shiftId,
+    date: input.date,
+    comment: input.comment,
+    startTime: input.startTime,
+    endTime: input.endTime,
+    workDurationHours: null,
+    wage: null,
+    status: "provisional" as const,
+  };
+
+  const nextGroups = groups.map((group) => ({
+    ...group,
+    shifts: [...group.shifts],
+  }));
+  const existingGroup = nextGroups.find(
+    (group) => group.workplaceId === input.workplaceId,
+  );
+
+  if (!existingGroup) {
+    return [
+      ...nextGroups,
+      {
+        workplaceId: input.workplaceId,
+        workplaceName: input.workplaceName,
+        workplaceColor: input.workplaceColor,
+        shifts: [provisionalShift],
+      },
+    ];
+  }
+
+  existingGroup.shifts = [
+    ...existingGroup.shifts.filter((shift) => shift.id !== input.shiftId),
+    provisionalShift,
+  ];
+
+  return nextGroups;
+}
+
 export function ShiftConfirmPageClient({
   currentUserId,
   initialUnconfirmedShifts,
@@ -86,11 +140,15 @@ export function ShiftConfirmPageClient({
   }, [currentUserId, queryClient]);
 
   const handleActionCompleted = useCallback(
-    (input: { shiftId: string }) => {
+    (input: ConfirmActionCompletedInput) => {
       queryClient.setQueryData<UnconfirmedShiftItem[]>(
         queryKeys.shifts.unconfirmed({ userId: currentUserId }),
         (previous) =>
           (previous ?? []).filter((shift) => shift.id !== input.shiftId),
+      );
+      queryClient.setQueryData<ConfirmedShiftWorkplaceGroup[]>(
+        queryKeys.shifts.confirmedCurrentMonth({ userId: currentUserId }),
+        (previous) => upsertProvisionalConfirmedShift(previous ?? [], input),
       );
 
       void loadShiftConfirmationData();

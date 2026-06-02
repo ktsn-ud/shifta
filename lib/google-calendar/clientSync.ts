@@ -15,6 +15,11 @@ export type ParsedGoogleSyncFailure = {
   requiresSignOut: boolean;
 };
 
+export type ParsedGoogleSyncState = {
+  pending: boolean;
+  failure: ParsedGoogleSyncFailure | null;
+};
+
 function toRecord(value: unknown): Record<string, unknown> | null {
   if (typeof value !== "object" || value === null) {
     return null;
@@ -48,14 +53,17 @@ function buildSyncFailure(
   };
 }
 
-export function parseGoogleSyncFailureFromPayload(
-  payload: unknown,
+function parseSyncFailureFromSyncObject(
+  sync: Record<string, unknown> | null,
   fallbackMessage: string,
 ): ParsedGoogleSyncFailure | null {
-  const parsedPayload = toRecord(payload);
-  const sync = toRecord(parsedPayload?.sync);
+  if (!sync) {
+    return null;
+  }
 
-  if (!sync || sync.ok !== false) {
+  const status = getString(sync.status);
+  const isFailed = sync.ok === false || status === "failed";
+  if (!isFailed) {
     return null;
   }
 
@@ -76,6 +84,45 @@ export function parseGoogleSyncFailureFromPayload(
     requiresCalendarSetup,
     requiresSignOut,
   );
+}
+
+function parseSyncPending(
+  payload: Record<string, unknown> | null,
+  sync: Record<string, unknown> | null,
+): boolean {
+  if (sync) {
+    if (getBoolean(sync.pending)) {
+      return true;
+    }
+
+    const syncStatus = getString(sync.status);
+    if (syncStatus === "pending") {
+      return true;
+    }
+  }
+
+  return getString(payload?.syncStatus) === "pending";
+}
+
+export function parseGoogleSyncStateFromPayload(
+  payload: unknown,
+  fallbackMessage: string,
+): ParsedGoogleSyncState {
+  const parsedPayload = toRecord(payload);
+  const sync = toRecord(parsedPayload?.sync);
+  const failure = parseSyncFailureFromSyncObject(sync, fallbackMessage);
+
+  return {
+    pending: failure ? false : parseSyncPending(parsedPayload, sync),
+    failure,
+  };
+}
+
+export function parseGoogleSyncFailureFromPayload(
+  payload: unknown,
+  fallbackMessage: string,
+): ParsedGoogleSyncFailure | null {
+  return parseGoogleSyncStateFromPayload(payload, fallbackMessage).failure;
 }
 
 export async function readGoogleSyncFailureFromErrorResponse(

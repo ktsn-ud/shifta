@@ -5,6 +5,7 @@ import { DATE_ONLY_REGEX, parseDateOnly } from "@/lib/api/date-time";
 import { jsonError, parseJsonBody } from "@/lib/api/http";
 import { prisma } from "@/lib/prisma";
 import { jsonNoStore } from "@/lib/api/cache-control";
+import { buildSuccessSyncResponse } from "@/lib/google-calendar/sync-response";
 import { revalidateWorkplaceDomainTags } from "@/lib/cache/revalidate";
 
 const colorRegex = /^#[0-9A-Fa-f]{6}$/;
@@ -212,7 +213,11 @@ export async function POST(request: Request) {
     });
 
     return jsonNoStore(
-      { data: result.workplace, initialPayrollRule: result.initialPayrollRule },
+      {
+        data: result.workplace,
+        initialPayrollRule: result.initialPayrollRule,
+        sync: buildSuccessSyncResponse(),
+      },
       { status: 201 },
     );
   } catch (error) {
