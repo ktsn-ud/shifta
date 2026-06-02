@@ -143,6 +143,39 @@ export function upsertMonthShiftInCachesOptimistically(
   }
 }
 
+export function upsertMonthShiftsInCachesOptimistically(
+  queryClient: QueryClient,
+  shifts: MonthShift[],
+): void {
+  if (shifts.length === 0) {
+    return;
+  }
+
+  const shiftMap = new Map(shifts.map((shift) => [shift.id, shift]));
+  const shiftIds = new Set(shiftMap.keys());
+
+  for (const { key, data } of getMonthShiftQueryEntries(queryClient)) {
+    if (!Array.isArray(data)) {
+      continue;
+    }
+
+    const input = readMonthShiftQueryInput(key);
+    if (!input) {
+      continue;
+    }
+
+    const next = data.filter((row) => !shiftIds.has(row.id));
+    const rowsForQuery = Array.from(shiftMap.values()).filter((shift) =>
+      isDateIncluded(input, shift.date),
+    );
+
+    queryClient.setQueryData<MonthShift[]>(
+      key,
+      [...next, ...rowsForQuery].toSorted(compareMonthShiftRows),
+    );
+  }
+}
+
 export function updateShiftInMonthCachesOptimistically(
   queryClient: QueryClient,
   shiftId: string,

@@ -43,3 +43,9 @@
 - `/my/shifts/new` と `/my/shifts/[id]/edit` は保存成功レスポンスから `MonthShift` を再構築し、戻り先遷移前に月次 cache を即時更新するようにした。
 - `/my/shifts/confirm` は未確定一覧から対象カードを即時に除去し、右側の確定済み一覧へ `計算中` の provisional 行を追加する。
 - シフト mutation 後の invalidation は待機させず background 実行に寄せ、画面遷移・一覧更新の体感待ちを削減した。
+
+## 8. 追加実装（2026-06-02 フェーズ5）
+
+- `/my/shifts/bulk` は保存成功レスポンスの `data[]` を使って、戻り先遷移前に月次 `shifts.month` cache を複数件まとめて即時更新するようにした。
+- Google Calendar 同期失敗や再取得待ちがあっても、DB 保存済みなら画面遷移自体は止めず、関連 invalidation は background 実行に寄せた。
+- これにより、一括登録後の `/my` 復帰時に一覧・カレンダーへ新規シフトが見えるまでの待ち時間を削減した。

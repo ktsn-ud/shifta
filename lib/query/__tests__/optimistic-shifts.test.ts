@@ -4,6 +4,7 @@ import {
   removeShiftsFromMonthCachesOptimistically,
   updateShiftInMonthCachesOptimistically,
   upsertMonthShiftInCachesOptimistically,
+  upsertMonthShiftsInCachesOptimistically,
 } from "@/lib/query/optimistic-shifts";
 
 function createMonthShift(overrides: Partial<MonthShift> = {}): MonthShift {
@@ -142,6 +143,64 @@ describe("optimistic month shift cache helpers", () => {
       ),
     ).toEqual(["shift-1"]);
     expect(queryClient.getQueryData(mayKey)).toEqual([]);
+  });
+
+  it("複数シフトを対象月ごとに即時追加し、既存IDは置き換える", () => {
+    const queryClient = createQueryClient();
+    const marchKey = [
+      "shifts",
+      "month",
+      {
+        userId: "user-1",
+        startDate: "2026-03-01",
+        endDate: "2026-03-31",
+        includeEstimate: false,
+      },
+    ] as const;
+    const aprilKey = [
+      "shifts",
+      "month",
+      {
+        userId: "user-1",
+        startDate: "2026-04-01",
+        endDate: "2026-04-30",
+        includeEstimate: false,
+      },
+    ] as const;
+
+    queryClient.setQueryData<MonthShift[]>(marchKey, [
+      createMonthShift({
+        id: "shift-1",
+        date: "2026-03-20T00:00:00.000Z",
+        comment: "旧データ",
+      }),
+    ]);
+    queryClient.setQueryData<MonthShift[]>(aprilKey, []);
+
+    upsertMonthShiftsInCachesOptimistically(queryClient, [
+      createMonthShift({
+        id: "shift-1",
+        date: "2026-03-20T00:00:00.000Z",
+        comment: "更新後",
+      }),
+      createMonthShift({
+        id: "shift-2",
+        date: "2026-04-02T00:00:00.000Z",
+      }),
+    ]);
+
+    expect(
+      (queryClient.getQueryData(marchKey) as MonthShift[]).map((shift) => ({
+        id: shift.id,
+        comment: shift.comment,
+      })),
+    ).toEqual([{ id: "shift-1", comment: "更新後" }]);
+    expect(
+      (queryClient.getQueryData(aprilKey) as MonthShift[]).map((shift) => ({
+        id: shift.id,
+        date: shift.date,
+      })),
+    ).toEqual([{ id: "shift-2", date: "2026-04-02T00:00:00.000Z" }]);
   });
 
   it("編集で月が変わった場合は旧月から除去して新月へ移す", () => {

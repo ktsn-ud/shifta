@@ -1,5 +1,5 @@
 import { type ReactElement } from "react";
-import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
+import { QueryClientProvider } from "@tanstack/react-query";
 import {
   fireEvent,
   render as baseRender,
@@ -9,6 +9,10 @@ import {
 } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { BulkShiftForm } from "@/components/shifts/BulkShiftForm";
+import type { MonthShift } from "@/hooks/use-month-shifts";
+import { CALENDAR_SETUP_PATH } from "@/lib/google-calendar/constants";
+import { getBrowserQueryClient } from "@/lib/query/query-client";
+import { queryKeys } from "@/lib/query/query-keys";
 
 const pushMock = jest.fn();
 const refreshMock = jest.fn();
@@ -23,11 +27,11 @@ jest.mock("next/navigation", () => ({
 }));
 
 function render(ui: ReactElement) {
-  const queryClient = new QueryClient({
-    defaultOptions: {
-      queries: { retry: false },
-      mutations: { retry: false },
-    },
+  const queryClient = getBrowserQueryClient();
+  queryClient.clear();
+  queryClient.setDefaultOptions({
+    queries: { retry: false },
+    mutations: { retry: false },
   });
 
   return baseRender(
@@ -41,6 +45,32 @@ function jsonResponse(payload: unknown, status = 200): Response {
     status,
     json: async () => payload,
   } as Response;
+}
+
+function createMonthShift(overrides: Partial<MonthShift> = {}): MonthShift {
+  return {
+    id: "shift-1",
+    workplaceId: "workplace-1",
+    date: "2026-03-20T00:00:00.000Z",
+    startTime: "1970-01-01T09:00:00.000Z",
+    endTime: "1970-01-01T18:00:00.000Z",
+    breakMinutes: 0,
+    shiftType: "NORMAL",
+    comment: null,
+    googleSyncStatus: "PENDING",
+    googleSyncError: null,
+    googleSyncedAt: null,
+    workedMinutes: 540,
+    estimatedPay: null,
+    workplace: {
+      id: "workplace-1",
+      name: "勤務先A",
+      color: "#3366FF",
+      type: "GENERAL",
+    },
+    lessonRange: null,
+    ...overrides,
+  };
 }
 
 function handleBulkPreviewFetch(input: string): Response | null {
@@ -302,6 +332,124 @@ describe("bulk shift flow integration", () => {
     ]);
   });
 
+  it("updates month cache optimistically before redirecting after bulk submit", async () => {
+    const user = userEvent.setup({
+      advanceTimers: jest.advanceTimersByTime,
+    });
+    const fetchMock = globalThis.fetch as jest.Mock;
+
+    fetchMock.mockImplementation(
+      async (input: string, init?: { method?: string }) => {
+        if (input.startsWith("/api/calendar/events?month=")) {
+          return jsonResponse({
+            data: {
+              month: "2026-03",
+              calendars: [],
+              selectedCalendarIds: [],
+              dates: [],
+            },
+          });
+        }
+
+        if (input === WORKPLACE_LIST_URL) {
+          return jsonResponse({
+            data: [
+              {
+                id: "workplace-1",
+                name: "勤務先A",
+                color: "#3366FF",
+                type: "GENERAL",
+              },
+            ],
+          });
+        }
+
+        if (input === "/api/shifts/bulk" && init?.method === "POST") {
+          return jsonResponse(
+            {
+              data: [
+                createMonthShift({
+                  id: "shift-1",
+                  date: "2026-03-20T00:00:00.000Z",
+                }),
+                createMonthShift({
+                  id: "shift-2",
+                  date: "2026-03-21T00:00:00.000Z",
+                  startTime: "1970-01-01T13:00:00.000Z",
+                  endTime: "1970-01-01T20:00:00.000Z",
+                  workedMinutes: 420,
+                  comment: "棚卸",
+                }),
+              ],
+              summary: {
+                total: 2,
+                synced: 0,
+                failed: 0,
+                pending: 2,
+              },
+              sync: {
+                status: "success",
+                pending: true,
+              },
+            },
+            201,
+          );
+        }
+
+        const previewResponse = handleBulkPreviewFetch(input);
+        if (previewResponse) {
+          return previewResponse;
+        }
+
+        throw new Error("Unexpected fetch: " + input);
+      },
+    );
+
+    render(<BulkShiftForm />);
+
+    const queryClient = getBrowserQueryClient();
+    const marchKey = queryKeys.shifts.month({
+      userId: "user-1",
+      startDate: "2026-03-01",
+      endDate: "2026-03-31",
+      includeEstimate: false,
+    });
+    queryClient.setQueryData<MonthShift[]>(marchKey, []);
+
+    await waitFor(() => {
+      expect(
+        screen.getByRole("combobox", { name: "勤務先" }),
+      ).toHaveTextContent("勤務先A");
+    });
+
+    await user.click(findEnabledDayButton(20));
+    await user.click(findEnabledDayButton(21));
+    await user.click(screen.getByRole("button", { name: "確定" }));
+
+    await waitFor(() => {
+      expect(pushMock).toHaveBeenCalledWith("/my");
+    });
+
+    expect(
+      (queryClient.getQueryData(marchKey) as MonthShift[]).map((shift) => ({
+        id: shift.id,
+        date: shift.date,
+        comment: shift.comment,
+      })),
+    ).toEqual([
+      {
+        id: "shift-1",
+        date: "2026-03-20T00:00:00.000Z",
+        comment: null,
+      },
+      {
+        id: "shift-2",
+        date: "2026-03-21T00:00:00.000Z",
+        comment: "棚卸",
+      },
+    ]);
+  });
+
   it("shows overnight summary confirmation before bulk submit", async () => {
     const user = userEvent.setup({
       advanceTimers: jest.advanceTimersByTime,
@@ -442,7 +590,7 @@ describe("bulk shift flow integration", () => {
         if (input === "/api/shifts/bulk" && init?.method === "POST") {
           return jsonResponse(
             {
-              data: [],
+              data: [createMonthShift()],
               summary: {
                 total: 1,
                 synced: 0,
@@ -471,6 +619,15 @@ describe("bulk shift flow integration", () => {
 
     render(<BulkShiftForm />);
 
+    const queryClient = getBrowserQueryClient();
+    const marchKey = queryKeys.shifts.month({
+      userId: "user-1",
+      startDate: "2026-03-01",
+      endDate: "2026-03-31",
+      includeEstimate: false,
+    });
+    queryClient.setQueryData<MonthShift[]>(marchKey, []);
+
     await waitFor(() => {
       expect(
         screen.getByRole("combobox", { name: "勤務先" }),
@@ -481,8 +638,14 @@ describe("bulk shift flow integration", () => {
     await user.click(screen.getByRole("button", { name: "確定" }));
 
     await waitFor(() => {
-      expect(pushMock).toHaveBeenCalledWith("/my");
+      expect(pushMock).toHaveBeenCalledWith(CALENDAR_SETUP_PATH);
     });
+
+    expect(
+      (queryClient.getQueryData(marchKey) as MonthShift[]).map(
+        (shift) => shift.id,
+      ),
+    ).toEqual(["shift-1"]);
   });
 
   it("shows google events for selected day on bulk calendar", async () => {
