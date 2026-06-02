@@ -37,3 +37,9 @@
 - 削除成功レスポンス待ちの間も対象シフトは即時に一覧/カレンダーから消え、失敗時だけ rollback する。
 - シフト mutation 後の invalidation は `shifts` を優先し、給与集計・勤務先関連は一部導線でバックグラウンド invalidation に切り替えた。
 - これにより、削除後の画面閉塞要因だった `reload()` 待ちを削除しつつ、最終整合は維持する。
+
+## 7. 追加実装（2026-06-02 フェーズ4）
+
+- `/my/shifts/new` と `/my/shifts/[id]/edit` は保存成功レスポンスから `MonthShift` を再構築し、戻り先遷移前に月次 cache を即時更新するようにした。
+- `/my/shifts/confirm` は未確定一覧から対象カードを即時に除去し、右側の確定済み一覧へ `計算中` の provisional 行を追加する。
+- シフト mutation 後の invalidation は待機させず background 実行に寄せ、画面遷移・一覧更新の体感待ちを削減した。

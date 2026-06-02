@@ -64,12 +64,25 @@ export function ConfirmedShiftsList({ groups }: ConfirmedShiftsListProps) {
               </TableHeader>
               <TableBody>
                 {group.shifts.map((shift) => (
-                  <TableRow key={shift.id}>
+                  <TableRow
+                    key={shift.id}
+                    className={
+                      shift.status === "provisional" ? "opacity-70" : undefined
+                    }
+                  >
                     <TableCell>{shift.date}</TableCell>
                     <TableCell>{shift.comment ?? "-"}</TableCell>
-                    <TableCell>{`${formatShiftTimeRange(shift.startTime, shift.endTime, { separator: " ～ " })}（実働${formatDurationHours(shift.workDurationHours)}）`}</TableCell>
                     <TableCell>
-                      {shift.wage === null ? "-" : formatCurrency(shift.wage)}
+                      {shift.status === "provisional"
+                        ? `${formatShiftTimeRange(shift.startTime, shift.endTime, { separator: " ～ " })}（実働計算中）`
+                        : `${formatShiftTimeRange(shift.startTime, shift.endTime, { separator: " ～ " })}（実働${formatDurationHours(shift.workDurationHours ?? 0)}）`}
+                    </TableCell>
+                    <TableCell>
+                      {shift.status === "provisional"
+                        ? "計算中"
+                        : shift.wage === null
+                          ? "-"
+                          : formatCurrency(shift.wage)}
                     </TableCell>
                   </TableRow>
                 ))}

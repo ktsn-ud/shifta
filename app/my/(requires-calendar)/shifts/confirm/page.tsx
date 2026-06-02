@@ -139,6 +139,7 @@ async function getShiftConfirmationInitialData(userId: string): Promise<{
 
   const unconfirmedShifts = unconfirmedShiftsRaw.map((shift) => ({
     id: shift.id,
+    workplaceId: shift.workplace.id,
     date: formatDateWithWeekday(toDateOnlyString(shift.date)),
     workplaceName: shift.workplace.name,
     workplaceColor: shift.workplace.color,

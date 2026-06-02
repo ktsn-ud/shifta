@@ -116,6 +116,7 @@ export async function PATCH(request: Request, context: Context) {
     });
     const responsePayload = {
       id: updated.id,
+      workplaceId: updated.workplaceId,
       comment: updated.comment,
       isConfirmed: updated.isConfirmed,
       date: toDateOnlyString(updated.date),

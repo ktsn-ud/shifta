@@ -123,6 +123,8 @@ Browser (React UI) → Next.js Routes → Prisma ORM → Neon DB
 - 初回表示は full spinner / skeleton を許容し、再取得時は `aria-busy=true` を付与した対象領域に `最新データを更新中...` オーバーレイを重ねる。
 - Mutation 後の整合は `lib/query/invalidation.ts` のドメイン単位 invalidation で行い、手動 reload を原則廃止する。
 - シフト削除導線は月次 `shifts.month` キャッシュを楽観的に更新し、DB削除成功前でも一覧・カレンダーから即時に消える体験を優先する。
+- 単体シフトの登録・編集は保存成功レスポンスの `data` を使って `shifts.month` キャッシュへ即時反映し、遷移は再取得完了待ちでブロックしない。
+- シフト確定ページは未確定一覧からの即時除去に加え、確定済み一覧へ `計算中` の provisional 行を追加して再取得までの空白をなくす。
 - シフト更新後の再取得は `shifts` を優先し、給与集計・勤務先関連の invalidation は導線に応じてバックグラウンド化を許容する。
 - シフト系の更新APIは `sync` オブジェクト（`status`/`pending`/`requiresCalendarSetup`/`requiresSignOut` など）を返し、DB更新成功と外部同期状態を分離して扱う。
 - 勤務先/給与ルール/時間割/ユーザー更新APIも `sync` を返し、外部同期がない操作では `status=success` として扱う。

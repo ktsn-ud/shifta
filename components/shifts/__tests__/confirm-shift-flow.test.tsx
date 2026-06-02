@@ -8,7 +8,7 @@ import type {
   ConfirmedShiftWorkplaceGroup,
   UnconfirmedShiftItem,
 } from "@/components/shifts/shift-confirmation-types";
-import { createQueryClient } from "@/lib/query/query-client";
+import { getBrowserQueryClient } from "@/lib/query/query-client";
 import { toast } from "sonner";
 
 const pushMock = jest.fn();
@@ -39,6 +39,7 @@ function createUnconfirmedShift(
 ): UnconfirmedShiftItem {
   return {
     id: "shift-1",
+    workplaceId: "workplace-1",
     date: "2026年3月5日(木)",
     workplaceName: "コンビニA",
     workplaceColor: "#FF5733",
@@ -51,10 +52,21 @@ function createUnconfirmedShift(
 }
 
 function renderWithQueryProvider(ui: ReactElement) {
-  const queryClient = createQueryClient();
+  const queryClient = getBrowserQueryClient();
+  queryClient.clear();
+
   return render(
     <QueryClientProvider client={queryClient}>{ui}</QueryClientProvider>,
   );
+}
+
+function createDeferred<T>() {
+  let resolve: (value: T) => void = () => undefined;
+  const promise = new Promise<T>((res) => {
+    resolve = res;
+  });
+
+  return { promise, resolve };
 }
 
 describe("shift confirm page and card flow", () => {
@@ -239,7 +251,16 @@ describe("shift confirm page and card flow", () => {
         description: "Google Calendar 同期はバックグラウンドで実行中です。",
       });
     });
-    expect(onActionCompleted).toHaveBeenCalledWith({ shiftId: "shift-1" });
+    expect(onActionCompleted).toHaveBeenCalledWith({
+      shiftId: "shift-1",
+      workplaceId: "workplace-1",
+      workplaceName: "コンビニA",
+      workplaceColor: "#FF5733",
+      date: "2026年3月5日(木)",
+      startTime: "10:00",
+      endTime: "18:00",
+      comment: null,
+    });
     expect(
       screen.getByRole("button", {
         name: "確定",
@@ -292,6 +313,94 @@ describe("shift confirm page and card flow", () => {
           method: "PATCH",
         }),
       );
+    });
+  });
+
+  it("shows a provisional confirmed row before the background reload completes", async () => {
+    const user = userEvent.setup();
+    const fetchMock = globalThis.fetch as jest.Mock;
+    const unconfirmedReload = createDeferred<Response>();
+    const confirmedReload = createDeferred<Response>();
+
+    fetchMock.mockImplementation(
+      async (input: string, init?: { method?: string }) => {
+        if (
+          input === "/api/shifts/shift-1/confirm" &&
+          init?.method === "PATCH"
+        ) {
+          return jsonResponse({
+            id: "shift-1",
+            workplaceId: "workplace-1",
+            isConfirmed: true,
+            date: "2026-03-05",
+            startTime: "10:00",
+            endTime: "18:00",
+            breakMinutes: 60,
+            syncStatus: "pending",
+          });
+        }
+
+        if (input === "/api/shifts/unconfirmed") {
+          return unconfirmedReload.promise;
+        }
+
+        if (input === "/api/shifts/confirmed-current-month") {
+          return confirmedReload.promise;
+        }
+
+        throw new Error("Unexpected fetch: " + input);
+      },
+    );
+
+    renderWithQueryProvider(
+      <ShiftConfirmPageClient
+        currentUserId="user-test"
+        initialUnconfirmedShifts={[createUnconfirmedShift()]}
+        initialConfirmedShiftGroups={[]}
+      />,
+    );
+
+    await user.click(screen.getByRole("button", { name: "確定" }));
+
+    await waitFor(() => {
+      expect(
+        screen.getByText("未確定シフトはまだありません"),
+      ).toBeInTheDocument();
+      expect(
+        screen.getByText("10:00 ～ 18:00（実働計算中）"),
+      ).toBeInTheDocument();
+      expect(screen.getByText("計算中")).toBeInTheDocument();
+    });
+
+    unconfirmedReload.resolve(jsonResponse({ shifts: [] }));
+    confirmedReload.resolve(
+      jsonResponse({
+        shifts: [
+          {
+            id: "shift-1",
+            comment: null,
+            date: "2026-03-05",
+            startTime: "10:00",
+            endTime: "18:00",
+            breakMinutes: 60,
+            workDurationHours: 7,
+            wage: 8400,
+            isConfirmed: true,
+            workplace: {
+              id: "workplace-1",
+              name: "コンビニA",
+              color: "#FF5733",
+            },
+          },
+        ],
+      }),
+    );
+
+    await waitFor(() => {
+      expect(
+        screen.getByText("10:00 ～ 18:00（実働7.0h）"),
+      ).toBeInTheDocument();
+      expect(screen.getByText(/8,400/)).toBeInTheDocument();
     });
   });
 
