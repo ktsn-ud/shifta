@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { useRouter } from "next/navigation";
 import { toast } from "sonner";
@@ -584,16 +584,24 @@ export function ShiftForm({
   const [isOvernightDialogOpen, setIsOvernightDialogOpen] = useState(false);
   const [pendingOvernightTimes, setPendingOvernightTimes] =
     useState<ShiftTimePair | null>(null);
+  const createModeDateRef = useRef<string | null>(
+    mode === "create" ? defaultDate : null,
+  );
   const { isSignOutScheduled, scheduleSignOut } =
     useGoogleTokenExpiredSignOut();
-  const { markForResetOnRouteHidden } = useResetOnRouteHidden(() => {
-    setForm(createInitialFormState(defaultDate));
+
+  const resetCreateFormState = (date: string) => {
+    setForm(createInitialFormState(date));
     setIsSubmitting(false);
     setErrors({});
     setWarningMessage(null);
     setInitialShiftTimes(null);
     setIsOvernightDialogOpen(false);
     setPendingOvernightTimes(null);
+  };
+
+  const { markForResetOnRouteHidden } = useResetOnRouteHidden(() => {
+    resetCreateFormState(defaultDate);
   });
   const queryClient = getBrowserQueryClient();
   const loadQueryUserId = "self";
@@ -612,6 +620,20 @@ export function ShiftForm({
 
     return `${basePath}?month=${toMonthInputValue(parsed)}`;
   }, [returnMonth, returnTo]);
+
+  useEffect(() => {
+    if (mode !== "create") {
+      createModeDateRef.current = null;
+      return;
+    }
+
+    if (createModeDateRef.current === defaultDate) {
+      return;
+    }
+
+    createModeDateRef.current = defaultDate;
+    resetCreateFormState(defaultDate);
+  }, [defaultDate, mode]);
 
   const workplacesQuery = useQuery({
     queryKey: queryKeys.workplaces.list({

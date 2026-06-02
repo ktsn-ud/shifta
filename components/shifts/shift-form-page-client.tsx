@@ -41,6 +41,7 @@ export function NewShiftFormPageClient({
 }: NewShiftFormPageClientProps) {
   return (
     <NewShiftForm
+      key={`${initialDate ?? "today"}:${returnMonth ?? ""}:${returnTo}`}
       mode="create"
       initialDate={initialDate}
       returnMonth={returnMonth}

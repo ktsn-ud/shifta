@@ -330,6 +330,70 @@ describe("shift flow integration", () => {
     expect(pushMock).toHaveBeenCalledWith("/my?month=2026-03");
   });
 
+  it("resets create-mode form state when initialDate changes on rerender", async () => {
+    const user = userEvent.setup();
+    const fetchMock = globalThis.fetch as jest.Mock;
+
+    fetchMock.mockImplementation(async (input: string) => {
+      if (input === WORKPLACE_LIST_URL) {
+        return jsonResponse({
+          data: [
+            {
+              id: "workplace-1",
+              name: "勤務先A",
+              color: "#3366FF",
+              type: "GENERAL",
+            },
+          ],
+        });
+      }
+
+      const previewResponse = handleShiftPreviewFetch(input);
+      if (previewResponse) {
+        return previewResponse;
+      }
+
+      throw new Error("Unexpected fetch: " + input);
+    });
+
+    const { rerender } = render(
+      <ShiftForm mode="create" initialDate="2026-03-18" />,
+    );
+
+    await waitFor(() => {
+      expect(screen.getByLabelText("日付")).toHaveValue("2026-03-18");
+    });
+
+    fireEvent.change(screen.getByLabelText("開始時刻"), {
+      target: { value: "18:00" },
+    });
+    fireEvent.change(screen.getByLabelText("終了時刻"), {
+      target: { value: "18:00" },
+    });
+
+    await user.click(screen.getByRole("button", { name: "登録" }));
+
+    expect(
+      screen.getByText("ERR_002: 開始時刻と終了時刻は同じ時刻にできません"),
+    ).toBeInTheDocument();
+
+    rerender(
+      <QueryClientProvider client={getBrowserQueryClient()}>
+        <ShiftForm mode="create" initialDate="2026-03-19" />
+      </QueryClientProvider>,
+    );
+
+    await waitFor(() => {
+      expect(screen.getByLabelText("日付")).toHaveValue("2026-03-19");
+    });
+
+    expect(
+      screen.queryByText("ERR_002: 開始時刻と終了時刻は同じ時刻にできません"),
+    ).not.toBeInTheDocument();
+    expect(screen.getByLabelText("開始時刻")).toHaveValue("");
+    expect(screen.getByLabelText("終了時刻")).toHaveValue("");
+  });
+
   it("shows overnight confirmation before creating NORMAL shift", async () => {
     const user = userEvent.setup();
     const fetchMock = globalThis.fetch as jest.Mock;
