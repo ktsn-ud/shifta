@@ -3,6 +3,7 @@ import { getSessionEmail } from "@/lib/api/current-user";
 import { jsonError, parseJsonBody } from "@/lib/api/http";
 import { prisma } from "@/lib/prisma";
 import { jsonNoStore } from "@/lib/api/cache-control";
+import { buildSuccessSyncResponse } from "@/lib/google-calendar/sync-response";
 
 const createUserSchema = z
   .object({
@@ -46,7 +47,11 @@ export async function POST(request: Request) {
 
     const created = user.createdAt.getTime() === user.updatedAt.getTime();
     return jsonNoStore(
-      { data: user, created },
+      {
+        data: user,
+        created,
+        sync: buildSuccessSyncResponse(),
+      },
       { status: created ? 201 : 200 },
     );
   } catch (error) {

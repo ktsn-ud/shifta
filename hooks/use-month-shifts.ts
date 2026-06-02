@@ -7,6 +7,7 @@ import {
   startOfMonth,
   toDateOnlyString,
 } from "@/lib/calendar/date";
+import { calculateWorkedMinutes } from "@/lib/payroll/estimate";
 import { fetchJson } from "@/lib/query/fetch-json";
 import { getBrowserQueryClient } from "@/lib/query/query-client";
 import { queryKeys } from "@/lib/query/query-keys";
@@ -51,6 +52,17 @@ type ShiftListResponse = {
   data: unknown[];
 };
 
+type MonthShiftLikePayload = Partial<MonthShift> & {
+  shiftType?: string;
+  lessonRange?: {
+    id?: string;
+    shiftId?: string;
+    timetableSetId?: string;
+    startPeriod?: number;
+    endPeriod?: number;
+  } | null;
+};
+
 type UseMonthShiftsOptions = {
   cacheUserKey: string;
   initialShifts?: MonthShift[];
@@ -70,21 +82,69 @@ function isShiftListResponse(value: unknown): value is ShiftListResponse {
   return false;
 }
 
+function normalizeLessonRange(
+  lessonRange: MonthShiftLikePayload["lessonRange"],
+): MonthShift["lessonRange"] {
+  if (
+    lessonRange &&
+    typeof lessonRange.id === "string" &&
+    typeof lessonRange.shiftId === "string" &&
+    typeof lessonRange.startPeriod === "number" &&
+    typeof lessonRange.endPeriod === "number"
+  ) {
+    return {
+      id: lessonRange.id,
+      shiftId: lessonRange.shiftId,
+      timetableSetId: lessonRange.timetableSetId ?? "",
+      startPeriod: lessonRange.startPeriod,
+      endPeriod: lessonRange.endPeriod,
+    };
+  }
+
+  return null;
+}
+
+function resolveWorkedMinutes(shift: MonthShiftLikePayload): number | null {
+  if (typeof shift.workedMinutes === "number") {
+    return shift.workedMinutes;
+  }
+
+  if (
+    typeof shift.date !== "string" ||
+    typeof shift.startTime !== "string" ||
+    typeof shift.endTime !== "string" ||
+    typeof shift.breakMinutes !== "number"
+  ) {
+    return null;
+  }
+
+  const shiftType = shift.shiftType === "LESSON" ? "LESSON" : "NORMAL";
+  const lessonRange = normalizeLessonRange(shift.lessonRange);
+
+  return calculateWorkedMinutes({
+    date: new Date(shift.date),
+    startTime: new Date(shift.startTime),
+    endTime: new Date(shift.endTime),
+    breakMinutes: shift.breakMinutes,
+    shiftType,
+    lessonRange:
+      lessonRange === null
+        ? null
+        : {
+            timetableSetId: lessonRange.timetableSetId,
+            startPeriod: lessonRange.startPeriod,
+            endPeriod: lessonRange.endPeriod,
+          },
+  });
+}
+
 function normalizeMonthShift(raw: unknown): MonthShift | null {
   if (typeof raw !== "object" || raw === null) {
     return null;
   }
 
-  const shift = raw as Partial<MonthShift> & {
-    shiftType?: string;
-    lessonRange?: {
-      id?: string;
-      shiftId?: string;
-      timetableSetId?: string;
-      startPeriod?: number;
-      endPeriod?: number;
-    } | null;
-  };
+  const shift = raw as MonthShiftLikePayload;
+  const workedMinutes = resolveWorkedMinutes(shift);
 
   if (
     typeof shift.id !== "string" ||
@@ -93,8 +153,7 @@ function normalizeMonthShift(raw: unknown): MonthShift | null {
     typeof shift.startTime !== "string" ||
     typeof shift.endTime !== "string" ||
     typeof shift.breakMinutes !== "number" ||
-    typeof shift.googleSyncStatus !== "string" ||
-    typeof shift.workedMinutes !== "number" ||
+    workedMinutes === null ||
     !shift.workplace ||
     typeof shift.workplace.id !== "string" ||
     typeof shift.workplace.name !== "string" ||
@@ -124,7 +183,7 @@ function normalizeMonthShift(raw: unknown): MonthShift | null {
         : "PENDING",
     googleSyncError: shift.googleSyncError ?? null,
     googleSyncedAt: shift.googleSyncedAt ?? null,
-    workedMinutes: shift.workedMinutes,
+    workedMinutes,
     estimatedPay:
       typeof shift.estimatedPay === "number" ? shift.estimatedPay : null,
     workplace: {
@@ -133,20 +192,7 @@ function normalizeMonthShift(raw: unknown): MonthShift | null {
       color: shift.workplace.color,
       type: shift.workplace.type,
     },
-    lessonRange:
-      shift.lessonRange &&
-      typeof shift.lessonRange.id === "string" &&
-      typeof shift.lessonRange.shiftId === "string" &&
-      typeof shift.lessonRange.startPeriod === "number" &&
-      typeof shift.lessonRange.endPeriod === "number"
-        ? {
-            id: shift.lessonRange.id,
-            shiftId: shift.lessonRange.shiftId,
-            timetableSetId: shift.lessonRange.timetableSetId ?? "",
-            startPeriod: shift.lessonRange.startPeriod,
-            endPeriod: shift.lessonRange.endPeriod,
-          }
-        : null,
+    lessonRange: normalizeLessonRange(shift.lessonRange),
   };
 }
 
@@ -352,4 +398,5 @@ export function useMonthShifts(month: Date, options: UseMonthShiftsOptions) {
   };
 }
 
+export { normalizeMonthShift };
 export type { MonthShift, ShiftSummary };

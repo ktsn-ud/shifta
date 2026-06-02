@@ -58,6 +58,7 @@ export async function GET() {
     return jsonNoStore({
       shifts: shifts.map((shift) => ({
         id: shift.id,
+        workplaceId: shift.workplace.id,
         comment: shift.comment,
         date: toDateOnlyString(shift.date),
         startTime: toTimeOnlyString(shift.startTime),

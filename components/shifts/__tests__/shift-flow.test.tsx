@@ -1,5 +1,5 @@
 import { type ReactElement } from "react";
-import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
+import { QueryClientProvider } from "@tanstack/react-query";
 import {
   fireEvent,
   render as baseRender,
@@ -10,6 +10,9 @@ import {
 import userEvent from "@testing-library/user-event";
 import { ShiftListModal } from "@/components/calendar/ShiftListModal";
 import { ShiftForm } from "@/components/shifts/ShiftForm";
+import type { MonthShift } from "@/hooks/use-month-shifts";
+import { getBrowserQueryClient } from "@/lib/query/query-client";
+import { queryKeys } from "@/lib/query/query-keys";
 
 const pushMock = jest.fn();
 const WORKPLACE_LIST_URL = "/api/workplaces?includeCounts=false";
@@ -20,16 +23,15 @@ jest.mock("next/navigation", () => ({
 }));
 
 function render(ui: ReactElement) {
-  const queryClient = new QueryClient({
-    defaultOptions: {
-      queries: { retry: false },
-      mutations: { retry: false },
-    },
-  });
+  const queryClient = getBrowserQueryClient();
+  queryClient.clear();
 
-  return baseRender(
-    <QueryClientProvider client={queryClient}>{ui}</QueryClientProvider>,
-  );
+  return {
+    queryClient,
+    ...baseRender(
+      <QueryClientProvider client={queryClient}>{ui}</QueryClientProvider>,
+    ),
+  };
 }
 
 function jsonResponse(payload: unknown, status = 200): Response {
@@ -105,6 +107,32 @@ function createDeferred<T>() {
   });
 
   return { promise, resolve };
+}
+
+function createMonthShift(overrides: Partial<MonthShift> = {}): MonthShift {
+  return {
+    id: "shift-1",
+    workplaceId: "workplace-1",
+    date: "2026-03-18T00:00:00.000Z",
+    startTime: "1970-01-01T09:00:00.000Z",
+    endTime: "1970-01-01T17:00:00.000Z",
+    breakMinutes: 60,
+    shiftType: "NORMAL",
+    comment: null,
+    googleSyncStatus: "PENDING",
+    googleSyncError: null,
+    googleSyncedAt: null,
+    workedMinutes: 420,
+    estimatedPay: null,
+    workplace: {
+      id: "workplace-1",
+      name: "勤務先A",
+      color: "#3366FF",
+      type: "GENERAL",
+    },
+    lessonRange: null,
+    ...overrides,
+  };
 }
 
 describe("shift flow integration", () => {
@@ -207,6 +235,99 @@ describe("shift flow integration", () => {
       startTime: "09:00",
       endTime: "17:00",
     });
+  });
+
+  it("adds the created shift to the loaded month cache before navigating", async () => {
+    const user = userEvent.setup();
+    const fetchMock = globalThis.fetch as jest.Mock;
+
+    fetchMock.mockImplementation(
+      async (input: string, init?: { method?: string }) => {
+        if (input === WORKPLACE_LIST_URL) {
+          return jsonResponse({
+            data: [
+              {
+                id: "workplace-1",
+                name: "勤務先A",
+                color: "#3366FF",
+                type: "GENERAL",
+              },
+            ],
+          });
+        }
+
+        if (input.startsWith("/api/shifts?")) {
+          return jsonResponse({ data: [] });
+        }
+
+        if (input === "/api/shifts" && init?.method === "POST") {
+          return jsonResponse(
+            {
+              data: {
+                id: "shift-1",
+                workplaceId: "workplace-1",
+                date: "2026-03-18T00:00:00.000Z",
+                startTime: "1970-01-01T09:00:00.000Z",
+                endTime: "1970-01-01T17:00:00.000Z",
+                breakMinutes: 60,
+                shiftType: "NORMAL",
+                comment: null,
+                workplace: {
+                  id: "workplace-1",
+                  name: "勤務先A",
+                  color: "#3366FF",
+                  type: "GENERAL",
+                },
+                lessonRange: null,
+              },
+              sync: { pending: true, ok: true },
+            },
+            201,
+          );
+        }
+
+        const previewResponse = handleShiftPreviewFetch(input);
+        if (previewResponse) {
+          return previewResponse;
+        }
+
+        throw new Error("Unexpected fetch: " + input);
+      },
+    );
+
+    const { queryClient } = render(
+      <ShiftForm
+        mode="create"
+        initialDate="2026-03-18"
+        returnMonth="2026-03"
+      />,
+    );
+    const monthKey = queryKeys.shifts.month({
+      userId: "self",
+      startDate: "2026-03-01",
+      endDate: "2026-03-31",
+      includeEstimate: false,
+    });
+
+    queryClient.setQueryData<MonthShift[]>(monthKey, []);
+
+    await waitFor(() => {
+      expect(screen.getByRole("button", { name: "登録" })).toBeEnabled();
+    });
+
+    fireEvent.change(screen.getByLabelText("開始時刻"), {
+      target: { value: "09:00" },
+    });
+    fireEvent.change(screen.getByLabelText("終了時刻"), {
+      target: { value: "17:00" },
+    });
+
+    await user.click(screen.getByRole("button", { name: "登録" }));
+
+    await waitFor(() => {
+      expect(queryClient.getQueryData(monthKey)).toEqual([createMonthShift()]);
+    });
+    expect(pushMock).toHaveBeenCalledWith("/my?month=2026-03");
   });
 
   it("shows overnight confirmation before creating NORMAL shift", async () => {
@@ -805,6 +926,135 @@ describe("shift flow integration", () => {
     await waitFor(() => {
       expect(pushMock).toHaveBeenCalledWith("/my?month=2026-01");
     });
+  });
+
+  it("moves the edited shift from the old month cache to the new month cache", async () => {
+    const user = userEvent.setup();
+    const fetchMock = globalThis.fetch as jest.Mock;
+
+    fetchMock.mockImplementation(
+      async (input: string, init?: { method?: string }) => {
+        if (input === WORKPLACE_LIST_URL) {
+          return jsonResponse({
+            data: [
+              {
+                id: "workplace-1",
+                name: "勤務先A",
+                color: "#3366FF",
+                type: "GENERAL",
+              },
+            ],
+          });
+        }
+
+        if (input === "/api/shifts/shift-1" && (!init || !init.method)) {
+          return jsonResponse({
+            data: {
+              id: "shift-1",
+              workplaceId: "workplace-1",
+              date: "2026-03-18T00:00:00.000Z",
+              startTime: "1970-01-01T09:00:00.000Z",
+              endTime: "1970-01-01T17:00:00.000Z",
+              breakMinutes: 45,
+              shiftType: "NORMAL",
+              comment: null,
+              lessonRange: null,
+            },
+          });
+        }
+
+        if (input.startsWith("/api/shifts?")) {
+          return jsonResponse({
+            data: [
+              {
+                id: "shift-1",
+                startTime: "1970-01-01T09:00:00.000Z",
+                endTime: "1970-01-01T17:00:00.000Z",
+              },
+            ],
+          });
+        }
+
+        if (input === "/api/shifts/shift-1" && init?.method === "PUT") {
+          return jsonResponse({
+            data: {
+              id: "shift-1",
+              workplaceId: "workplace-1",
+              date: "2026-04-02T00:00:00.000Z",
+              startTime: "1970-01-01T10:00:00.000Z",
+              endTime: "1970-01-01T18:00:00.000Z",
+              breakMinutes: 45,
+              shiftType: "NORMAL",
+              comment: null,
+              workplace: {
+                id: "workplace-1",
+                name: "勤務先A",
+                color: "#3366FF",
+                type: "GENERAL",
+              },
+              lessonRange: null,
+            },
+            sync: { pending: true, ok: true },
+          });
+        }
+
+        const previewResponse = handleShiftPreviewFetch(input);
+        if (previewResponse) {
+          return previewResponse;
+        }
+
+        throw new Error("Unexpected fetch: " + input);
+      },
+    );
+
+    const { queryClient } = render(
+      <ShiftForm mode="edit" shiftId="shift-1" returnMonth="2026-04" />,
+    );
+    const marchKey = queryKeys.shifts.month({
+      userId: "self",
+      startDate: "2026-03-01",
+      endDate: "2026-03-31",
+      includeEstimate: false,
+    });
+    const aprilKey = queryKeys.shifts.month({
+      userId: "self",
+      startDate: "2026-04-01",
+      endDate: "2026-04-30",
+      includeEstimate: false,
+    });
+
+    queryClient.setQueryData<MonthShift[]>(marchKey, [createMonthShift()]);
+    queryClient.setQueryData<MonthShift[]>(aprilKey, []);
+
+    await waitFor(() => {
+      expect(screen.getByLabelText("開始時刻")).toHaveValue("09:00");
+    });
+
+    fireEvent.change(screen.getByLabelText("日付"), {
+      target: { value: "2026-04-02" },
+    });
+    fireEvent.change(screen.getByLabelText("開始時刻"), {
+      target: { value: "10:00" },
+    });
+    fireEvent.change(screen.getByLabelText("終了時刻"), {
+      target: { value: "18:00" },
+    });
+
+    await user.click(screen.getByRole("button", { name: "更新" }));
+
+    await waitFor(() => {
+      expect(queryClient.getQueryData(marchKey)).toEqual([]);
+      expect(queryClient.getQueryData(aprilKey)).toEqual([
+        createMonthShift({
+          date: "2026-04-02T00:00:00.000Z",
+          startTime: "1970-01-01T10:00:00.000Z",
+          endTime: "1970-01-01T18:00:00.000Z",
+          breakMinutes: 45,
+          workedMinutes: 435,
+        }),
+      ]);
+    });
+    expect(pushMock).toHaveBeenCalledWith("/my?month=2026-04");
   });
 
   it("returns to shift list month when returnTo is list", async () => {

@@ -9,6 +9,7 @@ import { syncShiftsAfterBulkCreate } from "@/lib/google-calendar/syncStatus";
 import { prisma } from "@/lib/prisma";
 import { jsonNoStore } from "@/lib/api/cache-control";
 import { revalidateShiftDomainTags } from "@/lib/cache/revalidate";
+import { buildPendingSyncResponse } from "@/lib/google-calendar/sync-response";
 import {
   buildShiftData,
   type BuiltShiftData,
@@ -322,14 +323,7 @@ export async function POST(request: Request) {
           failed: 0,
           pending: createdShiftIds.length,
         },
-        sync: {
-          ok: true,
-          errorMessage: null,
-          errorCode: null,
-          requiresCalendarSetup: false,
-          requiresSignOut: false,
-          pending: createdShiftIds.length > 0,
-        },
+        sync: createdShiftIds.length > 0 ? buildPendingSyncResponse() : null,
       },
       { status: 201 },
     );

@@ -7,6 +7,7 @@ import { jsonError, parseJsonBody } from "@/lib/api/http";
 import { requireOwnedWorkplace } from "@/lib/api/workplace";
 import { prisma } from "@/lib/prisma";
 import { jsonNoStore } from "@/lib/api/cache-control";
+import { buildSuccessSyncResponse } from "@/lib/google-calendar/sync-response";
 import { revalidateWorkplaceDomainTags } from "@/lib/cache/revalidate";
 
 const payrollRuleSchema = z
@@ -211,6 +212,7 @@ export async function POST(request: Request, context: Context) {
     return jsonNoStore(
       {
         data: payrollRule,
+        sync: buildSuccessSyncResponse(),
         warning:
           overlaps.length > 0
             ? {

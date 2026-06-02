@@ -49,14 +49,16 @@ import {
 } from "@/lib/calendar/date";
 import { formatShiftType } from "@/lib/enum-labels";
 import {
-  parseGoogleSyncFailureFromPayload,
+  parseGoogleSyncStateFromPayload,
   readGoogleSyncFailureFromErrorResponse,
 } from "@/lib/google-calendar/clientSync";
 import { CALENDAR_SETUP_PATH } from "@/lib/google-calendar/constants";
 import { messages, toErrorMessage } from "@/lib/messages";
 import { fetchJson } from "@/lib/query/fetch-json";
 import { getBrowserQueryClient } from "@/lib/query/query-client";
+import { buildMutationSuccessDescription } from "@/lib/query/mutation-toast";
 import { invalidateAfterShiftMutation } from "@/lib/query/invalidation";
+import { upsertMonthShiftsInCachesOptimistically } from "@/lib/query/optimistic-shifts";
 import { queryKeys } from "@/lib/query/query-keys";
 import {
   formatShiftTimeRange,
@@ -70,6 +72,7 @@ import {
 } from "@/lib/user-facing-error";
 import { cn } from "@/lib/utils";
 import { useGoogleTokenExpiredSignOut } from "@/hooks/use-google-token-expired-signout";
+import { type MonthShift, normalizeMonthShift } from "@/hooks/use-month-shifts";
 import { useResetOnRouteHidden } from "@/hooks/use-reset-on-route-hidden";
 
 const LAST_WORKPLACE_ID_KEY = "shifta:last-workplace-id";
@@ -548,6 +551,12 @@ type LessonShiftPayload = {
 
 type BulkShiftPayload = NormalShiftPayload | LessonShiftPayload;
 
+type BulkShiftMutationResult = {
+  monthShifts: MonthShift[];
+  totalCount: number | null;
+  failedCount: number | null;
+};
+
 type OvernightSummaryItem = {
   date: string;
   startTime: string;
@@ -578,6 +587,31 @@ function createRow(date: string, defaults: BulkDefaults): BulkShiftRow {
     timetableSetId: defaults.timetableSetId,
     startPeriod: defaults.startPeriod,
     endPeriod: defaults.endPeriod,
+  };
+}
+
+function parseBulkShiftMutationResult(
+  payload: unknown,
+): BulkShiftMutationResult {
+  if (!isRecord(payload)) {
+    return {
+      monthShifts: [],
+      totalCount: null,
+      failedCount: null,
+    };
+  }
+
+  const monthShifts = Array.isArray(payload.data)
+    ? payload.data
+        .map((shift) => normalizeMonthShift(shift))
+        .filter((shift): shift is MonthShift => shift !== null)
+    : [];
+  const summary = isRecord(payload.summary) ? payload.summary : null;
+
+  return {
+    monthShifts,
+    totalCount: typeof summary?.total === "number" ? summary.total : null,
+    failedCount: typeof summary?.failed === "number" ? summary.failed : null,
   };
 }
 
@@ -1688,22 +1722,26 @@ export function BulkShiftForm() {
         throw new Error(apiError.message);
       }
 
-      const payload = (await response.json()) as {
-        summary?: {
-          total?: number;
-          failed?: number;
-        };
-        sync?: {
-          pending?: boolean;
-        };
-      };
-      const createdCount = payload.summary?.total ?? payloadItems.length;
-      const isSyncPending = payload.sync?.pending === true;
-
-      const syncFailure = parseGoogleSyncFailureFromPayload(
-        payload,
+      const responsePayload = (await response.json()) as unknown;
+      const mutationResult = parseBulkShiftMutationResult(responsePayload);
+      const createdCount = mutationResult.totalCount ?? payloadItems.length;
+      const syncState = parseGoogleSyncStateFromPayload(
+        responsePayload,
         messages.error.calendarSyncFailed,
       );
+      const isSyncPending = syncState.pending;
+      const syncFailure = syncState.failure;
+
+      if (mutationResult.monthShifts.length > 0) {
+        upsertMonthShiftsInCachesOptimistically(
+          queryClient,
+          mutationResult.monthShifts,
+        );
+      }
+
+      void invalidateAfterShiftMutation(queryClient, {
+        mode: "background",
+      });
 
       if (syncFailure) {
         if (syncFailure.requiresSignOut) {
@@ -1716,7 +1754,7 @@ export function BulkShiftForm() {
           return;
         }
 
-        const failedCount = payload.summary?.failed ?? 0;
+        const failedCount = mutationResult.failedCount ?? 0;
         const failedCountLabel =
           failedCount > 0
             ? `${failedCount}件のGoogle同期に失敗しました。`
@@ -1729,24 +1767,22 @@ export function BulkShiftForm() {
           duration: 6000,
         });
 
+        markForResetOnRouteHidden();
         if (syncFailure.requiresCalendarSetup) {
           router.push(CALENDAR_SETUP_PATH);
           return;
         }
 
-        await invalidateAfterShiftMutation(queryClient);
-        markForResetOnRouteHidden();
         router.push("/my");
         return;
       }
 
       toast.success(messages.success.shiftsBulkCreated(createdCount), {
         id: loadingToastId,
-        description: isSyncPending
-          ? "Google Calendar 同期はバックグラウンドで実行中です。"
-          : undefined,
+        description: buildMutationSuccessDescription({
+          syncPending: isSyncPending,
+        }),
       });
-      await invalidateAfterShiftMutation(queryClient);
       markForResetOnRouteHidden();
       router.push("/my");
     } catch (error) {

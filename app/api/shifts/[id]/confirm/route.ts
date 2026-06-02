@@ -5,6 +5,7 @@ import { TIME_ONLY_REGEX } from "@/lib/api/date-time";
 import { jsonError, parseJsonBody } from "@/lib/api/http";
 import { isSameTimeShift } from "@/lib/shifts/time";
 import { syncShiftAfterUpdate } from "@/lib/google-calendar/syncStatus";
+import { buildPendingSyncResponse } from "@/lib/google-calendar/sync-response";
 import { prisma } from "@/lib/prisma";
 import { jsonNoStore } from "@/lib/api/cache-control";
 import { revalidateShiftDomainTags } from "@/lib/cache/revalidate";
@@ -115,6 +116,7 @@ export async function PATCH(request: Request, context: Context) {
     });
     const responsePayload = {
       id: updated.id,
+      workplaceId: updated.workplaceId,
       comment: updated.comment,
       isConfirmed: updated.isConfirmed,
       date: toDateOnlyString(updated.date),
@@ -125,6 +127,7 @@ export async function PATCH(request: Request, context: Context) {
 
     return jsonNoStore({
       ...responsePayload,
+      sync: buildPendingSyncResponse(),
       syncStatus: "pending",
     });
   } catch (error) {

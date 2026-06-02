@@ -4,6 +4,7 @@ import { getSessionEmail, requireCurrentUser } from "@/lib/api/current-user";
 import { jsonError, parseJsonBody } from "@/lib/api/http";
 import { prisma } from "@/lib/prisma";
 import { jsonNoStore } from "@/lib/api/cache-control";
+import { buildSuccessSyncResponse } from "@/lib/google-calendar/sync-response";
 
 const updateUserSchema = z
   .object({
@@ -73,7 +74,10 @@ export async function PUT(request: Request) {
       data: updateData,
     });
 
-    return jsonNoStore({ data: user });
+    return jsonNoStore({
+      data: user,
+      sync: buildSuccessSyncResponse(),
+    });
   } catch (error) {
     console.error("PUT /api/users/me failed", error);
     return jsonError("ユーザー更新に失敗しました", 500);

@@ -8,6 +8,7 @@ import {
 } from "@/lib/api/http";
 import { prisma } from "@/lib/prisma";
 import { jsonNoStore } from "@/lib/api/cache-control";
+import { buildSuccessSyncResponse } from "@/lib/google-calendar/sync-response";
 import { revalidateWorkplaceDomainTags } from "@/lib/cache/revalidate";
 
 const colorRegex = /^#[0-9A-Fa-f]{6}$/;
@@ -159,7 +160,10 @@ export async function PUT(request: Request, context: Context) {
       workplaceId,
     });
 
-    return jsonNoStore({ data: workplace });
+    return jsonNoStore({
+      data: workplace,
+      sync: buildSuccessSyncResponse(),
+    });
   } catch (error) {
     console.error("PUT /api/workplaces/:id failed", error);
     return jsonError("勤務先の更新に失敗しました", 500);
@@ -203,6 +207,7 @@ export async function DELETE(request: Request, context: Context) {
         deleted: true,
         relatedCounts,
       },
+      sync: buildSuccessSyncResponse(),
       warning:
         relatedCounts.shifts +
           relatedCounts.payrollRules +

@@ -22,10 +22,12 @@ import {
 } from "@/components/ui/form";
 import { Input } from "@/components/ui/input";
 import { SpinnerPanel } from "@/components/ui/spinner";
+import { parseGoogleSyncStateFromPayload } from "@/lib/google-calendar/clientSync";
 import { messages, toErrorMessage } from "@/lib/messages";
 import { fetchJson } from "@/lib/query/fetch-json";
 import { invalidateAfterTimetableMutation } from "@/lib/query/invalidation";
 import { getBrowserQueryClient } from "@/lib/query/query-client";
+import { buildMutationSuccessDescription } from "@/lib/query/mutation-toast";
 import { queryKeys } from "@/lib/query/query-keys";
 import {
   resolveUserFacingErrorFromResponse,
@@ -636,13 +638,23 @@ export function TimetableForm({
         );
       }
 
+      const responsePayload = (await response.json()) as unknown;
+      const syncState = parseGoogleSyncStateFromPayload(
+        responsePayload,
+        messages.error.calendarSyncFailed,
+      );
       const createdCount = isEdit ? 1 : createTargets.length;
       await invalidateAfterTimetableMutation(queryClient, workplaceId);
       toast.success(
         isEdit
           ? messages.success.timetableUpdated
           : messages.success.timetableCreated(createdCount),
-        { id: loadingToastId },
+        {
+          id: loadingToastId,
+          description: buildMutationSuccessDescription({
+            syncPending: syncState.pending,
+          }),
+        },
       );
       markForResetOnRouteHidden();
       router.push(listHref);

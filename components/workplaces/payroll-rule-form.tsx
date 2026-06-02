@@ -18,10 +18,12 @@ import { FormLoadingSkeleton } from "@/components/ui/loading-skeletons";
 import { RadioGroup, RadioGroupItem } from "@/components/ui/radio-group";
 import { dateKeyFromApiDate } from "@/lib/calendar/date";
 import { formatHolidayType, formatWorkplaceType } from "@/lib/enum-labels";
+import { parseGoogleSyncStateFromPayload } from "@/lib/google-calendar/clientSync";
 import { messages, toErrorMessage } from "@/lib/messages";
 import { fetchJson } from "@/lib/query/fetch-json";
 import { invalidateAfterPayrollRuleMutation } from "@/lib/query/invalidation";
 import { getBrowserQueryClient } from "@/lib/query/query-client";
+import { buildMutationSuccessDescription } from "@/lib/query/mutation-toast";
 import { queryKeys } from "@/lib/query/query-keys";
 import {
   buildActionableErrorMessage,
@@ -504,6 +506,10 @@ export function PayrollRuleForm({
       }
 
       const responsePayload = (await response.json()) as unknown;
+      const syncState = parseGoogleSyncStateFromPayload(
+        responsePayload,
+        messages.error.calendarSyncFailed,
+      );
       await invalidateAfterPayrollRuleMutation(queryClient, workplaceId);
       const warningMessage = parseUpsertWarningMessage(responsePayload);
 
@@ -522,6 +528,9 @@ export function PayrollRuleForm({
             : messages.success.payrollRuleCreated,
           {
             id: loadingToastId,
+            description: buildMutationSuccessDescription({
+              syncPending: syncState.pending,
+            }),
           },
         );
         markForResetOnRouteHidden();

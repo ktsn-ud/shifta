@@ -1,5 +1,6 @@
 export type UnconfirmedShiftItem = {
   id: string;
+  workplaceId: string;
   date: string;
   workplaceName: string;
   workplaceColor: string;
@@ -15,8 +16,9 @@ export type ConfirmedShiftItem = {
   startTime: string;
   endTime: string;
   comment: string | null;
-  workDurationHours: number;
+  workDurationHours: number | null;
   wage: number | null;
+  status?: "provisional";
 };
 
 export type ConfirmedShiftWorkplaceGroup = {

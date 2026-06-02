@@ -10,6 +10,7 @@ import {
   syncShiftAfterUpdate,
   syncShiftDeletion,
 } from "@/lib/google-calendar/syncStatus";
+import { buildPendingSyncResponse } from "@/lib/google-calendar/sync-response";
 import { prisma } from "@/lib/prisma";
 import { jsonNoStore } from "@/lib/api/cache-control";
 import { revalidateShiftDomainTags } from "@/lib/cache/revalidate";
@@ -168,6 +169,7 @@ export async function PUT(request: Request, context: Context) {
 
     return jsonNoStore({
       data: updated,
+      sync: updated ? buildPendingSyncResponse() : null,
       syncStatus: updated ? "pending" : null,
     });
   } catch (error) {
@@ -232,6 +234,7 @@ export async function DELETE(request: Request, context: Context) {
     return jsonNoStore({
       id,
       message: "Shift deleted successfully",
+      sync: buildPendingSyncResponse(),
       syncStatus: "pending",
     });
   } catch (error) {

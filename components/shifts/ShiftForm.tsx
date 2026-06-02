@@ -39,14 +39,16 @@ import {
 } from "@/lib/calendar/date";
 import { formatShiftType } from "@/lib/enum-labels";
 import {
-  parseGoogleSyncFailureFromPayload,
+  parseGoogleSyncStateFromPayload,
   readGoogleSyncFailureFromErrorResponse,
 } from "@/lib/google-calendar/clientSync";
 import { CALENDAR_SETUP_PATH } from "@/lib/google-calendar/constants";
 import { messages, toErrorMessage } from "@/lib/messages";
 import { fetchJson } from "@/lib/query/fetch-json";
 import { getBrowserQueryClient } from "@/lib/query/query-client";
+import { buildMutationSuccessDescription } from "@/lib/query/mutation-toast";
 import { invalidateAfterShiftMutation } from "@/lib/query/invalidation";
+import { upsertMonthShiftInCachesOptimistically } from "@/lib/query/optimistic-shifts";
 import { queryKeys } from "@/lib/query/query-keys";
 import {
   formatShiftTimeRange,
@@ -57,6 +59,7 @@ import {
 } from "@/lib/shifts/time";
 import { toUserFacingMessage } from "@/lib/user-facing-error";
 import { useGoogleTokenExpiredSignOut } from "@/hooks/use-google-token-expired-signout";
+import { type MonthShift, normalizeMonthShift } from "@/hooks/use-month-shifts";
 import { useResetOnRouteHidden } from "@/hooks/use-reset-on-route-hidden";
 
 const LAST_WORKPLACE_ID_KEY = "shifta:last-workplace-id";
@@ -417,6 +420,23 @@ function parseShiftDetailResponse(payload: unknown): ShiftDetail | null {
     shiftType: data.shiftType,
     comment: data.comment,
     lessonRange,
+  };
+}
+
+function parseShiftMutationResult(payload: unknown): {
+  detail: ShiftDetail | null;
+  monthShift: MonthShift | null;
+} {
+  if (!isRecord(payload)) {
+    return {
+      detail: null,
+      monthShift: null,
+    };
+  }
+
+  return {
+    detail: parseShiftDetailResponse({ data: payload.data }),
+    monthShift: normalizeMonthShift(payload.data),
   };
 }
 
@@ -1402,11 +1422,35 @@ export function ShiftForm({
       }
 
       const responsePayload = (await response.json()) as unknown;
-      const syncFailure = parseGoogleSyncFailureFromPayload(
+      const syncState = parseGoogleSyncStateFromPayload(
         responsePayload,
         messages.error.calendarSyncFailed,
       );
+      const syncFailure = syncState.failure;
+      const mutationResult = parseShiftMutationResult(responsePayload);
 
+      if (mutationResult.monthShift) {
+        upsertMonthShiftInCachesOptimistically(
+          queryClient,
+          mutationResult.monthShift,
+          mode === "edit" && shiftId
+            ? {
+                previousShiftId: shiftId,
+              }
+            : undefined,
+        );
+      }
+
+      if (mode === "edit" && shiftId && mutationResult.detail) {
+        queryClient.setQueryData(
+          queryKeys.shifts.detail({ shiftId }),
+          mutationResult.detail,
+        );
+      }
+
+      void invalidateAfterShiftMutation(queryClient, {
+        mode: "background",
+      });
       window.localStorage.setItem(LAST_WORKPLACE_ID_KEY, form.workplaceId);
 
       if (syncFailure) {
@@ -1428,16 +1472,23 @@ export function ShiftForm({
           duration: 6000,
         });
 
+        markForResetOnRouteHidden();
         if (syncFailure.requiresCalendarSetup) {
           router.push(CALENDAR_SETUP_PATH);
           return;
         }
 
-        await invalidateAfterShiftMutation(queryClient);
-        markForResetOnRouteHidden();
         router.push(returnPath);
         return;
       }
+
+      const successDescription =
+        form.date +
+        " " +
+        formatShiftTimeRange(
+          validation.candidateTimes.startTime,
+          validation.candidateTimes.endTime,
+        );
 
       toast.success(
         mode === "create"
@@ -1445,13 +1496,12 @@ export function ShiftForm({
           : messages.success.shiftUpdated,
         {
           id: loadingToastId,
-          description: `${form.date} ${formatShiftTimeRange(
-            validation.candidateTimes.startTime,
-            validation.candidateTimes.endTime,
-          )}`,
+          description: buildMutationSuccessDescription({
+            baseDescription: successDescription,
+            syncPending: syncState.pending,
+          }),
         },
       );
-      await invalidateAfterShiftMutation(queryClient);
       markForResetOnRouteHidden();
       router.push(returnPath);
     } catch (error) {
