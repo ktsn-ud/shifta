@@ -42,7 +42,7 @@ export function PayrollDetailsMonthlyPageLoadingSkeleton() {
           給与詳細（月毎表示）
         </h2>
         <p className="mt-2 text-sm text-muted-foreground">
-          月毎の内訳と計算根拠を読み込み中です。
+          月毎の実績優先金額と計算根拠を読み込み中です。
         </p>
       </header>
       <SpinnerPanel className="min-h-[360px]" label="給与詳細を読み込み中..." />
@@ -135,7 +135,7 @@ export function PayrollDetailsMonthlyPageClient({
             給与詳細（月毎表示）
           </h2>
           <p className="text-sm text-muted-foreground">
-            {selectedMonthLabel}支給分の内訳を確認できます。
+            {selectedMonthLabel}支給分の実績優先内訳を確認できます。
           </p>
         </div>
 
@@ -206,11 +206,25 @@ export function PayrollDetailsMonthlyPageClient({
             <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-5">
               <Card size="sm" className="border-primary/30 bg-primary/5">
                 <CardHeader>
-                  <CardTitle>支給合計</CardTitle>
+                  <CardTitle>実績支給額</CardTitle>
                   <CardDescription>{selectedMonthLabel}支給分</CardDescription>
                 </CardHeader>
-                <CardContent className="text-3xl font-semibold tracking-tight">
-                  {formatCurrency(details.totals.totalWage)}
+                <CardContent className="space-y-1">
+                  <p className="text-3xl font-semibold tracking-tight">
+                    {formatCurrency(details.totalsDisplayValue.displayAmount)}
+                  </p>
+                  <p className="text-xs text-muted-foreground">
+                    課税 {formatCurrency(details.actualCoverage.taxableAmount)}{" "}
+                    / 非課税{" "}
+                    {formatCurrency(details.actualCoverage.nonTaxableAmount)}
+                  </p>
+                  <p className="text-xs text-muted-foreground">
+                    {details.actualCoverage.registeredWorkplaceCount === 0
+                      ? "実給与は未登録です"
+                      : details.actualCoverage.isPartial
+                        ? `実給与登録済み ${details.actualCoverage.registeredWorkplaceCount}/${details.actualCoverage.totalWorkplaceCount} 勤務先`
+                        : "全勤務先で実給与登録済み"}
+                  </p>
                 </CardContent>
               </Card>
               <Card size="sm">
@@ -286,6 +300,25 @@ export function PayrollDetailsMonthlyPageClient({
                       <p className="text-xs text-muted-foreground">
                         {item.periodStartDate} 〜 {item.periodEndDate}
                       </p>
+                      <div className="flex flex-wrap items-center gap-2 text-xs">
+                        <span className="rounded-full bg-primary/10 px-2 py-1 font-medium text-primary">
+                          表示 {formatCurrency(item.displayValue.displayAmount)}
+                        </span>
+                        <span className="rounded-full bg-muted px-2 py-1 text-muted-foreground">
+                          概算{" "}
+                          {formatCurrency(item.displayValue.estimatedAmount)}
+                        </span>
+                        {item.actualPayroll ? (
+                          <span className="rounded-full bg-emerald-50 px-2 py-1 text-emerald-700">
+                            実績 課税{" "}
+                            {formatCurrency(item.actualPayroll.taxableAmount)} /
+                            非課税{" "}
+                            {formatCurrency(
+                              item.actualPayroll.nonTaxableAmount,
+                            )}
+                          </span>
+                        ) : null}
+                      </div>
                     </div>
 
                     <div className="overflow-x-auto">

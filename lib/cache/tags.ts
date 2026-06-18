@@ -14,6 +14,10 @@ export function userPayrollDetailsTag(userId: string): string {
   return `user:${userId}:payroll-details`;
 }
 
+export function userActualPayrollTag(userId: string): string {
+  return `user:${userId}:actual-payroll`;
+}
+
 export function workplaceDetailTag(workplaceId: string): string {
   return `workplace:${workplaceId}:detail`;
 }

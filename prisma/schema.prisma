@@ -106,6 +106,7 @@ model Workplace {
   createdAt      DateTime       @default(now())
   user           User           @relation(fields: [userId], references: [id], onDelete: Cascade)
   payrollRules   PayrollRule[]
+  actualPayrolls ActualPayroll[]
   timetableSets  TimetableSet[]
   shifts         Shift[]
 
@@ -189,4 +190,20 @@ model ShiftLessonRange {
   timetableSet   TimetableSet @relation(fields: [timetableSetId], references: [id], onDelete: Restrict)
 
   @@index([timetableSetId])
+}
+
+model ActualPayroll {
+  id               String    @id @default(cuid())
+  workplaceId      String
+  paymentMonth     DateTime  @db.Date
+  taxableAmount    Decimal   @db.Decimal(10, 2)
+  nonTaxableAmount Decimal   @default(0) @db.Decimal(10, 2)
+  note             String?   @db.VarChar(200)
+  createdAt        DateTime  @default(now())
+  updatedAt        DateTime  @updatedAt
+  workplace        Workplace @relation(fields: [workplaceId], references: [id], onDelete: Cascade)
+
+  @@unique([workplaceId, paymentMonth])
+  @@index([paymentMonth])
+  @@index([workplaceId, paymentMonth])
 }

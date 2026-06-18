@@ -15,6 +15,11 @@ type PayrollPreviewBaselineQueryInput = {
   months: string[];
 };
 
+type ActualPayrollQueryInput = {
+  userId: string;
+  month: string;
+};
+
 type ShiftDetailQueryInput = {
   shiftId: string;
 };
@@ -76,6 +81,8 @@ export const queryKeys = {
   payroll: {
     summary: (input: PayrollSummaryQueryInput) =>
       ["payroll", "summary", input] as const,
+    actual: (input: ActualPayrollQueryInput) =>
+      ["payroll", "actual", input] as const,
     previewBaseline: (input: PayrollPreviewBaselineQueryInput) =>
       [
         "payroll",

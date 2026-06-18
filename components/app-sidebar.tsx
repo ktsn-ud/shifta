@@ -80,7 +80,7 @@ const navSections: NavSection[] = [
         title: "給与管理",
         href: "/my/summary",
         icon: <WalletCardsIcon />,
-        matchHrefs: ["/my/payroll-details"],
+        matchHrefs: ["/my/payroll-details", "/my/payroll/actual"],
         subItems: [
           { title: "給与サマリー", href: "/my/summary" },
           {
@@ -91,6 +91,10 @@ const navSections: NavSection[] = [
           {
             title: "給与詳細（勤務先毎）",
             href: "/my/payroll-details/workplace-yearly",
+          },
+          {
+            title: "実給与編集",
+            href: "/my/payroll/actual",
           },
         ],
       },

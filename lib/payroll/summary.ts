@@ -1,5 +1,15 @@
 import type { Prisma } from "@/lib/generated/prisma/client";
 import {
+  buildWorkplaceMonthKey,
+  createPayrollDisplayValue,
+  getActualPayrollMap,
+  summarizeActualPayrollCoverage,
+  type ActualPayrollAmount,
+  type ActualPayrollCoverage,
+  type ActualPayrollRecord,
+  type PayrollDisplayValue,
+} from "@/lib/payroll/actual-payroll";
+import {
   calculateShiftPayrollResult,
   groupPayrollRulesByWorkplace,
   type PayrollRulesByWorkplace,
@@ -19,10 +29,15 @@ type PayrollSummaryByWorkplace = {
   periodEndDate: string;
   wage: number;
   workHours: number;
+  displayValue: PayrollDisplayValue;
+  actualPayroll: ActualPayrollRecord | null;
 };
 
 export type PayrollSummaryResult = {
   totalWage: number;
+  estimatedTotalWage: number;
+  displayValue: PayrollDisplayValue;
+  actualCoverage: ActualPayrollCoverage;
   totalWorkHours: number;
   totalNightHours: number;
   totalOvertimeHours: number;
@@ -30,6 +45,10 @@ export type PayrollSummaryResult = {
   confirmedShiftWage: number;
   currentMonthCumulative: number;
   yearlyTotal: number;
+  currentMonthActualCoverage: ActualPayrollCoverage;
+  yearlyActualCoverage: ActualPayrollCoverage;
+  estimatedCurrentMonthCumulative: number;
+  estimatedYearlyTotal: number;
 };
 
 type WorkplaceWithPayrollCycle = {
@@ -78,6 +97,32 @@ function roundCurrency(value: number): number {
 
 function roundHours(value: number): number {
   return Math.round(value * 100) / 100;
+}
+
+function createActualPayrollAmount(
+  taxableAmount: number,
+  nonTaxableAmount: number,
+): ActualPayrollAmount {
+  const roundedTaxableAmount = roundCurrency(taxableAmount);
+  const roundedNonTaxableAmount = roundCurrency(nonTaxableAmount);
+
+  return {
+    taxableAmount: roundedTaxableAmount,
+    nonTaxableAmount: roundedNonTaxableAmount,
+    totalAmount: roundCurrency(roundedTaxableAmount + roundedNonTaxableAmount),
+  };
+}
+
+function mergeCoverageWithDisplayAmount(
+  coverage: ActualPayrollCoverage,
+  amount: ActualPayrollAmount,
+): ActualPayrollCoverage {
+  return {
+    ...coverage,
+    taxableAmount: amount.taxableAmount,
+    nonTaxableAmount: amount.nonTaxableAmount,
+    totalAmount: amount.totalAmount,
+  };
 }
 
 function listMonthsInYear(month: Date): Date[] {
@@ -283,6 +328,9 @@ export async function getPayrollSummaryForUser(
   if (workplaces.length === 0) {
     return {
       totalWage: 0,
+      estimatedTotalWage: 0,
+      displayValue: createPayrollDisplayValue(0, null),
+      actualCoverage: summarizeActualPayrollCoverage([], 0),
       totalWorkHours: 0,
       totalNightHours: 0,
       totalOvertimeHours: 0,
@@ -290,6 +338,10 @@ export async function getPayrollSummaryForUser(
       confirmedShiftWage: 0,
       currentMonthCumulative: 0,
       yearlyTotal: 0,
+      currentMonthActualCoverage: summarizeActualPayrollCoverage([], 0),
+      yearlyActualCoverage: summarizeActualPayrollCoverage([], 0),
+      estimatedCurrentMonthCumulative: 0,
+      estimatedYearlyTotal: 0,
     };
   }
   const workplaceIds = workplaces.map((workplace) => workplace.id);
@@ -371,6 +423,10 @@ export async function getPayrollSummaryForUser(
   const rulesByWorkplace = groupPayrollRulesByWorkplace(payrollRules);
   const shiftsByWorkplace = groupShiftsByWorkplace(shifts);
   const monthSummaryByWorkplace = new Map<string, WorkplacePeriodSummary>();
+  const actualPayrollByWorkplaceMonth = await getActualPayrollMap({
+    workplaceIds,
+    monthKeys: Array.from(monthTargets.keys()),
+  });
 
   const getWorkplaceMonthSummary = (
     workplace: WorkplaceWithPayrollCycle,
@@ -398,21 +454,67 @@ export async function getPayrollSummaryForUser(
   };
 
   const monthlyTotalWage = new Map<string, number>();
+  const monthlyDisplayWage = new Map<string, number>();
+  const monthlyDisplayTaxableWage = new Map<string, number>();
+  const monthlyDisplayNonTaxableWage = new Map<string, number>();
   for (const [monthKey] of monthTargets) {
     let total = 0;
+    let displayTotal = 0;
+    let displayTaxableTotal = 0;
+    let displayNonTaxableTotal = 0;
     for (const workplace of workplaces) {
-      total += getWorkplaceMonthSummary(workplace, monthKey).wage;
+      const estimatedWage = getWorkplaceMonthSummary(workplace, monthKey).wage;
+      const actualPayroll =
+        actualPayrollByWorkplaceMonth.get(
+          buildWorkplaceMonthKey(workplace.id, monthKey),
+        ) ?? null;
+      const displayValue = createPayrollDisplayValue(
+        estimatedWage,
+        actualPayroll,
+      );
+      total += estimatedWage;
+      displayTotal += displayValue.displayAmount;
+
+      if (actualPayroll) {
+        displayTaxableTotal += actualPayroll.taxableAmount;
+        displayNonTaxableTotal += actualPayroll.nonTaxableAmount;
+        continue;
+      }
+
+      displayTaxableTotal += displayValue.displayAmount;
     }
 
     monthlyTotalWage.set(monthKey, total);
+    monthlyDisplayWage.set(monthKey, displayTotal);
+    monthlyDisplayTaxableWage.set(monthKey, displayTaxableTotal);
+    monthlyDisplayNonTaxableWage.set(monthKey, displayNonTaxableTotal);
   }
 
   const byWorkplace: PayrollSummaryByWorkplace[] = [];
+  let estimatedTotalWage = 0;
   let totalWage = 0;
   let totalConfirmedWage = 0;
   let totalWorkHours = 0;
   let totalNightHours = 0;
   let totalOvertimeHours = 0;
+  const selectedMonthActuals: Array<ActualPayrollRecord | null> = [];
+  const currentMonthCumulativeActuals: Array<ActualPayrollRecord | null> = [];
+  const yearlyActuals: Array<ActualPayrollRecord | null> = [];
+
+  for (const yearMonth of monthsInYear) {
+    const monthKey = toMonthKey(yearMonth);
+    for (const workplace of workplaces) {
+      const actualPayroll =
+        actualPayrollByWorkplaceMonth.get(
+          buildWorkplaceMonthKey(workplace.id, monthKey),
+        ) ?? null;
+      yearlyActuals.push(actualPayroll);
+
+      if (yearMonth.getUTCMonth() <= selectedMonthIndex) {
+        currentMonthCumulativeActuals.push(actualPayroll);
+      }
+    }
+  }
 
   for (const workplace of workplaces) {
     const cacheKey = toPeriodMapKey(workplace.id, selectedMonthKey);
@@ -422,11 +524,21 @@ export async function getPayrollSummaryForUser(
     }
 
     const summarized = getWorkplaceMonthSummary(workplace, selectedMonthKey);
-    totalWage += summarized.wage;
+    estimatedTotalWage += summarized.wage;
     totalConfirmedWage += summarized.confirmedWage;
     totalWorkHours += summarized.workHours;
     totalNightHours += summarized.nightHours;
     totalOvertimeHours += summarized.overtimeHours;
+    const actualPayroll =
+      actualPayrollByWorkplaceMonth.get(
+        buildWorkplaceMonthKey(workplace.id, selectedMonthKey),
+      ) ?? null;
+    const displayValue = createPayrollDisplayValue(
+      summarized.wage,
+      actualPayroll,
+    );
+    totalWage += displayValue.displayAmount;
+    selectedMonthActuals.push(actualPayroll);
 
     if (summarized.workHours <= 0 && summarized.wage <= 0) {
       continue;
@@ -440,6 +552,8 @@ export async function getPayrollSummaryForUser(
       periodEndDate: toDateOnlyUtc(period.periodEndDate),
       wage: roundCurrency(summarized.wage),
       workHours: roundHours(summarized.workHours),
+      displayValue,
+      actualPayroll,
     });
   }
 
@@ -447,23 +561,102 @@ export async function getPayrollSummaryForUser(
     .slice(0, selectedMonthIndex + 1)
     .reduce(
       (sum, yearMonth) =>
-        sum + (monthlyTotalWage.get(toMonthKey(yearMonth)) ?? 0),
+        sum + (monthlyDisplayWage.get(toMonthKey(yearMonth)) ?? 0),
       0,
     );
   const yearlyTotal = monthsInYear.reduce(
     (sum, yearMonth) =>
+      sum + (monthlyDisplayWage.get(toMonthKey(yearMonth)) ?? 0),
+    0,
+  );
+  const currentMonthDisplayBreakdown = createActualPayrollAmount(
+    monthsInYear
+      .slice(0, selectedMonthIndex + 1)
+      .reduce(
+        (sum, yearMonth) =>
+          sum + (monthlyDisplayTaxableWage.get(toMonthKey(yearMonth)) ?? 0),
+        0,
+      ),
+    monthsInYear
+      .slice(0, selectedMonthIndex + 1)
+      .reduce(
+        (sum, yearMonth) =>
+          sum + (monthlyDisplayNonTaxableWage.get(toMonthKey(yearMonth)) ?? 0),
+        0,
+      ),
+  );
+  const yearlyDisplayBreakdown = createActualPayrollAmount(
+    monthsInYear.reduce(
+      (sum, yearMonth) =>
+        sum + (monthlyDisplayTaxableWage.get(toMonthKey(yearMonth)) ?? 0),
+      0,
+    ),
+    monthsInYear.reduce(
+      (sum, yearMonth) =>
+        sum + (monthlyDisplayNonTaxableWage.get(toMonthKey(yearMonth)) ?? 0),
+      0,
+    ),
+  );
+  const estimatedCurrentMonthCumulative = monthsInYear
+    .slice(0, selectedMonthIndex + 1)
+    .reduce(
+      (sum, yearMonth) =>
+        sum + (monthlyTotalWage.get(toMonthKey(yearMonth)) ?? 0),
+      0,
+    );
+  const estimatedYearlyTotal = monthsInYear.reduce(
+    (sum, yearMonth) =>
       sum + (monthlyTotalWage.get(toMonthKey(yearMonth)) ?? 0),
     0,
+  );
+  const actualCoverage = summarizeActualPayrollCoverage(
+    selectedMonthActuals,
+    workplaces.length,
+  );
+  const currentMonthActualCoverage = summarizeActualPayrollCoverage(
+    currentMonthCumulativeActuals,
+    workplaces.length * (selectedMonthIndex + 1),
+  );
+  const yearlyActualCoverage = summarizeActualPayrollCoverage(
+    yearlyActuals,
+    workplaces.length * monthsInYear.length,
   );
 
   return {
     totalWage: roundCurrency(totalWage),
+    estimatedTotalWage: roundCurrency(estimatedTotalWage),
+    displayValue: createPayrollDisplayValue(
+      estimatedTotalWage,
+      actualCoverage.registeredWorkplaceCount > 0
+        ? {
+            taxableAmount: actualCoverage.taxableAmount,
+            nonTaxableAmount: actualCoverage.nonTaxableAmount,
+            totalAmount: actualCoverage.totalAmount,
+          }
+        : null,
+    ),
+    actualCoverage,
     totalWorkHours: roundHours(totalWorkHours),
     totalNightHours: roundHours(totalNightHours),
     totalOvertimeHours: roundHours(totalOvertimeHours),
-    byWorkplace: byWorkplace.sort((left, right) => right.wage - left.wage),
+    byWorkplace: byWorkplace.sort(
+      (left, right) =>
+        right.displayValue.displayAmount - left.displayValue.displayAmount,
+    ),
     confirmedShiftWage: roundCurrency(totalConfirmedWage),
     currentMonthCumulative: roundCurrency(currentMonthCumulative),
     yearlyTotal: roundCurrency(yearlyTotal),
+    currentMonthActualCoverage: mergeCoverageWithDisplayAmount(
+      currentMonthActualCoverage,
+      currentMonthDisplayBreakdown,
+    ),
+    yearlyActualCoverage: mergeCoverageWithDisplayAmount(
+      yearlyActualCoverage,
+      yearlyDisplayBreakdown,
+    ),
+    estimatedCurrentMonthCumulative: roundCurrency(
+      estimatedCurrentMonthCumulative,
+    ),
+    estimatedYearlyTotal: roundCurrency(estimatedYearlyTotal),
   };
 }

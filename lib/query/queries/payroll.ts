@@ -1,6 +1,7 @@
 import { useQuery } from "@tanstack/react-query";
 import { fetchJson } from "@/lib/query/fetch-json";
 import { queryKeys } from "@/lib/query/query-keys";
+import { type ActualPayrollEditorResult } from "@/lib/payroll/actual-editor";
 import { type PayrollDetailsMonthlyResult } from "@/lib/payroll/details";
 import { type PayrollDetailsWorkplaceYearlyResult } from "@/lib/payroll/details";
 import { type PayrollPreviewBaselineResult } from "@/lib/payroll/preview-baseline";
@@ -20,6 +21,21 @@ function parsePayrollSummaryPayload(payload: unknown): PayrollSummaryResult {
   }
 
   return payload as PayrollSummaryResult;
+}
+
+function parseActualPayrollPayload(
+  payload: unknown,
+): ActualPayrollEditorResult {
+  if (
+    typeof payload !== "object" ||
+    payload === null ||
+    typeof (payload as { month?: unknown }).month !== "string" ||
+    !Array.isArray((payload as { rows?: unknown[] }).rows)
+  ) {
+    throw new Error("ACTUAL_PAYROLL_RESPONSE_INVALID");
+  }
+
+  return payload as ActualPayrollEditorResult;
 }
 
 function parsePayrollDetailsMonthlyPayload(
@@ -88,6 +104,35 @@ export function usePayrollSummaryQuery(input: {
         },
         fallbackMessage: "給与集計の取得に失敗しました。",
         parse: parsePayrollSummaryPayload,
+      });
+    },
+    enabled,
+    initialData,
+    placeholderData: (previousData) => previousData,
+    staleTime: PAYROLL_STALE_TIME_MS,
+    gcTime: PAYROLL_GC_TIME_MS,
+  });
+}
+
+export function useActualPayrollQuery(input: {
+  userId: string;
+  month: string;
+  enabled?: boolean;
+  initialData?: ActualPayrollEditorResult;
+}) {
+  const { enabled = true, initialData, month, userId } = input;
+
+  return useQuery({
+    queryKey: queryKeys.payroll.actual({ userId, month }),
+    queryFn: ({ signal }) => {
+      const params = new URLSearchParams({ month });
+      return fetchJson(`/api/payroll/actual?${params.toString()}`, {
+        init: {
+          signal,
+          cache: "no-store",
+        },
+        fallbackMessage: "実給与の取得に失敗しました。",
+        parse: parseActualPayrollPayload,
       });
     },
     enabled,

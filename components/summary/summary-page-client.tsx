@@ -75,7 +75,7 @@ export function SummaryPageLoadingSkeleton() {
           給与サマリー
         </h2>
         <p className="mt-2 text-sm text-muted-foreground">
-          支給月別の概算給与と勤務時間を確認できます。
+          支給月別の実績優先給与と勤務時間を確認できます。
         </p>
       </header>
 
@@ -163,7 +163,7 @@ export function SummaryPageClient({
             給与サマリー
           </h2>
           <p className="text-sm text-muted-foreground">
-            支給月別の概算給与と勤務時間を確認できます。
+            支給月別の実績優先給与と勤務時間を確認できます。
           </p>
         </div>
 
@@ -223,11 +223,34 @@ export function SummaryPageClient({
             <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
               <Card size="sm" className="border-primary/30 bg-primary/5">
                 <CardHeader>
-                  <CardTitle>概算給与</CardTitle>
+                  <CardTitle>実績支給額</CardTitle>
                   <CardDescription>{selectedMonthLabel}支給分</CardDescription>
                 </CardHeader>
-                <CardContent className="text-3xl font-semibold tracking-tight">
-                  {formatCurrency(summary.totalWage)}
+                <CardContent className="space-y-1">
+                  <p className="text-3xl font-semibold tracking-tight">
+                    {formatCurrency(summary.totalWage)}
+                  </p>
+                  <p className="text-xs text-muted-foreground">
+                    課税 {formatCurrency(summary.actualCoverage.taxableAmount)}{" "}
+                    / 非課税{" "}
+                    {formatCurrency(summary.actualCoverage.nonTaxableAmount)}
+                  </p>
+                  <p className="text-xs text-muted-foreground">
+                    {summary.actualCoverage.registeredWorkplaceCount === 0
+                      ? "実給与は未登録です"
+                      : summary.actualCoverage.isPartial
+                        ? `実給与登録済み ${summary.actualCoverage.registeredWorkplaceCount}/${summary.actualCoverage.totalWorkplaceCount} 勤務先`
+                        : "全勤務先で実給与登録済み"}
+                  </p>
+                </CardContent>
+              </Card>
+              <Card size="sm">
+                <CardHeader>
+                  <CardTitle>概算給与</CardTitle>
+                  <CardDescription>シフトから算出した見込額</CardDescription>
+                </CardHeader>
+                <CardContent className="text-2xl font-semibold">
+                  {formatCurrency(summary.estimatedTotalWage)}
                 </CardContent>
               </Card>
               <Card size="sm">
@@ -248,18 +271,9 @@ export function SummaryPageClient({
                   {formatHours(summary.totalNightHours)}
                 </CardContent>
               </Card>
-              <Card size="sm">
-                <CardHeader>
-                  <CardTitle>残業時間</CardTitle>
-                  <CardDescription>所定時間超過分</CardDescription>
-                </CardHeader>
-                <CardContent className="text-2xl font-semibold">
-                  {formatHours(summary.totalOvertimeHours)}
-                </CardContent>
-              </Card>
             </div>
 
-            <div className="grid gap-4 lg:grid-cols-3">
+            <div className="grid gap-4 lg:grid-cols-4">
               <Card size="sm">
                 <CardHeader>
                   <CardTitle>確定済み支給額</CardTitle>
@@ -274,21 +288,57 @@ export function SummaryPageClient({
               <Card size="sm">
                 <CardHeader>
                   <CardTitle>年内受取累計（選択月まで）</CardTitle>
-                  <CardDescription>1月から選択月までの支給合計</CardDescription>
+                  <CardDescription>実績優先の累計表示</CardDescription>
                 </CardHeader>
-                <CardContent className="text-2xl font-semibold">
-                  {formatCurrency(summary.currentMonthCumulative)}
+                <CardContent className="space-y-1">
+                  <p className="text-2xl font-semibold">
+                    {formatCurrency(summary.currentMonthCumulative)}
+                  </p>
+                  <p className="text-xs text-muted-foreground">
+                    課税{" "}
+                    {formatCurrency(
+                      summary.currentMonthActualCoverage.taxableAmount,
+                    )}{" "}
+                    / 非課税{" "}
+                    {formatCurrency(
+                      summary.currentMonthActualCoverage.nonTaxableAmount,
+                    )}
+                  </p>
+                  <p className="text-xs text-muted-foreground">
+                    概算{" "}
+                    {formatCurrency(summary.estimatedCurrentMonthCumulative)}
+                  </p>
                 </CardContent>
               </Card>
               <Card size="sm">
                 <CardHeader>
                   <CardTitle>年間受取見込（1月〜12月）</CardTitle>
-                  <CardDescription>
-                    当年1月から12月までの支給見込
-                  </CardDescription>
+                  <CardDescription>実績優先の年間表示</CardDescription>
+                </CardHeader>
+                <CardContent className="space-y-1">
+                  <p className="text-2xl font-semibold">
+                    {formatCurrency(summary.yearlyTotal)}
+                  </p>
+                  <p className="text-xs text-muted-foreground">
+                    課税{" "}
+                    {formatCurrency(summary.yearlyActualCoverage.taxableAmount)}{" "}
+                    / 非課税{" "}
+                    {formatCurrency(
+                      summary.yearlyActualCoverage.nonTaxableAmount,
+                    )}
+                  </p>
+                  <p className="text-xs text-muted-foreground">
+                    概算 {formatCurrency(summary.estimatedYearlyTotal)}
+                  </p>
+                </CardContent>
+              </Card>
+              <Card size="sm">
+                <CardHeader>
+                  <CardTitle>残業時間</CardTitle>
+                  <CardDescription>所定時間超過分</CardDescription>
                 </CardHeader>
                 <CardContent className="text-2xl font-semibold">
-                  {formatCurrency(summary.yearlyTotal)}
+                  {formatHours(summary.totalOvertimeHours)}
                 </CardContent>
               </Card>
             </div>
@@ -298,11 +348,16 @@ export function SummaryPageClient({
                 <CardHeader>
                   <CardTitle>勤務先別給与</CardTitle>
                   <CardDescription>
-                    選択月支給分の給与内訳グラフ
+                    選択月支給分の実績支給額グラフ
                   </CardDescription>
                 </CardHeader>
                 <CardContent>
-                  <WorkplaceWageChart byWorkplace={summary.byWorkplace} />
+                  <WorkplaceWageChart
+                    byWorkplace={summary.byWorkplace.map((item) => ({
+                      workplaceName: item.workplaceName,
+                      displayWage: item.displayValue.displayAmount,
+                    }))}
+                  />
                 </CardContent>
               </Card>
 
@@ -319,7 +374,10 @@ export function SummaryPageClient({
                           <TableHead>勤務先</TableHead>
                           <TableHead>対象期間</TableHead>
                           <TableHead className="text-right">勤務時間</TableHead>
-                          <TableHead className="text-right">給与</TableHead>
+                          <TableHead className="text-right">
+                            実績支給額
+                          </TableHead>
+                          <TableHead className="text-right">概算</TableHead>
                         </TableRow>
                       </TableHeader>
                       <TableBody>
@@ -344,6 +402,11 @@ export function SummaryPageClient({
                                 {formatHours(item.workHours)}
                               </TableCell>
                               <TableCell className="text-right font-medium">
+                                {formatCurrency(
+                                  item.displayValue.displayAmount,
+                                )}
+                              </TableCell>
+                              <TableCell className="text-right text-muted-foreground">
                                 {formatCurrency(item.wage)}
                               </TableCell>
                             </TableRow>
@@ -351,7 +414,7 @@ export function SummaryPageClient({
                         ) : (
                           <TableRow>
                             <TableCell
-                              colSpan={4}
+                              colSpan={5}
                               className="h-24 text-center text-muted-foreground"
                             >
                               対象期間のシフトはありません

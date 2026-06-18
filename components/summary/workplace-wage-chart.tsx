@@ -6,14 +6,15 @@ import {
   ChartTooltip,
   ChartTooltipContent,
 } from "@/components/ui/chart";
-import { type PayrollSummaryResult } from "@/lib/payroll/summary";
-
 type WorkplaceWageChartProps = {
-  byWorkplace: PayrollSummaryResult["byWorkplace"];
+  byWorkplace: Array<{
+    workplaceName: string;
+    displayWage: number;
+  }>;
 };
 
 const chartConfig = {
-  wage: {
+  displayWage: {
     label: "給与",
     color: "var(--chart-1)",
   },
@@ -56,7 +57,7 @@ export function WorkplaceWageChart({ byWorkplace }: WorkplaceWageChartProps) {
             />
           }
         />
-        <Bar dataKey="wage" fill="var(--color-wage)" radius={4} />
+        <Bar dataKey="displayWage" fill="var(--color-displayWage)" radius={4} />
       </BarChart>
     </ChartContainer>
   );

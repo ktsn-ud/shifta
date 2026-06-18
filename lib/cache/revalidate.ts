@@ -1,6 +1,7 @@
 import "server-only";
 import { revalidateTag } from "next/cache";
 import {
+  userActualPayrollTag,
   userPayrollDetailsTag,
   userShiftsTag,
   userSummaryTag,
@@ -22,6 +23,7 @@ export function revalidateWorkplaceDomainTags(input: {
 }): void {
   const tags = [
     userWorkplacesTag(input.userId),
+    userActualPayrollTag(input.userId),
     userSummaryTag(input.userId),
     userPayrollDetailsTag(input.userId),
   ];
@@ -43,6 +45,7 @@ export function revalidateShiftDomainTags(input: {
 }): void {
   const tags = [
     userShiftsTag(input.userId),
+    userActualPayrollTag(input.userId),
     userSummaryTag(input.userId),
     userPayrollDetailsTag(input.userId),
     userWorkplacesTag(input.userId),
@@ -53,4 +56,14 @@ export function revalidateShiftDomainTags(input: {
   }
 
   revalidateTags(tags);
+}
+
+export function revalidateActualPayrollDomainTags(input: {
+  userId: string;
+}): void {
+  revalidateTags([
+    userActualPayrollTag(input.userId),
+    userSummaryTag(input.userId),
+    userPayrollDetailsTag(input.userId),
+  ]);
 }

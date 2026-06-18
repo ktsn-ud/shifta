@@ -13,6 +13,7 @@ export async function invalidateAfterShiftMutation(
 
   const relatedInvalidation = Promise.all([
     queryClient.invalidateQueries({ queryKey: ["payroll", "summary"] }),
+    queryClient.invalidateQueries({ queryKey: ["payroll", "actual"] }),
     queryClient.invalidateQueries({ queryKey: ["payroll", "previewBaseline"] }),
     queryClient.invalidateQueries({ queryKey: ["payroll", "details"] }),
     queryClient.invalidateQueries({ queryKey: ["workplaces"] }),
@@ -39,6 +40,7 @@ export async function invalidateAfterWorkplaceMutation(
   await Promise.all([
     queryClient.invalidateQueries({ queryKey: ["workplaces"] }),
     queryClient.invalidateQueries({ queryKey: ["shifts"] }),
+    queryClient.invalidateQueries({ queryKey: ["payroll", "actual"] }),
     queryClient.invalidateQueries({ queryKey: ["payroll", "summary"] }),
     queryClient.invalidateQueries({ queryKey: ["payroll", "previewBaseline"] }),
     queryClient.invalidateQueries({ queryKey: ["payroll", "details"] }),
@@ -62,6 +64,7 @@ export async function invalidateAfterPayrollRuleMutation(
     queryClient.invalidateQueries({
       queryKey: ["workplaces", "payrollRuleDetail"],
     }),
+    queryClient.invalidateQueries({ queryKey: ["payroll", "actual"] }),
     queryClient.invalidateQueries({ queryKey: ["payroll", "summary"] }),
     queryClient.invalidateQueries({ queryKey: ["payroll", "previewBaseline"] }),
     queryClient.invalidateQueries({ queryKey: ["payroll", "details"] }),
@@ -83,6 +86,17 @@ export async function invalidateAfterTimetableMutation(
     queryClient.invalidateQueries({
       queryKey: queryKeys.workplaces.editDetail({ workplaceId }),
     }),
+    queryClient.invalidateQueries({ queryKey: ["payroll", "actual"] }),
     queryClient.invalidateQueries({ queryKey: ["shifts"] }),
+  ]);
+}
+
+export async function invalidateAfterActualPayrollMutation(
+  queryClient: QueryClient,
+): Promise<void> {
+  await Promise.all([
+    queryClient.invalidateQueries({ queryKey: ["payroll", "actual"] }),
+    queryClient.invalidateQueries({ queryKey: ["payroll", "summary"] }),
+    queryClient.invalidateQueries({ queryKey: ["payroll", "details"] }),
   ]);
 }

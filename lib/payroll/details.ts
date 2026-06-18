@@ -1,5 +1,15 @@
 import type { PayrollRule, Prisma } from "@/lib/generated/prisma/client";
 import {
+  buildWorkplaceMonthKey,
+  createPayrollDisplayValue,
+  createEmptyActualPayrollCoverage,
+  getActualPayrollMap,
+  summarizeActualPayrollCoverage,
+  type ActualPayrollCoverage,
+  type ActualPayrollRecord,
+  type PayrollDisplayValue,
+} from "@/lib/payroll/actual-payroll";
+import {
   calculateShiftPayrollResultByRule,
   findApplicablePayrollRule,
   groupPayrollRulesByWorkplace,
@@ -69,11 +79,15 @@ type PayrollMonthlyByWorkplace = {
   workplaceColor: string;
   periodStartDate: string;
   periodEndDate: string;
+  displayValue: PayrollDisplayValue;
+  actualPayroll: ActualPayrollRecord | null;
 } & PayrollBreakdownDisplay;
 
 export type PayrollDetailsMonthlyResult = {
   month: string;
   totals: PayrollBreakdownDisplay;
+  totalsDisplayValue: PayrollDisplayValue;
+  actualCoverage: ActualPayrollCoverage;
   byWorkplace: PayrollMonthlyByWorkplace[];
 };
 
@@ -82,6 +96,8 @@ type PayrollWorkplaceYearlyMonth = {
   monthKey: string;
   periodStartDate: string;
   periodEndDate: string;
+  displayValue: PayrollDisplayValue;
+  actualPayroll: ActualPayrollRecord | null;
 } & PayrollBreakdownDisplay;
 
 type PayrollWorkplaceYearlyItem = {
@@ -89,6 +105,8 @@ type PayrollWorkplaceYearlyItem = {
   workplaceName: string;
   workplaceColor: string;
   yearlyTotals: PayrollBreakdownDisplay;
+  yearlyDisplayValue: PayrollDisplayValue;
+  actualCoverage: ActualPayrollCoverage;
   months: PayrollWorkplaceYearlyMonth[];
 };
 
@@ -487,6 +505,8 @@ export async function getPayrollDetailsMonthlyForUser(
     return {
       month: monthKey,
       totals: toBreakdownDisplay(createEmptyBreakdownAccumulator()),
+      totalsDisplayValue: createPayrollDisplayValue(0, null),
+      actualCoverage: createEmptyActualPayrollCoverage(0),
       byWorkplace: [],
     };
   }
@@ -506,13 +526,19 @@ export async function getPayrollDetailsMonthlyForUser(
 
   const { fetchStartDate, fetchEndDate } = resolveFetchRange(periods);
   const workplaceIds = workplaces.map((workplace) => workplace.id);
-  const { shiftsByWorkplace, rulesByWorkplace } = await fetchShiftsAndRules(
-    workplaceIds,
-    fetchStartDate,
-    fetchEndDate,
-  );
+  const [
+    { shiftsByWorkplace, rulesByWorkplace },
+    actualPayrollByWorkplaceMonth,
+  ] = await Promise.all([
+    fetchShiftsAndRules(workplaceIds, fetchStartDate, fetchEndDate),
+    getActualPayrollMap({
+      workplaceIds,
+      monthKeys: [monthKey],
+    }),
+  ]);
 
   const totals = createEmptyBreakdownAccumulator();
+  const selectedMonthActuals: Array<ActualPayrollRecord | null> = [];
 
   const byWorkplace = workplaces.map((workplace) => {
     const period = periodByWorkplace.get(workplace.id);
@@ -527,6 +553,11 @@ export async function getPayrollDetailsMonthlyForUser(
       rulesByWorkplace,
     );
     mergeBreakdowns(totals, summary);
+    const actualPayroll =
+      actualPayrollByWorkplaceMonth.get(
+        buildWorkplaceMonthKey(workplace.id, monthKey),
+      ) ?? null;
+    selectedMonthActuals.push(actualPayroll);
 
     return {
       workplaceId: workplace.id,
@@ -534,15 +565,33 @@ export async function getPayrollDetailsMonthlyForUser(
       workplaceColor: workplace.color,
       periodStartDate: toDateOnlyUtc(period.periodStartDate),
       periodEndDate: toDateOnlyUtc(period.periodEndDate),
+      displayValue: createPayrollDisplayValue(summary.totalWage, actualPayroll),
+      actualPayroll,
       ...toBreakdownDisplay(summary),
     };
   });
+  const actualCoverage = summarizeActualPayrollCoverage(
+    selectedMonthActuals,
+    workplaces.length,
+  );
 
   return {
     month: monthKey,
     totals: toBreakdownDisplay(totals),
+    totalsDisplayValue: createPayrollDisplayValue(
+      totals.totalWage,
+      actualCoverage.registeredWorkplaceCount > 0
+        ? {
+            taxableAmount: actualCoverage.taxableAmount,
+            nonTaxableAmount: actualCoverage.nonTaxableAmount,
+            totalAmount: actualCoverage.totalAmount,
+          }
+        : null,
+    ),
+    actualCoverage,
     byWorkplace: byWorkplace.sort(
-      (left, right) => right.totalWage - left.totalWage,
+      (left, right) =>
+        right.displayValue.displayAmount - left.displayValue.displayAmount,
     ),
   };
 }
@@ -581,11 +630,16 @@ export async function getPayrollDetailsWorkplaceYearlyForUser(
 
   const { fetchStartDate, fetchEndDate } = resolveFetchRange(periods);
   const workplaceIds = workplaces.map((workplace) => workplace.id);
-  const { shiftsByWorkplace, rulesByWorkplace } = await fetchShiftsAndRules(
-    workplaceIds,
-    fetchStartDate,
-    fetchEndDate,
-  );
+  const [
+    { shiftsByWorkplace, rulesByWorkplace },
+    actualPayrollByWorkplaceMonth,
+  ] = await Promise.all([
+    fetchShiftsAndRules(workplaceIds, fetchStartDate, fetchEndDate),
+    getActualPayrollMap({
+      workplaceIds,
+      monthKeys: months.map((month) => toMonthKeyUtc(month)),
+    }),
+  ]);
 
   const monthSummaryCache = new Map<string, PayrollBreakdownAccumulator>();
 
@@ -616,6 +670,8 @@ export async function getPayrollDetailsWorkplaceYearlyForUser(
 
   const yearlyByWorkplace = workplaces.map((workplace) => {
     const yearlyTotals = createEmptyBreakdownAccumulator();
+    const actualRows: Array<ActualPayrollRecord | null> = [];
+    let yearlyEstimatedTotal = 0;
 
     const monthRows = months.map((month, index) => {
       const monthKey = toMonthKeyUtc(month);
@@ -627,21 +683,47 @@ export async function getPayrollDetailsWorkplaceYearlyForUser(
 
       const summary = getMonthSummary(workplace, monthKey);
       mergeBreakdowns(yearlyTotals, summary);
+      yearlyEstimatedTotal += summary.totalWage;
+      const actualPayroll =
+        actualPayrollByWorkplaceMonth.get(
+          buildWorkplaceMonthKey(workplace.id, monthKey),
+        ) ?? null;
+      actualRows.push(actualPayroll);
 
       return {
         month: index + 1,
         monthKey,
         periodStartDate: toDateOnlyUtc(period.periodStartDate),
         periodEndDate: toDateOnlyUtc(period.periodEndDate),
+        displayValue: createPayrollDisplayValue(
+          summary.totalWage,
+          actualPayroll,
+        ),
+        actualPayroll,
         ...toBreakdownDisplay(summary),
       };
     });
+    const actualCoverage = summarizeActualPayrollCoverage(
+      actualRows,
+      months.length,
+    );
 
     return {
       workplaceId: workplace.id,
       workplaceName: workplace.name,
       workplaceColor: workplace.color,
       yearlyTotals: toBreakdownDisplay(yearlyTotals),
+      yearlyDisplayValue: createPayrollDisplayValue(
+        yearlyEstimatedTotal,
+        actualCoverage.registeredWorkplaceCount > 0
+          ? {
+              taxableAmount: actualCoverage.taxableAmount,
+              nonTaxableAmount: actualCoverage.nonTaxableAmount,
+              totalAmount: actualCoverage.totalAmount,
+            }
+          : null,
+      ),
+      actualCoverage,
       months: monthRows,
     };
   });
@@ -650,7 +732,8 @@ export async function getPayrollDetailsWorkplaceYearlyForUser(
     year,
     workplaces: yearlyByWorkplace.sort(
       (left, right) =>
-        right.yearlyTotals.totalWage - left.yearlyTotals.totalWage,
+        right.yearlyDisplayValue.displayAmount -
+        left.yearlyDisplayValue.displayAmount,
     ),
   };
 }

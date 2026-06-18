@@ -72,7 +72,7 @@ export function PayrollDetailsWorkplaceYearlyPageLoadingSkeleton() {
           給与詳細（勤務先毎表示）
         </h2>
         <p className="mt-2 text-sm text-muted-foreground">
-          勤務先毎の年次内訳を読み込み中です。
+          勤務先毎の年次実績を読み込み中です。
         </p>
       </header>
       <SpinnerPanel className="min-h-[360px]" label="給与詳細を読み込み中..." />
@@ -172,7 +172,7 @@ export function PayrollDetailsWorkplaceYearlyPageClient({
           </h2>
           <p className="text-sm text-muted-foreground">
             {displayYearNumber ? `${displayYearNumber}年` : displayYearValue}
-            受取分の勤務先別月次内訳を確認できます。
+            受取分の勤務先別月次実績を確認できます。
           </p>
         </div>
 
@@ -276,10 +276,32 @@ export function PayrollDetailsWorkplaceYearlyPageClient({
                           className="border-primary/30 bg-primary/5"
                         >
                           <CardHeader>
-                            <CardTitle>年間受取見込</CardTitle>
+                            <CardTitle>年間実績支給額</CardTitle>
                           </CardHeader>
-                          <CardContent className="text-xl font-semibold">
-                            {formatCurrency(workplace.yearlyTotals.totalWage)}
+                          <CardContent className="space-y-1">
+                            <p className="text-xl font-semibold">
+                              {formatCurrency(
+                                workplace.yearlyDisplayValue.displayAmount,
+                              )}
+                            </p>
+                            <p className="text-xs text-muted-foreground">
+                              課税{" "}
+                              {formatCurrency(
+                                workplace.actualCoverage.taxableAmount,
+                              )}{" "}
+                              / 非課税{" "}
+                              {formatCurrency(
+                                workplace.actualCoverage.nonTaxableAmount,
+                              )}
+                            </p>
+                            <p className="text-xs text-muted-foreground">
+                              {workplace.actualCoverage
+                                .registeredWorkplaceCount === 0
+                                ? "実給与は未登録です"
+                                : workplace.actualCoverage.isPartial
+                                  ? `実給与登録済み ${workplace.actualCoverage.registeredWorkplaceCount}/${workplace.actualCoverage.totalWorkplaceCount} か月`
+                                  : "12か月すべて実給与登録済み"}
+                            </p>
                           </CardContent>
                         </Card>
                         <Card size="sm">
@@ -339,8 +361,15 @@ export function PayrollDetailsWorkplaceYearlyPageClient({
                               <TableHead className="text-right">
                                 休日勤務金額
                               </TableHead>
+                              <TableHead className="text-right">概算</TableHead>
                               <TableHead className="text-right">
-                                月合計
+                                実績支給額
+                              </TableHead>
+                              <TableHead className="text-right">
+                                実績（課税）
+                              </TableHead>
+                              <TableHead className="text-right">
+                                実績（非課税）
                               </TableHead>
                             </TableRow>
                           </TableHeader>
@@ -380,6 +409,25 @@ export function PayrollDetailsWorkplaceYearlyPageClient({
                                 </TableCell>
                                 <TableCell className="bg-muted/40 text-right font-medium">
                                   {formatCurrency(month.totalWage)}
+                                </TableCell>
+                                <TableCell className="bg-primary/5 text-right font-medium text-primary">
+                                  {formatCurrency(
+                                    month.displayValue.displayAmount,
+                                  )}
+                                </TableCell>
+                                <TableCell className="text-right">
+                                  {month.actualPayroll
+                                    ? formatCurrency(
+                                        month.actualPayroll.taxableAmount,
+                                      )
+                                    : "-"}
+                                </TableCell>
+                                <TableCell className="text-right">
+                                  {month.actualPayroll
+                                    ? formatCurrency(
+                                        month.actualPayroll.nonTaxableAmount,
+                                      )
+                                    : "-"}
                                 </TableCell>
                               </TableRow>
                             ))}
