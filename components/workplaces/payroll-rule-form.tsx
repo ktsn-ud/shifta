@@ -359,7 +359,11 @@ export function PayrollRuleForm({
     [isEdit],
   );
 
-  const workplaceQuery = useQuery({
+  const {
+    data: workplaceData,
+    error: workplaceError,
+    isPending: isWorkplacePending,
+  } = useQuery({
     queryKey: queryKeys.workplaces.detailSummary({
       workplaceId,
     }),
@@ -381,7 +385,11 @@ export function PayrollRuleForm({
     refetchOnReconnect: false,
   });
 
-  const payrollRuleQuery = useQuery({
+  const {
+    data: payrollRuleData,
+    error: payrollRuleError,
+    isPending: isPayrollRulePending,
+  } = useQuery({
     queryKey: queryKeys.workplaces.payrollRuleDetail({
       workplaceId,
       ruleId: ruleId ?? "",
@@ -405,38 +413,32 @@ export function PayrollRuleForm({
     refetchOnReconnect: false,
   });
 
-  const workplace = workplaceQuery.data ?? null;
+  const workplace = workplaceData ?? null;
   const isLoading =
-    workplaceQuery.isPending ||
-    (isEdit && Boolean(ruleId) && payrollRuleQuery.isPending);
+    isWorkplacePending || (isEdit && Boolean(ruleId) && isPayrollRulePending);
 
   useEffect(() => {
-    if (!isEdit || !payrollRuleQuery.data) {
+    if (!isEdit || !payrollRuleData) {
       return;
     }
 
     setValues({
-      startDate: dateKeyFromApiDate(payrollRuleQuery.data.startDate),
-      endDate: payrollRuleQuery.data.endDate
-        ? shiftDateKeyByDays(
-            dateKeyFromApiDate(payrollRuleQuery.data.endDate),
-            -1,
-          )
+      startDate: dateKeyFromApiDate(payrollRuleData.startDate),
+      endDate: payrollRuleData.endDate
+        ? shiftDateKeyByDays(dateKeyFromApiDate(payrollRuleData.endDate), -1)
         : "",
-      baseHourlyWage: toNumberString(payrollRuleQuery.data.baseHourlyWage),
+      baseHourlyWage: toNumberString(payrollRuleData.baseHourlyWage),
       holidayAllowanceHourly: toNumberString(
-        payrollRuleQuery.data.holidayAllowanceHourly,
+        payrollRuleData.holidayAllowanceHourly,
       ),
-      nightPremiumRate: toNumberString(payrollRuleQuery.data.nightPremiumRate),
-      overtimePremiumRate: toNumberString(
-        payrollRuleQuery.data.overtimePremiumRate,
-      ),
+      nightPremiumRate: toNumberString(payrollRuleData.nightPremiumRate),
+      overtimePremiumRate: toNumberString(payrollRuleData.overtimePremiumRate),
       dailyOvertimeThreshold: toNumberString(
-        payrollRuleQuery.data.dailyOvertimeThreshold,
+        payrollRuleData.dailyOvertimeThreshold,
       ),
-      holidayType: payrollRuleQuery.data.holidayType,
+      holidayType: payrollRuleData.holidayType,
     });
-  }, [isEdit, payrollRuleQuery.data]);
+  }, [isEdit, payrollRuleData]);
 
   const handleSubmit = async () => {
     const validationErrors = validate(values);
@@ -559,14 +561,14 @@ export function PayrollRuleForm({
     errors.form ??
     (isEdit && !ruleId
       ? "編集対象の給与ルールIDが指定されていません。"
-      : payrollRuleQuery.error
+      : payrollRuleError
         ? toUserFacingMessage(
-            payrollRuleQuery.error,
+            payrollRuleError,
             "給与ルール情報の取得に失敗しました。",
           )
-        : workplaceQuery.error
+        : workplaceError
           ? toUserFacingMessage(
-              workplaceQuery.error,
+              workplaceError,
               "勤務先情報の取得に失敗しました。",
             )
           : undefined);

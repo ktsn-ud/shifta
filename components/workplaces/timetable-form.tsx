@@ -312,7 +312,11 @@ export function TimetableForm({
   );
   const listHref = `/my/workplaces/${workplaceId}/timetables`;
 
-  const workplaceQuery = useQuery({
+  const {
+    data: workplaceData,
+    error: workplaceError,
+    isPending: isWorkplacePending,
+  } = useQuery({
     queryKey: queryKeys.workplaces.detailSummary({
       workplaceId,
     }),
@@ -334,9 +338,13 @@ export function TimetableForm({
     refetchOnReconnect: false,
   });
 
-  const workplace = workplaceQuery.data ?? null;
+  const workplace = workplaceData ?? null;
 
-  const timetablesQuery = useQuery({
+  const {
+    data: timetablesData,
+    error: timetablesError,
+    isPending: isTimetablesPending,
+  } = useQuery({
     queryKey: queryKeys.workplaces.timetables({
       workplaceId,
     }),
@@ -353,9 +361,7 @@ export function TimetableForm({
         },
       }),
     enabled:
-      isEdit &&
-      Boolean(timetableId) &&
-      workplaceQuery.data?.type === "CRAM_SCHOOL",
+      isEdit && Boolean(timetableId) && workplaceData?.type === "CRAM_SCHOOL",
     staleTime: 5 * 60 * 1000,
     gcTime: 15 * 60 * 1000,
     refetchOnWindowFocus: false,
@@ -363,19 +369,19 @@ export function TimetableForm({
   });
 
   const editingTarget = useMemo(() => {
-    if (!isEdit || !timetableId || !timetablesQuery.data) {
+    if (!isEdit || !timetableId || !timetablesData) {
       return null;
     }
 
-    return timetablesQuery.data.find((set) => set.id === timetableId) ?? null;
-  }, [isEdit, timetableId, timetablesQuery.data]);
+    return timetablesData.find((set) => set.id === timetableId) ?? null;
+  }, [isEdit, timetableId, timetablesData]);
 
   const isLoading =
-    workplaceQuery.isPending ||
+    isWorkplacePending ||
     (isEdit &&
       Boolean(timetableId) &&
       workplace?.type === "CRAM_SCHOOL" &&
-      timetablesQuery.isPending);
+      isTimetablesPending);
 
   useEffect(() => {
     if (!isEdit || !editingTarget) {
@@ -679,20 +685,20 @@ export function TimetableForm({
     errors.form ??
     (isEdit && !timetableId
       ? "編集対象の時間割セットIDが指定されていません。"
-      : workplaceQuery.error
+      : workplaceError
         ? toUserFacingMessage(
-            workplaceQuery.error,
+            workplaceError,
             "勤務先情報の取得に失敗しました。",
           )
-        : timetablesQuery.error
+        : timetablesError
           ? toUserFacingMessage(
-              timetablesQuery.error,
+              timetablesError,
               "時間割データの読み込みに失敗しました。",
             )
           : isEdit &&
               timetableId &&
               workplace?.type === "CRAM_SCHOOL" &&
-              timetablesQuery.data &&
+              timetablesData &&
               !editingTarget
             ? "編集対象の時間割セットが見つかりません。"
             : null);
