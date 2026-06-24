@@ -130,7 +130,7 @@ export function ShiftListModal({
           <DialogHeader>
             <DialogTitle>{formatDate(targetDate)} のシフト</DialogTitle>
             <DialogDescription>
-              行クリックで編集画面へ遷移します。削除は各行の削除ボタンから実行します。
+              編集ボタンから編集画面へ遷移します。削除は各行の削除ボタンから実行します。
             </DialogDescription>
           </DialogHeader>
 
@@ -157,16 +157,7 @@ export function ShiftListModal({
               {sortedShifts.map((shift) => (
                 <div
                   key={shift.id}
-                  role="button"
-                  tabIndex={0}
-                  onClick={() => onEditShift(shift.id)}
-                  onKeyDown={(event) => {
-                    if (event.key === "Enter" || event.key === " ") {
-                      event.preventDefault();
-                      onEditShift(shift.id);
-                    }
-                  }}
-                  className="rounded-lg border bg-card p-4 shadow-sm transition-colors hover:bg-muted/40 md:grid md:grid-cols-[1.1fr_1.1fr_0.9fr_0.6fr_0.6fr] md:items-center md:gap-4 md:p-3"
+                  className="rounded-lg border bg-card p-4 shadow-sm md:grid md:grid-cols-[1.1fr_1.1fr_0.9fr_0.6fr_0.6fr] md:items-center md:gap-4 md:p-3"
                 >
                   <div className="space-y-1 md:space-y-0">
                     <p className="text-xs text-muted-foreground md:hidden">
@@ -217,6 +208,14 @@ export function ShiftListModal({
                   </div>
 
                   <div className="mt-4 flex flex-wrap justify-end gap-2 md:mt-0">
+                    <Button
+                      type="button"
+                      variant="secondary"
+                      size="sm"
+                      onClick={() => onEditShift(shift.id)}
+                    >
+                      編集
+                    </Button>
                     {shift.googleSyncStatus === "FAILED" ? (
                       <Button
                         type="button"

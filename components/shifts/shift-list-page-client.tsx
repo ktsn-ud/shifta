@@ -653,17 +653,8 @@ export function ShiftListPageClient({
                         return (
                           <TableRow
                             key={shift.id}
-                            role="button"
-                            tabIndex={0}
                             data-state={isSelected ? "selected" : undefined}
-                            className="cursor-pointer transition-colors hover:bg-muted/30 data-[state=selected]:bg-primary/10"
-                            onClick={() => handleEditShift(shift.id)}
-                            onKeyDown={(event) => {
-                              if (event.key === "Enter" || event.key === " ") {
-                                event.preventDefault();
-                                handleEditShift(shift.id);
-                              }
-                            }}
+                            className="transition-colors data-[state=selected]:bg-primary/10"
                           >
                             <TableCell className="w-10">
                               <div
@@ -697,7 +688,13 @@ export function ShiftListPageClient({
                                     backgroundColor: shift.workplace.color,
                                   }}
                                 />
-                                <span>{workplaceLabel}</span>
+                                <button
+                                  type="button"
+                                  className="text-left hover:underline"
+                                  onClick={() => handleEditShift(shift.id)}
+                                >
+                                  {workplaceLabel}
+                                </button>
                               </div>
                             </TableCell>
                             <TableCell>{shift.breakMinutes}分</TableCell>
