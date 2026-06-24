@@ -91,6 +91,7 @@ function renderShiftListPage(
         initialMonthShifts={[]}
         initialMonthStartDate="2026-02-01"
         initialMonthEndDate="2026-02-28"
+        todayDate="2026-03-15"
         {...override}
       />
     </QueryClientProvider>,

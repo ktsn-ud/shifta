@@ -33,6 +33,7 @@ import {
 } from "@/components/ui/table";
 import {
   addMonths,
+  dateFromDateKey,
   dateKeyFromApiDate,
   formatMonthLabel,
   fromMonthInputValue,
@@ -137,6 +138,13 @@ function compareNullableEstimatedPay(
   return direction === "asc" ? left - right : right - left;
 }
 
+function isSameMonth(left: Date, right: Date): boolean {
+  return (
+    left.getFullYear() === right.getFullYear() &&
+    left.getMonth() === right.getMonth()
+  );
+}
+
 function compareShifts(
   left: MonthShift,
   right: MonthShift,
@@ -214,6 +222,7 @@ type ShiftListPageClientProps = {
   initialMonthShifts: MonthShift[];
   initialMonthStartDate: string;
   initialMonthEndDate: string;
+  todayDate: string;
 };
 
 export function ShiftListPageClient({
@@ -222,6 +231,7 @@ export function ShiftListPageClient({
   initialMonthShifts,
   initialMonthStartDate,
   initialMonthEndDate,
+  todayDate,
 }: ShiftListPageClientProps) {
   const router = useRouter();
   const queryClient = getBrowserQueryClient();
@@ -262,10 +272,15 @@ export function ShiftListPageClient({
     );
   }, [shifts, sortState]);
 
-  const now = new Date();
-  const isCurrentMonth =
-    displayMonth.getFullYear() === now.getFullYear() &&
-    displayMonth.getMonth() === now.getMonth();
+  const currentMonth = useMemo(
+    () => startOfMonth(dateFromDateKey(todayDate) ?? new Date()),
+    [todayDate],
+  );
+  const requestedMonth = useMemo(
+    () => startOfMonth(fromMonthInputValue(initialMonth) ?? new Date()),
+    [initialMonth],
+  );
+  const isCurrentMonth = isSameMonth(displayMonth, currentMonth);
   const selectedCount = selectedShiftIds.size;
   const monthValue = toMonthInputValue(displayMonth);
 
@@ -277,38 +292,19 @@ export function ShiftListPageClient({
     !isAllSelected;
 
   useEffect(() => {
-    const nextMonth = startOfMonth(
-      fromMonthInputValue(initialMonth) ?? new Date(),
+    setMonth((current) =>
+      isSameMonth(current, requestedMonth) ? current : requestedMonth,
     );
-
-    setMonth((current) => {
-      const isSameMonth =
-        current.getFullYear() === nextMonth.getFullYear() &&
-        current.getMonth() === nextMonth.getMonth();
-
-      return isSameMonth ? current : nextMonth;
-    });
-    setDisplayMonth((current) => {
-      const isSameMonth =
-        current.getFullYear() === nextMonth.getFullYear() &&
-        current.getMonth() === nextMonth.getMonth();
-
-      return isSameMonth ? current : nextMonth;
-    });
-  }, [initialMonth]);
+  }, [requestedMonth]);
 
   useEffect(() => {
     if (isPlaceholderData) {
       return;
     }
 
-    setDisplayMonth((current) => {
-      const isSameMonth =
-        current.getFullYear() === month.getFullYear() &&
-        current.getMonth() === month.getMonth();
-
-      return isSameMonth ? current : month;
-    });
+    setDisplayMonth((current) =>
+      isSameMonth(current, month) ? current : month,
+    );
   }, [isPlaceholderData, month]);
 
   useEffect(() => {
@@ -490,7 +486,7 @@ export function ShiftListPageClient({
           <Button
             type="button"
             variant="outline"
-            onClick={() => setMonth(startOfMonth(new Date()))}
+            onClick={() => setMonth(currentMonth)}
             disabled={isCurrentMonth || isRefreshing}
           >
             今月に戻る
