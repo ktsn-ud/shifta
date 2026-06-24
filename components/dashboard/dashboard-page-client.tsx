@@ -54,6 +54,7 @@ type DashboardPageClientProps = {
   initialMonthEndDate: string;
   initialUnconfirmedShiftCount: number;
   nextMonthPaymentAmount: number | null;
+  todayDate: string;
 };
 
 const GOOGLE_TOKEN_EXPIRED_DESCRIPTION =
@@ -68,17 +69,23 @@ function formatCurrency(value: number): string {
   return currencyFormatter.format(value);
 }
 
-function formatCalendarMonthLabel(month: Date): string {
-  const now = new Date();
-  const isSameYear = month.getFullYear() === now.getFullYear();
+function isSameMonth(left: Date, right: Date): boolean {
+  return (
+    left.getFullYear() === right.getFullYear() &&
+    left.getMonth() === right.getMonth()
+  );
+}
+
+function formatCalendarMonthLabel(month: Date, currentDate: Date): string {
+  const isSameYear = month.getFullYear() === currentDate.getFullYear();
   const monthLabel = `${month.getMonth() + 1}月`;
   return isSameYear ? monthLabel : `${month.getFullYear()}年${monthLabel}`;
 }
 
-function formatSummaryPeriodLabel(month: Date): string {
-  const now = new Date();
-  const isSameYear = month.getFullYear() === now.getFullYear();
-  const isCurrentMonth = isSameYear && month.getMonth() === now.getMonth();
+function formatSummaryPeriodLabel(month: Date, currentDate: Date): string {
+  const isSameYear = month.getFullYear() === currentDate.getFullYear();
+  const isCurrentMonth =
+    isSameYear && month.getMonth() === currentDate.getMonth();
 
   if (isCurrentMonth) {
     return "今月";
@@ -130,6 +137,7 @@ export function DashboardPageClient({
   initialMonthEndDate,
   initialUnconfirmedShiftCount,
   nextMonthPaymentAmount,
+  todayDate,
 }: DashboardPageClientProps) {
   const router = useRouter();
   const queryClient = getBrowserQueryClient();
@@ -142,9 +150,10 @@ export function DashboardPageClient({
     const initialMonthDate = dateFromDateKey(initialMonthStartDate);
     return startOfMonth(initialMonthDate ?? new Date());
   });
-  const [selectedDate, setSelectedDate] = useState(() => new Date());
+  const [selectedDate, setSelectedDate] = useState(
+    () => dateFromDateKey(todayDate) ?? new Date(),
+  );
   const [modalOpen, setModalOpen] = useState(false);
-  const now = new Date();
 
   const {
     shifts,
@@ -173,9 +182,14 @@ export function DashboardPageClient({
   }, [shifts]);
 
   const summary = useMemo(() => summarizeShifts(shifts), [shifts]);
+  const currentDate = useMemo(
+    () => dateFromDateKey(todayDate) ?? new Date(),
+    [todayDate],
+  );
+  const currentMonth = useMemo(() => startOfMonth(currentDate), [currentDate]);
   const summaryPeriodLabel = useMemo(
-    () => formatSummaryPeriodLabel(displayMonth),
-    [displayMonth],
+    () => formatSummaryPeriodLabel(displayMonth, currentDate),
+    [currentDate, displayMonth],
   );
   const nextPaymentMonthValue = useMemo(
     () => toMonthInputValue(addMonths(displayMonth, 1)),
@@ -189,15 +203,24 @@ export function DashboardPageClient({
     () => startOfMonth(dateFromDateKey(initialMonthStartDate) ?? new Date()),
     [initialMonthStartDate],
   );
-  const isInitialDashboardMonth = useMemo(() => {
-    return (
-      displayMonth.getFullYear() === initialDashboardMonth.getFullYear() &&
-      displayMonth.getMonth() === initialDashboardMonth.getMonth()
-    );
-  }, [displayMonth, initialDashboardMonth]);
-  const isCurrentMonth =
-    displayMonth.getFullYear() === now.getFullYear() &&
-    displayMonth.getMonth() === now.getMonth();
+  const monthFromQuery = useMemo(() => {
+    const rawMonth = searchParams.get("month");
+    if (!rawMonth) {
+      return null;
+    }
+
+    const parsed = fromMonthInputValue(rawMonth);
+    return parsed ? startOfMonth(parsed) : null;
+  }, [searchParams]);
+  const requestedMonth = useMemo(
+    () => monthFromQuery ?? initialDashboardMonth,
+    [initialDashboardMonth, monthFromQuery],
+  );
+  const isInitialDashboardMonth = useMemo(
+    () => isSameMonth(displayMonth, initialDashboardMonth),
+    [displayMonth, initialDashboardMonth],
+  );
+  const isCurrentMonth = isSameMonth(displayMonth, currentMonth);
   const selectedDateKey = toDateKey(selectedDate);
   const selectedDateShifts = shiftsByDate.get(selectedDateKey) ?? [];
   const failedShiftIds = useMemo(() => {
@@ -209,63 +232,21 @@ export function DashboardPageClient({
   const [isBulkRetrying, setIsBulkRetrying] = useState(false);
   const { isSignOutScheduled, scheduleSignOut } =
     useGoogleTokenExpiredSignOut();
-  const monthFromQuery = useMemo(() => {
-    const rawMonth = searchParams.get("month");
-    if (!rawMonth) {
-      return null;
-    }
-
-    const parsed = fromMonthInputValue(rawMonth);
-    return parsed ? startOfMonth(parsed) : null;
-  }, [searchParams]);
 
   useEffect(() => {
-    const nextMonth = startOfMonth(
-      dateFromDateKey(initialMonthStartDate) ?? new Date(),
+    setMonth((current) =>
+      isSameMonth(current, requestedMonth) ? current : requestedMonth,
     );
-
-    setMonth((current) => {
-      const isSameMonth =
-        current.getFullYear() === nextMonth.getFullYear() &&
-        current.getMonth() === nextMonth.getMonth();
-
-      return isSameMonth ? current : nextMonth;
-    });
-    setDisplayMonth((current) => {
-      const isSameMonth =
-        current.getFullYear() === nextMonth.getFullYear() &&
-        current.getMonth() === nextMonth.getMonth();
-
-      return isSameMonth ? current : nextMonth;
-    });
-  }, [initialMonthStartDate]);
-
-  useEffect(() => {
-    if (!monthFromQuery) {
-      return;
-    }
-
-    setMonth((current) => {
-      const isSameMonth =
-        current.getFullYear() === monthFromQuery.getFullYear() &&
-        current.getMonth() === monthFromQuery.getMonth();
-
-      return isSameMonth ? current : monthFromQuery;
-    });
-  }, [monthFromQuery]);
+  }, [requestedMonth]);
 
   useEffect(() => {
     if (isPlaceholderData) {
       return;
     }
 
-    setDisplayMonth((current) => {
-      const isSameMonth =
-        current.getFullYear() === month.getFullYear() &&
-        current.getMonth() === month.getMonth();
-
-      return isSameMonth ? current : month;
-    });
+    setDisplayMonth((current) =>
+      isSameMonth(current, month) ? current : month,
+    );
   }, [isPlaceholderData, month]);
 
   const nextPaymentSummaryQuery = usePayrollSummaryQuery({
@@ -404,7 +385,7 @@ export function DashboardPageClient({
           <Button
             type="button"
             variant="outline"
-            onClick={() => setMonth(startOfMonth(new Date()))}
+            onClick={() => setMonth(currentMonth)}
             disabled={isCurrentMonth}
           >
             今月に戻る
@@ -412,7 +393,7 @@ export function DashboardPageClient({
           <Button
             type="button"
             variant="outline"
-            onClick={() => handleCreateShift(new Date())}
+            onClick={() => handleCreateShift(currentDate)}
           >
             新規シフト登録
           </Button>
@@ -500,7 +481,7 @@ export function DashboardPageClient({
             <CardHeader className="gap-2">
               <CardTitle className="text-base">翌月支給額</CardTitle>
               <CardDescription>
-                {formatCalendarMonthLabel(nextPaymentMonthDate)}
+                {formatCalendarMonthLabel(nextPaymentMonthDate, currentDate)}
                 に受け取る見込み額
               </CardDescription>
             </CardHeader>

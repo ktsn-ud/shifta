@@ -89,6 +89,7 @@ async function DashboardPageContent({ month }: { month: Date }) {
       initialMonthEndDate={endDate}
       initialUnconfirmedShiftCount={initialUnconfirmedShiftCount}
       nextMonthPaymentAmount={null}
+      todayDate={toDateOnlyString(startOfUtcDay(new Date()))}
     />
   );
 }
