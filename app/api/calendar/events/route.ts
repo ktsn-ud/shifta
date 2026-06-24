@@ -1,4 +1,4 @@
-import { connection } from "next/server";
+import { after, connection } from "next/server";
 import { createHash } from "node:crypto";
 import { calendar_v3 } from "googleapis";
 import { requireCurrentUser } from "@/lib/api/current-user";
@@ -296,7 +296,6 @@ function readCalendarEventsCacheStale(
   }
 
   if (cached.staleExpiresAt <= Date.now()) {
-    calendarEventsCache.delete(cacheKey);
     return null;
   }
 
@@ -306,10 +305,8 @@ function readCalendarEventsCacheStale(
 function writeCalendarEventsCache(
   cacheKey: string,
   data: CalendarEventsResponseData,
+  now: number,
 ): void {
-  const now = Date.now();
-  pruneCalendarEventsCache(now);
-
   calendarEventsCache.set(cacheKey, {
     data,
     expiresAt: now + CALENDAR_EVENTS_CACHE_TTL_MS,
@@ -529,6 +526,7 @@ function aggregateEvent(
 export async function GET(request: Request) {
   await connection();
   let cacheKey: string | null = null;
+  let pendingCacheWrite: CalendarEventsResponseData | null = null;
 
   try {
     const current = await requireCurrentUser();
@@ -547,7 +545,17 @@ export async function GET(request: Request) {
     }
 
     cacheKey = toCacheKey(current.user.id, range.month, requestedCalendarIds);
-    pruneCalendarEventsCache(Date.now());
+    after(() => {
+      const now = Date.now();
+      pruneCalendarEventsCache(now);
+
+      if (!cacheKey || !pendingCacheWrite) {
+        return;
+      }
+
+      writeCalendarEventsCache(cacheKey, pendingCacheWrite, now);
+    });
+
     const cached = readCalendarEventsCacheFresh(cacheKey);
     if (cached) {
       return jsonNoStore({
@@ -648,7 +656,7 @@ export async function GET(request: Request) {
       ),
       dates,
     };
-    writeCalendarEventsCache(cacheKey, responseData);
+    pendingCacheWrite = responseData;
 
     return jsonNoStore({
       data: responseData,
