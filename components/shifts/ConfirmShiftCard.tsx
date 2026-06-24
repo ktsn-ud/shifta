@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useState } from "react";
 import { useRouter } from "next/navigation";
 import { CheckIcon } from "lucide-react";
 import { toast } from "sonner";
@@ -42,6 +42,10 @@ type ValidationResult = {
   endTime: string;
   breakMinutes: number;
 };
+
+export function ConfirmShiftCard(props: ConfirmShiftCardProps) {
+  return <ConfirmShiftCardContent key={props.shift.id} {...props} />;
+}
 
 const GOOGLE_TOKEN_EXPIRED_DESCRIPTION =
   "3秒後にログアウトします。再度Googleアカウントでログインしてください。";
@@ -99,7 +103,7 @@ function validateShiftInput(
   };
 }
 
-export function ConfirmShiftCard({
+function ConfirmShiftCardContent({
   shift,
   onActionCompleted,
 }: ConfirmShiftCardProps) {
@@ -115,15 +119,6 @@ export function ConfirmShiftCard({
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
   const { isSignOutScheduled, scheduleSignOut } =
     useGoogleTokenExpiredSignOut();
-
-  useEffect(() => {
-    setStartTime(shift.startTime);
-    setEndTime(shift.endTime);
-    setBreakMinutes(String(shift.breakMinutes));
-    setIsOvernightDialogOpen(false);
-    setPendingConfirmation(null);
-    setErrorMessage(null);
-  }, [shift.breakMinutes, shift.endTime, shift.id, shift.startTime]);
 
   const isMutating = isConfirming || isSignOutScheduled;
   const startTimeInputId = `${shift.id}-confirm-start-time`;

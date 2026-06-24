@@ -57,6 +57,7 @@ export function EditShiftFormPageClient({
 }: EditShiftFormPageClientProps) {
   return (
     <EditShiftForm
+      key={`${shiftId}:${returnMonth ?? ""}:${returnTo}`}
       mode="edit"
       shiftId={shiftId}
       returnMonth={returnMonth}

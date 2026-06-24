@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useMemo, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { useRouter } from "next/navigation";
 import { toast } from "sonner";
@@ -560,6 +560,36 @@ function createInitialFormState(defaultDate: string): FormState {
   };
 }
 
+function createEditFormState(detail: ShiftDetail): FormState {
+  return {
+    workplaceId: detail.workplaceId,
+    date: dateKeyFromApiDate(detail.date),
+    shiftType: detail.shiftType,
+    comment: detail.comment ?? "",
+    startTime: toTimeOnly(detail.startTime),
+    endTime: toTimeOnly(detail.endTime),
+    breakMinutes: String(detail.breakMinutes),
+    timetableSetId: detail.lessonRange?.timetableSetId ?? "",
+    startPeriod: detail.lessonRange
+      ? String(detail.lessonRange.startPeriod)
+      : "",
+    endPeriod: detail.lessonRange ? String(detail.lessonRange.endPeriod) : "",
+  };
+}
+
+function getInitialShiftTimes(
+  detail: ShiftDetail | null,
+): ShiftTimePair | null {
+  if (!detail) {
+    return null;
+  }
+
+  return {
+    startTime: toTimeOnly(detail.startTime),
+    endTime: toTimeOnly(detail.endTime),
+  };
+}
+
 export function ShiftForm({
   mode,
   shiftId,
@@ -573,35 +603,33 @@ export function ShiftForm({
     ? initialDate
     : toDateKey(new Date());
 
-  const [form, setForm] = useState<FormState>(() =>
-    createInitialFormState(defaultDate),
-  );
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [errors, setErrors] = useState<FormErrors>({});
   const [warningMessage, setWarningMessage] = useState<string | null>(null);
-  const [initialShiftTimes, setInitialShiftTimes] =
-    useState<ShiftTimePair | null>(null);
   const [isOvernightDialogOpen, setIsOvernightDialogOpen] = useState(false);
   const [pendingOvernightTimes, setPendingOvernightTimes] =
     useState<ShiftTimePair | null>(null);
+  const [formDraft, setFormDraft] = useState<FormState | null>(null);
   const createModeDateRef = useRef<string | null>(
     mode === "create" ? defaultDate : null,
   );
   const { isSignOutScheduled, scheduleSignOut } =
     useGoogleTokenExpiredSignOut();
 
-  const resetCreateFormState = (date: string) => {
-    setForm(createInitialFormState(date));
-    setIsSubmitting(false);
-    setErrors({});
-    setWarningMessage(null);
-    setInitialShiftTimes(null);
-    setIsOvernightDialogOpen(false);
-    setPendingOvernightTimes(null);
-  };
+  const resetFormState = useCallback(
+    (date: string) => {
+      setFormDraft(mode === "create" ? createInitialFormState(date) : null);
+      setIsSubmitting(false);
+      setErrors({});
+      setWarningMessage(null);
+      setIsOvernightDialogOpen(false);
+      setPendingOvernightTimes(null);
+    },
+    [mode],
+  );
 
   const { markForResetOnRouteHidden } = useResetOnRouteHidden(() => {
-    resetCreateFormState(defaultDate);
+    resetFormState(defaultDate);
   });
   const queryClient = getBrowserQueryClient();
   const loadQueryUserId = "self";
@@ -632,8 +660,8 @@ export function ShiftForm({
     }
 
     createModeDateRef.current = defaultDate;
-    resetCreateFormState(defaultDate);
-  }, [defaultDate, mode]);
+    resetFormState(defaultDate);
+  }, [defaultDate, mode, resetFormState]);
 
   const workplacesQuery = useQuery({
     queryKey: queryKeys.workplaces.list({
@@ -689,11 +717,39 @@ export function ShiftForm({
   const isShiftLoading =
     mode === "edit" && Boolean(shiftId) && shiftDetailQuery.isPending;
 
+  const resolvedInitialForm = useMemo(() => {
+    if (mode === "edit" && shiftDetailQuery.data) {
+      return createEditFormState(shiftDetailQuery.data);
+    }
+
+    return createInitialFormState(defaultDate);
+  }, [defaultDate, mode, shiftDetailQuery.data]);
+  const form = formDraft ?? resolvedInitialForm;
+  const initialShiftTimes = useMemo(
+    () =>
+      mode === "edit"
+        ? getInitialShiftTimes(shiftDetailQuery.data ?? null)
+        : null,
+    [mode, shiftDetailQuery.data],
+  );
+
+  const applyFormUpdate = useCallback(
+    (updater: FormState | ((current: FormState) => FormState)) => {
+      setFormDraft((current) => {
+        const currentForm = current ?? resolvedInitialForm;
+
+        return typeof updater === "function" ? updater(currentForm) : updater;
+      });
+    },
+    [resolvedInitialForm],
+  );
+
   const selectedWorkplace = useMemo(() => {
     return workplaces.find((workplace) => workplace.id === form.workplaceId);
   }, [form.workplaceId, workplaces]);
   const selectedWorkplaceId = form.workplaceId;
   const selectedWorkplaceType = selectedWorkplace?.type;
+  const hasEditSeed = mode !== "edit" || Boolean(shiftDetailQuery.data);
 
   const workplacePayrollCycleQuery = useQuery({
     queryKey: queryKeys.workplaces.editDetail({
@@ -895,42 +951,7 @@ export function ShiftForm({
   });
 
   useEffect(() => {
-    if (mode !== "edit") {
-      setInitialShiftTimes(null);
-      return;
-    }
-    if (!shiftDetailQuery.data) {
-      return;
-    }
-
-    const parsedStartTime = toTimeOnly(shiftDetailQuery.data.startTime);
-    const parsedEndTime = toTimeOnly(shiftDetailQuery.data.endTime);
-
-    setForm((current) => ({
-      ...current,
-      workplaceId: shiftDetailQuery.data.workplaceId,
-      date: dateKeyFromApiDate(shiftDetailQuery.data.date),
-      shiftType: shiftDetailQuery.data.shiftType,
-      comment: shiftDetailQuery.data.comment ?? "",
-      startTime: parsedStartTime,
-      endTime: parsedEndTime,
-      breakMinutes: String(shiftDetailQuery.data.breakMinutes),
-      timetableSetId: shiftDetailQuery.data.lessonRange?.timetableSetId ?? "",
-      startPeriod: shiftDetailQuery.data.lessonRange
-        ? String(shiftDetailQuery.data.lessonRange.startPeriod)
-        : "",
-      endPeriod: shiftDetailQuery.data.lessonRange
-        ? String(shiftDetailQuery.data.lessonRange.endPeriod)
-        : "",
-    }));
-    setInitialShiftTimes({
-      startTime: parsedStartTime,
-      endTime: parsedEndTime,
-    });
-  }, [mode, shiftDetailQuery.data]);
-
-  useEffect(() => {
-    if (workplaces.length === 0) {
+    if (!hasEditSeed || workplaces.length === 0) {
       return;
     }
 
@@ -953,18 +974,22 @@ export function ShiftForm({
       }
     }
 
-    setForm((current) => ({
+    applyFormUpdate((current) => ({
       ...current,
       workplaceId: nextWorkplaceId,
     }));
-  }, [form.workplaceId, mode, workplaces]);
+  }, [applyFormUpdate, form.workplaceId, hasEditSeed, mode, workplaces]);
 
   useEffect(() => {
-    if (selectedWorkplaceType === "CRAM_SCHOOL") {
+    if (
+      !hasEditSeed ||
+      !selectedWorkplaceType ||
+      selectedWorkplaceType === "CRAM_SCHOOL"
+    ) {
       return;
     }
 
-    setForm((current) => {
+    applyFormUpdate((current) => {
       if (
         current.shiftType === "NORMAL" &&
         !current.timetableSetId &&
@@ -982,7 +1007,7 @@ export function ShiftForm({
         endPeriod: "",
       };
     });
-  }, [selectedWorkplaceType]);
+  }, [applyFormUpdate, hasEditSeed, selectedWorkplaceType]);
 
   useEffect(() => {
     if (timetableSetsQuery.error) {
@@ -999,7 +1024,7 @@ export function ShiftForm({
       return;
     }
 
-    setForm((current) => {
+    applyFormUpdate((current) => {
       if (current.shiftType === "LESSON") {
         return current;
       }
@@ -1009,14 +1034,14 @@ export function ShiftForm({
         shiftType: "LESSON",
       };
     });
-  }, [mode, selectedWorkplaceId, selectedWorkplaceType]);
+  }, [applyFormUpdate, mode, selectedWorkplaceId, selectedWorkplaceType]);
 
   useEffect(() => {
-    if (selectedWorkplaceType !== "CRAM_SCHOOL") {
+    if (!hasEditSeed || selectedWorkplaceType !== "CRAM_SCHOOL") {
       return;
     }
 
-    setForm((current) => {
+    applyFormUpdate((current) => {
       if (current.shiftType !== "LESSON") {
         return current;
       }
@@ -1088,7 +1113,9 @@ export function ShiftForm({
       };
     });
   }, [
+    applyFormUpdate,
     form.shiftType,
+    hasEditSeed,
     isTimetableLoading,
     mode,
     selectedWorkplaceType,
@@ -1096,7 +1123,7 @@ export function ShiftForm({
   ]);
 
   function updateForm<K extends keyof FormState>(key: K, value: FormState[K]) {
-    setForm((current) => ({
+    applyFormUpdate((current) => ({
       ...current,
       [key]: value,
     }));
@@ -1716,7 +1743,7 @@ export function ShiftForm({
                     const nextType = value as ShiftType;
                     setWarningMessage(null);
                     setErrors({});
-                    setForm((current) => ({
+                    applyFormUpdate((current) => ({
                       ...current,
                       shiftType: nextType,
                     }));
@@ -1769,7 +1796,7 @@ export function ShiftForm({
                         ? String(periods[periods.length - 1])
                         : "";
 
-                      setForm((current) => ({
+                      applyFormUpdate((current) => ({
                         ...current,
                         timetableSetId: nextSetId,
                         startPeriod: first,
