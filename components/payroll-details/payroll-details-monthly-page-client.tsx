@@ -15,12 +15,7 @@ import { SpinnerPanel } from "@/components/ui/spinner";
 import { PayrollDetailsViewSwitch } from "@/components/payroll-details/payroll-details-view-switch";
 import { ValueFrame } from "@/components/payroll-details/value-frame";
 import { formatCurrency } from "@/components/payroll-details/format";
-import {
-  formatMonthLabel,
-  fromMonthInputValue,
-  startOfMonth,
-  toMonthInputValue,
-} from "@/lib/calendar/date";
+import { formatMonthLabel, fromMonthInputValue } from "@/lib/calendar/date";
 import { toErrorMessage } from "@/lib/messages";
 import { usePayrollDetailsMonthlyQuery } from "@/lib/query/queries/payroll";
 import { type PayrollDetailsMonthlyResult } from "@/lib/payroll/details";
@@ -28,6 +23,7 @@ import { type PayrollDetailsMonthlyResult } from "@/lib/payroll/details";
 type PayrollDetailsMonthlyPageClientProps = {
   currentUserId: string;
   initialMonth: string;
+  currentMonthValue: string;
   initialDetails: PayrollDetailsMonthlyResult;
 };
 
@@ -53,13 +49,13 @@ export function PayrollDetailsMonthlyPageLoadingSkeleton() {
 export function PayrollDetailsMonthlyPageClient({
   currentUserId,
   initialMonth,
+  currentMonthValue,
   initialDetails,
 }: PayrollDetailsMonthlyPageClientProps) {
   const [draftMonthValue, setDraftMonthValue] = useState(initialMonth);
   const [requestedMonthValue, setRequestedMonthValue] = useState(initialMonth);
   const [displayMonthValue, setDisplayMonthValue] = useState(initialMonth);
 
-  const currentMonthValue = toMonthInputValue(startOfMonth(new Date()));
   const isValidRequestedMonth =
     fromMonthInputValue(requestedMonthValue) !== null;
   const canApplyMonth =
