@@ -42,6 +42,7 @@ type MonthCalendarShift = {
 type MonthCalendarProps = {
   month: Date;
   shifts: MonthCalendarShift[];
+  todayKey: string;
   onDateClick: (date: Date) => void;
   onNavigatePrev: () => void;
   onNavigateNext: () => void;
@@ -116,12 +117,11 @@ function formatWorkplaceLabel(shift: MonthCalendarShift): string {
 export function MonthCalendar({
   month,
   shifts,
+  todayKey,
   onDateClick,
   onNavigatePrev,
   onNavigateNext,
 }: MonthCalendarProps) {
-  const todayKey = toDateKey(new Date());
-
   const shiftMap = useMemo(() => {
     const grouped = new Map<string, MonthCalendarShift[]>();
     for (const shift of shifts) {

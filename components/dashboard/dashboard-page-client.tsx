@@ -529,6 +529,7 @@ export function DashboardPageClient({
           <MonthCalendar
             month={displayMonth}
             shifts={shifts}
+            todayKey={todayDate}
             onNavigatePrev={() => setMonth((current) => addMonths(current, -1))}
             onNavigateNext={() => setMonth((current) => addMonths(current, 1))}
             onDateClick={(date) => {
