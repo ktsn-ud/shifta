@@ -362,6 +362,7 @@ describe("ShiftListPageClient", () => {
     await user.click(screen.getByRole("button", { name: "次月" }));
 
     expect(screen.getByText("勤務先A")).toBeInTheDocument();
+    expect(screen.getByText("2026年3月")).toBeInTheDocument();
     expect(screen.getByText("最新データを更新中...")).toBeInTheDocument();
 
     resolveAprilResponse(
@@ -381,6 +382,7 @@ describe("ShiftListPageClient", () => {
     await waitFor(() => {
       expect(screen.getByText("勤務先B")).toBeInTheDocument();
     });
+    expect(screen.getByText("2026年4月")).toBeInTheDocument();
     expect(screen.queryByText("勤務先A")).not.toBeInTheDocument();
   });
 });

@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useMemo, useState } from "react";
+import { useMemo, useState } from "react";
 import { useRouter } from "next/navigation";
 import {
   ArrowDownIcon,
@@ -216,6 +216,45 @@ function compareShifts(
   return sortState.direction === "asc" ? baseCompare : -baseCompare;
 }
 
+type SortToggleButtonProps = {
+  column: SortColumn;
+  sortState: SortState;
+  align?: "left" | "right";
+  label: string;
+  onToggle: (column: SortColumn) => void;
+};
+
+function SortToggleButton({
+  column,
+  sortState,
+  align = "left",
+  label,
+  onToggle,
+}: SortToggleButtonProps) {
+  const icon =
+    !sortState || sortState.column !== column ? (
+      <ArrowUpDownIcon className="size-3.5 text-muted-foreground" />
+    ) : sortState.direction === "asc" ? (
+      <ArrowUpIcon className="size-3.5" />
+    ) : (
+      <ArrowDownIcon className="size-3.5" />
+    );
+
+  return (
+    <Button
+      type="button"
+      variant="ghost"
+      size="sm"
+      className={align === "right" ? "ml-auto h-8 px-2" : "-ml-2 h-8 px-2"}
+      onClick={() => onToggle(column)}
+      aria-label={`${label}で並び替え`}
+    >
+      {label}
+      {icon}
+    </Button>
+  );
+}
+
 type ShiftListPageClientProps = {
   currentUserId: string;
   initialMonth: string;
@@ -239,13 +278,9 @@ export function ShiftListPageClient({
     const parsedMonth = fromMonthInputValue(initialMonth);
     return startOfMonth(parsedMonth ?? new Date());
   });
-  const [displayMonth, setDisplayMonth] = useState(() => {
-    const parsedMonth = fromMonthInputValue(initialMonth);
-    return startOfMonth(parsedMonth ?? new Date());
-  });
   const [sortState, setSortState] = useState<SortState>(null);
-  const [selectedShiftIds, setSelectedShiftIds] = useState<Set<string>>(
-    new Set(),
+  const [selectedShiftIdsState, setSelectedShiftIdsState] = useState<string[]>(
+    [],
   );
   const [deleteDialogOpen, setDeleteDialogOpen] = useState(false);
   const [isDeleting, setIsDeleting] = useState(false);
@@ -253,21 +288,16 @@ export function ShiftListPageClient({
     null,
   );
 
-  const {
-    shifts,
-    isInitialLoading,
-    isRefreshing,
-    isPlaceholderData,
-    errorMessage,
-  } = useMonthShifts(month, {
-    cacheUserKey: currentUserId,
-    initialShifts: initialMonthShifts,
-    initialStartDate: initialMonthStartDate,
-    initialEndDate: initialMonthEndDate,
-  });
+  const { shifts, displayMonth, isInitialLoading, isRefreshing, errorMessage } =
+    useMonthShifts(month, {
+      cacheUserKey: currentUserId,
+      initialShifts: initialMonthShifts,
+      initialStartDate: initialMonthStartDate,
+      initialEndDate: initialMonthEndDate,
+    });
 
   const sortedShifts = useMemo(() => {
-    return [...shifts].sort((left, right) =>
+    return shifts.toSorted((left, right) =>
       compareShifts(left, right, sortState),
     );
   }, [shifts, sortState]);
@@ -276,52 +306,29 @@ export function ShiftListPageClient({
     () => startOfMonth(dateFromDateKey(todayDate) ?? new Date()),
     [todayDate],
   );
-  const requestedMonth = useMemo(
-    () => startOfMonth(fromMonthInputValue(initialMonth) ?? new Date()),
-    [initialMonth],
+  const visibleShiftIdSet = useMemo(
+    () => new Set(shifts.map((shift) => shift.id)),
+    [shifts],
+  );
+  const selectedShiftIds = useMemo(
+    () =>
+      selectedShiftIdsState.filter((shiftId) => visibleShiftIdSet.has(shiftId)),
+    [selectedShiftIdsState, visibleShiftIdSet],
+  );
+  const selectedShiftIdSet = useMemo(
+    () => new Set(selectedShiftIds),
+    [selectedShiftIds],
   );
   const isCurrentMonth = isSameMonth(displayMonth, currentMonth);
-  const selectedCount = selectedShiftIds.size;
+  const selectedCount = selectedShiftIds.length;
   const monthValue = toMonthInputValue(displayMonth);
 
   const isAllSelected =
     sortedShifts.length > 0 &&
-    sortedShifts.every((shift) => selectedShiftIds.has(shift.id));
+    sortedShifts.every((shift) => selectedShiftIdSet.has(shift.id));
   const isSomeSelected =
-    sortedShifts.some((shift) => selectedShiftIds.has(shift.id)) &&
+    sortedShifts.some((shift) => selectedShiftIdSet.has(shift.id)) &&
     !isAllSelected;
-
-  useEffect(() => {
-    setMonth((current) =>
-      isSameMonth(current, requestedMonth) ? current : requestedMonth,
-    );
-  }, [requestedMonth]);
-
-  useEffect(() => {
-    if (isPlaceholderData) {
-      return;
-    }
-
-    setDisplayMonth((current) =>
-      isSameMonth(current, month) ? current : month,
-    );
-  }, [isPlaceholderData, month]);
-
-  useEffect(() => {
-    const validIds = new Set(shifts.map((shift) => shift.id));
-
-    setSelectedShiftIds((current) => {
-      const next = new Set(
-        Array.from(current).filter((shiftId) => validIds.has(shiftId)),
-      );
-
-      if (next.size === current.size) {
-        return current;
-      }
-
-      return next;
-    });
-  }, [shifts]);
 
   function handleToggleSort(column: SortColumn) {
     setSortState((current) => {
@@ -339,21 +346,13 @@ export function ShiftListPageClient({
     });
   }
 
-  function renderSortIcon(column: SortColumn) {
-    if (!sortState || sortState.column !== column) {
-      return <ArrowUpDownIcon className="size-3.5 text-muted-foreground" />;
-    }
-
-    if (sortState.direction === "asc") {
-      return <ArrowUpIcon className="size-3.5" />;
-    }
-
-    return <ArrowDownIcon className="size-3.5" />;
-  }
-
   function handleToggleShiftSelection(shiftId: string, checked: boolean) {
-    setSelectedShiftIds((current) => {
-      const next = new Set(current);
+    setSelectedShiftIdsState((current) => {
+      const next = new Set(
+        current.filter((currentShiftId) =>
+          visibleShiftIdSet.has(currentShiftId),
+        ),
+      );
 
       if (checked) {
         next.add(shiftId);
@@ -361,17 +360,17 @@ export function ShiftListPageClient({
         next.delete(shiftId);
       }
 
-      return next;
+      return Array.from(next);
     });
   }
 
   function handleSelectAll(checked: boolean) {
     if (!checked) {
-      setSelectedShiftIds(new Set());
+      setSelectedShiftIdsState([]);
       return;
     }
 
-    setSelectedShiftIds(new Set(sortedShifts.map((shift) => shift.id)));
+    setSelectedShiftIdsState(sortedShifts.map((shift) => shift.id));
   }
 
   function handleEditShift(shiftId: string) {
@@ -383,11 +382,11 @@ export function ShiftListPageClient({
   }
 
   async function handleBulkDelete() {
-    if (selectedShiftIds.size === 0 || isDeleting) {
+    if (selectedShiftIds.length === 0 || isDeleting) {
       return;
     }
 
-    const shiftIds = Array.from(selectedShiftIds);
+    const shiftIds = selectedShiftIds;
     const rollback = removeShiftsFromMonthCachesOptimistically(
       queryClient,
       shiftIds,
@@ -395,7 +394,7 @@ export function ShiftListPageClient({
 
     setIsDeleting(true);
     setDeleteErrorMessage(null);
-    setSelectedShiftIds(new Set());
+    setSelectedShiftIdsState([]);
 
     try {
       const response = await fetch("/api/shifts", {
@@ -437,7 +436,7 @@ export function ShiftListPageClient({
       });
     } catch (error) {
       rollback();
-      setSelectedShiftIds(new Set(shiftIds));
+      setSelectedShiftIdsState(shiftIds);
 
       console.error("failed to bulk delete shifts", error);
       const message = toErrorMessage(error, messages.error.shiftDeleteFailed);
@@ -560,69 +559,45 @@ export function ShiftListPageClient({
                         </div>
                       </TableHead>
                       <TableHead>
-                        <Button
-                          type="button"
-                          variant="ghost"
-                          size="sm"
-                          className="-ml-2 h-8 px-2"
-                          onClick={() => handleToggleSort("date")}
-                          aria-label="日付で並び替え"
-                        >
-                          日付
-                          {renderSortIcon("date")}
-                        </Button>
+                        <SortToggleButton
+                          column="date"
+                          sortState={sortState}
+                          label="日付"
+                          onToggle={handleToggleSort}
+                        />
                       </TableHead>
                       <TableHead>
-                        <Button
-                          type="button"
-                          variant="ghost"
-                          size="sm"
-                          className="-ml-2 h-8 px-2"
-                          onClick={() => handleToggleSort("time")}
-                          aria-label="時間で並び替え"
-                        >
-                          時間
-                          {renderSortIcon("time")}
-                        </Button>
+                        <SortToggleButton
+                          column="time"
+                          sortState={sortState}
+                          label="時間"
+                          onToggle={handleToggleSort}
+                        />
                       </TableHead>
                       <TableHead>
-                        <Button
-                          type="button"
-                          variant="ghost"
-                          size="sm"
-                          className="-ml-2 h-8 px-2"
-                          onClick={() => handleToggleSort("workplace")}
-                          aria-label="勤務先で並び替え"
-                        >
-                          勤務先
-                          {renderSortIcon("workplace")}
-                        </Button>
+                        <SortToggleButton
+                          column="workplace"
+                          sortState={sortState}
+                          label="勤務先"
+                          onToggle={handleToggleSort}
+                        />
                       </TableHead>
                       <TableHead>
-                        <Button
-                          type="button"
-                          variant="ghost"
-                          size="sm"
-                          className="-ml-2 h-8 px-2"
-                          onClick={() => handleToggleSort("breakMinutes")}
-                          aria-label="休憩時間で並び替え"
-                        >
-                          休憩時間
-                          {renderSortIcon("breakMinutes")}
-                        </Button>
+                        <SortToggleButton
+                          column="breakMinutes"
+                          sortState={sortState}
+                          label="休憩時間"
+                          onToggle={handleToggleSort}
+                        />
                       </TableHead>
                       <TableHead className="text-right">
-                        <Button
-                          type="button"
-                          variant="ghost"
-                          size="sm"
-                          className="ml-auto h-8 px-2"
-                          onClick={() => handleToggleSort("estimatedPay")}
-                          aria-label="給与で並び替え"
-                        >
-                          給与
-                          {renderSortIcon("estimatedPay")}
-                        </Button>
+                        <SortToggleButton
+                          column="estimatedPay"
+                          sortState={sortState}
+                          align="right"
+                          label="給与"
+                          onToggle={handleToggleSort}
+                        />
                       </TableHead>
                     </TableRow>
                   </TableHeader>
@@ -644,7 +619,7 @@ export function ShiftListPageClient({
                           shiftType: shift.shiftType,
                           comment: shift.comment,
                         });
-                        const isSelected = selectedShiftIds.has(shift.id);
+                        const isSelected = selectedShiftIdSet.has(shift.id);
 
                         return (
                           <TableRow

@@ -58,6 +58,7 @@ export default async function ShiftListPage({
 
   return (
     <ShiftListPageClient
+      key={monthValue}
       currentUserId={current.user.id}
       initialMonth={monthValue}
       initialMonthShifts={initialMonthShifts}
