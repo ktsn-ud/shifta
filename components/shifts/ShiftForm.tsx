@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback, useEffect, useMemo, useReducer, useRef } from "react";
+import { useCallback, useMemo, useReducer, useRef } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { useRouter } from "next/navigation";
 import { toast } from "sonner";
@@ -2149,12 +2149,6 @@ function useShiftFormController(
     preferredWorkplaceId,
     loadQueryUserId,
   });
-
-  useEffect(() => {
-    if (data.timetableSetsError) {
-      console.error("failed to fetch timetable sets", data.timetableSetsError);
-    }
-  }, [data.timetableSetsError]);
 
   const hasEditSeed = mode !== "edit" || Boolean(data.shiftDetailData);
   const form = useMemo(
