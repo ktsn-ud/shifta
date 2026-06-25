@@ -57,6 +57,7 @@ async function ActualPayrollPageContent({ month }: { month: string }) {
     <ActualPayrollPageClient
       currentUserId={current.user.id}
       initialMonth={month}
+      currentMonthValue={toMonthInputValue(startOfMonth(new Date()))}
       initialData={initialData}
     />
   );

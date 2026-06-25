@@ -21,12 +21,7 @@ import {
   TableHeader,
   TableRow,
 } from "@/components/ui/table";
-import {
-  formatMonthLabel,
-  fromMonthInputValue,
-  startOfMonth,
-  toMonthInputValue,
-} from "@/lib/calendar/date";
+import { formatMonthLabel, fromMonthInputValue } from "@/lib/calendar/date";
 import { messages, toErrorMessage } from "@/lib/messages";
 import { type ActualPayrollEditorResult } from "@/lib/payroll/actual-editor";
 import { invalidateAfterActualPayrollMutation } from "@/lib/query/invalidation";
@@ -37,6 +32,7 @@ import { queryKeys } from "@/lib/query/query-keys";
 type ActualPayrollPageClientProps = {
   currentUserId: string;
   initialMonth: string;
+  currentMonthValue: string;
   initialData: ActualPayrollEditorResult;
 };
 
@@ -115,6 +111,7 @@ export function ActualPayrollPageLoadingSkeleton() {
 export function ActualPayrollPageClient({
   currentUserId,
   initialMonth,
+  currentMonthValue,
   initialData,
 }: ActualPayrollPageClientProps) {
   const queryClient = getBrowserQueryClient();
@@ -126,15 +123,17 @@ export function ActualPayrollPageClient({
   );
   const [isSaving, setIsSaving] = useState(false);
 
-  const currentMonthValue = toMonthInputValue(startOfMonth(new Date()));
+  const selectedMonth =
+    fromMonthInputValue(displayMonthValue) ??
+    fromMonthInputValue(currentMonthValue);
   const isValidRequestedMonth =
     fromMonthInputValue(requestedMonthValue) !== null;
   const canApplyMonth =
     fromMonthInputValue(draftMonthValue) !== null &&
     draftMonthValue !== requestedMonthValue;
-  const selectedMonthLabel = formatMonthLabel(
-    fromMonthInputValue(displayMonthValue) ?? startOfMonth(new Date()),
-  );
+  const selectedMonthLabel = selectedMonth
+    ? formatMonthLabel(selectedMonth)
+    : displayMonthValue;
 
   const actualPayrollQuery = useActualPayrollQuery({
     userId: currentUserId,
