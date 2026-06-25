@@ -3,6 +3,8 @@
 import { useEffect, useMemo } from "react";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import {
+  dateFromDateKey,
+  dateKeyFromApiDate,
   endOfMonth,
   startOfMonth,
   toDateOnlyString,
@@ -372,6 +374,17 @@ export function useMonthShifts(month: Date, options: UseMonthShiftsOptions) {
     });
   }, [deferEstimate, estimatedMonthShiftsData, monthShiftsData]);
 
+  const displayMonth = useMemo(() => {
+    const firstShiftDate = shifts[0]?.date;
+    if (!firstShiftDate) {
+      return month;
+    }
+
+    return startOfMonth(
+      dateFromDateKey(dateKeyFromApiDate(firstShiftDate)) ?? month,
+    );
+  }, [month, shifts]);
+
   const errorMessage = monthShiftsError
     ? toUserFacingMessage(monthShiftsError, "シフト一覧の取得に失敗しました。")
     : null;
@@ -396,6 +409,7 @@ export function useMonthShifts(month: Date, options: UseMonthShiftsOptions) {
 
   return {
     shifts,
+    displayMonth,
     isLoading: isInitialLoading,
     isInitialLoading,
     isRefreshing,

@@ -1,7 +1,7 @@
 "use client";
 
-import { useEffect, useMemo, useState } from "react";
-import { useRouter, useSearchParams } from "next/navigation";
+import { useMemo, useState } from "react";
+import { useRouter } from "next/navigation";
 import {
   AlertTriangleIcon,
   CheckCircle2Icon,
@@ -24,7 +24,6 @@ import {
   addMonths,
   dateFromDateKey,
   dateKeyFromApiDate,
-  fromMonthInputValue,
   startOfMonth,
   toMonthInputValue,
   toDateKey,
@@ -141,12 +140,7 @@ export function DashboardPageClient({
 }: DashboardPageClientProps) {
   const router = useRouter();
   const queryClient = getBrowserQueryClient();
-  const searchParams = useSearchParams();
   const [month, setMonth] = useState(() => {
-    const initialMonthDate = dateFromDateKey(initialMonthStartDate);
-    return startOfMonth(initialMonthDate ?? new Date());
-  });
-  const [displayMonth, setDisplayMonth] = useState(() => {
     const initialMonthDate = dateFromDateKey(initialMonthStartDate);
     return startOfMonth(initialMonthDate ?? new Date());
   });
@@ -157,9 +151,9 @@ export function DashboardPageClient({
 
   const {
     shifts,
+    displayMonth,
     isInitialLoading,
     isRefreshing,
-    isPlaceholderData,
     errorMessage,
     reload,
   } = useMonthShifts(month, {
@@ -203,19 +197,6 @@ export function DashboardPageClient({
     () => startOfMonth(dateFromDateKey(initialMonthStartDate) ?? new Date()),
     [initialMonthStartDate],
   );
-  const monthFromQuery = useMemo(() => {
-    const rawMonth = searchParams.get("month");
-    if (!rawMonth) {
-      return null;
-    }
-
-    const parsed = fromMonthInputValue(rawMonth);
-    return parsed ? startOfMonth(parsed) : null;
-  }, [searchParams]);
-  const requestedMonth = useMemo(
-    () => monthFromQuery ?? initialDashboardMonth,
-    [initialDashboardMonth, monthFromQuery],
-  );
   const isInitialDashboardMonth = useMemo(
     () => isSameMonth(displayMonth, initialDashboardMonth),
     [displayMonth, initialDashboardMonth],
@@ -232,22 +213,6 @@ export function DashboardPageClient({
   const [isBulkRetrying, setIsBulkRetrying] = useState(false);
   const { isSignOutScheduled, scheduleSignOut } =
     useGoogleTokenExpiredSignOut();
-
-  useEffect(() => {
-    setMonth((current) =>
-      isSameMonth(current, requestedMonth) ? current : requestedMonth,
-    );
-  }, [requestedMonth]);
-
-  useEffect(() => {
-    if (isPlaceholderData) {
-      return;
-    }
-
-    setDisplayMonth((current) =>
-      isSameMonth(current, month) ? current : month,
-    );
-  }, [isPlaceholderData, month]);
 
   const nextPaymentSummaryQuery = usePayrollSummaryQuery({
     userId: currentUserId,

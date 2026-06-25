@@ -83,6 +83,7 @@ async function DashboardPageContent({ month }: { month: Date }) {
 
   return (
     <DashboardPageClient
+      key={startDate}
       currentUserId={current.user.id}
       initialMonthShifts={initialMonthShifts}
       initialMonthStartDate={startDate}
