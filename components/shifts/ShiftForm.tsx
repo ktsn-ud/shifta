@@ -654,7 +654,11 @@ export function ShiftForm(props: ShiftFormProps) {
     resetFormState(defaultDate);
   }, [defaultDate, mode, resetFormState]);
 
-  const workplacesQuery = useQuery({
+  const {
+    data: workplacesData,
+    error: workplacesError,
+    isPending: isWorkplacePending,
+  } = useQuery({
     queryKey: queryKeys.workplaces.list({
       userId: loadQueryUserId,
       includeCounts: false,
@@ -677,7 +681,11 @@ export function ShiftForm(props: ShiftFormProps) {
     refetchOnReconnect: false,
   });
 
-  const shiftDetailQuery = useQuery({
+  const {
+    data: shiftDetailData,
+    error: shiftDetailError,
+    isPending: isShiftDetailPending,
+  } = useQuery({
     queryKey: queryKeys.shifts.detail({
       shiftId: shiftId ?? "",
     }),
@@ -700,28 +708,23 @@ export function ShiftForm(props: ShiftFormProps) {
     refetchOnReconnect: false,
   });
 
-  const workplaces = useMemo(
-    () => workplacesQuery.data ?? [],
-    [workplacesQuery.data],
-  );
-  const isWorkplaceLoading = workplacesQuery.isPending;
+  const workplaces = useMemo(() => workplacesData ?? [], [workplacesData]);
+  const isWorkplaceLoading = isWorkplacePending;
   const isShiftLoading =
-    mode === "edit" && Boolean(shiftId) && shiftDetailQuery.isPending;
+    mode === "edit" && Boolean(shiftId) && isShiftDetailPending;
 
   const resolvedInitialForm = useMemo(() => {
-    if (mode === "edit" && shiftDetailQuery.data) {
-      return createEditFormState(shiftDetailQuery.data);
+    if (mode === "edit" && shiftDetailData) {
+      return createEditFormState(shiftDetailData);
     }
 
     return createInitialFormState(defaultDate);
-  }, [defaultDate, mode, shiftDetailQuery.data]);
+  }, [defaultDate, mode, shiftDetailData]);
   const form = formDraft ?? resolvedInitialForm;
   const initialShiftTimes = useMemo(
     () =>
-      mode === "edit"
-        ? getInitialShiftTimes(shiftDetailQuery.data ?? null)
-        : null,
-    [mode, shiftDetailQuery.data],
+      mode === "edit" ? getInitialShiftTimes(shiftDetailData ?? null) : null,
+    [mode, shiftDetailData],
   );
 
   const applyFormUpdate = useCallback(
@@ -740,9 +743,9 @@ export function ShiftForm(props: ShiftFormProps) {
   }, [form.workplaceId, workplaces]);
   const selectedWorkplaceId = form.workplaceId;
   const selectedWorkplaceType = selectedWorkplace?.type;
-  const hasEditSeed = mode !== "edit" || Boolean(shiftDetailQuery.data);
+  const hasEditSeed = mode !== "edit" || Boolean(shiftDetailData);
 
-  const workplacePayrollCycleQuery = useQuery({
+  const { data: workplacePayrollCycleData } = useQuery({
     queryKey: queryKeys.workplaces.editDetail({
       workplaceId: selectedWorkplaceId,
     }),
@@ -765,7 +768,7 @@ export function ShiftForm(props: ShiftFormProps) {
     refetchOnReconnect: false,
   });
 
-  const previewPayrollRulesQuery = useQuery({
+  const { data: previewPayrollRulesData } = useQuery({
     queryKey: queryKeys.workplaces.payrollRules({
       workplaceId: selectedWorkplaceId,
     }),
@@ -788,7 +791,11 @@ export function ShiftForm(props: ShiftFormProps) {
     refetchOnReconnect: false,
   });
 
-  const timetableSetsQuery = useQuery({
+  const {
+    data: timetableSetsData,
+    error: timetableSetsError,
+    isPending: isTimetableSetsPending,
+  } = useQuery({
     queryKey: queryKeys.workplaces.timetables({
       workplaceId: selectedWorkplaceId,
     }),
@@ -817,7 +824,7 @@ export function ShiftForm(props: ShiftFormProps) {
       return [] as TimetableSet[];
     }
 
-    const items = timetableSetsQuery.data ?? [];
+    const items = timetableSetsData ?? [];
     return items.slice().sort((left, right) => {
       if (left.sortOrder !== right.sortOrder) {
         return left.sortOrder - right.sortOrder;
@@ -825,9 +832,9 @@ export function ShiftForm(props: ShiftFormProps) {
 
       return left.createdAt.localeCompare(right.createdAt);
     });
-  }, [selectedWorkplaceType, timetableSetsQuery.data]);
+  }, [selectedWorkplaceType, timetableSetsData]);
   const isTimetableLoading =
-    selectedWorkplaceType === "CRAM_SCHOOL" && timetableSetsQuery.isPending;
+    selectedWorkplaceType === "CRAM_SCHOOL" && isTimetableSetsPending;
 
   const selectedSet = useMemo(
     () => findSetById(timetableSets, form.timetableSetId),
@@ -854,7 +861,7 @@ export function ShiftForm(props: ShiftFormProps) {
   );
 
   const previewWorkplaces = useMemo(() => {
-    const detail = workplacePayrollCycleQuery.data;
+    const detail = workplacePayrollCycleData;
     if (!detail) {
       return [];
     }
@@ -867,7 +874,7 @@ export function ShiftForm(props: ShiftFormProps) {
         payday: detail.payday,
       },
     ];
-  }, [workplacePayrollCycleQuery.data]);
+  }, [workplacePayrollCycleData]);
 
   const previewTimetableSets = useMemo(
     () =>
@@ -937,7 +944,7 @@ export function ShiftForm(props: ShiftFormProps) {
     userId: loadQueryUserId,
     shifts: previewInputShifts,
     workplaces: previewWorkplaces,
-    payrollRules: previewPayrollRulesQuery.data ?? [],
+    payrollRules: previewPayrollRulesData ?? [],
     timetableSets: previewTimetableSets,
   });
 
@@ -1001,10 +1008,10 @@ export function ShiftForm(props: ShiftFormProps) {
   }, [applyFormUpdate, hasEditSeed, selectedWorkplaceType]);
 
   useEffect(() => {
-    if (timetableSetsQuery.error) {
-      console.error("failed to fetch timetable sets", timetableSetsQuery.error);
+    if (timetableSetsError) {
+      console.error("failed to fetch timetable sets", timetableSetsError);
     }
-  }, [timetableSetsQuery.error]);
+  }, [timetableSetsError]);
 
   useEffect(() => {
     if (
@@ -1608,14 +1615,11 @@ export function ShiftForm(props: ShiftFormProps) {
     errors.form ??
     (mode === "edit" && !shiftId
       ? "編集対象のシフトIDが指定されていません。"
-      : shiftDetailQuery.error
-        ? toUserFacingMessage(
-            shiftDetailQuery.error,
-            "シフトの取得に失敗しました。",
-          )
-        : workplacesQuery.error
+      : shiftDetailError
+        ? toUserFacingMessage(shiftDetailError, "シフトの取得に失敗しました。")
+        : workplacesError
           ? toUserFacingMessage(
-              workplacesQuery.error,
+              workplacesError,
               "勤務先一覧の取得に失敗しました。時間を置いて再度お試しください。",
             )
           : null);

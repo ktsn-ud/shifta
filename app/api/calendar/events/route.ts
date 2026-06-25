@@ -204,6 +204,27 @@ function normalizeHexColor(value: string | null | undefined): string | null {
   return normalized.toUpperCase();
 }
 
+function buildColorPaletteMap(palette: unknown): Map<string, string> {
+  if (typeof palette !== "object" || palette === null) {
+    return new Map<string, string>();
+  }
+
+  return new Map(
+    Object.entries(palette).flatMap(([colorId, definition]) => {
+      if (
+        !definition ||
+        typeof definition !== "object" ||
+        typeof definition.background !== "string"
+      ) {
+        return [];
+      }
+
+      const color = normalizeHexColor(definition.background);
+      return color ? ([[colorId, color]] as const) : [];
+    }),
+  );
+}
+
 function normalizeRequestedCalendarIds(values: string[]): string[] {
   const ids = values
     .map((value) => value.trim())
@@ -570,42 +591,9 @@ export async function GET(request: Request) {
     const colorPalettes = await (async (): Promise<GoogleColorPalettes> => {
       try {
         const response = await calendar.colors.get();
-        const calendarPalette = new Map<string, string>();
-        const eventPalette = new Map<string, string>();
-
-        for (const [colorId, definition] of Object.entries(
-          response.data.calendar ?? {},
-        )) {
-          if (
-            definition &&
-            typeof definition === "object" &&
-            typeof definition.background === "string"
-          ) {
-            const color = normalizeHexColor(definition.background);
-            if (color) {
-              calendarPalette.set(colorId, color);
-            }
-          }
-        }
-
-        for (const [colorId, definition] of Object.entries(
-          response.data.event ?? {},
-        )) {
-          if (
-            definition &&
-            typeof definition === "object" &&
-            typeof definition.background === "string"
-          ) {
-            const color = normalizeHexColor(definition.background);
-            if (color) {
-              eventPalette.set(colorId, color);
-            }
-          }
-        }
-
         return {
-          calendar: calendarPalette,
-          event: eventPalette,
+          calendar: buildColorPaletteMap(response.data.calendar),
+          event: buildColorPaletteMap(response.data.event),
         };
       } catch {
         return {

@@ -843,7 +843,11 @@ export function BulkShiftForm() {
 
   const todayKey = toDateKey(new Date());
 
-  const workplacesQuery = useQuery({
+  const {
+    data: workplacesData,
+    error: workplacesError,
+    isPending: isWorkplacePending,
+  } = useQuery({
     queryKey: queryKeys.workplaces.list({
       userId: loadQueryUserId,
       includeCounts: false,
@@ -866,17 +870,14 @@ export function BulkShiftForm() {
     refetchOnReconnect: false,
   });
 
-  const workplaces = useMemo(
-    () => workplacesQuery.data ?? [],
-    [workplacesQuery.data],
-  );
-  const isWorkplaceLoading = workplacesQuery.isPending;
+  const workplaces = useMemo(() => workplacesData ?? [], [workplacesData]);
+  const isWorkplaceLoading = isWorkplacePending;
 
   const selectedWorkplace = useMemo(() => {
     return workplaces.find((workplace) => workplace.id === selectedWorkplaceId);
   }, [selectedWorkplaceId, workplaces]);
 
-  const workplacePayrollCycleQuery = useQuery({
+  const { data: workplacePayrollCycleData } = useQuery({
     queryKey: queryKeys.workplaces.editDetail({
       workplaceId: selectedWorkplaceId,
     }),
@@ -899,7 +900,7 @@ export function BulkShiftForm() {
     refetchOnReconnect: false,
   });
 
-  const previewPayrollRulesQuery = useQuery({
+  const { data: previewPayrollRulesData } = useQuery({
     queryKey: queryKeys.workplaces.payrollRules({
       workplaceId: selectedWorkplaceId,
     }),
@@ -922,7 +923,11 @@ export function BulkShiftForm() {
     refetchOnReconnect: false,
   });
 
-  const timetableSetsQuery = useQuery({
+  const {
+    data: timetableSetsData,
+    error: timetableSetsError,
+    isPending: isTimetableSetsPending,
+  } = useQuery({
     queryKey: queryKeys.workplaces.timetables({
       workplaceId: selectedWorkplace?.id ?? "",
     }),
@@ -950,15 +955,15 @@ export function BulkShiftForm() {
       return [] as TimetableSet[];
     }
 
-    return (timetableSetsQuery.data ?? []).slice().sort((left, right) => {
+    return (timetableSetsData ?? []).slice().sort((left, right) => {
       if (left.sortOrder !== right.sortOrder) {
         return left.sortOrder - right.sortOrder;
       }
       return left.createdAt.localeCompare(right.createdAt);
     });
-  }, [selectedWorkplace?.type, timetableSetsQuery.data]);
+  }, [selectedWorkplace?.type, timetableSetsData]);
   const isTimetableLoading =
-    selectedWorkplace?.type === "CRAM_SCHOOL" && timetableSetsQuery.isPending;
+    selectedWorkplace?.type === "CRAM_SCHOOL" && isTimetableSetsPending;
   const firstTimetableSetId = timetableSets[0]?.id ?? "";
 
   const lessonPeriodsBySetId = useMemo(() => {
@@ -999,7 +1004,7 @@ export function BulkShiftForm() {
   }, [rowsByDate, selectedDateKeys]);
 
   const previewWorkplaces = useMemo(() => {
-    const detail = workplacePayrollCycleQuery.data;
+    const detail = workplacePayrollCycleData;
     if (!detail) {
       return [];
     }
@@ -1012,7 +1017,7 @@ export function BulkShiftForm() {
         payday: detail.payday,
       },
     ];
-  }, [workplacePayrollCycleQuery.data]);
+  }, [workplacePayrollCycleData]);
 
   const previewTimetableSets = useMemo(
     () =>
@@ -1057,7 +1062,7 @@ export function BulkShiftForm() {
     userId: loadQueryUserId,
     shifts: previewInputShifts,
     workplaces: previewWorkplaces,
-    payrollRules: previewPayrollRulesQuery.data ?? [],
+    payrollRules: previewPayrollRulesData ?? [],
     timetableSets: previewTimetableSets,
   });
 
@@ -1255,10 +1260,10 @@ export function BulkShiftForm() {
   }, [selectedWorkplaceId]);
 
   useEffect(() => {
-    if (timetableSetsQuery.error) {
-      console.error("failed to fetch timetableSets", timetableSetsQuery.error);
+    if (timetableSetsError) {
+      console.error("failed to fetch timetableSets", timetableSetsError);
     }
-  }, [timetableSetsQuery.error]);
+  }, [timetableSetsError]);
 
   useEffect(() => {
     const workplaceType = selectedWorkplace?.type;
@@ -1835,14 +1840,14 @@ export function BulkShiftForm() {
 
   const formErrorMessage =
     errors.form ??
-    (timetableSetsQuery.error
+    (timetableSetsError
       ? toUserFacingMessage(
-          timetableSetsQuery.error,
+          timetableSetsError,
           "時間割の取得に失敗しました。時間を置いて再度お試しください。",
         )
-      : workplacesQuery.error
+      : workplacesError
         ? toUserFacingMessage(
-            workplacesQuery.error,
+            workplacesError,
             "勤務先一覧の取得に失敗しました。時間を置いて再度お試しください。",
           )
         : undefined);

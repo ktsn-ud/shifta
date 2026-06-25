@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useRef, useState } from "react";
 import { useRouter } from "next/navigation";
 import { CheckIcon } from "lucide-react";
 import { toast } from "sonner";
@@ -109,9 +109,9 @@ function ConfirmShiftCardContent({
 }: ConfirmShiftCardProps) {
   const router = useRouter();
   const queryClient = getBrowserQueryClient();
-  const [startTime, setStartTime] = useState(shift.startTime);
-  const [endTime, setEndTime] = useState(shift.endTime);
-  const [breakMinutes, setBreakMinutes] = useState(String(shift.breakMinutes));
+  const startTimeInputRef = useRef<HTMLInputElement | null>(null);
+  const endTimeInputRef = useRef<HTMLInputElement | null>(null);
+  const breakMinutesInputRef = useRef<HTMLInputElement | null>(null);
   const [isConfirming, setIsConfirming] = useState(false);
   const [isOvernightDialogOpen, setIsOvernightDialogOpen] = useState(false);
   const [pendingConfirmation, setPendingConfirmation] =
@@ -239,6 +239,10 @@ function ConfirmShiftCardContent({
     }
 
     setErrorMessage(null);
+    const startTime = startTimeInputRef.current?.value ?? shift.startTime;
+    const endTime = endTimeInputRef.current?.value ?? shift.endTime;
+    const breakMinutes =
+      breakMinutesInputRef.current?.value ?? String(shift.breakMinutes);
     const validation = validateShiftInput(startTime, endTime, breakMinutes);
     if (!validation.success) {
       setErrorMessage(validation.message);
@@ -279,11 +283,11 @@ function ConfirmShiftCardContent({
             >
               開始時刻
               <Input
+                ref={startTimeInputRef}
                 id={startTimeInputId}
                 type="time"
-                value={startTime}
+                defaultValue={shift.startTime}
                 disabled={isMutating}
-                onChange={(event) => setStartTime(event.currentTarget.value)}
               />
             </label>
 
@@ -293,11 +297,11 @@ function ConfirmShiftCardContent({
             >
               終了時刻
               <Input
+                ref={endTimeInputRef}
                 id={endTimeInputId}
                 type="time"
-                value={endTime}
+                defaultValue={shift.endTime}
                 disabled={isMutating}
-                onChange={(event) => setEndTime(event.currentTarget.value)}
               />
             </label>
 
@@ -307,13 +311,13 @@ function ConfirmShiftCardContent({
             >
               休憩時間（分）
               <Input
+                ref={breakMinutesInputRef}
                 id={breakMinutesInputId}
                 type="number"
                 min={0}
                 max={240}
-                value={breakMinutes}
+                defaultValue={String(shift.breakMinutes)}
                 disabled={isMutating}
-                onChange={(event) => setBreakMinutes(event.currentTarget.value)}
               />
             </label>
 
