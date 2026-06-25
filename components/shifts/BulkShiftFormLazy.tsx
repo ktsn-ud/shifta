@@ -13,6 +13,9 @@ const BulkShiftForm = dynamic(
   },
 );
 
-export function BulkShiftFormLazy() {
-  return <BulkShiftForm />;
+export function BulkShiftFormLazy(props: {
+  initialMonthInputValue: string;
+  todayDateKey: string;
+}) {
+  return <BulkShiftForm {...props} />;
 }

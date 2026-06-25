@@ -1,4 +1,5 @@
 import type { Metadata } from "next";
+import { toDateKey, toMonthInputValue } from "@/lib/calendar/date";
 import { BulkShiftFormLazy } from "@/components/shifts/BulkShiftFormLazy";
 
 export const metadata: Metadata = {
@@ -6,5 +7,12 @@ export const metadata: Metadata = {
 };
 
 export default function ShiftBulkPage() {
-  return <BulkShiftFormLazy />;
+  const today = new Date();
+
+  return (
+    <BulkShiftFormLazy
+      initialMonthInputValue={toMonthInputValue(today)}
+      todayDateKey={toDateKey(today)}
+    />
+  );
 }
