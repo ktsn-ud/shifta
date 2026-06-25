@@ -31,6 +31,7 @@ async function SummaryPageContent() {
       currentUserId={current.user.id}
       initialSummary={initialSummary}
       initialMonth={initialMonth}
+      currentMonthValue={initialMonth}
     />
   );
 }

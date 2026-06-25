@@ -21,12 +21,7 @@ import {
   TableHeader,
   TableRow,
 } from "@/components/ui/table";
-import {
-  formatMonthLabel,
-  fromMonthInputValue,
-  startOfMonth,
-  toMonthInputValue,
-} from "@/lib/calendar/date";
+import { formatMonthLabel, fromMonthInputValue } from "@/lib/calendar/date";
 import { toErrorMessage } from "@/lib/messages";
 import { usePayrollSummaryQuery } from "@/lib/query/queries/payroll";
 import { type PayrollSummaryResult } from "@/lib/payroll/summary";
@@ -35,6 +30,7 @@ type SummaryPageClientProps = {
   currentUserId: string;
   initialSummary: PayrollSummaryResult;
   initialMonth: string;
+  currentMonthValue: string;
 };
 
 const currencyFormatter = new Intl.NumberFormat("ja-JP", {
@@ -91,11 +87,11 @@ export function SummaryPageClient({
   currentUserId,
   initialSummary,
   initialMonth,
+  currentMonthValue,
 }: SummaryPageClientProps) {
   const [draftMonthValue, setDraftMonthValue] = useState(initialMonth);
   const [requestedMonthValue, setRequestedMonthValue] = useState(initialMonth);
   const [displayMonthValue, setDisplayMonthValue] = useState(initialMonth);
-  const currentMonthValue = toMonthInputValue(startOfMonth(new Date()));
   const isValidRequestedMonth =
     fromMonthInputValue(requestedMonthValue) !== null;
 
