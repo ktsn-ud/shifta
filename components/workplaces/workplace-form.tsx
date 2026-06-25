@@ -15,7 +15,6 @@ import {
 import { Input } from "@/components/ui/input";
 import { FormLoadingSkeleton } from "@/components/ui/loading-skeletons";
 import { RadioGroup, RadioGroupItem } from "@/components/ui/radio-group";
-import { toDateOnlyString } from "@/lib/calendar/date";
 import { formatHolidayType, formatWorkplaceType } from "@/lib/enum-labels";
 import { parseGoogleSyncStateFromPayload } from "@/lib/google-calendar/clientSync";
 import { messages, toErrorMessage } from "@/lib/messages";
@@ -36,12 +35,17 @@ const PAYROLL_DAY_MAX = 31;
 type WorkplaceType = "GENERAL" | "CRAM_SCHOOL";
 type HolidayType = "NONE" | "WEEKEND" | "HOLIDAY" | "WEEKEND_HOLIDAY";
 type ClosingDayType = "DAY_OF_MONTH" | "END_OF_MONTH";
-type WorkplaceFormMode = "create" | "edit";
-
-type WorkplaceFormProps = {
-  mode: WorkplaceFormMode;
-  workplaceId?: string;
+type CreateWorkplaceFormProps = {
+  mode: "create";
+  initialRuleStartDate: string;
 };
+
+type EditWorkplaceFormProps = {
+  mode: "edit";
+  workplaceId: string;
+};
+
+type WorkplaceFormProps = CreateWorkplaceFormProps | EditWorkplaceFormProps;
 
 type FormValues = {
   name: string;
@@ -77,9 +81,9 @@ function createInitialWorkplaceValues(): FormValues {
   };
 }
 
-function createInitialRuleValues(): InitialRuleValues {
+function createInitialRuleValues(startDate: string): InitialRuleValues {
   return {
-    startDate: toDateOnlyString(new Date()),
+    startDate,
     endDate: "",
     baseHourlyWage: "1000",
     holidayAllowanceHourly: "0",
@@ -218,7 +222,11 @@ function validate(
   return errors;
 }
 
-export function WorkplaceForm({ mode, workplaceId }: WorkplaceFormProps) {
+export function WorkplaceForm(props: WorkplaceFormProps) {
+  const { mode } = props;
+  const workplaceId = mode === "edit" ? props.workplaceId : undefined;
+  const initialRuleStartDate =
+    mode === "create" ? props.initialRuleStartDate : "";
   const router = useRouter();
   const queryClient = getBrowserQueryClient();
   const isEdit = mode === "edit";
@@ -230,14 +238,14 @@ export function WorkplaceForm({ mode, workplaceId }: WorkplaceFormProps) {
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [createInitialRule, setCreateInitialRule] = useState(true);
   const [initialRuleValues, setInitialRuleValues] = useState<InitialRuleValues>(
-    () => createInitialRuleValues(),
+    () => createInitialRuleValues(initialRuleStartDate),
   );
   const { markForResetOnRouteHidden } = useResetOnRouteHidden(() => {
     setValues(createInitialWorkplaceValues());
     setErrors({});
     setIsSubmitting(false);
     setCreateInitialRule(true);
-    setInitialRuleValues(createInitialRuleValues());
+    setInitialRuleValues(createInitialRuleValues(initialRuleStartDate));
   });
 
   const pageTitle = useMemo(
