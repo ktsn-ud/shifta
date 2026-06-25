@@ -29,6 +29,7 @@ import { type PayrollDetailsWorkplaceYearlyResult } from "@/lib/payroll/details"
 type PayrollDetailsWorkplaceYearlyPageClientProps = {
   currentUserId: string;
   initialYear: number;
+  currentYearValue: string;
   initialDetails: PayrollDetailsWorkplaceYearlyResult;
 };
 
@@ -83,6 +84,7 @@ export function PayrollDetailsWorkplaceYearlyPageLoadingSkeleton() {
 export function PayrollDetailsWorkplaceYearlyPageClient({
   currentUserId,
   initialYear,
+  currentYearValue,
   initialDetails,
 }: PayrollDetailsWorkplaceYearlyPageClientProps) {
   const [draftYearValue, setDraftYearValue] = useState(String(initialYear));
@@ -91,7 +93,6 @@ export function PayrollDetailsWorkplaceYearlyPageClient({
   );
   const [displayYearValue, setDisplayYearValue] = useState(String(initialYear));
 
-  const currentYearValue = String(new Date().getFullYear());
   const canApplyYear =
     isValidYearInput(draftYearValue) && draftYearValue !== requestedYearValue;
 

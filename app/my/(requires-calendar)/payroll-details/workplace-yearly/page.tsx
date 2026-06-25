@@ -58,6 +58,7 @@ async function WorkplaceYearlyPageContent({ year }: { year: number }) {
     <PayrollDetailsWorkplaceYearlyPageClient
       currentUserId={current.user.id}
       initialYear={year}
+      currentYearValue={String(new Date().getFullYear())}
       initialDetails={initialDetails}
     />
   );
