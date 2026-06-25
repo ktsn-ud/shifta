@@ -31,10 +31,8 @@ import {
 import { SpinnerPanel } from "@/components/ui/spinner";
 import { TimePicker } from "@/components/ui/time-picker";
 import {
-  dateFromDateKey,
   dateKeyFromApiDate,
   fromMonthInputValue,
-  toDateKey,
   toMonthInputValue,
 } from "@/lib/calendar/date";
 import { formatShiftType } from "@/lib/enum-labels";
@@ -63,12 +61,10 @@ import { type MonthShift, normalizeMonthShift } from "@/hooks/use-month-shifts";
 import { useResetOnRouteHidden } from "@/hooks/use-reset-on-route-hidden";
 
 const LAST_WORKPLACE_ID_KEY = "shifta:last-workplace-id";
-const DATE_ONLY_REGEX = /^\d{4}-\d{2}-\d{2}$/;
 const GOOGLE_TOKEN_EXPIRED_DESCRIPTION =
   "3秒後にログアウトします。再度Googleアカウントでログインしてください。";
 
 type ShiftType = "NORMAL" | "LESSON";
-type ShiftFormMode = "create" | "edit";
 type ShiftFormReturnTo = "dashboard" | "list";
 
 type Workplace = {
@@ -173,13 +169,21 @@ type ShiftTimePair = {
   endTime: string;
 };
 
-type ShiftFormProps = {
-  mode: ShiftFormMode;
-  shiftId?: string;
-  initialDate?: string;
+type CreateShiftFormProps = {
+  mode: "create";
+  initialDate: string;
   returnMonth?: string;
   returnTo?: ShiftFormReturnTo;
 };
+
+type EditShiftFormProps = {
+  mode: "edit";
+  shiftId: string;
+  returnMonth?: string;
+  returnTo?: ShiftFormReturnTo;
+};
+
+type ShiftFormProps = CreateShiftFormProps | EditShiftFormProps;
 
 function isRecord(value: unknown): value is Record<string, unknown> {
   return typeof value === "object" && value !== null;
@@ -440,14 +444,6 @@ function parseShiftMutationResult(payload: unknown): {
   };
 }
 
-function isValidDateKey(value?: string | null): value is string {
-  if (!value || DATE_ONLY_REGEX.test(value) === false) {
-    return false;
-  }
-
-  return dateFromDateKey(value) !== null;
-}
-
 function toTimeOnly(value: string): string {
   const date = new Date(value);
   if (Number.isNaN(date.getTime())) {
@@ -590,18 +586,13 @@ function getInitialShiftTimes(
   };
 }
 
-export function ShiftForm({
-  mode,
-  shiftId,
-  initialDate,
-  returnMonth,
-  returnTo = "dashboard",
-}: ShiftFormProps) {
+export function ShiftForm(props: ShiftFormProps) {
+  const { mode, returnMonth, returnTo = "dashboard" } = props;
+  const shiftId = mode === "edit" ? props.shiftId : undefined;
+  const initialDate = mode === "create" ? props.initialDate : null;
   const router = useRouter();
 
-  const defaultDate = isValidDateKey(initialDate)
-    ? initialDate
-    : toDateKey(new Date());
+  const defaultDate = initialDate ?? "";
 
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [errors, setErrors] = useState<FormErrors>({});

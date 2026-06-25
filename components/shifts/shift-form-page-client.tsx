@@ -13,7 +13,7 @@ type ShiftFormNavigationProps = {
 };
 
 type NewShiftFormPageClientProps = ShiftFormNavigationProps & {
-  initialDate?: string;
+  initialDate: string;
 };
 
 type EditShiftFormPageClientProps = ShiftFormNavigationProps & {
@@ -41,7 +41,7 @@ export function NewShiftFormPageClient({
 }: NewShiftFormPageClientProps) {
   return (
     <NewShiftForm
-      key={`${initialDate ?? "today"}:${returnMonth ?? ""}:${returnTo}`}
+      key={`${initialDate}:${returnMonth ?? ""}:${returnTo}`}
       mode="create"
       initialDate={initialDate}
       returnMonth={returnMonth}
