@@ -4,7 +4,6 @@ import { useMemo } from "react";
 import { cva, type VariantProps } from "class-variance-authority";
 
 import { cn } from "@/lib/utils";
-import { Label } from "@/components/ui/label";
 import { Separator } from "@/components/ui/separator";
 
 function FieldSet({ className, ...props }: React.ComponentProps<"fieldset">) {
@@ -76,7 +75,6 @@ function Field({
 }: React.ComponentProps<"div"> & VariantProps<typeof fieldVariants>) {
   return (
     <div
-      role="group"
       data-slot="field"
       data-orientation={orientation}
       className={cn(fieldVariants({ orientation }), className)}
@@ -99,19 +97,29 @@ function FieldContent({ className, ...props }: React.ComponentProps<"div">) {
 }
 
 function FieldLabel({
+  htmlFor,
   className,
   ...props
-}: React.ComponentProps<typeof Label>) {
+}: React.ComponentProps<"label">) {
+  const resolvedClassName = cn(
+    "group/field-label peer/field-label flex w-fit gap-2 leading-snug group-data-[disabled=true]/field:opacity-50 has-data-checked:border-primary/30 has-data-checked:bg-primary/5 has-[>[data-slot=field]]:rounded-md has-[>[data-slot=field]]:border *:data-[slot=field]:p-3 dark:has-data-checked:border-primary/20 dark:has-data-checked:bg-primary/10",
+    "has-[>[data-slot=field]]:w-full has-[>[data-slot=field]]:flex-col",
+    className,
+  );
+
+  if (htmlFor) {
+    return (
+      <label
+        data-slot="field-label"
+        htmlFor={htmlFor}
+        className={resolvedClassName}
+        {...props}
+      />
+    );
+  }
+
   return (
-    <Label
-      data-slot="field-label"
-      className={cn(
-        "group/field-label peer/field-label flex w-fit gap-2 leading-snug group-data-[disabled=true]/field:opacity-50 has-data-checked:border-primary/30 has-data-checked:bg-primary/5 has-[>[data-slot=field]]:rounded-md has-[>[data-slot=field]]:border *:data-[slot=field]:p-3 dark:has-data-checked:border-primary/20 dark:has-data-checked:bg-primary/10",
-        "has-[>[data-slot=field]]:w-full has-[>[data-slot=field]]:flex-col",
-        className,
-      )}
-      {...props}
-    />
+    <div data-slot="field-label" className={resolvedClassName} {...props} />
   );
 }
 

@@ -55,6 +55,7 @@ export default async function ShiftListPage({
     endDate,
     includeEstimate: true,
   });
+  const todayDate = toDateOnlyString(startOfUtcDay(new Date()));
 
   return (
     <ShiftListPageClient
@@ -64,7 +65,7 @@ export default async function ShiftListPage({
       initialMonthShifts={initialMonthShifts}
       initialMonthStartDate={startDate}
       initialMonthEndDate={endDate}
-      todayDate={toDateOnlyString(startOfUtcDay(new Date()))}
+      todayDate={todayDate}
     />
   );
 }

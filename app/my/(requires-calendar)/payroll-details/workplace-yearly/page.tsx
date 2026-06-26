@@ -53,12 +53,13 @@ async function WorkplaceYearlyPageContent({ year }: { year: number }) {
     current.user.id,
     year,
   );
+  const currentYearValue = String(new Date().getFullYear());
 
   return (
     <PayrollDetailsWorkplaceYearlyPageClient
       currentUserId={current.user.id}
       initialYear={year}
-      currentYearValue={String(new Date().getFullYear())}
+      currentYearValue={currentYearValue}
       initialDetails={initialDetails}
     />
   );
