@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useMemo, useState } from "react";
+import { useState } from "react";
 import { Input } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
 import {
@@ -91,19 +91,11 @@ export function PayrollDetailsWorkplaceYearlyPageClient({
   const [requestedYearValue, setRequestedYearValue] = useState(
     String(initialYear),
   );
-  const [displayYearValue, setDisplayYearValue] = useState(String(initialYear));
 
   const canApplyYear =
     isValidYearInput(draftYearValue) && draftYearValue !== requestedYearValue;
 
-  const requestedYearNumber = useMemo(
-    () => toYearNumber(requestedYearValue),
-    [requestedYearValue],
-  );
-  const displayYearNumber = useMemo(
-    () => toYearNumber(displayYearValue),
-    [displayYearValue],
-  );
+  const requestedYearNumber = toYearNumber(requestedYearValue);
 
   const monthlyHref = "/my/payroll-details/monthly";
 
@@ -130,17 +122,9 @@ export function PayrollDetailsWorkplaceYearlyPageClient({
         : undefined,
   });
 
-  useEffect(() => {
-    if (detailsQuery.isPlaceholderData) {
-      return;
-    }
-
-    setDisplayYearValue((current) =>
-      current === requestedYearValue ? current : requestedYearValue,
-    );
-  }, [detailsQuery.isPlaceholderData, requestedYearValue]);
-
   const details = detailsQuery.data ?? null;
+  const displayYearNumber = details?.year ?? requestedYearNumber;
+  const displayYearValue = String(displayYearNumber ?? requestedYearValue);
   const isInitialLoading =
     requestedYearNumber !== null && detailsQuery.isLoading && details === null;
   const isRefreshing =

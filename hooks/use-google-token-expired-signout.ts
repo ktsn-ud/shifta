@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback, useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useState } from "react";
 import { GOOGLE_TOKEN_EXPIRED_LOGIN_PATH } from "@/lib/google-calendar/constants";
 
 export const GOOGLE_TOKEN_EXPIRED_SIGNOUT_DELAY_MS = 3000;
@@ -18,31 +18,31 @@ export function useGoogleTokenExpiredSignOut(): {
   isSignOutScheduled: boolean;
   scheduleSignOut: () => boolean;
 } {
-  const timeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const [isSignOutScheduled, setIsSignOutScheduled] = useState(false);
 
   const scheduleSignOut = useCallback((): boolean => {
-    if (timeoutRef.current) {
+    if (isSignOutScheduled) {
       return false;
     }
 
     setIsSignOutScheduled(true);
-    timeoutRef.current = setTimeout(() => {
-      timeoutRef.current = null;
+    return true;
+  }, [isSignOutScheduled]);
+
+  useEffect(() => {
+    if (!isSignOutScheduled) {
+      return;
+    }
+
+    const timeoutId = setTimeout(() => {
+      setIsSignOutScheduled(false);
       void runGoogleTokenExpiredSignOut();
     }, GOOGLE_TOKEN_EXPIRED_SIGNOUT_DELAY_MS);
 
-    return true;
-  }, []);
-
-  useEffect(() => {
     return () => {
-      if (timeoutRef.current) {
-        clearTimeout(timeoutRef.current);
-        timeoutRef.current = null;
-      }
+      clearTimeout(timeoutId);
     };
-  }, []);
+  }, [isSignOutScheduled]);
 
   return {
     isSignOutScheduled,

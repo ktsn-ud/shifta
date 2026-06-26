@@ -1,5 +1,5 @@
 "use client";
-import { useEffect, useMemo, useState } from "react";
+import { useCallback, useReducer } from "react";
 import { useRouter } from "next/navigation";
 import { toast } from "sonner";
 import { FormErrorMessage } from "@/components/form/form-error-message";
@@ -21,7 +21,10 @@ import { messages, toErrorMessage } from "@/lib/messages";
 import { invalidateAfterWorkplaceMutation } from "@/lib/query/invalidation";
 import { getBrowserQueryClient } from "@/lib/query/query-client";
 import { buildMutationSuccessDescription } from "@/lib/query/mutation-toast";
-import { useWorkplaceEditDetailQuery } from "@/lib/query/queries/workplaces";
+import {
+  type WorkplaceEditDetailItem,
+  useWorkplaceEditDetailQuery,
+} from "@/lib/query/queries/workplaces";
 import {
   resolveUserFacingErrorFromResponse,
   toUserFacingMessage,
@@ -69,6 +72,33 @@ type InitialRuleValues = {
 
 type FormErrorKey = keyof FormValues | keyof InitialRuleValues | "form";
 type FormErrors = Partial<Record<FormErrorKey, string>>;
+type WorkplaceFormSeed = {
+  values: FormValues;
+  createInitialRule: boolean;
+  initialRuleValues: InitialRuleValues;
+};
+
+type WorkplaceFormState = WorkplaceFormSeed & {
+  errors: FormErrors;
+  isSubmitting: boolean;
+};
+
+type WorkplaceFormAction =
+  | { type: "reset"; seed: WorkplaceFormSeed }
+  | { type: "updateValues"; patch: Partial<FormValues> }
+  | { type: "updateInitialRuleValues"; patch: Partial<InitialRuleValues> }
+  | { type: "setCreateInitialRule"; value: boolean }
+  | { type: "setErrors"; errors: FormErrors }
+  | { type: "setFormError"; message: string }
+  | { type: "startSubmit" }
+  | { type: "setSubmitting"; isSubmitting: boolean };
+
+type WorkplaceEditorFormProps = {
+  mode: "create" | "edit";
+  workplaceId?: string;
+  initialSeed: WorkplaceFormSeed;
+  externalFormError?: string;
+};
 
 function createInitialWorkplaceValues(): FormValues {
   return {
@@ -91,6 +121,42 @@ function createInitialRuleValues(startDate: string): InitialRuleValues {
     overtimePremiumRate: "0.25",
     dailyOvertimeThreshold: "8",
     holidayType: "NONE",
+  };
+}
+
+function createFormValuesFromWorkplaceDetail(
+  detail: WorkplaceEditDetailItem,
+): FormValues {
+  return {
+    name: detail.name,
+    type: detail.type,
+    color: detail.color,
+    closingDayType: detail.closingDayType,
+    closingDay: detail.closingDay === null ? "" : String(detail.closingDay),
+    payday: String(detail.payday),
+  };
+}
+
+function createCreateWorkplaceFormSeed(
+  initialRuleStartDate: string,
+): WorkplaceFormSeed {
+  return {
+    values: createInitialWorkplaceValues(),
+    createInitialRule: true,
+    initialRuleValues: createInitialRuleValues(initialRuleStartDate),
+  };
+}
+
+function createEditWorkplaceFormSeed(
+  initialRuleStartDate: string,
+  detail?: WorkplaceEditDetailItem | null,
+): WorkplaceFormSeed {
+  return {
+    values: detail
+      ? createFormValuesFromWorkplaceDetail(detail)
+      : createInitialWorkplaceValues(),
+    createInitialRule: false,
+    initialRuleValues: createInitialRuleValues(initialRuleStartDate),
   };
 }
 
@@ -222,63 +288,135 @@ function validate(
   return errors;
 }
 
-export function WorkplaceForm(props: WorkplaceFormProps) {
-  const { mode } = props;
-  const workplaceId = mode === "edit" ? props.workplaceId : undefined;
-  const initialRuleStartDate =
-    mode === "create" ? props.initialRuleStartDate : "";
+function clearErrorsForKeys(
+  currentErrors: FormErrors,
+  keys: readonly FormErrorKey[],
+): FormErrors {
+  let nextErrors = currentErrors;
+
+  for (const key of keys) {
+    if (!nextErrors[key]) {
+      continue;
+    }
+
+    if (nextErrors === currentErrors) {
+      nextErrors = { ...currentErrors };
+    }
+    delete nextErrors[key];
+  }
+
+  return nextErrors;
+}
+
+function createWorkplaceFormState(seed: WorkplaceFormSeed): WorkplaceFormState {
+  return {
+    ...seed,
+    errors: {},
+    isSubmitting: false,
+  };
+}
+
+function workplaceFormReducer(
+  state: WorkplaceFormState,
+  action: WorkplaceFormAction,
+): WorkplaceFormState {
+  switch (action.type) {
+    case "reset":
+      return createWorkplaceFormState(action.seed);
+    case "updateValues": {
+      const keys = Object.keys(action.patch) as Array<keyof FormValues>;
+      return {
+        ...state,
+        values: {
+          ...state.values,
+          ...action.patch,
+        },
+        errors: clearErrorsForKeys(state.errors, keys),
+      };
+    }
+    case "updateInitialRuleValues": {
+      const keys = Object.keys(action.patch) as Array<keyof InitialRuleValues>;
+      return {
+        ...state,
+        initialRuleValues: {
+          ...state.initialRuleValues,
+          ...action.patch,
+        },
+        errors: clearErrorsForKeys(state.errors, keys),
+      };
+    }
+    case "setCreateInitialRule":
+      return {
+        ...state,
+        createInitialRule: action.value,
+      };
+    case "setErrors":
+      return {
+        ...state,
+        errors: action.errors,
+      };
+    case "setFormError":
+      return {
+        ...state,
+        errors: {
+          ...state.errors,
+          form: action.message,
+        },
+      };
+    case "startSubmit":
+      return {
+        ...state,
+        errors: {},
+        isSubmitting: true,
+      };
+    case "setSubmitting":
+      return {
+        ...state,
+        isSubmitting: action.isSubmitting,
+      };
+  }
+}
+
+function findFirstValidationMessage(errors: FormErrors): string | undefined {
+  return Object.values(errors).find(
+    (value): value is string => typeof value === "string" && value.length > 0,
+  );
+}
+
+function WorkplaceEditorForm({
+  mode,
+  workplaceId,
+  initialSeed,
+  externalFormError,
+}: WorkplaceEditorFormProps) {
   const router = useRouter();
   const queryClient = getBrowserQueryClient();
   const isEdit = mode === "edit";
-
-  const [values, setValues] = useState<FormValues>(() =>
-    createInitialWorkplaceValues(),
+  const pageTitle = isEdit ? "勤務先編集" : "勤務先作成";
+  const [state, dispatch] = useReducer(
+    workplaceFormReducer,
+    initialSeed,
+    createWorkplaceFormState,
   );
-  const [errors, setErrors] = useState<FormErrors>({});
-  const [isSubmitting, setIsSubmitting] = useState(false);
-  const [createInitialRule, setCreateInitialRule] = useState(true);
-  const [initialRuleValues, setInitialRuleValues] = useState<InitialRuleValues>(
-    () => createInitialRuleValues(initialRuleStartDate),
-  );
-  const { markForResetOnRouteHidden } = useResetOnRouteHidden(() => {
-    setValues(createInitialWorkplaceValues());
-    setErrors({});
-    setIsSubmitting(false);
-    setCreateInitialRule(true);
-    setInitialRuleValues(createInitialRuleValues(initialRuleStartDate));
-  });
+  const resetFormState = useCallback(() => {
+    dispatch({
+      type: "reset",
+      seed: initialSeed,
+    });
+  }, [initialSeed]);
+  const { markForResetOnRouteHidden } = useResetOnRouteHidden(resetFormState);
+  const { values, errors, isSubmitting, createInitialRule, initialRuleValues } =
+    state;
 
-  const pageTitle = useMemo(
-    () => (isEdit ? "勤務先編集" : "勤務先作成"),
-    [isEdit],
-  );
-
-  const workplaceQuery = useWorkplaceEditDetailQuery({
-    workplaceId: workplaceId ?? "",
-    enabled: isEdit && Boolean(workplaceId),
-  });
-
-  const isLoading = isEdit && Boolean(workplaceId) && workplaceQuery.isPending;
-
-  useEffect(() => {
-    if (!isEdit || !workplaceQuery.data) {
+  const handleSubmit = async () => {
+    if (isEdit && !workplaceId) {
+      dispatch({
+        type: "setFormError",
+        message: "編集対象の勤務先IDが指定されていません。",
+      });
       return;
     }
 
-    setValues({
-      name: workplaceQuery.data.name,
-      type: workplaceQuery.data.type,
-      color: workplaceQuery.data.color,
-      closingDayType: workplaceQuery.data.closingDayType,
-      closingDay:
-        workplaceQuery.data.closingDay === null
-          ? ""
-          : String(workplaceQuery.data.closingDay),
-      payday: String(workplaceQuery.data.payday),
-    });
-  }, [isEdit, workplaceQuery.data]);
-
-  const handleSubmit = async () => {
     const validationErrors = validate(
       values,
       isEdit,
@@ -286,11 +424,12 @@ export function WorkplaceForm(props: WorkplaceFormProps) {
       initialRuleValues,
     );
     if (Object.keys(validationErrors).length > 0) {
-      setErrors(validationErrors);
-      const firstValidationMessage = Object.values(validationErrors).find(
-        (value): value is string =>
-          typeof value === "string" && value.length > 0,
-      );
+      dispatch({
+        type: "setErrors",
+        errors: validationErrors,
+      });
+      const firstValidationMessage =
+        findFirstValidationMessage(validationErrors);
       toast.error(messages.error.validation, {
         description: firstValidationMessage,
         duration: 6000,
@@ -298,8 +437,7 @@ export function WorkplaceForm(props: WorkplaceFormProps) {
       return;
     }
 
-    setIsSubmitting(true);
-    setErrors({});
+    dispatch({ type: "startSubmit" });
     const loadingToastId = toast.loading("勤務先を保存中です...");
 
     try {
@@ -416,8 +554,9 @@ export function WorkplaceForm(props: WorkplaceFormProps) {
     } catch (error) {
       console.error("failed to submit workplace form", error);
       const message = toErrorMessage(error, messages.error.workplaceSaveFailed);
-      setErrors({
-        form: message,
+      dispatch({
+        type: "setFormError",
+        message,
       });
       toast.error(messages.error.workplaceSaveFailed, {
         id: loadingToastId,
@@ -425,20 +564,11 @@ export function WorkplaceForm(props: WorkplaceFormProps) {
         duration: 6000,
       });
     } finally {
-      setIsSubmitting(false);
+      dispatch({ type: "setSubmitting", isSubmitting: false });
     }
   };
 
-  const formErrorMessage =
-    errors.form ??
-    (isEdit && !workplaceId
-      ? "編集対象の勤務先IDが指定されていません。"
-      : workplaceQuery.error
-        ? toUserFacingMessage(
-            workplaceQuery.error,
-            "勤務先の取得に失敗しました。",
-          )
-        : undefined);
+  const formErrorMessage = errors.form ?? externalFormError;
 
   return (
     <section className="space-y-6 p-4 md:p-6">
@@ -449,181 +579,153 @@ export function WorkplaceForm(props: WorkplaceFormProps) {
         </p>
       </header>
 
-      {isLoading ? (
-        <FormLoadingSkeleton />
-      ) : (
-        <Form
-          className="max-w-md"
-          onSubmit={(event) => {
-            event.preventDefault();
-            void handleSubmit();
-          }}
-        >
-          <Field data-invalid={Boolean(errors.name)}>
-            <FieldLabel htmlFor="workplace-name">勤務先名</FieldLabel>
-            <FieldContent>
+      <Form
+        className="max-w-md"
+        onSubmit={(event) => {
+          event.preventDefault();
+          void handleSubmit();
+        }}
+      >
+        <Field data-invalid={Boolean(errors.name)}>
+          <FieldLabel htmlFor="workplace-name">勤務先名</FieldLabel>
+          <FieldContent>
+            <Input
+              id="workplace-name"
+              value={values.name}
+              maxLength={50}
+              onChange={(event) => {
+                dispatch({
+                  type: "updateValues",
+                  patch: { name: event.currentTarget.value },
+                });
+              }}
+              className="max-w-50"
+            />
+            <FieldDescription>1〜50文字で入力してください。</FieldDescription>
+            <FormErrorMessage message={errors.name} />
+          </FieldContent>
+        </Field>
+
+        <Field data-invalid={Boolean(errors.type)}>
+          <FieldLabel>タイプ</FieldLabel>
+          <FieldContent>
+            <RadioGroup
+              value={values.type}
+              onValueChange={(value) => {
+                dispatch({
+                  type: "updateValues",
+                  patch: { type: value as WorkplaceType },
+                });
+              }}
+            >
+              <Field orientation="horizontal">
+                <RadioGroupItem id="workplace-type-general" value="GENERAL" />
+                <FieldLabel htmlFor="workplace-type-general">
+                  {formatWorkplaceType("GENERAL")}
+                </FieldLabel>
+              </Field>
+              <Field orientation="horizontal">
+                <RadioGroupItem id="workplace-type-cram" value="CRAM_SCHOOL" />
+                <FieldLabel htmlFor="workplace-type-cram">
+                  {formatWorkplaceType("CRAM_SCHOOL")}
+                </FieldLabel>
+              </Field>
+            </RadioGroup>
+            <FormErrorMessage message={errors.type} />
+          </FieldContent>
+        </Field>
+
+        <Field data-invalid={Boolean(errors.color)}>
+          <FieldLabel htmlFor="workplace-color">色</FieldLabel>
+          <FieldContent>
+            <div className="flex items-center gap-3">
               <Input
-                id="workplace-name"
-                value={values.name}
-                maxLength={50}
+                id="workplace-color"
+                type="color"
+                value={values.color}
+                className="h-10 w-16 p-1"
                 onChange={(event) => {
-                  const next = event.currentTarget.value;
-                  setValues((current) => ({ ...current, name: next }));
+                  dispatch({
+                    type: "updateValues",
+                    patch: { color: event.currentTarget.value },
+                  });
+                }}
+              />
+              <Input
+                value={values.color}
+                onChange={(event) => {
+                  dispatch({
+                    type: "updateValues",
+                    patch: { color: event.currentTarget.value },
+                  });
                 }}
                 className="max-w-50"
               />
-              <FieldDescription>1〜50文字で入力してください。</FieldDescription>
-              <FormErrorMessage message={errors.name} />
-            </FieldContent>
-          </Field>
+            </div>
+            <FieldDescription>HEX形式（例: #3B82F6）</FieldDescription>
+            <FormErrorMessage message={errors.color} />
+          </FieldContent>
+        </Field>
 
-          <Field data-invalid={Boolean(errors.type)}>
-            <FieldLabel>タイプ</FieldLabel>
-            <FieldContent>
-              <RadioGroup
-                value={values.type}
-                onValueChange={(value) => {
-                  setValues((current) => ({
-                    ...current,
-                    type: value as WorkplaceType,
-                  }));
-                }}
-              >
-                <Field orientation="horizontal">
-                  <RadioGroupItem id="workplace-type-general" value="GENERAL" />
-                  <FieldLabel htmlFor="workplace-type-general">
-                    {formatWorkplaceType("GENERAL")}
-                  </FieldLabel>
-                </Field>
-                <Field orientation="horizontal">
-                  <RadioGroupItem
-                    id="workplace-type-cram"
-                    value="CRAM_SCHOOL"
-                  />
-                  <FieldLabel htmlFor="workplace-type-cram">
-                    {formatWorkplaceType("CRAM_SCHOOL")}
-                  </FieldLabel>
-                </Field>
-              </RadioGroup>
-              <FormErrorMessage message={errors.type} />
-            </FieldContent>
-          </Field>
-
-          <Field data-invalid={Boolean(errors.color)}>
-            <FieldLabel htmlFor="workplace-color">色</FieldLabel>
-            <FieldContent>
-              <div className="flex items-center gap-3">
-                <Input
-                  id="workplace-color"
-                  type="color"
-                  value={values.color}
-                  className="h-10 w-16 p-1"
-                  onChange={(event) => {
-                    const next = event.currentTarget.value;
-                    setValues((current) => ({ ...current, color: next }));
-                  }}
-                />
-                <Input
-                  value={values.color}
-                  onChange={(event) => {
-                    const next = event.currentTarget.value;
-                    setValues((current) => ({ ...current, color: next }));
-                  }}
-                  className="max-w-50"
-                />
-              </div>
-              <FieldDescription>HEX形式（例: #3B82F6）</FieldDescription>
-              <FormErrorMessage message={errors.color} />
-            </FieldContent>
-          </Field>
-
-          <Field data-invalid={Boolean(errors.closingDayType)}>
-            <FieldLabel>締日設定</FieldLabel>
-            <FieldContent>
-              <RadioGroup
-                value={values.closingDayType}
-                onValueChange={(value) => {
-                  setValues((current) => ({
-                    ...current,
+        <Field data-invalid={Boolean(errors.closingDayType)}>
+          <FieldLabel>締日設定</FieldLabel>
+          <FieldContent>
+            <RadioGroup
+              value={values.closingDayType}
+              onValueChange={(value) => {
+                dispatch({
+                  type: "updateValues",
+                  patch: {
                     closingDayType: value as ClosingDayType,
                     closingDay:
-                      value === "END_OF_MONTH" ? "" : current.closingDay,
-                  }));
-                }}
-              >
-                <Field orientation="horizontal">
-                  <RadioGroupItem
-                    id="workplace-closing-day-end"
-                    value="END_OF_MONTH"
-                  />
-                  <FieldLabel htmlFor="workplace-closing-day-end">
-                    月末締め
-                  </FieldLabel>
-                </Field>
-                <Field orientation="horizontal">
-                  <RadioGroupItem
-                    id="workplace-closing-day-day"
-                    value="DAY_OF_MONTH"
-                  />
-                  <FieldLabel htmlFor="workplace-closing-day-day">
-                    日付指定
-                  </FieldLabel>
-                </Field>
-              </RadioGroup>
-              <FieldDescription>
-                月末締めを選択すると、締日は毎月の末日になります。
-              </FieldDescription>
-              <FormErrorMessage message={errors.closingDayType} />
-            </FieldContent>
-          </Field>
+                      value === "END_OF_MONTH" ? "" : values.closingDay,
+                  },
+                });
+              }}
+            >
+              <Field orientation="horizontal">
+                <RadioGroupItem
+                  id="workplace-closing-day-end"
+                  value="END_OF_MONTH"
+                />
+                <FieldLabel htmlFor="workplace-closing-day-end">
+                  月末締め
+                </FieldLabel>
+              </Field>
+              <Field orientation="horizontal">
+                <RadioGroupItem
+                  id="workplace-closing-day-day"
+                  value="DAY_OF_MONTH"
+                />
+                <FieldLabel htmlFor="workplace-closing-day-day">
+                  日付指定
+                </FieldLabel>
+              </Field>
+            </RadioGroup>
+            <FieldDescription>
+              月末締めを選択すると、締日は毎月の末日になります。
+            </FieldDescription>
+            <FormErrorMessage message={errors.closingDayType} />
+          </FieldContent>
+        </Field>
 
-          {values.closingDayType === "DAY_OF_MONTH" ? (
-            <Field data-invalid={Boolean(errors.closingDay)}>
-              <FieldLabel htmlFor="workplace-closing-day">締日</FieldLabel>
-              <FieldContent>
-                <div className="flex items-center gap-2">
-                  <Input
-                    id="workplace-closing-day"
-                    type="number"
-                    min={PAYROLL_DAY_MIN}
-                    max={PAYROLL_DAY_MAX}
-                    step="1"
-                    value={values.closingDay}
-                    onChange={(event) => {
-                      const next = event.currentTarget.value;
-                      setValues((current) => ({
-                        ...current,
-                        closingDay: next,
-                      }));
-                    }}
-                    className="max-w-20"
-                  />
-                  <span className="shrink-0 text-sm text-muted-foreground">
-                    日
-                  </span>
-                </div>
-                <FieldDescription>
-                  1〜31の整数で入力してください。
-                </FieldDescription>
-                <FormErrorMessage message={errors.closingDay} />
-              </FieldContent>
-            </Field>
-          ) : null}
-
-          <Field data-invalid={Boolean(errors.payday)}>
-            <FieldLabel htmlFor="workplace-payday">給料日</FieldLabel>
+        {values.closingDayType === "DAY_OF_MONTH" ? (
+          <Field data-invalid={Boolean(errors.closingDay)}>
+            <FieldLabel htmlFor="workplace-closing-day">締日</FieldLabel>
             <FieldContent>
               <div className="flex items-center gap-2">
                 <Input
-                  id="workplace-payday"
+                  id="workplace-closing-day"
                   type="number"
                   min={PAYROLL_DAY_MIN}
                   max={PAYROLL_DAY_MAX}
                   step="1"
-                  value={values.payday}
+                  value={values.closingDay}
                   onChange={(event) => {
-                    const next = event.currentTarget.value;
-                    setValues((current) => ({ ...current, payday: next }));
+                    dispatch({
+                      type: "updateValues",
+                      patch: { closingDay: event.currentTarget.value },
+                    });
                   }}
                   className="max-w-20"
                 />
@@ -634,321 +736,408 @@ export function WorkplaceForm(props: WorkplaceFormProps) {
               <FieldDescription>
                 1〜31の整数で入力してください。
               </FieldDescription>
-              <FormErrorMessage message={errors.payday} />
+              <FormErrorMessage message={errors.closingDay} />
             </FieldContent>
           </Field>
+        ) : null}
 
-          {!isEdit ? (
-            <>
-              <Field orientation="horizontal">
-                <Checkbox
-                  checked={createInitialRule}
-                  onCheckedChange={(checked) => {
-                    setCreateInitialRule(Boolean(checked));
-                  }}
-                  disabled={isSubmitting}
-                />
-                <FieldContent>
-                  <FieldLabel htmlFor="create-initial-rule">
-                    初期給与ルールを同時に作成する
+        <Field data-invalid={Boolean(errors.payday)}>
+          <FieldLabel htmlFor="workplace-payday">給料日</FieldLabel>
+          <FieldContent>
+            <div className="flex items-center gap-2">
+              <Input
+                id="workplace-payday"
+                type="number"
+                min={PAYROLL_DAY_MIN}
+                max={PAYROLL_DAY_MAX}
+                step="1"
+                value={values.payday}
+                onChange={(event) => {
+                  dispatch({
+                    type: "updateValues",
+                    patch: { payday: event.currentTarget.value },
+                  });
+                }}
+                className="max-w-20"
+              />
+              <span className="shrink-0 text-sm text-muted-foreground">日</span>
+            </div>
+            <FieldDescription>1〜31の整数で入力してください。</FieldDescription>
+            <FormErrorMessage message={errors.payday} />
+          </FieldContent>
+        </Field>
+
+        {!isEdit ? (
+          <>
+            <Field orientation="horizontal">
+              <Checkbox
+                checked={createInitialRule}
+                onCheckedChange={(checked) => {
+                  dispatch({
+                    type: "setCreateInitialRule",
+                    value: Boolean(checked),
+                  });
+                }}
+                disabled={isSubmitting}
+              />
+              <FieldContent>
+                <FieldLabel htmlFor="create-initial-rule">
+                  初期給与ルールを同時に作成する
+                </FieldLabel>
+                <FieldDescription>
+                  勤務先作成と同時に、最初の給与ルールを作成します。
+                </FieldDescription>
+              </FieldContent>
+            </Field>
+
+            {createInitialRule ? (
+              <>
+                <Field data-invalid={Boolean(errors.startDate)}>
+                  <FieldLabel htmlFor="initial-rule-start-date">
+                    適用開始日
                   </FieldLabel>
-                  <FieldDescription>
-                    勤務先作成と同時に、最初の給与ルールを作成します。
-                  </FieldDescription>
-                </FieldContent>
-              </Field>
+                  <FieldContent>
+                    <Input
+                      id="initial-rule-start-date"
+                      type="date"
+                      value={initialRuleValues.startDate}
+                      onChange={(event) => {
+                        dispatch({
+                          type: "updateInitialRuleValues",
+                          patch: { startDate: event.currentTarget.value },
+                        });
+                      }}
+                      className="max-w-40"
+                    />
+                    <FormErrorMessage message={errors.startDate} />
+                  </FieldContent>
+                </Field>
 
-              {createInitialRule ? (
-                <>
-                  <Field data-invalid={Boolean(errors.startDate)}>
-                    <FieldLabel htmlFor="initial-rule-start-date">
-                      適用開始日
-                    </FieldLabel>
-                    <FieldContent>
+                <Field data-invalid={Boolean(errors.endDate)}>
+                  <FieldLabel htmlFor="initial-rule-end-date">
+                    適用終了日
+                  </FieldLabel>
+                  <FieldContent>
+                    <Input
+                      id="initial-rule-end-date"
+                      type="date"
+                      value={initialRuleValues.endDate}
+                      onChange={(event) => {
+                        dispatch({
+                          type: "updateInitialRuleValues",
+                          patch: { endDate: event.currentTarget.value },
+                        });
+                      }}
+                      className="max-w-40"
+                    />
+                    <FieldDescription>
+                      空欄の場合は現在有効として扱います。
+                    </FieldDescription>
+                    <FormErrorMessage message={errors.endDate} />
+                  </FieldContent>
+                </Field>
+
+                <Field data-invalid={Boolean(errors.baseHourlyWage)}>
+                  <FieldLabel htmlFor="initial-rule-base-hourly-wage">
+                    基本時給
+                  </FieldLabel>
+                  <FieldContent>
+                    <div className="flex items-center gap-2">
                       <Input
-                        id="initial-rule-start-date"
-                        type="date"
-                        value={initialRuleValues.startDate}
+                        id="initial-rule-base-hourly-wage"
+                        type="number"
+                        min="0"
+                        step="10"
+                        value={initialRuleValues.baseHourlyWage}
                         onChange={(event) => {
-                          const nextValue = event.currentTarget.value;
-                          setInitialRuleValues((current) => ({
-                            ...current,
-                            startDate: nextValue,
-                          }));
+                          dispatch({
+                            type: "updateInitialRuleValues",
+                            patch: {
+                              baseHourlyWage: event.currentTarget.value,
+                            },
+                          });
                         }}
-                        className="max-w-40"
+                        className="max-w-20"
                       />
-                      <FormErrorMessage message={errors.startDate} />
-                    </FieldContent>
-                  </Field>
+                      <span className="shrink-0 text-sm text-muted-foreground">
+                        円/時
+                      </span>
+                    </div>
+                    <FormErrorMessage message={errors.baseHourlyWage} />
+                  </FieldContent>
+                </Field>
 
-                  <Field data-invalid={Boolean(errors.endDate)}>
-                    <FieldLabel htmlFor="initial-rule-end-date">
-                      適用終了日
-                    </FieldLabel>
-                    <FieldContent>
+                <Field data-invalid={Boolean(errors.nightPremiumRate)}>
+                  <FieldLabel htmlFor="initial-rule-night-multiplier">
+                    深夜割増率
+                  </FieldLabel>
+                  <FieldContent>
+                    <div className="flex items-center gap-2">
                       <Input
-                        id="initial-rule-end-date"
-                        type="date"
-                        value={initialRuleValues.endDate}
+                        id="initial-rule-night-multiplier"
+                        type="number"
+                        min="0"
+                        step="0.01"
+                        value={initialRuleValues.nightPremiumRate}
                         onChange={(event) => {
-                          const nextValue = event.currentTarget.value;
-                          setInitialRuleValues((current) => ({
-                            ...current,
-                            endDate: nextValue,
-                          }));
+                          dispatch({
+                            type: "updateInitialRuleValues",
+                            patch: {
+                              nightPremiumRate: event.currentTarget.value,
+                            },
+                          });
                         }}
-                        className="max-w-40"
+                        className="max-w-20"
                       />
-                      <FieldDescription>
-                        空欄の場合は現在有効として扱います。
-                      </FieldDescription>
-                      <FormErrorMessage message={errors.endDate} />
-                    </FieldContent>
-                  </Field>
+                      <span className="shrink-0 text-sm text-muted-foreground">
+                        率
+                      </span>
+                    </div>
+                    <FieldDescription>例: 0.25 = 25%</FieldDescription>
+                    <FormErrorMessage message={errors.nightPremiumRate} />
+                  </FieldContent>
+                </Field>
 
-                  <Field data-invalid={Boolean(errors.baseHourlyWage)}>
-                    <FieldLabel htmlFor="initial-rule-base-hourly-wage">
-                      基本時給
-                    </FieldLabel>
-                    <FieldContent>
-                      <div className="flex items-center gap-2">
-                        <Input
-                          id="initial-rule-base-hourly-wage"
-                          type="number"
-                          min="0"
-                          step="10"
-                          value={initialRuleValues.baseHourlyWage}
-                          onChange={(event) => {
-                            const nextValue = event.currentTarget.value;
-                            setInitialRuleValues((current) => ({
-                              ...current,
-                              baseHourlyWage: nextValue,
-                            }));
-                          }}
-                          className="max-w-20"
-                        />
-                        <span className="shrink-0 text-sm text-muted-foreground">
-                          円/時
-                        </span>
-                      </div>
-                      <FormErrorMessage message={errors.baseHourlyWage} />
-                    </FieldContent>
-                  </Field>
-
-                  <Field data-invalid={Boolean(errors.nightPremiumRate)}>
-                    <FieldLabel htmlFor="initial-rule-night-multiplier">
-                      深夜割増率
-                    </FieldLabel>
-                    <FieldContent>
-                      <div className="flex items-center gap-2">
-                        <Input
-                          id="initial-rule-night-multiplier"
-                          type="number"
-                          min="0"
-                          step="0.01"
-                          value={initialRuleValues.nightPremiumRate}
-                          onChange={(event) => {
-                            const nextValue = event.currentTarget.value;
-                            setInitialRuleValues((current) => ({
-                              ...current,
-                              nightPremiumRate: nextValue,
-                            }));
-                          }}
-                          className="max-w-20"
-                        />
-                        <span className="shrink-0 text-sm text-muted-foreground">
-                          率
-                        </span>
-                      </div>
-                      <FieldDescription>例: 0.25 = 25%</FieldDescription>
-                      <FormErrorMessage message={errors.nightPremiumRate} />
-                    </FieldContent>
-                  </Field>
-
-                  <Field data-invalid={Boolean(errors.holidayAllowanceHourly)}>
-                    <FieldLabel htmlFor="initial-rule-holiday-hourly-wage">
-                      休日手当（時間あたり）
-                    </FieldLabel>
-                    <FieldContent>
-                      <div className="flex items-center gap-2">
-                        <Input
-                          id="initial-rule-holiday-hourly-wage"
-                          type="number"
-                          min="0"
-                          step="10"
-                          value={initialRuleValues.holidayAllowanceHourly}
-                          onChange={(event) => {
-                            const nextValue = event.currentTarget.value;
-                            setInitialRuleValues((current) => ({
-                              ...current,
-                              holidayAllowanceHourly: nextValue,
-                            }));
-                          }}
-                          className="max-w-20"
-                        />
-                        <span className="shrink-0 text-sm text-muted-foreground">
-                          円/時
-                        </span>
-                      </div>
-                      <FieldDescription>
-                        休日勤務時間に対して加算する手当です。
-                      </FieldDescription>
-                      <FormErrorMessage
-                        message={errors.holidayAllowanceHourly}
-                      />
-                    </FieldContent>
-                  </Field>
-
-                  <Field data-invalid={Boolean(errors.overtimePremiumRate)}>
-                    <FieldLabel htmlFor="initial-rule-overtime-multiplier">
-                      所定時間外割増率（保留）
-                    </FieldLabel>
-                    <FieldContent>
-                      <div className="flex items-center gap-2">
-                        <Input
-                          id="initial-rule-overtime-multiplier"
-                          type="number"
-                          min="0"
-                          step="0.01"
-                          value={initialRuleValues.overtimePremiumRate}
-                          onChange={(event) => {
-                            const nextValue = event.currentTarget.value;
-                            setInitialRuleValues((current) => ({
-                              ...current,
-                              overtimePremiumRate: nextValue,
-                            }));
-                          }}
-                          className="max-w-20"
-                        />
-                        <span className="shrink-0 text-sm text-muted-foreground">
-                          率
-                        </span>
-                      </div>
-                      <FieldDescription>
-                        将来拡張のため保持します（現時点の計算では未使用）。
-                      </FieldDescription>
-                      <FormErrorMessage message={errors.overtimePremiumRate} />
-                    </FieldContent>
-                  </Field>
-
-                  <Field data-invalid={Boolean(errors.dailyOvertimeThreshold)}>
-                    <FieldLabel htmlFor="initial-rule-daily-threshold">
-                      1日所定時間
-                    </FieldLabel>
-                    <FieldContent>
-                      <div className="flex items-center gap-2">
-                        <Input
-                          id="initial-rule-daily-threshold"
-                          type="number"
-                          min="0"
-                          step="0.01"
-                          value={initialRuleValues.dailyOvertimeThreshold}
-                          onChange={(event) => {
-                            const nextValue = event.currentTarget.value;
-                            setInitialRuleValues((current) => ({
-                              ...current,
-                              dailyOvertimeThreshold: nextValue,
-                            }));
-                          }}
-                          className="max-w-16"
-                        />
-                        <span className="shrink-0 text-sm text-muted-foreground">
-                          時間
-                        </span>
-                      </div>
-                      <FormErrorMessage
-                        message={errors.dailyOvertimeThreshold}
-                      />
-                    </FieldContent>
-                  </Field>
-
-                  <Field>
-                    <FieldLabel>深夜時間帯</FieldLabel>
-                    <FieldContent>
-                      <FieldDescription>
-                        深夜時間帯は 22:00〜05:00 で固定です。
-                      </FieldDescription>
-                    </FieldContent>
-                  </Field>
-
-                  <Field data-invalid={Boolean(errors.holidayType)}>
-                    <FieldLabel>休日判定</FieldLabel>
-                    <FieldContent>
-                      <RadioGroup
-                        value={initialRuleValues.holidayType}
-                        onValueChange={(value) => {
-                          setInitialRuleValues((current) => ({
-                            ...current,
-                            holidayType: value as HolidayType,
-                          }));
+                <Field data-invalid={Boolean(errors.holidayAllowanceHourly)}>
+                  <FieldLabel htmlFor="initial-rule-holiday-hourly-wage">
+                    休日手当（時間あたり）
+                  </FieldLabel>
+                  <FieldContent>
+                    <div className="flex items-center gap-2">
+                      <Input
+                        id="initial-rule-holiday-hourly-wage"
+                        type="number"
+                        min="0"
+                        step="10"
+                        value={initialRuleValues.holidayAllowanceHourly}
+                        onChange={(event) => {
+                          dispatch({
+                            type: "updateInitialRuleValues",
+                            patch: {
+                              holidayAllowanceHourly: event.currentTarget.value,
+                            },
+                          });
                         }}
-                      >
-                        <Field orientation="horizontal">
-                          <RadioGroupItem
-                            id="initial-rule-holiday-type-none"
-                            value="NONE"
-                          />
-                          <FieldLabel htmlFor="initial-rule-holiday-type-none">
-                            {formatHolidayType("NONE")}
-                          </FieldLabel>
-                        </Field>
-                        <Field orientation="horizontal">
-                          <RadioGroupItem
-                            id="initial-rule-holiday-type-weekend"
-                            value="WEEKEND"
-                          />
-                          <FieldLabel htmlFor="initial-rule-holiday-type-weekend">
-                            {formatHolidayType("WEEKEND")}
-                          </FieldLabel>
-                        </Field>
-                        <Field orientation="horizontal">
-                          <RadioGroupItem
-                            id="initial-rule-holiday-type-holiday"
-                            value="HOLIDAY"
-                          />
-                          <FieldLabel htmlFor="initial-rule-holiday-type-holiday">
-                            {formatHolidayType("HOLIDAY")}
-                          </FieldLabel>
-                        </Field>
-                        <Field orientation="horizontal">
-                          <RadioGroupItem
-                            id="initial-rule-holiday-type-weekend-holiday"
-                            value="WEEKEND_HOLIDAY"
-                          />
-                          <FieldLabel htmlFor="initial-rule-holiday-type-weekend-holiday">
-                            {formatHolidayType("WEEKEND_HOLIDAY")}
-                          </FieldLabel>
-                        </Field>
-                      </RadioGroup>
-                      <FormErrorMessage message={errors.holidayType} />
-                    </FieldContent>
-                  </Field>
-                </>
-              ) : null}
-            </>
-          ) : null}
+                        className="max-w-20"
+                      />
+                      <span className="shrink-0 text-sm text-muted-foreground">
+                        円/時
+                      </span>
+                    </div>
+                    <FieldDescription>
+                      休日勤務時間に対して加算する手当です。
+                    </FieldDescription>
+                    <FormErrorMessage message={errors.holidayAllowanceHourly} />
+                  </FieldContent>
+                </Field>
 
-          <FormErrorMessage message={formErrorMessage} />
+                <Field data-invalid={Boolean(errors.overtimePremiumRate)}>
+                  <FieldLabel htmlFor="initial-rule-overtime-multiplier">
+                    所定時間外割増率（保留）
+                  </FieldLabel>
+                  <FieldContent>
+                    <div className="flex items-center gap-2">
+                      <Input
+                        id="initial-rule-overtime-multiplier"
+                        type="number"
+                        min="0"
+                        step="0.01"
+                        value={initialRuleValues.overtimePremiumRate}
+                        onChange={(event) => {
+                          dispatch({
+                            type: "updateInitialRuleValues",
+                            patch: {
+                              overtimePremiumRate: event.currentTarget.value,
+                            },
+                          });
+                        }}
+                        className="max-w-20"
+                      />
+                      <span className="shrink-0 text-sm text-muted-foreground">
+                        率
+                      </span>
+                    </div>
+                    <FieldDescription>
+                      将来拡張のため保持します（現時点の計算では未使用）。
+                    </FieldDescription>
+                    <FormErrorMessage message={errors.overtimePremiumRate} />
+                  </FieldContent>
+                </Field>
 
-          <div className="flex flex-wrap gap-2">
-            <Button type="submit" disabled={isSubmitting}>
-              {isSubmitting ? "保存中..." : isEdit ? "保存" : "作成"}
-            </Button>
-            <Button
-              type="button"
-              variant="outline"
-              disabled={isSubmitting}
-              onClick={() => {
-                markForResetOnRouteHidden();
-                router.push("/my/workplaces");
-              }}
-            >
-              キャンセル
-            </Button>
-          </div>
-        </Form>
-      )}
+                <Field data-invalid={Boolean(errors.dailyOvertimeThreshold)}>
+                  <FieldLabel htmlFor="initial-rule-daily-threshold">
+                    1日所定時間
+                  </FieldLabel>
+                  <FieldContent>
+                    <div className="flex items-center gap-2">
+                      <Input
+                        id="initial-rule-daily-threshold"
+                        type="number"
+                        min="0"
+                        step="0.01"
+                        value={initialRuleValues.dailyOvertimeThreshold}
+                        onChange={(event) => {
+                          dispatch({
+                            type: "updateInitialRuleValues",
+                            patch: {
+                              dailyOvertimeThreshold: event.currentTarget.value,
+                            },
+                          });
+                        }}
+                        className="max-w-16"
+                      />
+                      <span className="shrink-0 text-sm text-muted-foreground">
+                        時間
+                      </span>
+                    </div>
+                    <FormErrorMessage message={errors.dailyOvertimeThreshold} />
+                  </FieldContent>
+                </Field>
+
+                <Field>
+                  <FieldLabel>深夜時間帯</FieldLabel>
+                  <FieldContent>
+                    <FieldDescription>
+                      深夜時間帯は 22:00〜05:00 で固定です。
+                    </FieldDescription>
+                  </FieldContent>
+                </Field>
+
+                <Field data-invalid={Boolean(errors.holidayType)}>
+                  <FieldLabel>休日判定</FieldLabel>
+                  <FieldContent>
+                    <RadioGroup
+                      value={initialRuleValues.holidayType}
+                      onValueChange={(value) => {
+                        dispatch({
+                          type: "updateInitialRuleValues",
+                          patch: { holidayType: value as HolidayType },
+                        });
+                      }}
+                    >
+                      <Field orientation="horizontal">
+                        <RadioGroupItem
+                          id="initial-rule-holiday-type-none"
+                          value="NONE"
+                        />
+                        <FieldLabel htmlFor="initial-rule-holiday-type-none">
+                          {formatHolidayType("NONE")}
+                        </FieldLabel>
+                      </Field>
+                      <Field orientation="horizontal">
+                        <RadioGroupItem
+                          id="initial-rule-holiday-type-weekend"
+                          value="WEEKEND"
+                        />
+                        <FieldLabel htmlFor="initial-rule-holiday-type-weekend">
+                          {formatHolidayType("WEEKEND")}
+                        </FieldLabel>
+                      </Field>
+                      <Field orientation="horizontal">
+                        <RadioGroupItem
+                          id="initial-rule-holiday-type-holiday"
+                          value="HOLIDAY"
+                        />
+                        <FieldLabel htmlFor="initial-rule-holiday-type-holiday">
+                          {formatHolidayType("HOLIDAY")}
+                        </FieldLabel>
+                      </Field>
+                      <Field orientation="horizontal">
+                        <RadioGroupItem
+                          id="initial-rule-holiday-type-weekend-holiday"
+                          value="WEEKEND_HOLIDAY"
+                        />
+                        <FieldLabel htmlFor="initial-rule-holiday-type-weekend-holiday">
+                          {formatHolidayType("WEEKEND_HOLIDAY")}
+                        </FieldLabel>
+                      </Field>
+                    </RadioGroup>
+                    <FormErrorMessage message={errors.holidayType} />
+                  </FieldContent>
+                </Field>
+              </>
+            ) : null}
+          </>
+        ) : null}
+
+        <FormErrorMessage message={formErrorMessage} />
+
+        <div className="flex flex-wrap gap-2">
+          <Button type="submit" disabled={isSubmitting}>
+            {isSubmitting ? "保存中..." : isEdit ? "保存" : "作成"}
+          </Button>
+          <Button
+            type="button"
+            variant="outline"
+            disabled={isSubmitting}
+            onClick={() => {
+              markForResetOnRouteHidden();
+              router.push("/my/workplaces");
+            }}
+          >
+            キャンセル
+          </Button>
+        </div>
+      </Form>
     </section>
+  );
+}
+
+export function WorkplaceForm(props: WorkplaceFormProps) {
+  const { mode } = props;
+  const workplaceId = mode === "edit" ? props.workplaceId : undefined;
+  const initialRuleStartDate =
+    mode === "create" ? props.initialRuleStartDate : "";
+  const isEdit = mode === "edit";
+  const pageTitle = isEdit ? "勤務先編集" : "勤務先作成";
+
+  const workplaceQuery = useWorkplaceEditDetailQuery({
+    workplaceId: workplaceId ?? "",
+    enabled: isEdit && Boolean(workplaceId),
+  });
+
+  const isLoading = isEdit && Boolean(workplaceId) && workplaceQuery.isPending;
+  const externalFormError =
+    isEdit && !workplaceId
+      ? "編集対象の勤務先IDが指定されていません。"
+      : workplaceQuery.error
+        ? toUserFacingMessage(
+            workplaceQuery.error,
+            "勤務先の取得に失敗しました。",
+          )
+        : undefined;
+
+  if (isLoading) {
+    return (
+      <section className="space-y-6 p-4 md:p-6">
+        <header className="space-y-1">
+          <h2 className="text-xl font-semibold">{pageTitle}</h2>
+          <p className="text-sm text-muted-foreground">
+            勤務先名・タイプ・表示色・締日・給料日を設定します。
+          </p>
+        </header>
+        <FormLoadingSkeleton />
+      </section>
+    );
+  }
+
+  const initialSeed = isEdit
+    ? createEditWorkplaceFormSeed(initialRuleStartDate, workplaceQuery.data)
+    : createCreateWorkplaceFormSeed(initialRuleStartDate);
+
+  return (
+    <WorkplaceEditorForm
+      key={
+        isEdit
+          ? workplaceQuery.data
+            ? `edit-${workplaceQuery.data.id}`
+            : `edit-${workplaceId ?? "unknown"}-empty`
+          : `create-${initialRuleStartDate}`
+      }
+      mode={mode}
+      workplaceId={workplaceId}
+      initialSeed={initialSeed}
+      externalFormError={externalFormError}
+    />
   );
 }

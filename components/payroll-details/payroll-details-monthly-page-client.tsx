@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useMemo, useState } from "react";
+import { useMemo, useState } from "react";
 import { Input } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
 import {
@@ -54,18 +54,12 @@ export function PayrollDetailsMonthlyPageClient({
 }: PayrollDetailsMonthlyPageClientProps) {
   const [draftMonthValue, setDraftMonthValue] = useState(initialMonth);
   const [requestedMonthValue, setRequestedMonthValue] = useState(initialMonth);
-  const [displayMonthValue, setDisplayMonthValue] = useState(initialMonth);
 
   const isValidRequestedMonth =
     fromMonthInputValue(requestedMonthValue) !== null;
   const canApplyMonth =
     fromMonthInputValue(draftMonthValue) !== null &&
     draftMonthValue !== requestedMonthValue;
-
-  const selectedMonthLabel = useMemo(() => {
-    const parsed = fromMonthInputValue(displayMonthValue);
-    return parsed ? formatMonthLabel(parsed) : displayMonthValue;
-  }, [displayMonthValue]);
 
   const workplaceYearlyHref = "/my/payroll-details/workplace-yearly";
 
@@ -92,17 +86,12 @@ export function PayrollDetailsMonthlyPageClient({
         : undefined,
   });
 
-  useEffect(() => {
-    if (detailsQuery.isPlaceholderData) {
-      return;
-    }
-
-    setDisplayMonthValue((current) =>
-      current === requestedMonthValue ? current : requestedMonthValue,
-    );
-  }, [detailsQuery.isPlaceholderData, requestedMonthValue]);
-
   const details = detailsQuery.data ?? null;
+  const displayMonthValue = details?.month ?? requestedMonthValue;
+  const selectedMonthLabel = useMemo(() => {
+    const parsed = fromMonthInputValue(displayMonthValue);
+    return parsed ? formatMonthLabel(parsed) : displayMonthValue;
+  }, [displayMonthValue]);
   const isInitialLoading =
     isValidRequestedMonth && detailsQuery.isLoading && details === null;
   const isRefreshing =

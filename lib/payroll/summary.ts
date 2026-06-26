@@ -34,6 +34,7 @@ type PayrollSummaryByWorkplace = {
 };
 
 export type PayrollSummaryResult = {
+  month: string;
   totalWage: number;
   estimatedTotalWage: number;
   displayValue: PayrollDisplayValue;
@@ -219,6 +220,7 @@ export async function getPayrollSummaryForUser(
 
   if (workplaces.length === 0) {
     return {
+      month: selectedMonthKey,
       totalWage: 0,
       estimatedTotalWage: 0,
       displayValue: createPayrollDisplayValue(0, null),
@@ -515,6 +517,7 @@ export async function getPayrollSummaryForUser(
   );
 
   return {
+    month: selectedMonthKey,
     totalWage: roundCurrency(totalWage),
     estimatedTotalWage: roundCurrency(estimatedTotalWage),
     displayValue: createPayrollDisplayValue(

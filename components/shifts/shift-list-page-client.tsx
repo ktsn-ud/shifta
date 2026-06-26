@@ -1,6 +1,6 @@
 "use client";
 
-import { useMemo, useState } from "react";
+import { useMemo, useReducer } from "react";
 import { useRouter } from "next/navigation";
 import {
   ArrowDownIcon,
@@ -63,6 +63,30 @@ type SortState = {
   column: SortColumn;
   direction: SortDirection;
 } | null;
+
+type ShiftListState = {
+  month: Date;
+  sortState: SortState;
+  selectedShiftIds: string[];
+  deleteDialogOpen: boolean;
+  isDeleting: boolean;
+  deleteErrorMessage: string | null;
+};
+
+type ShiftListAction =
+  | { type: "setMonth"; month: Date }
+  | { type: "toggleSort"; column: SortColumn }
+  | { type: "resetSort" }
+  | { type: "setSelectedShiftIds"; selectedShiftIds: string[] }
+  | { type: "openDeleteDialog" }
+  | { type: "closeDeleteDialog" }
+  | { type: "startDelete" }
+  | { type: "finishDeleteSuccess" }
+  | {
+      type: "finishDeleteFailure";
+      selectedShiftIds: string[];
+      message: string;
+    };
 
 const shiftDateFormatter = new Intl.DateTimeFormat("ja-JP", {
   month: "2-digit",
@@ -216,6 +240,93 @@ function compareShifts(
   return sortState.direction === "asc" ? baseCompare : -baseCompare;
 }
 
+function createInitialShiftListState(initialMonth: string): ShiftListState {
+  const parsedMonth = fromMonthInputValue(initialMonth);
+
+  return {
+    month: startOfMonth(parsedMonth ?? new Date()),
+    sortState: null,
+    selectedShiftIds: [],
+    deleteDialogOpen: false,
+    isDeleting: false,
+    deleteErrorMessage: null,
+  };
+}
+
+function shiftListReducer(
+  state: ShiftListState,
+  action: ShiftListAction,
+): ShiftListState {
+  switch (action.type) {
+    case "setMonth":
+      return {
+        ...state,
+        month: action.month,
+      };
+    case "toggleSort":
+      if (!state.sortState || state.sortState.column !== action.column) {
+        return {
+          ...state,
+          sortState: {
+            column: action.column,
+            direction: "asc",
+          },
+        };
+      }
+
+      return {
+        ...state,
+        sortState: {
+          column: action.column,
+          direction: state.sortState.direction === "asc" ? "desc" : "asc",
+        },
+      };
+    case "resetSort":
+      return {
+        ...state,
+        sortState: null,
+      };
+    case "setSelectedShiftIds":
+      return {
+        ...state,
+        selectedShiftIds: action.selectedShiftIds,
+      };
+    case "openDeleteDialog":
+      return {
+        ...state,
+        deleteDialogOpen: true,
+        deleteErrorMessage: null,
+      };
+    case "closeDeleteDialog":
+      return {
+        ...state,
+        deleteDialogOpen: false,
+        deleteErrorMessage: null,
+      };
+    case "startDelete":
+      return {
+        ...state,
+        isDeleting: true,
+        deleteErrorMessage: null,
+        selectedShiftIds: [],
+      };
+    case "finishDeleteSuccess":
+      return {
+        ...state,
+        deleteDialogOpen: false,
+        isDeleting: false,
+        deleteErrorMessage: null,
+      };
+    case "finishDeleteFailure":
+      return {
+        ...state,
+        isDeleting: false,
+        deleteErrorMessage: action.message,
+        selectedShiftIds: action.selectedShiftIds,
+      };
+  }
+}
+
 type SortToggleButtonProps = {
   column: SortColumn;
   sortState: SortState;
@@ -274,22 +385,14 @@ export function ShiftListPageClient({
 }: ShiftListPageClientProps) {
   const router = useRouter();
   const queryClient = getBrowserQueryClient();
-  const [month, setMonth] = useState(() => {
-    const parsedMonth = fromMonthInputValue(initialMonth);
-    return startOfMonth(parsedMonth ?? new Date());
-  });
-  const [sortState, setSortState] = useState<SortState>(null);
-  const [selectedShiftIdsState, setSelectedShiftIdsState] = useState<string[]>(
-    [],
-  );
-  const [deleteDialogOpen, setDeleteDialogOpen] = useState(false);
-  const [isDeleting, setIsDeleting] = useState(false);
-  const [deleteErrorMessage, setDeleteErrorMessage] = useState<string | null>(
-    null,
+  const [state, dispatch] = useReducer(
+    shiftListReducer,
+    initialMonth,
+    createInitialShiftListState,
   );
 
   const { shifts, displayMonth, isInitialLoading, isRefreshing, errorMessage } =
-    useMonthShifts(month, {
+    useMonthShifts(state.month, {
       cacheUserKey: currentUserId,
       initialShifts: initialMonthShifts,
       initialStartDate: initialMonthStartDate,
@@ -298,9 +401,9 @@ export function ShiftListPageClient({
 
   const sortedShifts = useMemo(() => {
     return shifts.toSorted((left, right) =>
-      compareShifts(left, right, sortState),
+      compareShifts(left, right, state.sortState),
     );
-  }, [shifts, sortState]);
+  }, [shifts, state.sortState]);
 
   const currentMonth = useMemo(
     () => startOfMonth(dateFromDateKey(todayDate) ?? new Date()),
@@ -312,8 +415,10 @@ export function ShiftListPageClient({
   );
   const selectedShiftIds = useMemo(
     () =>
-      selectedShiftIdsState.filter((shiftId) => visibleShiftIdSet.has(shiftId)),
-    [selectedShiftIdsState, visibleShiftIdSet],
+      state.selectedShiftIds.filter((shiftId) =>
+        visibleShiftIdSet.has(shiftId),
+      ),
+    [state.selectedShiftIds, visibleShiftIdSet],
   );
   const selectedShiftIdSet = useMemo(
     () => new Set(selectedShiftIds),
@@ -331,46 +436,44 @@ export function ShiftListPageClient({
     !isAllSelected;
 
   function handleToggleSort(column: SortColumn) {
-    setSortState((current) => {
-      if (!current || current.column !== column) {
-        return {
-          column,
-          direction: "asc",
-        };
-      }
-
-      return {
-        column,
-        direction: current.direction === "asc" ? "desc" : "asc",
-      };
+    dispatch({
+      type: "toggleSort",
+      column,
     });
   }
 
   function handleToggleShiftSelection(shiftId: string, checked: boolean) {
-    setSelectedShiftIdsState((current) => {
-      const next = new Set(
-        current.filter((currentShiftId) =>
-          visibleShiftIdSet.has(currentShiftId),
-        ),
-      );
+    const next = new Set(
+      state.selectedShiftIds.filter((currentShiftId) =>
+        visibleShiftIdSet.has(currentShiftId),
+      ),
+    );
 
-      if (checked) {
-        next.add(shiftId);
-      } else {
-        next.delete(shiftId);
-      }
+    if (checked) {
+      next.add(shiftId);
+    } else {
+      next.delete(shiftId);
+    }
 
-      return Array.from(next);
+    dispatch({
+      type: "setSelectedShiftIds",
+      selectedShiftIds: Array.from(next),
     });
   }
 
   function handleSelectAll(checked: boolean) {
     if (!checked) {
-      setSelectedShiftIdsState([]);
+      dispatch({
+        type: "setSelectedShiftIds",
+        selectedShiftIds: [],
+      });
       return;
     }
 
-    setSelectedShiftIdsState(sortedShifts.map((shift) => shift.id));
+    dispatch({
+      type: "setSelectedShiftIds",
+      selectedShiftIds: sortedShifts.map((shift) => shift.id),
+    });
   }
 
   function handleEditShift(shiftId: string) {
@@ -382,7 +485,7 @@ export function ShiftListPageClient({
   }
 
   async function handleBulkDelete() {
-    if (selectedShiftIds.length === 0 || isDeleting) {
+    if (selectedShiftIds.length === 0 || state.isDeleting) {
       return;
     }
 
@@ -392,9 +495,7 @@ export function ShiftListPageClient({
       shiftIds,
     );
 
-    setIsDeleting(true);
-    setDeleteErrorMessage(null);
-    setSelectedShiftIdsState([]);
+    dispatch({ type: "startDelete" });
 
     try {
       const response = await fetch("/api/shifts", {
@@ -423,7 +524,7 @@ export function ShiftListPageClient({
         messages.error.calendarSyncFailed,
       );
 
-      setDeleteDialogOpen(false);
+      dispatch({ type: "finishDeleteSuccess" });
       void invalidateAfterShiftMutation(queryClient, {
         mode: "background",
       });
@@ -436,17 +537,18 @@ export function ShiftListPageClient({
       });
     } catch (error) {
       rollback();
-      setSelectedShiftIdsState(shiftIds);
 
       console.error("failed to bulk delete shifts", error);
       const message = toErrorMessage(error, messages.error.shiftDeleteFailed);
-      setDeleteErrorMessage(message);
+      dispatch({
+        type: "finishDeleteFailure",
+        selectedShiftIds: shiftIds,
+        message,
+      });
       toast.error(messages.error.shiftDeleteFailed, {
         description: message,
         duration: 6000,
       });
-    } finally {
-      setIsDeleting(false);
     }
   }
 
@@ -467,7 +569,12 @@ export function ShiftListPageClient({
           <Button
             type="button"
             variant="outline"
-            onClick={() => setMonth((current) => addMonths(current, -1))}
+            onClick={() =>
+              dispatch({
+                type: "setMonth",
+                month: addMonths(displayMonth, -1),
+              })
+            }
             disabled={isRefreshing}
           >
             <ChevronLeftIcon className="size-4" />
@@ -476,7 +583,12 @@ export function ShiftListPageClient({
           <Button
             type="button"
             variant="outline"
-            onClick={() => setMonth((current) => addMonths(current, 1))}
+            onClick={() =>
+              dispatch({
+                type: "setMonth",
+                month: addMonths(displayMonth, 1),
+              })
+            }
             disabled={isRefreshing}
           >
             次月
@@ -485,7 +597,12 @@ export function ShiftListPageClient({
           <Button
             type="button"
             variant="outline"
-            onClick={() => setMonth(currentMonth)}
+            onClick={() =>
+              dispatch({
+                type: "setMonth",
+                month: currentMonth,
+              })
+            }
             disabled={isCurrentMonth || isRefreshing}
           >
             今月に戻る
@@ -503,19 +620,16 @@ export function ShiftListPageClient({
               <Button
                 type="button"
                 variant="outline"
-                onClick={() => setSortState(null)}
-                disabled={sortState === null}
+                onClick={() => dispatch({ type: "resetSort" })}
+                disabled={state.sortState === null}
               >
                 デフォルト表示に戻す
               </Button>
               <Button
                 type="button"
                 variant="destructive"
-                onClick={() => {
-                  setDeleteErrorMessage(null);
-                  setDeleteDialogOpen(true);
-                }}
-                disabled={selectedCount === 0 || isDeleting}
+                onClick={() => dispatch({ type: "openDeleteDialog" })}
+                disabled={selectedCount === 0 || state.isDeleting}
               >
                 <Trash2Icon className="size-4" />
                 選択したシフトを削除
@@ -561,7 +675,7 @@ export function ShiftListPageClient({
                       <TableHead>
                         <SortToggleButton
                           column="date"
-                          sortState={sortState}
+                          sortState={state.sortState}
                           label="日付"
                           onToggle={handleToggleSort}
                         />
@@ -569,7 +683,7 @@ export function ShiftListPageClient({
                       <TableHead>
                         <SortToggleButton
                           column="time"
-                          sortState={sortState}
+                          sortState={state.sortState}
                           label="時間"
                           onToggle={handleToggleSort}
                         />
@@ -577,7 +691,7 @@ export function ShiftListPageClient({
                       <TableHead>
                         <SortToggleButton
                           column="workplace"
-                          sortState={sortState}
+                          sortState={state.sortState}
                           label="勤務先"
                           onToggle={handleToggleSort}
                         />
@@ -585,7 +699,7 @@ export function ShiftListPageClient({
                       <TableHead>
                         <SortToggleButton
                           column="breakMinutes"
-                          sortState={sortState}
+                          sortState={state.sortState}
                           label="休憩時間"
                           onToggle={handleToggleSort}
                         />
@@ -593,7 +707,7 @@ export function ShiftListPageClient({
                       <TableHead className="text-right">
                         <SortToggleButton
                           column="estimatedPay"
-                          sortState={sortState}
+                          sortState={state.sortState}
                           align="right"
                           label="給与"
                           onToggle={handleToggleSort}
@@ -685,12 +799,11 @@ export function ShiftListPageClient({
       </LoadingOverlay>
 
       <Dialog
-        open={deleteDialogOpen}
+        open={state.deleteDialogOpen}
         onOpenChange={(nextOpen) => {
-          if (!nextOpen) {
-            setDeleteErrorMessage(null);
-          }
-          setDeleteDialogOpen(nextOpen);
+          dispatch({
+            type: nextOpen ? "openDeleteDialog" : "closeDeleteDialog",
+          });
         }}
       >
         <DialogContent>
@@ -701,9 +814,9 @@ export function ShiftListPageClient({
             </DialogDescription>
           </DialogHeader>
 
-          {deleteErrorMessage ? (
+          {state.deleteErrorMessage ? (
             <p className="rounded-md border border-destructive/40 bg-destructive/5 px-3 py-2 text-sm text-destructive">
-              {deleteErrorMessage}
+              {state.deleteErrorMessage}
             </p>
           ) : null}
 
@@ -711,20 +824,20 @@ export function ShiftListPageClient({
             <Button
               type="button"
               variant="outline"
-              disabled={isDeleting}
-              onClick={() => setDeleteDialogOpen(false)}
+              disabled={state.isDeleting}
+              onClick={() => dispatch({ type: "closeDeleteDialog" })}
             >
               キャンセル
             </Button>
             <Button
               type="button"
               variant="destructive"
-              disabled={isDeleting || selectedCount === 0}
+              disabled={state.isDeleting || selectedCount === 0}
               onClick={() => {
                 void handleBulkDelete();
               }}
             >
-              {isDeleting ? "削除中..." : "削除する"}
+              {state.isDeleting ? "削除中..." : "削除する"}
             </Button>
           </DialogFooter>
         </DialogContent>

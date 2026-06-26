@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useReducer } from "react";
 import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
 import {
@@ -52,6 +52,49 @@ type EditableRow = {
   hasActualPayroll: boolean;
 };
 
+type ActualPayrollFilterState = {
+  draftMonthValue: string;
+  requestedMonthValue: string;
+};
+
+type ActualPayrollFilterAction =
+  | { type: "setDraftMonthValue"; value: string }
+  | { type: "setRequestedMonthValue"; value: string }
+  | { type: "resetToCurrentMonth"; currentMonthValue: string };
+
+type ActualPayrollEditorState = {
+  rows: EditableRow[];
+  isSaving: boolean;
+};
+
+type ActualPayrollEditorAction =
+  | { type: "hydrate"; data: ActualPayrollEditorResult }
+  | {
+      type: "updateAmount";
+      workplaceId: string;
+      field: "taxableAmount" | "nonTaxableAmount";
+      value: string;
+    }
+  | { type: "updateNote"; workplaceId: string; value: string }
+  | { type: "clearRow"; workplaceId: string }
+  | { type: "setSaving"; isSaving: boolean };
+
+type ActualPayrollEditorScreenProps = {
+  currentUserId: string;
+  currentMonthValue: string;
+  requestedMonthValue: string;
+  draftMonthValue: string;
+  canApplyMonth: boolean;
+  selectedMonthLabel: string;
+  isInitialLoading: boolean;
+  isRefreshing: boolean;
+  errorMessage: string | null;
+  data: ActualPayrollEditorResult;
+  onDraftMonthValueChange: (value: string) => void;
+  onApplyMonth: () => void;
+  onBackToCurrentMonth: () => void;
+};
+
 const currencyFormatter = new Intl.NumberFormat("ja-JP", {
   style: "currency",
   currency: "JPY",
@@ -89,6 +132,129 @@ function parseCurrencyInput(value: string): number | null {
   return Math.round(parsed);
 }
 
+function createActualPayrollFilterState(
+  initialMonth: string,
+): ActualPayrollFilterState {
+  return {
+    draftMonthValue: initialMonth,
+    requestedMonthValue: initialMonth,
+  };
+}
+
+function actualPayrollFilterReducer(
+  state: ActualPayrollFilterState,
+  action: ActualPayrollFilterAction,
+): ActualPayrollFilterState {
+  switch (action.type) {
+    case "setDraftMonthValue":
+      return {
+        ...state,
+        draftMonthValue: action.value,
+      };
+    case "setRequestedMonthValue":
+      return {
+        ...state,
+        requestedMonthValue: action.value,
+      };
+    case "resetToCurrentMonth":
+      return {
+        draftMonthValue: action.currentMonthValue,
+        requestedMonthValue: action.currentMonthValue,
+      };
+  }
+}
+
+function createActualPayrollEditorState(
+  data: ActualPayrollEditorResult,
+): ActualPayrollEditorState {
+  return {
+    rows: toEditableRows(data),
+    isSaving: false,
+  };
+}
+
+function actualPayrollEditorReducer(
+  state: ActualPayrollEditorState,
+  action: ActualPayrollEditorAction,
+): ActualPayrollEditorState {
+  switch (action.type) {
+    case "hydrate":
+      return createActualPayrollEditorState(action.data);
+    case "updateAmount":
+      return {
+        ...state,
+        rows: state.rows.map((row) => {
+          if (row.workplaceId !== action.workplaceId) {
+            return row;
+          }
+
+          const nextRow = {
+            ...row,
+            [action.field]: action.value,
+          };
+          const taxableAmount = parseCurrencyInput(nextRow.taxableAmount);
+          const nonTaxableAmount = parseCurrencyInput(nextRow.nonTaxableAmount);
+          const hasAnyValue =
+            nextRow.taxableAmount.trim().length > 0 ||
+            nextRow.nonTaxableAmount.trim().length > 0;
+
+          if (!hasAnyValue || taxableAmount === null) {
+            return {
+              ...nextRow,
+              totalActualAmount: null,
+              displayAmount: row.estimatedAmount,
+              differenceAmount: 0,
+              hasActualPayroll: false,
+            };
+          }
+
+          const normalizedNonTaxableAmount = nonTaxableAmount ?? 0;
+          const totalActualAmount = taxableAmount + normalizedNonTaxableAmount;
+
+          return {
+            ...nextRow,
+            totalActualAmount,
+            displayAmount: totalActualAmount,
+            differenceAmount: totalActualAmount - row.estimatedAmount,
+            hasActualPayroll: true,
+          };
+        }),
+      };
+    case "updateNote":
+      return {
+        ...state,
+        rows: state.rows.map((row) =>
+          row.workplaceId === action.workplaceId
+            ? { ...row, note: action.value }
+            : row,
+        ),
+      };
+    case "clearRow":
+      return {
+        ...state,
+        rows: state.rows.map((row) =>
+          row.workplaceId === action.workplaceId
+            ? {
+                ...row,
+                taxableAmount: "",
+                nonTaxableAmount: "",
+                note: "",
+                totalActualAmount: null,
+                displayAmount: row.estimatedAmount,
+                differenceAmount: 0,
+                hasActualPayroll: false,
+              }
+            : row,
+        ),
+      };
+    case "setSaving":
+      return {
+        ...state,
+        isSaving: action.isSaving,
+      };
+  }
+}
+
 export function ActualPayrollPageLoadingSkeleton() {
   return (
     <section className="space-y-6 p-4 md:p-6">
@@ -108,145 +274,32 @@ export function ActualPayrollPageLoadingSkeleton() {
   );
 }
 
-export function ActualPayrollPageClient({
+function ActualPayrollEditorScreen({
   currentUserId,
-  initialMonth,
   currentMonthValue,
-  initialData,
-}: ActualPayrollPageClientProps) {
+  requestedMonthValue,
+  draftMonthValue,
+  canApplyMonth,
+  selectedMonthLabel,
+  isInitialLoading,
+  isRefreshing,
+  errorMessage,
+  data,
+  onDraftMonthValueChange,
+  onApplyMonth,
+  onBackToCurrentMonth,
+}: ActualPayrollEditorScreenProps) {
   const queryClient = getBrowserQueryClient();
-  const [draftMonthValue, setDraftMonthValue] = useState(initialMonth);
-  const [requestedMonthValue, setRequestedMonthValue] = useState(initialMonth);
-  const [displayMonthValue, setDisplayMonthValue] = useState(initialMonth);
-  const [rows, setRows] = useState<EditableRow[]>(() =>
-    toEditableRows(initialData),
+  const [state, dispatch] = useReducer(
+    actualPayrollEditorReducer,
+    data,
+    createActualPayrollEditorState,
   );
-  const [isSaving, setIsSaving] = useState(false);
-
-  const selectedMonth =
-    fromMonthInputValue(displayMonthValue) ??
-    fromMonthInputValue(currentMonthValue);
-  const isValidRequestedMonth =
-    fromMonthInputValue(requestedMonthValue) !== null;
-  const canApplyMonth =
-    fromMonthInputValue(draftMonthValue) !== null &&
-    draftMonthValue !== requestedMonthValue;
-  const selectedMonthLabel = selectedMonth
-    ? formatMonthLabel(selectedMonth)
-    : displayMonthValue;
-
-  const actualPayrollQuery = useActualPayrollQuery({
-    userId: currentUserId,
-    month: requestedMonthValue,
-    enabled: isValidRequestedMonth,
-    initialData:
-      isValidRequestedMonth && requestedMonthValue === initialMonth
-        ? initialData
-        : undefined,
-  });
-
-  useEffect(() => {
-    if (actualPayrollQuery.isPlaceholderData || !actualPayrollQuery.data) {
-      return;
-    }
-
-    setRows(toEditableRows(actualPayrollQuery.data));
-    setDisplayMonthValue((current) =>
-      current === requestedMonthValue ? current : requestedMonthValue,
-    );
-  }, [
-    actualPayrollQuery.data,
-    actualPayrollQuery.isPlaceholderData,
-    requestedMonthValue,
-  ]);
-
-  const data = actualPayrollQuery.data ?? null;
-  const isInitialLoading =
-    isValidRequestedMonth && actualPayrollQuery.isLoading && data === null;
-  const isRefreshing =
-    isValidRequestedMonth && actualPayrollQuery.isFetching && data !== null;
-  const errorMessage = !isValidRequestedMonth
-    ? "月は YYYY-MM 形式で指定してください。"
-    : actualPayrollQuery.error
-      ? toErrorMessage(
-          actualPayrollQuery.error,
-          "実給与データの取得に失敗しました。",
-        )
-      : null;
-
-  const handleBackToCurrentMonth = () => {
-    setDraftMonthValue(currentMonthValue);
-    setRequestedMonthValue(currentMonthValue);
-  };
-
-  const handleClearRow = (workplaceId: string) => {
-    setRows((current) =>
-      current.map((row) =>
-        row.workplaceId === workplaceId
-          ? {
-              ...row,
-              taxableAmount: "",
-              nonTaxableAmount: "",
-              note: "",
-              totalActualAmount: null,
-              displayAmount: row.estimatedAmount,
-              differenceAmount: 0,
-              hasActualPayroll: false,
-            }
-          : row,
-      ),
-    );
-  };
-
-  const handleAmountChange = (
-    workplaceId: string,
-    field: "taxableAmount" | "nonTaxableAmount",
-    value: string,
-  ) => {
-    setRows((current) =>
-      current.map((row) => {
-        if (row.workplaceId !== workplaceId) {
-          return row;
-        }
-
-        const nextRow = {
-          ...row,
-          [field]: value,
-        };
-        const taxableAmount = parseCurrencyInput(nextRow.taxableAmount);
-        const nonTaxableAmount = parseCurrencyInput(nextRow.nonTaxableAmount);
-        const hasAnyValue =
-          nextRow.taxableAmount.trim().length > 0 ||
-          nextRow.nonTaxableAmount.trim().length > 0;
-
-        if (!hasAnyValue || taxableAmount === null) {
-          return {
-            ...nextRow,
-            totalActualAmount: null,
-            displayAmount: row.estimatedAmount,
-            differenceAmount: 0,
-            hasActualPayroll: false,
-          };
-        }
-
-        const normalizedNonTaxableAmount = nonTaxableAmount ?? 0;
-        const totalActualAmount = taxableAmount + normalizedNonTaxableAmount;
-
-        return {
-          ...nextRow,
-          totalActualAmount,
-          displayAmount: totalActualAmount,
-          differenceAmount: totalActualAmount - row.estimatedAmount,
-          hasActualPayroll: true,
-        };
-      }),
-    );
-  };
 
   const handleSave = async () => {
     const payloadRows = [];
 
-    for (const row of rows) {
+    for (const row of state.rows) {
       const taxableAmount = parseCurrencyInput(row.taxableAmount);
       const nonTaxableAmount = parseCurrencyInput(row.nonTaxableAmount);
       const trimmedNote = row.note.trim();
@@ -281,20 +334,17 @@ export function ActualPayrollPageClient({
       });
     }
 
-    setIsSaving(true);
+    dispatch({ type: "setSaving", isSaving: true });
     const loadingToastId = toast.loading("実給与を保存中です...");
 
     try {
-      const response = await fetch(
-        `/api/payroll/actual?month=${requestedMonthValue}`,
-        {
-          method: "PUT",
-          headers: {
-            "Content-Type": "application/json",
-          },
-          body: JSON.stringify({ rows: payloadRows }),
+      const response = await fetch(`/api/payroll/actual?month=${data.month}`, {
+        method: "PUT",
+        headers: {
+          "Content-Type": "application/json",
         },
-      );
+        body: JSON.stringify({ rows: payloadRows }),
+      });
 
       if (!response.ok) {
         const payload = (await response.json().catch(() => null)) as {
@@ -312,12 +362,15 @@ export function ActualPayrollPageClient({
       queryClient.setQueryData(
         queryKeys.payroll.actual({
           userId: currentUserId,
-          month: requestedMonthValue,
+          month: data.month,
         }),
         payload.data,
       );
       await invalidateAfterActualPayrollMutation(queryClient);
-      setRows(toEditableRows(payload.data));
+      dispatch({
+        type: "hydrate",
+        data: payload.data,
+      });
       toast.success(messages.success.actualPayrollSaved);
     } catch (error) {
       console.error("failed to save actual payroll", error);
@@ -330,7 +383,7 @@ export function ActualPayrollPageClient({
       });
     } finally {
       toast.dismiss(loadingToastId);
-      setIsSaving(false);
+      dispatch({ type: "setSaving", isSaving: false });
     }
   };
 
@@ -353,9 +406,11 @@ export function ActualPayrollPageClient({
               type="button"
               variant="outline"
               size="sm"
-              onClick={handleBackToCurrentMonth}
+              onClick={onBackToCurrentMonth}
               disabled={
-                requestedMonthValue === currentMonthValue || isRefreshing
+                requestedMonthValue === currentMonthValue ||
+                isRefreshing ||
+                state.isSaving
               }
             >
               今月に戻る
@@ -363,22 +418,22 @@ export function ActualPayrollPageClient({
             <Input
               type="month"
               value={draftMonthValue}
-              disabled={isRefreshing || isSaving}
+              disabled={isRefreshing || state.isSaving}
               onKeyDown={(event) => {
                 if (event.key === "Enter") {
-                  setRequestedMonthValue(draftMonthValue);
+                  onApplyMonth();
                 }
               }}
               onChange={(event) => {
-                setDraftMonthValue(event.currentTarget.value);
+                onDraftMonthValueChange(event.currentTarget.value);
               }}
               className="w-44"
             />
             <Button
               type="button"
               size="sm"
-              onClick={() => setRequestedMonthValue(draftMonthValue)}
-              disabled={!canApplyMonth || isRefreshing || isSaving}
+              onClick={onApplyMonth}
+              disabled={!canApplyMonth || isRefreshing || state.isSaving}
             >
               適用
             </Button>
@@ -386,7 +441,7 @@ export function ActualPayrollPageClient({
               type="button"
               size="sm"
               onClick={handleSave}
-              disabled={isInitialLoading || isRefreshing || isSaving}
+              disabled={isInitialLoading || isRefreshing || state.isSaving}
             >
               保存
             </Button>
@@ -407,7 +462,7 @@ export function ActualPayrollPageClient({
         />
       ) : (
         <LoadingOverlay
-          isLoading={isRefreshing || isSaving}
+          isLoading={isRefreshing || state.isSaving}
           className="rounded-xl"
         >
           <Card className="border-border/80 bg-card/95 shadow-sm">
@@ -434,8 +489,8 @@ export function ActualPayrollPageClient({
                     </TableRow>
                   </TableHeader>
                   <TableBody>
-                    {rows.length > 0 ? (
-                      rows.map((row) => (
+                    {state.rows.length > 0 ? (
+                      state.rows.map((row) => (
                         <TableRow key={row.workplaceId}>
                           <TableCell className="font-medium">
                             <span className="inline-flex items-center gap-2">
@@ -456,13 +511,14 @@ export function ActualPayrollPageClient({
                             <Input
                               inputMode="numeric"
                               value={row.taxableAmount}
-                              disabled={isRefreshing || isSaving}
+                              disabled={isRefreshing || state.isSaving}
                               onChange={(event) =>
-                                handleAmountChange(
-                                  row.workplaceId,
-                                  "taxableAmount",
-                                  event.currentTarget.value,
-                                )
+                                dispatch({
+                                  type: "updateAmount",
+                                  workplaceId: row.workplaceId,
+                                  field: "taxableAmount",
+                                  value: event.currentTarget.value,
+                                })
                               }
                             />
                           </TableCell>
@@ -470,13 +526,14 @@ export function ActualPayrollPageClient({
                             <Input
                               inputMode="numeric"
                               value={row.nonTaxableAmount}
-                              disabled={isRefreshing || isSaving}
+                              disabled={isRefreshing || state.isSaving}
                               onChange={(event) =>
-                                handleAmountChange(
-                                  row.workplaceId,
-                                  "nonTaxableAmount",
-                                  event.currentTarget.value,
-                                )
+                                dispatch({
+                                  type: "updateAmount",
+                                  workplaceId: row.workplaceId,
+                                  field: "nonTaxableAmount",
+                                  value: event.currentTarget.value,
+                                })
                               }
                             />
                           </TableCell>
@@ -501,16 +558,13 @@ export function ActualPayrollPageClient({
                           <TableCell className="min-w-48">
                             <Input
                               value={row.note}
-                              disabled={isRefreshing || isSaving}
+                              disabled={isRefreshing || state.isSaving}
                               onChange={(event) => {
-                                const nextValue = event.currentTarget.value;
-                                setRows((current) =>
-                                  current.map((item) =>
-                                    item.workplaceId === row.workplaceId
-                                      ? { ...item, note: nextValue }
-                                      : item,
-                                  ),
-                                );
+                                dispatch({
+                                  type: "updateNote",
+                                  workplaceId: row.workplaceId,
+                                  value: event.currentTarget.value,
+                                });
                               }}
                             />
                           </TableCell>
@@ -519,8 +573,13 @@ export function ActualPayrollPageClient({
                               type="button"
                               variant="ghost"
                               size="sm"
-                              disabled={isRefreshing || isSaving}
-                              onClick={() => handleClearRow(row.workplaceId)}
+                              disabled={isRefreshing || state.isSaving}
+                              onClick={() =>
+                                dispatch({
+                                  type: "clearRow",
+                                  workplaceId: row.workplaceId,
+                                })
+                              }
                             >
                               クリア
                             </Button>
@@ -545,5 +604,93 @@ export function ActualPayrollPageClient({
         </LoadingOverlay>
       )}
     </section>
+  );
+}
+
+export function ActualPayrollPageClient({
+  currentUserId,
+  initialMonth,
+  currentMonthValue,
+  initialData,
+}: ActualPayrollPageClientProps) {
+  const [filterState, dispatch] = useReducer(
+    actualPayrollFilterReducer,
+    initialMonth,
+    createActualPayrollFilterState,
+  );
+
+  const isValidRequestedMonth =
+    fromMonthInputValue(filterState.requestedMonthValue) !== null;
+  const canApplyMonth =
+    fromMonthInputValue(filterState.draftMonthValue) !== null &&
+    filterState.draftMonthValue !== filterState.requestedMonthValue;
+
+  const actualPayrollQuery = useActualPayrollQuery({
+    userId: currentUserId,
+    month: filterState.requestedMonthValue,
+    enabled: isValidRequestedMonth,
+    initialData:
+      isValidRequestedMonth && filterState.requestedMonthValue === initialMonth
+        ? initialData
+        : undefined,
+  });
+
+  const data = actualPayrollQuery.data ?? null;
+  const displayMonthValue = data?.month ?? filterState.requestedMonthValue;
+  const selectedMonth =
+    fromMonthInputValue(displayMonthValue) ??
+    fromMonthInputValue(currentMonthValue);
+  const selectedMonthLabel = selectedMonth
+    ? formatMonthLabel(selectedMonth)
+    : displayMonthValue;
+  const isInitialLoading =
+    isValidRequestedMonth && actualPayrollQuery.isLoading && data === null;
+  const isRefreshing =
+    isValidRequestedMonth && actualPayrollQuery.isFetching && data !== null;
+  const errorMessage = !isValidRequestedMonth
+    ? "月は YYYY-MM 形式で指定してください。"
+    : actualPayrollQuery.error
+      ? toErrorMessage(
+          actualPayrollQuery.error,
+          "実給与データの取得に失敗しました。",
+        )
+      : null;
+
+  return (
+    <ActualPayrollEditorScreen
+      key={data?.month ?? filterState.requestedMonthValue}
+      currentUserId={currentUserId}
+      currentMonthValue={currentMonthValue}
+      requestedMonthValue={filterState.requestedMonthValue}
+      draftMonthValue={filterState.draftMonthValue}
+      canApplyMonth={canApplyMonth}
+      selectedMonthLabel={selectedMonthLabel}
+      isInitialLoading={isInitialLoading}
+      isRefreshing={isRefreshing}
+      errorMessage={errorMessage}
+      data={data ?? initialData}
+      onDraftMonthValueChange={(value) => {
+        dispatch({
+          type: "setDraftMonthValue",
+          value,
+        });
+      }}
+      onApplyMonth={() => {
+        if (fromMonthInputValue(filterState.draftMonthValue) === null) {
+          return;
+        }
+
+        dispatch({
+          type: "setRequestedMonthValue",
+          value: filterState.draftMonthValue,
+        });
+      }}
+      onBackToCurrentMonth={() => {
+        dispatch({
+          type: "resetToCurrentMonth",
+          currentMonthValue,
+        });
+      }}
+    />
   );
 }

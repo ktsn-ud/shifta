@@ -1,7 +1,7 @@
 "use client";
 
 import dynamic from "next/dynamic";
-import { useEffect, useMemo, useState } from "react";
+import { useMemo, useState } from "react";
 import {
   Card,
   CardContent,
@@ -91,18 +91,12 @@ export function SummaryPageClient({
 }: SummaryPageClientProps) {
   const [draftMonthValue, setDraftMonthValue] = useState(initialMonth);
   const [requestedMonthValue, setRequestedMonthValue] = useState(initialMonth);
-  const [displayMonthValue, setDisplayMonthValue] = useState(initialMonth);
   const isValidRequestedMonth =
     fromMonthInputValue(requestedMonthValue) !== null;
 
   const canApplyMonth =
     fromMonthInputValue(draftMonthValue) !== null &&
     draftMonthValue !== requestedMonthValue;
-
-  const selectedMonthLabel = useMemo(() => {
-    const parsed = fromMonthInputValue(displayMonthValue);
-    return parsed ? formatMonthLabel(parsed) : displayMonthValue;
-  }, [displayMonthValue]);
 
   const applyMonthValue = (nextValue: string) => {
     if (fromMonthInputValue(nextValue) === null) {
@@ -127,17 +121,12 @@ export function SummaryPageClient({
         : undefined,
   });
 
-  useEffect(() => {
-    if (summaryQuery.isPlaceholderData) {
-      return;
-    }
-
-    setDisplayMonthValue((current) =>
-      current === requestedMonthValue ? current : requestedMonthValue,
-    );
-  }, [requestedMonthValue, summaryQuery.isPlaceholderData]);
-
   const summary = summaryQuery.data ?? null;
+  const displayMonthValue = summary?.month ?? requestedMonthValue;
+  const selectedMonthLabel = useMemo(() => {
+    const parsed = fromMonthInputValue(displayMonthValue);
+    return parsed ? formatMonthLabel(parsed) : displayMonthValue;
+  }, [displayMonthValue]);
   const isInitialLoading =
     isValidRequestedMonth && summaryQuery.isLoading && summary === null;
   const isRefreshing =
