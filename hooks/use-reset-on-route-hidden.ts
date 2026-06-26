@@ -1,31 +1,29 @@
 "use client";
 
-import { useLayoutEffect, useRef } from "react";
+import { useCallback, useEffectEvent, useLayoutEffect, useState } from "react";
 
 export function useResetOnRouteHidden(reset: () => void): {
   markForResetOnRouteHidden: () => void;
 } {
-  const shouldResetRef = useRef(false);
-  const resetRef = useRef(reset);
-
-  useLayoutEffect(() => {
-    resetRef.current = reset;
-  }, [reset]);
+  const [shouldResetOnRouteHidden, setShouldResetOnRouteHidden] =
+    useState(false);
+  const runReset = useEffectEvent(reset);
 
   useLayoutEffect(() => {
     return () => {
-      if (!shouldResetRef.current) {
+      if (!shouldResetOnRouteHidden) {
         return;
       }
 
-      shouldResetRef.current = false;
-      resetRef.current();
+      runReset();
     };
+  }, [shouldResetOnRouteHidden]);
+
+  const markForResetOnRouteHidden = useCallback(() => {
+    setShouldResetOnRouteHidden(true);
   }, []);
 
   return {
-    markForResetOnRouteHidden: () => {
-      shouldResetRef.current = true;
-    },
+    markForResetOnRouteHidden,
   };
 }

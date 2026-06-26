@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useMemo } from "react";
+import { useMemo } from "react";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import {
   dateFromDateKey,
@@ -318,7 +318,6 @@ export function useMonthShifts(month: Date, options: UseMonthShiftsOptions) {
 
   const {
     data: estimatedMonthShiftsData,
-    error: estimatedMonthShiftsError,
     isFetching: isEstimatedMonthShiftsFetching,
   } = useQuery({
     queryKey: estimatedQueryKey,
@@ -328,21 +327,15 @@ export function useMonthShifts(month: Date, options: UseMonthShiftsOptions) {
         endDate,
         includeEstimate: true,
         signal,
+      }).catch((error: unknown) => {
+        console.error("useMonthShifts estimate fetch failed", error);
+        throw error;
       }),
     enabled: deferEstimate,
     placeholderData: (previousData) => previousData,
     staleTime: MONTH_SHIFTS_STALE_TIME_MS,
     gcTime: MONTH_SHIFTS_GC_TIME_MS,
   });
-
-  useEffect(() => {
-    if (deferEstimate && estimatedMonthShiftsError) {
-      console.error(
-        "useMonthShifts estimate fetch failed",
-        estimatedMonthShiftsError,
-      );
-    }
-  }, [deferEstimate, estimatedMonthShiftsError]);
 
   const shifts = useMemo(() => {
     const baseShifts = monthShiftsData ?? [];
