@@ -14,21 +14,17 @@ import { jsonNoStore } from "@/lib/api/cache-control";
 import { buildSuccessSyncResponse } from "@/lib/google-calendar/sync-response";
 import { revalidateWorkplaceDomainTags } from "@/lib/cache/revalidate";
 
-const timetableItemSchema = z
-  .object({
-    period: z.coerce.number().int().positive(),
-    startTime: z.string().regex(TIME_ONLY_REGEX, "HH:MM形式で入力してください"),
-    endTime: z.string().regex(TIME_ONLY_REGEX, "HH:MM形式で入力してください"),
-  })
-  .strict();
+const timetableItemSchema = z.strictObject({
+  period: z.coerce.number().int().positive(),
+  startTime: z.string().regex(TIME_ONLY_REGEX, "HH:MM形式で入力してください"),
+  endTime: z.string().regex(TIME_ONLY_REGEX, "HH:MM形式で入力してください"),
+});
 
-const timetableSetSchema = z
-  .object({
-    name: z.string().trim().min(1).max(50),
-    sortOrder: z.coerce.number().int().min(0).optional(),
-    items: z.array(timetableItemSchema).min(1),
-  })
-  .strict();
+const timetableSetSchema = z.strictObject({
+  name: z.string().trim().min(1).max(50),
+  sortOrder: z.coerce.number().int().min(0).optional(),
+  items: z.array(timetableItemSchema).min(1),
+});
 
 type Context = {
   params: Promise<{ workplaceId: string; id: string }>;

@@ -20,7 +20,7 @@ type Context = {
 };
 
 const updateWorkplaceSchema = z
-  .object({
+  .strictObject({
     name: z.string().trim().min(1).max(50).optional(),
     type: z.enum(["GENERAL", "CRAM_SCHOOL"]).optional(),
     color: z
@@ -42,7 +42,6 @@ const updateWorkplaceSchema = z
       .max(PAYROLL_DAY_MAX)
       .optional(),
   })
-  .strict()
   .refine((data) => Object.keys(data).length > 0, {
     message: "更新対象がありません",
   });

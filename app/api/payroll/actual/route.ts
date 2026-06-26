@@ -10,28 +10,22 @@ import { prisma } from "@/lib/prisma";
 
 const MONTH_REGEX = /^\d{4}-(0[1-9]|1[0-2])$/;
 
-const actualPayrollQuerySchema = z
-  .object({
-    month: z
-      .string()
-      .regex(MONTH_REGEX, "month は YYYY-MM形式で入力してください"),
-  })
-  .strict();
+const actualPayrollQuerySchema = z.strictObject({
+  month: z
+    .string()
+    .regex(MONTH_REGEX, "month は YYYY-MM形式で入力してください"),
+});
 
-const actualPayrollRowSchema = z
-  .object({
-    workplaceId: z.string().min(1),
-    taxableAmount: z.number().finite().min(0).nullable(),
-    nonTaxableAmount: z.number().finite().min(0).nullable(),
-    note: z.string().max(200).nullable().optional(),
-  })
-  .strict();
+const actualPayrollRowSchema = z.strictObject({
+  workplaceId: z.string().min(1),
+  taxableAmount: z.number().finite().min(0).nullable(),
+  nonTaxableAmount: z.number().finite().min(0).nullable(),
+  note: z.string().max(200).nullable().optional(),
+});
 
-const actualPayrollBodySchema = z
-  .object({
-    rows: z.array(actualPayrollRowSchema),
-  })
-  .strict();
+const actualPayrollBodySchema = z.strictObject({
+  rows: z.array(actualPayrollRowSchema),
+});
 
 function normalizeNote(note: string | null | undefined): string | null {
   const normalized = note?.trim() ?? "";

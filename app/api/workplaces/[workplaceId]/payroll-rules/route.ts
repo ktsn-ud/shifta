@@ -10,24 +10,22 @@ import { jsonNoStore } from "@/lib/api/cache-control";
 import { buildSuccessSyncResponse } from "@/lib/google-calendar/sync-response";
 import { revalidateWorkplaceDomainTags } from "@/lib/cache/revalidate";
 
-const payrollRuleSchema = z
-  .object({
-    startDate: z
-      .string()
-      .regex(DATE_ONLY_REGEX, "YYYY-MM-DD形式で入力してください"),
-    endDate: z
-      .string()
-      .regex(DATE_ONLY_REGEX, "YYYY-MM-DD形式で入力してください")
-      .nullable()
-      .optional(),
-    baseHourlyWage: z.coerce.number().positive(),
-    holidayAllowanceHourly: z.coerce.number().min(0).optional().default(0),
-    nightPremiumRate: z.coerce.number().min(0),
-    overtimePremiumRate: z.coerce.number().min(0),
-    dailyOvertimeThreshold: z.coerce.number().positive(),
-    holidayType: z.enum(["NONE", "WEEKEND", "HOLIDAY", "WEEKEND_HOLIDAY"]),
-  })
-  .strict();
+const payrollRuleSchema = z.strictObject({
+  startDate: z
+    .string()
+    .regex(DATE_ONLY_REGEX, "YYYY-MM-DD形式で入力してください"),
+  endDate: z
+    .string()
+    .regex(DATE_ONLY_REGEX, "YYYY-MM-DD形式で入力してください")
+    .nullable()
+    .optional(),
+  baseHourlyWage: z.coerce.number().positive(),
+  holidayAllowanceHourly: z.coerce.number().min(0).optional().default(0),
+  nightPremiumRate: z.coerce.number().min(0),
+  overtimePremiumRate: z.coerce.number().min(0),
+  dailyOvertimeThreshold: z.coerce.number().positive(),
+  holidayType: z.enum(["NONE", "WEEKEND", "HOLIDAY", "WEEKEND_HOLIDAY"]),
+});
 
 type Context = {
   params: Promise<{ workplaceId: string }>;

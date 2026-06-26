@@ -5,13 +5,11 @@ import { prisma } from "@/lib/prisma";
 import { jsonNoStore } from "@/lib/api/cache-control";
 import { buildSuccessSyncResponse } from "@/lib/google-calendar/sync-response";
 
-const createUserSchema = z
-  .object({
-    email: z.string().email().optional(),
-    name: z.string().trim().min(1).max(100).nullable().optional(),
-    image: z.string().url().nullable().optional(),
-  })
-  .strict();
+const createUserSchema = z.strictObject({
+  email: z.email().optional(),
+  name: z.string().trim().min(1).max(100).nullable().optional(),
+  image: z.url().nullable().optional(),
+});
 
 export async function POST(request: Request) {
   try {

@@ -8,24 +8,22 @@ import { getPayrollPreviewBaselineForUser } from "@/lib/payroll/preview-baseline
 const MONTH_REGEX = /^\d{4}-(0[1-9]|1[0-2])$/;
 const MAX_MONTHS = 12;
 
-const previewBaselineQuerySchema = z
-  .object({
-    months: z
-      .string()
-      .min(1, "months は1件以上指定してください")
-      .transform((value) => value.split(",").map((item) => item.trim()))
-      .pipe(
-        z
-          .array(
-            z
-              .string()
-              .regex(MONTH_REGEX, "months は YYYY-MM 形式で入力してください"),
-          )
-          .min(1)
-          .max(MAX_MONTHS),
-      ),
-  })
-  .strict();
+const previewBaselineQuerySchema = z.strictObject({
+  months: z
+    .string()
+    .min(1, "months は1件以上指定してください")
+    .transform((value) => value.split(",").map((item) => item.trim()))
+    .pipe(
+      z
+        .array(
+          z
+            .string()
+            .regex(MONTH_REGEX, "months は YYYY-MM 形式で入力してください"),
+        )
+        .min(1)
+        .max(MAX_MONTHS),
+    ),
+});
 
 function normalizeMonths(months: string[]): string[] {
   return Array.from(new Set(months)).sort((left, right) =>

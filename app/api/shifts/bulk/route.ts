@@ -23,30 +23,26 @@ import {
 
 export const maxDuration = 60;
 
-const bulkShiftItemSchema = z
-  .object({
-    date: z.string().regex(DATE_ONLY_REGEX, "YYYY-MM-DD形式で入力してください"),
-    shiftType: z.enum(["NORMAL", "LESSON"]),
-    comment: shiftCommentSchema,
-    startTime: z
-      .string()
-      .regex(TIME_ONLY_REGEX, "HH:MM形式で入力してください")
-      .optional(),
-    endTime: z
-      .string()
-      .regex(TIME_ONLY_REGEX, "HH:MM形式で入力してください")
-      .optional(),
-    breakMinutes: z.coerce.number().int().min(0).default(0),
-    lessonRange: lessonRangeSchema.optional(),
-  })
-  .strict();
+const bulkShiftItemSchema = z.strictObject({
+  date: z.string().regex(DATE_ONLY_REGEX, "YYYY-MM-DD形式で入力してください"),
+  shiftType: z.enum(["NORMAL", "LESSON"]),
+  comment: shiftCommentSchema,
+  startTime: z
+    .string()
+    .regex(TIME_ONLY_REGEX, "HH:MM形式で入力してください")
+    .optional(),
+  endTime: z
+    .string()
+    .regex(TIME_ONLY_REGEX, "HH:MM形式で入力してください")
+    .optional(),
+  breakMinutes: z.coerce.number().int().min(0).default(0),
+  lessonRange: lessonRangeSchema.optional(),
+});
 
-const bulkCreateSchema = z
-  .object({
-    workplaceId: z.string().min(1),
-    shifts: z.array(bulkShiftItemSchema).min(1),
-  })
-  .strict();
+const bulkCreateSchema = z.strictObject({
+  workplaceId: z.string().min(1),
+  shifts: z.array(bulkShiftItemSchema).min(1),
+});
 
 type CreatedShift = {
   id: string;
