@@ -226,9 +226,13 @@ function buildColorPaletteMap(palette: unknown): Map<string, string> {
 }
 
 function normalizeRequestedCalendarIds(values: string[]): string[] {
-  const ids = values
-    .map((value) => value.trim())
-    .filter((value) => value.length > 0);
+  const ids: string[] = [];
+  for (const value of values) {
+    const trimmed = value.trim();
+    if (trimmed.length > 0) {
+      ids.push(trimmed);
+    }
+  }
 
   return Array.from(new Set(ids))
     .sort((left, right) => left.localeCompare(right))
@@ -348,25 +352,22 @@ async function mapWithConcurrency<T, R>(
   const results = new Array<R>(values.length);
   let nextIndex = 0;
 
-  async function worker() {
-    for (;;) {
-      const currentIndex = nextIndex;
-      nextIndex += 1;
+  function worker(): Promise<void> {
+    const currentIndex = nextIndex;
+    nextIndex += 1;
 
-      if (currentIndex >= values.length) {
-        return;
-      }
-
-      results[currentIndex] = await iteratee(values[currentIndex]);
+    if (currentIndex >= values.length) {
+      return Promise.resolve();
     }
+
+    return iteratee(values[currentIndex]).then((result) => {
+      results[currentIndex] = result;
+      return worker();
+    });
   }
 
   const workerCount = Math.min(Math.max(limit, 1), values.length);
-  await Promise.all(
-    Array.from({ length: workerCount }, async () => {
-      await worker();
-    }),
-  );
+  await Promise.all(Array.from({ length: workerCount }, () => worker()));
 
   return results;
 }

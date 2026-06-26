@@ -183,21 +183,24 @@ export async function POST(request: Request, context: Context) {
         });
       }
 
-      const overlaps = await findOverlappingRules(tx, workplaceId, normalized);
-
-      const payrollRule = await tx.payrollRule.create({
-        data: {
-          workplaceId,
-          startDate: normalized.startDate,
-          endDate: normalized.endDate,
-          baseHourlyWage: normalized.baseHourlyWage.toString(),
-          holidayAllowanceHourly: normalized.holidayAllowanceHourly.toString(),
-          nightPremiumRate: normalized.nightPremiumRate.toString(),
-          overtimePremiumRate: normalized.overtimePremiumRate.toString(),
-          dailyOvertimeThreshold: normalized.dailyOvertimeThreshold.toString(),
-          holidayType: normalized.holidayType,
-        },
-      });
+      const [overlaps, payrollRule] = await Promise.all([
+        findOverlappingRules(tx, workplaceId, normalized),
+        tx.payrollRule.create({
+          data: {
+            workplaceId,
+            startDate: normalized.startDate,
+            endDate: normalized.endDate,
+            baseHourlyWage: normalized.baseHourlyWage.toString(),
+            holidayAllowanceHourly:
+              normalized.holidayAllowanceHourly.toString(),
+            nightPremiumRate: normalized.nightPremiumRate.toString(),
+            overtimePremiumRate: normalized.overtimePremiumRate.toString(),
+            dailyOvertimeThreshold:
+              normalized.dailyOvertimeThreshold.toString(),
+            holidayType: normalized.holidayType,
+          },
+        }),
+      ]);
 
       return { payrollRule, overlaps };
     });

@@ -118,46 +118,54 @@ export async function PUT(request: Request) {
       }
     }
 
-    await prisma.$transaction(async (tx) => {
-      for (const row of payload.data.rows) {
-        const note = normalizeNote(row.note);
-        const shouldDelete =
-          row.taxableAmount === null && row.nonTaxableAmount === null && !note;
+    const rowsByWorkplaceId = new Map(
+      payload.data.rows.map((row) => [row.workplaceId, row] as const),
+    );
 
-        if (shouldDelete) {
-          await tx.actualPayroll.deleteMany({
+    await prisma.$transaction(async (tx) => {
+      await Promise.all(
+        Array.from(rowsByWorkplaceId.values()).map(async (row) => {
+          const note = normalizeNote(row.note);
+          const shouldDelete =
+            row.taxableAmount === null &&
+            row.nonTaxableAmount === null &&
+            !note;
+
+          if (shouldDelete) {
+            await tx.actualPayroll.deleteMany({
+              where: {
+                workplaceId: row.workplaceId,
+                paymentMonth,
+              },
+            });
+            return;
+          }
+
+          const taxableAmount = row.taxableAmount ?? 0;
+          const nonTaxableAmount = row.nonTaxableAmount ?? 0;
+
+          await tx.actualPayroll.upsert({
             where: {
+              workplaceId_paymentMonth: {
+                workplaceId: row.workplaceId,
+                paymentMonth,
+              },
+            },
+            update: {
+              taxableAmount,
+              nonTaxableAmount,
+              note,
+            },
+            create: {
               workplaceId: row.workplaceId,
               paymentMonth,
+              taxableAmount,
+              nonTaxableAmount,
+              note,
             },
           });
-          continue;
-        }
-
-        const taxableAmount = row.taxableAmount ?? 0;
-        const nonTaxableAmount = row.nonTaxableAmount ?? 0;
-
-        await tx.actualPayroll.upsert({
-          where: {
-            workplaceId_paymentMonth: {
-              workplaceId: row.workplaceId,
-              paymentMonth,
-            },
-          },
-          update: {
-            taxableAmount,
-            nonTaxableAmount,
-            note,
-          },
-          create: {
-            workplaceId: row.workplaceId,
-            paymentMonth,
-            taxableAmount,
-            nonTaxableAmount,
-            note,
-          },
-        });
-      }
+        }),
+      );
     });
 
     revalidateActualPayrollDomainTags({ userId: current.user.id });

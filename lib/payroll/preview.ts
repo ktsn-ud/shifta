@@ -362,7 +362,48 @@ export function calculateShiftPayrollPreview(input: {
 
   const items: ShiftPayrollPreviewItem[] = [];
   const monthMap = new Map<string, ShiftPayrollPreviewMonthSummary>();
+  const monthMessageSetByMonth = new Map<string, Set<string>>();
   let unresolvedCount = 0;
+
+  function getMonthSummary(
+    paymentMonth: string,
+  ): ShiftPayrollPreviewMonthSummary {
+    const current = monthMap.get(paymentMonth);
+    if (current) {
+      return current;
+    }
+
+    const nextSummary: ShiftPayrollPreviewMonthSummary = {
+      month: paymentMonth,
+      additionalWage: 0,
+      shiftCount: 0,
+      unresolvedCount: 0,
+      messages: [],
+    };
+    monthMap.set(paymentMonth, nextSummary);
+    return nextSummary;
+  }
+
+  function addMonthMessage(
+    paymentMonth: string,
+    monthSummary: ShiftPayrollPreviewMonthSummary,
+    message: string,
+  ): void {
+    const messageSet =
+      monthMessageSetByMonth.get(paymentMonth) ??
+      new Set(monthSummary.messages);
+
+    if (monthMessageSetByMonth.has(paymentMonth) === false) {
+      monthMessageSetByMonth.set(paymentMonth, messageSet);
+    }
+
+    if (messageSet.has(message)) {
+      return;
+    }
+
+    messageSet.add(message);
+    monthSummary.messages.push(message);
+  }
 
   for (const shift of input.shifts) {
     const workplaceId = shift.workplaceId ?? "";
@@ -435,21 +476,11 @@ export function calculateShiftPayrollPreview(input: {
         message: resolvedTime.message,
       });
 
-      const monthSummary = monthMap.get(paymentMonth) ?? {
-        month: paymentMonth,
-        additionalWage: 0,
-        shiftCount: 0,
-        unresolvedCount: 0,
-        messages: [],
-      };
+      const monthSummary = getMonthSummary(paymentMonth);
       monthSummary.unresolvedCount += 1;
-      if (
-        resolvedTime.message &&
-        monthSummary.messages.includes(resolvedTime.message) === false
-      ) {
-        monthSummary.messages.push(resolvedTime.message);
+      if (resolvedTime.message) {
+        addMonthMessage(paymentMonth, monthSummary, resolvedTime.message);
       }
-      monthMap.set(paymentMonth, monthSummary);
       continue;
     }
 
@@ -465,18 +496,9 @@ export function calculateShiftPayrollPreview(input: {
         message,
       });
 
-      const monthSummary = monthMap.get(paymentMonth) ?? {
-        month: paymentMonth,
-        additionalWage: 0,
-        shiftCount: 0,
-        unresolvedCount: 0,
-        messages: [],
-      };
+      const monthSummary = getMonthSummary(paymentMonth);
       monthSummary.unresolvedCount += 1;
-      if (monthSummary.messages.includes(message) === false) {
-        monthSummary.messages.push(message);
-      }
-      monthMap.set(paymentMonth, monthSummary);
+      addMonthMessage(paymentMonth, monthSummary, message);
       continue;
     }
 
@@ -504,16 +526,9 @@ export function calculateShiftPayrollPreview(input: {
       status: "ready",
     });
 
-    const monthSummary = monthMap.get(paymentMonth) ?? {
-      month: paymentMonth,
-      additionalWage: 0,
-      shiftCount: 0,
-      unresolvedCount: 0,
-      messages: [],
-    };
+    const monthSummary = getMonthSummary(paymentMonth);
     monthSummary.additionalWage += wageResult.totalWage;
     monthSummary.shiftCount += 1;
-    monthMap.set(paymentMonth, monthSummary);
   }
 
   const months = Array.from(monthMap.values()).sort((left, right) =>

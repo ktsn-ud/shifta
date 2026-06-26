@@ -156,19 +156,20 @@ export async function PUT(request: Request, context: Context) {
         throw new Error("DUPLICATED_TIMETABLE_SET_NAME");
       }
 
-      await tx.timetableSet.update({
-        where: { id },
-        data: {
-          name: body.data.name,
-          sortOrder: body.data.sortOrder ?? existing.sortOrder,
-        },
-      });
-
-      await tx.timetable.deleteMany({
-        where: {
-          timetableSetId: id,
-        },
-      });
+      await Promise.all([
+        tx.timetableSet.update({
+          where: { id },
+          data: {
+            name: body.data.name,
+            sortOrder: body.data.sortOrder ?? existing.sortOrder,
+          },
+        }),
+        tx.timetable.deleteMany({
+          where: {
+            timetableSetId: id,
+          },
+        }),
+      ]);
 
       await tx.timetable.createMany({
         data: body.data.items.map((item) => ({
