@@ -166,7 +166,7 @@ export function useWorkplaceDetailQuery(input: {
   return useQuery({
     queryKey: queryKeys.workplaces.detailSummary({ workplaceId }),
     queryFn: ({ signal }) =>
-      fetchJson(`/api/workplaces/${workplaceId}`, {
+      fetchJson(`/api/workplaces/${workplaceId}?includeCounts=true`, {
         init: { signal },
         fallbackMessage: "勤務先の取得に失敗しました。",
         parse: (payload) => parseItemPayload<WorkplaceDetailItem>(payload),
@@ -187,7 +187,7 @@ export function useWorkplaceEditDetailQuery(input: {
   return useQuery({
     queryKey: queryKeys.workplaces.editDetail({ workplaceId }),
     queryFn: ({ signal }) =>
-      fetchJson(`/api/workplaces/${workplaceId}`, {
+      fetchJson(`/api/workplaces/${workplaceId}?includeCounts=false`, {
         init: { signal },
         fallbackMessage: "勤務先の取得に失敗しました。",
         parse: parseWorkplaceEditDetailPayload,

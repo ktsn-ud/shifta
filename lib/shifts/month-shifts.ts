@@ -15,7 +15,14 @@ import { prisma } from "@/lib/prisma";
 type ShiftWithRelations = Prisma.ShiftGetPayload<{
   include: {
     lessonRange: true;
-    workplace: true;
+    workplace: {
+      select: {
+        id: true;
+        name: true;
+        color: true;
+        type: true;
+      };
+    };
   };
 }>;
 
@@ -152,7 +159,14 @@ export async function getMonthShifts(
     },
     include: {
       lessonRange: true,
-      workplace: true,
+      workplace: {
+        select: {
+          id: true,
+          name: true,
+          color: true,
+          type: true,
+        },
+      },
     },
     orderBy: [{ date: "desc" }, { startTime: "desc" }],
   });

@@ -3,7 +3,6 @@ import {
   buildWorkplaceMonthKey,
   createPayrollDisplayValue,
   createEmptyActualPayrollCoverage,
-  getActualPayrollMap,
   summarizeActualPayrollCoverage,
   type ActualPayrollCoverage,
   type ActualPayrollRecord,
@@ -15,12 +14,12 @@ import {
   groupPayrollRulesByWorkplace,
   type PayrollRulesByWorkplace,
 } from "@/lib/payroll/summarizeByPeriod";
+import { type PayrollPeriod } from "@/lib/payroll/pay-period";
 import {
-  resolvePayrollPeriodForMonth,
-  type ClosingDayType,
-  type PayrollPeriod,
-} from "@/lib/payroll/pay-period";
-import { prisma } from "@/lib/prisma";
+  loadPayrollSnapshot,
+  toPayrollPeriodMapKey,
+  type PayrollSnapshotWorkplace,
+} from "@/lib/payroll/snapshot";
 
 type ShiftWithPayrollRelations = Prisma.ShiftGetPayload<{
   include: {
@@ -28,14 +27,7 @@ type ShiftWithPayrollRelations = Prisma.ShiftGetPayload<{
   };
 }>;
 
-type WorkplaceWithPayrollCycle = {
-  id: string;
-  name: string;
-  color: string;
-  closingDayType: ClosingDayType;
-  closingDay: number | null;
-  payday: number;
-};
+type WorkplaceWithPayrollCycle = PayrollSnapshotWorkplace;
 
 type PayrollBreakdownAccumulator = {
   totalWorkHours: number;
@@ -156,10 +148,6 @@ function toDateOnlyUtc(date: Date): string {
   const month = String(date.getUTCMonth() + 1).padStart(2, "0");
   const day = String(date.getUTCDate()).padStart(2, "0");
   return `${year}-${month}-${day}`;
-}
-
-function toPeriodMapKey(workplaceId: string, monthKey: string): string {
-  return `${workplaceId}:${monthKey}`;
 }
 
 function createEmptyBreakdownAccumulator(): PayrollBreakdownAccumulator {
@@ -397,110 +385,23 @@ export function summarizeWorkplacePayrollDetailsByPeriod(params: {
   return toBreakdownDisplay(summary);
 }
 
-async function fetchWorkplaces(
-  userId: string,
-): Promise<WorkplaceWithPayrollCycle[]> {
-  return prisma.workplace.findMany({
-    where: { userId },
-    select: {
-      id: true,
-      name: true,
-      color: true,
-      closingDayType: true,
-      closingDay: true,
-      payday: true,
-    },
-    orderBy: { createdAt: "asc" },
-  });
-}
-
-async function fetchShiftsAndRules(
-  workplaceIds: string[],
-  fetchStartDate: Date,
-  fetchEndDate: Date,
-): Promise<{
-  shiftsByWorkplace: Map<string, ShiftWithPayrollRelations[]>;
-  rulesByWorkplace: PayrollRulesByWorkplace;
-}> {
-  const [shifts, payrollRules] = await Promise.all([
-    prisma.shift.findMany({
-      where: {
-        workplaceId: {
-          in: workplaceIds,
-        },
-        date: {
-          gte: fetchStartDate,
-          lte: fetchEndDate,
-        },
-      },
-      include: {
-        lessonRange: true,
-      },
-      orderBy: [{ date: "asc" }, { startTime: "asc" }],
-    }),
-    prisma.payrollRule.findMany({
-      where: {
-        workplaceId: {
-          in: workplaceIds,
-        },
-        startDate: {
-          lte: fetchEndDate,
-        },
-        OR: [
-          {
-            endDate: null,
-          },
-          {
-            endDate: {
-              gt: fetchStartDate,
-            },
-          },
-        ],
-      },
-      orderBy: [{ workplaceId: "asc" }, { startDate: "asc" }],
-    }),
-  ]);
-
-  return {
-    shiftsByWorkplace: groupShiftsByWorkplace(shifts),
-    rulesByWorkplace: groupPayrollRulesByWorkplace(payrollRules),
-  };
-}
-
-function resolveFetchRange(periods: PayrollPeriod[]): {
-  fetchStartDate: Date;
-  fetchEndDate: Date;
-} {
-  if (periods.length === 0) {
-    throw new Error("PAYROLL_PERIOD_NOT_FOUND");
-  }
-
-  let fetchStartDate = periods[0].periodStartDate;
-  let fetchEndDate = periods[0].periodEndDate;
-
-  for (const period of periods) {
-    if (period.periodStartDate < fetchStartDate) {
-      fetchStartDate = period.periodStartDate;
-    }
-    if (period.periodEndDate > fetchEndDate) {
-      fetchEndDate = period.periodEndDate;
-    }
-  }
-
-  return {
-    fetchStartDate,
-    fetchEndDate,
-  };
-}
-
 export async function getPayrollDetailsMonthlyForUser(
   userId: string,
   month: Date,
 ): Promise<PayrollDetailsMonthlyResult> {
   const selectedMonth = startOfMonthUtc(month);
   const monthKey = toMonthKeyUtc(selectedMonth);
-
-  const workplaces = await fetchWorkplaces(userId);
+  const {
+    workplaces,
+    periodByWorkplaceMonth,
+    shiftsByWorkplace,
+    rulesByWorkplace,
+    actualPayrollByWorkplaceMonth,
+  } = await loadPayrollSnapshot({
+    userId,
+    monthDates: [selectedMonth],
+    includeActualPayroll: true,
+  });
   if (workplaces.length === 0) {
     return {
       month: monthKey,
@@ -511,37 +412,13 @@ export async function getPayrollDetailsMonthlyForUser(
     };
   }
 
-  const periodByWorkplace = new Map<string, PayrollPeriod>();
-  const periods: PayrollPeriod[] = [];
-
-  for (const workplace of workplaces) {
-    const period = resolvePayrollPeriodForMonth(selectedMonth, {
-      closingDayType: workplace.closingDayType,
-      closingDay: workplace.closingDay,
-      payday: workplace.payday,
-    });
-    periodByWorkplace.set(workplace.id, period);
-    periods.push(period);
-  }
-
-  const { fetchStartDate, fetchEndDate } = resolveFetchRange(periods);
-  const workplaceIds = workplaces.map((workplace) => workplace.id);
-  const [
-    { shiftsByWorkplace, rulesByWorkplace },
-    actualPayrollByWorkplaceMonth,
-  ] = await Promise.all([
-    fetchShiftsAndRules(workplaceIds, fetchStartDate, fetchEndDate),
-    getActualPayrollMap({
-      workplaceIds,
-      monthKeys: [monthKey],
-    }),
-  ]);
-
   const totals = createEmptyBreakdownAccumulator();
   const selectedMonthActuals: Array<ActualPayrollRecord | null> = [];
 
   const byWorkplace = workplaces.map((workplace) => {
-    const period = periodByWorkplace.get(workplace.id);
+    const period = periodByWorkplaceMonth.get(
+      toPayrollPeriodMapKey(workplace.id, monthKey),
+    );
     if (!period) {
       throw new Error(`PAYROLL_PERIOD_NOT_FOUND: ${workplace.id}`);
     }
@@ -600,7 +477,18 @@ export async function getPayrollDetailsWorkplaceYearlyForUser(
   userId: string,
   year: number,
 ): Promise<PayrollDetailsWorkplaceYearlyResult> {
-  const workplaces = await fetchWorkplaces(userId);
+  const months = listMonthsInYearUtc(year);
+  const {
+    workplaces,
+    periodByWorkplaceMonth,
+    shiftsByWorkplace,
+    rulesByWorkplace,
+    actualPayrollByWorkplaceMonth,
+  } = await loadPayrollSnapshot({
+    userId,
+    monthDates: months,
+    includeActualPayroll: true,
+  });
   if (workplaces.length === 0) {
     return {
       year,
@@ -608,46 +496,13 @@ export async function getPayrollDetailsWorkplaceYearlyForUser(
     };
   }
 
-  const months = listMonthsInYearUtc(year);
-  const periodByWorkplaceMonth = new Map<string, PayrollPeriod>();
-  const periods: PayrollPeriod[] = [];
-
-  for (const workplace of workplaces) {
-    for (const month of months) {
-      const monthKey = toMonthKeyUtc(month);
-      const period = resolvePayrollPeriodForMonth(month, {
-        closingDayType: workplace.closingDayType,
-        closingDay: workplace.closingDay,
-        payday: workplace.payday,
-      });
-      periodByWorkplaceMonth.set(
-        toPeriodMapKey(workplace.id, monthKey),
-        period,
-      );
-      periods.push(period);
-    }
-  }
-
-  const { fetchStartDate, fetchEndDate } = resolveFetchRange(periods);
-  const workplaceIds = workplaces.map((workplace) => workplace.id);
-  const [
-    { shiftsByWorkplace, rulesByWorkplace },
-    actualPayrollByWorkplaceMonth,
-  ] = await Promise.all([
-    fetchShiftsAndRules(workplaceIds, fetchStartDate, fetchEndDate),
-    getActualPayrollMap({
-      workplaceIds,
-      monthKeys: months.map((month) => toMonthKeyUtc(month)),
-    }),
-  ]);
-
   const monthSummaryCache = new Map<string, PayrollBreakdownAccumulator>();
 
   const getMonthSummary = (
     workplace: WorkplaceWithPayrollCycle,
     monthKey: string,
   ): PayrollBreakdownAccumulator => {
-    const cacheKey = toPeriodMapKey(workplace.id, monthKey);
+    const cacheKey = toPayrollPeriodMapKey(workplace.id, monthKey);
     const cached = monthSummaryCache.get(cacheKey);
     if (cached) {
       return cached;
@@ -675,7 +530,7 @@ export async function getPayrollDetailsWorkplaceYearlyForUser(
 
     const monthRows = months.map((month, index) => {
       const monthKey = toMonthKeyUtc(month);
-      const periodKey = toPeriodMapKey(workplace.id, monthKey);
+      const periodKey = toPayrollPeriodMapKey(workplace.id, monthKey);
       const period = periodByWorkplaceMonth.get(periodKey);
       if (!period) {
         throw new Error(`PAYROLL_PERIOD_NOT_FOUND: ${periodKey}`);

@@ -2,7 +2,6 @@ import type { Prisma } from "@/lib/generated/prisma/client";
 import {
   buildWorkplaceMonthKey,
   createPayrollDisplayValue,
-  getActualPayrollMap,
   summarizeActualPayrollCoverage,
   type ActualPayrollAmount,
   type ActualPayrollCoverage,
@@ -11,15 +10,14 @@ import {
 } from "@/lib/payroll/actual-payroll";
 import {
   calculateShiftPayrollResult,
-  groupPayrollRulesByWorkplace,
   type PayrollRulesByWorkplace,
 } from "@/lib/payroll/summarizeByPeriod";
+import { type PayrollPeriod } from "@/lib/payroll/pay-period";
 import {
-  resolvePayrollPeriodForMonth,
-  type ClosingDayType,
-  type PayrollPeriod,
-} from "@/lib/payroll/pay-period";
-import { prisma } from "@/lib/prisma";
+  loadPayrollSnapshot,
+  toPayrollPeriodMapKey,
+  type PayrollSnapshotWorkplace,
+} from "@/lib/payroll/snapshot";
 
 type PayrollSummaryByWorkplace = {
   workplaceId: string;
@@ -52,14 +50,7 @@ export type PayrollSummaryResult = {
   estimatedYearlyTotal: number;
 };
 
-type WorkplaceWithPayrollCycle = {
-  id: string;
-  name: string;
-  color: string;
-  closingDayType: ClosingDayType;
-  closingDay: number | null;
-  payday: number;
-};
+type WorkplaceWithPayrollCycle = PayrollSnapshotWorkplace;
 
 type WorkplacePeriodSummary = {
   wage: number;
@@ -134,24 +125,6 @@ function listMonthsInYear(month: Date): Date[] {
   );
 }
 
-function toPeriodMapKey(workplaceId: string, monthKey: string): string {
-  return `${workplaceId}:${monthKey}`;
-}
-
-function groupShiftsByWorkplace(
-  shifts: ShiftWithSummaryRelations[],
-): Map<string, ShiftWithSummaryRelations[]> {
-  const grouped = new Map<string, ShiftWithSummaryRelations[]>();
-
-  for (const shift of shifts) {
-    const bucket = grouped.get(shift.workplaceId) ?? [];
-    bucket.push(shift);
-    grouped.set(shift.workplaceId, bucket);
-  }
-
-  return grouped;
-}
-
 function summarizeWorkplaceByPeriod(
   workplaceId: string,
   period: PayrollPeriod,
@@ -204,18 +177,16 @@ export async function getPayrollSummaryForUser(
   const monthsInYear = listMonthsInYear(selectedMonth);
   const selectedMonthIndex = selectedMonth.getUTCMonth();
   const selectedMonthKey = toMonthKey(selectedMonth);
-
-  const workplaces = await prisma.workplace.findMany({
-    where: { userId },
-    select: {
-      id: true,
-      name: true,
-      color: true,
-      closingDayType: true,
-      closingDay: true,
-      payday: true,
-    },
-    orderBy: { createdAt: "asc" },
+  const {
+    workplaces,
+    periodByWorkplaceMonth,
+    shiftsByWorkplace,
+    rulesByWorkplace,
+    actualPayrollByWorkplaceMonth,
+  } = await loadPayrollSnapshot({
+    userId,
+    monthDates: monthsInYear,
+    includeActualPayroll: true,
   });
 
   if (workplaces.length === 0) {
@@ -238,95 +209,18 @@ export async function getPayrollSummaryForUser(
       estimatedYearlyTotal: 0,
     };
   }
-  const workplaceIds = workplaces.map((workplace) => workplace.id);
 
   const monthTargets = new Map<string, Date>();
   for (const yearMonth of monthsInYear) {
     monthTargets.set(toMonthKey(yearMonth), yearMonth);
   }
-
-  let fetchStartDate: Date | null = null;
-  let fetchEndDate: Date | null = null;
-  const periodByWorkplaceMonth = new Map<string, PayrollPeriod>();
-
-  for (const workplace of workplaces) {
-    for (const monthTarget of monthTargets.values()) {
-      const period = resolvePayrollPeriodForMonth(monthTarget, {
-        closingDayType: workplace.closingDayType,
-        closingDay: workplace.closingDay,
-        payday: workplace.payday,
-      });
-      periodByWorkplaceMonth.set(
-        toPeriodMapKey(workplace.id, toMonthKey(monthTarget)),
-        period,
-      );
-
-      if (!fetchStartDate || period.periodStartDate < fetchStartDate) {
-        fetchStartDate = period.periodStartDate;
-      }
-
-      if (!fetchEndDate || period.periodEndDate > fetchEndDate) {
-        fetchEndDate = period.periodEndDate;
-      }
-    }
-  }
-
-  if (!fetchStartDate || !fetchEndDate) {
-    throw new Error("PAYROLL_PERIOD_NOT_FOUND");
-  }
-
-  const [shifts, payrollRules] = await Promise.all([
-    prisma.shift.findMany({
-      where: {
-        workplaceId: {
-          in: workplaceIds,
-        },
-        date: {
-          gte: fetchStartDate,
-          lte: fetchEndDate,
-        },
-      },
-      include: {
-        lessonRange: true,
-      },
-      orderBy: [{ date: "asc" }, { startTime: "asc" }],
-    }),
-    prisma.payrollRule.findMany({
-      where: {
-        workplaceId: {
-          in: workplaceIds,
-        },
-        startDate: {
-          lte: fetchEndDate,
-        },
-        OR: [
-          {
-            endDate: null,
-          },
-          {
-            endDate: {
-              gt: fetchStartDate,
-            },
-          },
-        ],
-      },
-      orderBy: [{ workplaceId: "asc" }, { startDate: "asc" }],
-    }),
-  ]);
-
-  const rulesByWorkplace = groupPayrollRulesByWorkplace(payrollRules);
-  const shiftsByWorkplace = groupShiftsByWorkplace(shifts);
   const monthSummaryByWorkplace = new Map<string, WorkplacePeriodSummary>();
-  const actualPayrollByWorkplaceMonth = await getActualPayrollMap({
-    workplaceIds,
-    monthKeys: Array.from(monthTargets.keys()),
-  });
 
   const getWorkplaceMonthSummary = (
     workplace: WorkplaceWithPayrollCycle,
     monthKey: string,
   ): WorkplacePeriodSummary => {
-    const cacheKey = toPeriodMapKey(workplace.id, monthKey);
+    const cacheKey = toPayrollPeriodMapKey(workplace.id, monthKey);
     const cached = monthSummaryByWorkplace.get(cacheKey);
     if (cached) {
       return cached;
@@ -411,7 +305,7 @@ export async function getPayrollSummaryForUser(
   }
 
   for (const workplace of workplaces) {
-    const cacheKey = toPeriodMapKey(workplace.id, selectedMonthKey);
+    const cacheKey = toPayrollPeriodMapKey(workplace.id, selectedMonthKey);
     const period = periodByWorkplaceMonth.get(cacheKey);
     if (!period) {
       throw new Error(`PAYROLL_PERIOD_NOT_FOUND: ${cacheKey}`);

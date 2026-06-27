@@ -19,6 +19,23 @@ type Context = {
   params: Promise<{ workplaceId: string }>;
 };
 
+type WorkplaceWithCounts = {
+  id: string;
+  name: string;
+  type: "GENERAL" | "CRAM_SCHOOL";
+  color: string;
+  closingDayType: "DAY_OF_MONTH" | "END_OF_MONTH";
+  closingDay: number | null;
+  payday: number;
+  _count: {
+    shifts: number;
+    payrollRules: number;
+    timetableSets: number;
+  };
+};
+
+type WorkplaceDetail = Omit<WorkplaceWithCounts, "_count">;
+
 const updateWorkplaceSchema = z
   .strictObject({
     name: z.string().trim().min(1).max(50).optional(),
@@ -46,13 +63,54 @@ const updateWorkplaceSchema = z
     message: "更新対象がありません",
   });
 
-async function findOwnedWorkplace(id: string, userId: string) {
+function shouldIncludeCounts(request: Request): boolean {
+  const { searchParams } = new URL(request.url);
+  const includeCountsParam = searchParams.get("includeCounts");
+  if (includeCountsParam === null) {
+    return true;
+  }
+
+  return includeCountsParam !== "false";
+}
+
+async function findOwnedWorkplaceDetail(
+  id: string,
+  userId: string,
+): Promise<WorkplaceDetail | null> {
   return prisma.workplace.findFirst({
     where: {
       id,
       userId,
     },
-    include: {
+    select: {
+      id: true,
+      name: true,
+      type: true,
+      color: true,
+      closingDayType: true,
+      closingDay: true,
+      payday: true,
+    },
+  });
+}
+
+async function findOwnedWorkplaceWithCounts(
+  id: string,
+  userId: string,
+): Promise<WorkplaceWithCounts | null> {
+  return prisma.workplace.findFirst({
+    where: {
+      id,
+      userId,
+    },
+    select: {
+      id: true,
+      name: true,
+      type: true,
+      color: true,
+      closingDayType: true,
+      closingDay: true,
+      payday: true,
       _count: {
         select: {
           shifts: true,
@@ -64,7 +122,7 @@ async function findOwnedWorkplace(id: string, userId: string) {
   });
 }
 
-export async function GET(_: Request, context: Context) {
+export async function GET(request: Request, context: Context) {
   await connection();
   try {
     const current = await requireCurrentUser();
@@ -73,21 +131,21 @@ export async function GET(_: Request, context: Context) {
     }
 
     const { workplaceId } = await context.params;
-    const workplace = await findOwnedWorkplace(workplaceId, current.user.id);
+    const includeCounts = shouldIncludeCounts(request);
+    const workplace = includeCounts
+      ? await findOwnedWorkplaceWithCounts(workplaceId, current.user.id)
+      : await findOwnedWorkplaceDetail(workplaceId, current.user.id);
 
     if (!workplace) {
       return jsonError("勤務先が見つかりません", 404);
     }
 
+    if (!includeCounts) {
+      return jsonNoStore({ data: workplace });
+    }
+
     return jsonNoStore({
-      data: {
-        ...workplace,
-        _count: {
-          shifts: workplace._count.shifts,
-          payrollRules: workplace._count.payrollRules,
-          timetableSets: workplace._count.timetableSets,
-        },
-      },
+      data: workplace,
     });
   } catch (error) {
     console.error("GET /api/workplaces/:id failed", error);
@@ -103,7 +161,10 @@ export async function PUT(request: Request, context: Context) {
     }
 
     const { workplaceId } = await context.params;
-    const existing = await findOwnedWorkplace(workplaceId, current.user.id);
+    const existing = await findOwnedWorkplaceWithCounts(
+      workplaceId,
+      current.user.id,
+    );
     if (!existing) {
       return jsonError("勤務先が見つかりません", 404);
     }
@@ -182,7 +243,10 @@ export async function DELETE(request: Request, context: Context) {
     }
 
     const { workplaceId } = await context.params;
-    const existing = await findOwnedWorkplace(workplaceId, current.user.id);
+    const existing = await findOwnedWorkplaceWithCounts(
+      workplaceId,
+      current.user.id,
+    );
     if (!existing) {
       return jsonError("勤務先が見つかりません", 404);
     }
