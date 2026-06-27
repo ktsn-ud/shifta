@@ -39,7 +39,8 @@ import { invalidateAfterShiftMutation } from "@/lib/query/invalidation";
 import { buildMutationSuccessDescription } from "@/lib/query/mutation-toast";
 import { removeShiftsFromMonthCachesOptimistically } from "@/lib/query/optimistic-shifts";
 import { getBrowserQueryClient } from "@/lib/query/query-client";
-import { usePayrollSummaryQuery } from "@/lib/query/queries/payroll";
+import { usePayrollSummaryAmountQuery } from "@/lib/query/queries/payroll";
+import { type PayrollSummaryAmountResult } from "@/lib/payroll/summary";
 import { useGoogleTokenExpiredSignOut } from "@/hooks/use-google-token-expired-signout";
 import {
   type MonthShift,
@@ -53,7 +54,7 @@ type DashboardPageClientProps = {
   initialMonthStartDate: string;
   initialMonthEndDate: string;
   initialUnconfirmedShiftCount: number;
-  nextMonthPaymentAmount: number | null;
+  initialNextPaymentAmount: PayrollSummaryAmountResult | null;
   todayDate: string;
 };
 
@@ -627,7 +628,7 @@ export function DashboardPageClient({
   initialMonthStartDate,
   initialMonthEndDate,
   initialUnconfirmedShiftCount,
-  nextMonthPaymentAmount,
+  initialNextPaymentAmount,
   todayDate,
 }: DashboardPageClientProps) {
   const router = useRouter();
@@ -691,14 +692,20 @@ export function DashboardPageClient({
   const failedShiftIds = getFailedShiftIds(shifts);
   const failedShiftCount = failedShiftIds.length;
 
-  const nextPaymentSummaryQuery = usePayrollSummaryQuery({
+  const nextPaymentSummaryQuery = usePayrollSummaryAmountQuery({
     userId: currentUserId,
     month: nextPaymentMonthValue,
+    initialData:
+      initialNextPaymentAmount?.month === nextPaymentMonthValue
+        ? initialNextPaymentAmount
+        : undefined,
   });
 
   const nextPaymentAmount =
     nextPaymentSummaryQuery.data?.totalWage ??
-    (isInitialDashboardMonth ? nextMonthPaymentAmount : null);
+    (isInitialDashboardMonth
+      ? (initialNextPaymentAmount?.totalWage ?? null)
+      : null);
   const isNextPaymentLoading =
     nextPaymentSummaryQuery.isLoading && nextPaymentAmount === null;
 

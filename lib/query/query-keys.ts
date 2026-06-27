@@ -10,6 +10,16 @@ type PayrollSummaryQueryInput = {
   month: string;
 };
 
+type PayrollSummaryYearContextQueryInput = {
+  userId: string;
+  month: string;
+};
+
+type PayrollSummaryAmountQueryInput = {
+  userId: string;
+  month: string;
+};
+
 type PayrollPreviewBaselineQueryInput = {
   userId: string;
   months: string[];
@@ -81,6 +91,10 @@ export const queryKeys = {
   payroll: {
     summary: (input: PayrollSummaryQueryInput) =>
       ["payroll", "summary", input] as const,
+    summaryYearContext: (input: PayrollSummaryYearContextQueryInput) =>
+      ["payroll", "summary", "yearContext", input] as const,
+    summaryAmount: (input: PayrollSummaryAmountQueryInput) =>
+      ["payroll", "summary", "amount", input] as const,
     actual: (input: ActualPayrollQueryInput) =>
       ["payroll", "actual", input] as const,
     previewBaseline: (input: PayrollPreviewBaselineQueryInput) =>

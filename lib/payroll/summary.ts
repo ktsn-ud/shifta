@@ -2,7 +2,6 @@ import type { Prisma } from "@/lib/generated/prisma/client";
 import {
   buildWorkplaceMonthKey,
   createPayrollDisplayValue,
-  getActualPayrollMap,
   summarizeActualPayrollCoverage,
   type ActualPayrollAmount,
   type ActualPayrollCoverage,
@@ -11,15 +10,14 @@ import {
 } from "@/lib/payroll/actual-payroll";
 import {
   calculateShiftPayrollResult,
-  groupPayrollRulesByWorkplace,
   type PayrollRulesByWorkplace,
 } from "@/lib/payroll/summarizeByPeriod";
+import { type PayrollPeriod } from "@/lib/payroll/pay-period";
 import {
-  resolvePayrollPeriodForMonth,
-  type ClosingDayType,
-  type PayrollPeriod,
-} from "@/lib/payroll/pay-period";
-import { prisma } from "@/lib/prisma";
+  loadPayrollSnapshot,
+  toPayrollPeriodMapKey,
+  type PayrollSnapshotWorkplace,
+} from "@/lib/payroll/snapshot";
 
 type PayrollSummaryByWorkplace = {
   workplaceId: string;
@@ -33,7 +31,7 @@ type PayrollSummaryByWorkplace = {
   actualPayroll: ActualPayrollRecord | null;
 };
 
-export type PayrollSummaryResult = {
+export type PayrollSummaryCoreResult = {
   month: string;
   totalWage: number;
   estimatedTotalWage: number;
@@ -44,6 +42,10 @@ export type PayrollSummaryResult = {
   totalOvertimeHours: number;
   byWorkplace: PayrollSummaryByWorkplace[];
   confirmedShiftWage: number;
+};
+
+export type PayrollSummaryYearContextResult = {
+  month: string;
   currentMonthCumulative: number;
   yearlyTotal: number;
   currentMonthActualCoverage: ActualPayrollCoverage;
@@ -52,14 +54,15 @@ export type PayrollSummaryResult = {
   estimatedYearlyTotal: number;
 };
 
-type WorkplaceWithPayrollCycle = {
-  id: string;
-  name: string;
-  color: string;
-  closingDayType: ClosingDayType;
-  closingDay: number | null;
-  payday: number;
+export type PayrollSummaryResult = PayrollSummaryCoreResult &
+  PayrollSummaryYearContextResult;
+
+export type PayrollSummaryAmountResult = {
+  month: string;
+  totalWage: number;
 };
+
+type WorkplaceWithPayrollCycle = PayrollSnapshotWorkplace;
 
 type WorkplacePeriodSummary = {
   wage: number;
@@ -134,24 +137,6 @@ function listMonthsInYear(month: Date): Date[] {
   );
 }
 
-function toPeriodMapKey(workplaceId: string, monthKey: string): string {
-  return `${workplaceId}:${monthKey}`;
-}
-
-function groupShiftsByWorkplace(
-  shifts: ShiftWithSummaryRelations[],
-): Map<string, ShiftWithSummaryRelations[]> {
-  const grouped = new Map<string, ShiftWithSummaryRelations[]>();
-
-  for (const shift of shifts) {
-    const bucket = grouped.get(shift.workplaceId) ?? [];
-    bucket.push(shift);
-    grouped.set(shift.workplaceId, bucket);
-  }
-
-  return grouped;
-}
-
 function summarizeWorkplaceByPeriod(
   workplaceId: string,
   period: PayrollPeriod,
@@ -196,143 +181,64 @@ function summarizeWorkplaceByPeriod(
   };
 }
 
-export async function getPayrollSummaryForUser(
-  userId: string,
-  month: Date,
-): Promise<PayrollSummaryResult> {
-  const selectedMonth = startOfMonth(month);
-  const monthsInYear = listMonthsInYear(selectedMonth);
-  const selectedMonthIndex = selectedMonth.getUTCMonth();
-  const selectedMonthKey = toMonthKey(selectedMonth);
+function createEmptyPayrollSummaryCore(
+  monthKey: string,
+): PayrollSummaryCoreResult {
+  return {
+    month: monthKey,
+    totalWage: 0,
+    estimatedTotalWage: 0,
+    displayValue: createPayrollDisplayValue(0, null),
+    actualCoverage: summarizeActualPayrollCoverage([], 0),
+    totalWorkHours: 0,
+    totalNightHours: 0,
+    totalOvertimeHours: 0,
+    byWorkplace: [],
+    confirmedShiftWage: 0,
+  };
+}
 
-  const workplaces = await prisma.workplace.findMany({
-    where: { userId },
-    select: {
-      id: true,
-      name: true,
-      color: true,
-      closingDayType: true,
-      closingDay: true,
-      payday: true,
-    },
-    orderBy: { createdAt: "asc" },
-  });
+function createEmptyPayrollSummaryYearContext(
+  monthKey: string,
+): PayrollSummaryYearContextResult {
+  return {
+    month: monthKey,
+    currentMonthCumulative: 0,
+    yearlyTotal: 0,
+    currentMonthActualCoverage: summarizeActualPayrollCoverage([], 0),
+    yearlyActualCoverage: summarizeActualPayrollCoverage([], 0),
+    estimatedCurrentMonthCumulative: 0,
+    estimatedYearlyTotal: 0,
+  };
+}
 
-  if (workplaces.length === 0) {
-    return {
-      month: selectedMonthKey,
-      totalWage: 0,
-      estimatedTotalWage: 0,
-      displayValue: createPayrollDisplayValue(0, null),
-      actualCoverage: summarizeActualPayrollCoverage([], 0),
-      totalWorkHours: 0,
-      totalNightHours: 0,
-      totalOvertimeHours: 0,
-      byWorkplace: [],
-      confirmedShiftWage: 0,
-      currentMonthCumulative: 0,
-      yearlyTotal: 0,
-      currentMonthActualCoverage: summarizeActualPayrollCoverage([], 0),
-      yearlyActualCoverage: summarizeActualPayrollCoverage([], 0),
-      estimatedCurrentMonthCumulative: 0,
-      estimatedYearlyTotal: 0,
-    };
-  }
-  const workplaceIds = workplaces.map((workplace) => workplace.id);
+function createEmptyPayrollSummaryAmount(
+  monthKey: string,
+): PayrollSummaryAmountResult {
+  return {
+    month: monthKey,
+    totalWage: 0,
+  };
+}
 
-  const monthTargets = new Map<string, Date>();
-  for (const yearMonth of monthsInYear) {
-    monthTargets.set(toMonthKey(yearMonth), yearMonth);
-  }
-
-  let fetchStartDate: Date | null = null;
-  let fetchEndDate: Date | null = null;
-  const periodByWorkplaceMonth = new Map<string, PayrollPeriod>();
-
-  for (const workplace of workplaces) {
-    for (const monthTarget of monthTargets.values()) {
-      const period = resolvePayrollPeriodForMonth(monthTarget, {
-        closingDayType: workplace.closingDayType,
-        closingDay: workplace.closingDay,
-        payday: workplace.payday,
-      });
-      periodByWorkplaceMonth.set(
-        toPeriodMapKey(workplace.id, toMonthKey(monthTarget)),
-        period,
-      );
-
-      if (!fetchStartDate || period.periodStartDate < fetchStartDate) {
-        fetchStartDate = period.periodStartDate;
-      }
-
-      if (!fetchEndDate || period.periodEndDate > fetchEndDate) {
-        fetchEndDate = period.periodEndDate;
-      }
-    }
-  }
-
-  if (!fetchStartDate || !fetchEndDate) {
-    throw new Error("PAYROLL_PERIOD_NOT_FOUND");
-  }
-
-  const [shifts, payrollRules] = await Promise.all([
-    prisma.shift.findMany({
-      where: {
-        workplaceId: {
-          in: workplaceIds,
-        },
-        date: {
-          gte: fetchStartDate,
-          lte: fetchEndDate,
-        },
-      },
-      include: {
-        lessonRange: true,
-      },
-      orderBy: [{ date: "asc" }, { startTime: "asc" }],
-    }),
-    prisma.payrollRule.findMany({
-      where: {
-        workplaceId: {
-          in: workplaceIds,
-        },
-        startDate: {
-          lte: fetchEndDate,
-        },
-        OR: [
-          {
-            endDate: null,
-          },
-          {
-            endDate: {
-              gt: fetchStartDate,
-            },
-          },
-        ],
-      },
-      orderBy: [{ workplaceId: "asc" }, { startDate: "asc" }],
-    }),
-  ]);
-
-  const rulesByWorkplace = groupPayrollRulesByWorkplace(payrollRules);
-  const shiftsByWorkplace = groupShiftsByWorkplace(shifts);
+function createWorkplaceMonthSummaryGetter(params: {
+  periodByWorkplaceMonth: Map<string, PayrollPeriod>;
+  shiftsByWorkplace: Map<string, ShiftWithSummaryRelations[]>;
+  rulesByWorkplace: PayrollRulesByWorkplace;
+}) {
   const monthSummaryByWorkplace = new Map<string, WorkplacePeriodSummary>();
-  const actualPayrollByWorkplaceMonth = await getActualPayrollMap({
-    workplaceIds,
-    monthKeys: Array.from(monthTargets.keys()),
-  });
 
-  const getWorkplaceMonthSummary = (
+  return (
     workplace: WorkplaceWithPayrollCycle,
     monthKey: string,
   ): WorkplacePeriodSummary => {
-    const cacheKey = toPeriodMapKey(workplace.id, monthKey);
+    const cacheKey = toPayrollPeriodMapKey(workplace.id, monthKey);
     const cached = monthSummaryByWorkplace.get(cacheKey);
     if (cached) {
       return cached;
     }
 
-    const period = periodByWorkplaceMonth.get(cacheKey);
+    const period = params.periodByWorkplaceMonth.get(cacheKey);
     if (!period) {
       throw new Error(`PAYROLL_PERIOD_NOT_FOUND: ${cacheKey}`);
     }
@@ -340,48 +246,26 @@ export async function getPayrollSummaryForUser(
     const summarized = summarizeWorkplaceByPeriod(
       workplace.id,
       period,
-      shiftsByWorkplace,
-      rulesByWorkplace,
+      params.shiftsByWorkplace,
+      params.rulesByWorkplace,
     );
     monthSummaryByWorkplace.set(cacheKey, summarized);
     return summarized;
   };
+}
 
-  const monthlyTotalWage = new Map<string, number>();
-  const monthlyDisplayWage = new Map<string, number>();
-  const monthlyDisplayTaxableWage = new Map<string, number>();
-  const monthlyDisplayNonTaxableWage = new Map<string, number>();
-  for (const [monthKey] of monthTargets) {
-    let total = 0;
-    let displayTotal = 0;
-    let displayTaxableTotal = 0;
-    let displayNonTaxableTotal = 0;
-    for (const workplace of workplaces) {
-      const estimatedWage = getWorkplaceMonthSummary(workplace, monthKey).wage;
-      const actualPayroll =
-        actualPayrollByWorkplaceMonth.get(
-          buildWorkplaceMonthKey(workplace.id, monthKey),
-        ) ?? null;
-      const displayValue = createPayrollDisplayValue(
-        estimatedWage,
-        actualPayroll,
-      );
-      total += estimatedWage;
-      displayTotal += displayValue.displayAmount;
-
-      if (actualPayroll) {
-        displayTaxableTotal += actualPayroll.taxableAmount;
-        displayNonTaxableTotal += actualPayroll.nonTaxableAmount;
-        continue;
-      }
-
-      displayTaxableTotal += displayValue.displayAmount;
-    }
-
-    monthlyTotalWage.set(monthKey, total);
-    monthlyDisplayWage.set(monthKey, displayTotal);
-    monthlyDisplayTaxableWage.set(monthKey, displayTaxableTotal);
-    monthlyDisplayNonTaxableWage.set(monthKey, displayNonTaxableTotal);
+function buildPayrollSummaryCore(params: {
+  monthKey: string;
+  workplaces: WorkplaceWithPayrollCycle[];
+  periodByWorkplaceMonth: Map<string, PayrollPeriod>;
+  actualPayrollByWorkplaceMonth: Map<string, ActualPayrollRecord>;
+  getWorkplaceMonthSummary: (
+    workplace: WorkplaceWithPayrollCycle,
+    monthKey: string,
+  ) => WorkplacePeriodSummary;
+}): PayrollSummaryCoreResult {
+  if (params.workplaces.length === 0) {
+    return createEmptyPayrollSummaryCore(params.monthKey);
   }
 
   const byWorkplace: PayrollSummaryByWorkplace[] = [];
@@ -392,40 +276,27 @@ export async function getPayrollSummaryForUser(
   let totalNightHours = 0;
   let totalOvertimeHours = 0;
   const selectedMonthActuals: Array<ActualPayrollRecord | null> = [];
-  const currentMonthCumulativeActuals: Array<ActualPayrollRecord | null> = [];
-  const yearlyActuals: Array<ActualPayrollRecord | null> = [];
 
-  for (const yearMonth of monthsInYear) {
-    const monthKey = toMonthKey(yearMonth);
-    for (const workplace of workplaces) {
-      const actualPayroll =
-        actualPayrollByWorkplaceMonth.get(
-          buildWorkplaceMonthKey(workplace.id, monthKey),
-        ) ?? null;
-      yearlyActuals.push(actualPayroll);
-
-      if (yearMonth.getUTCMonth() <= selectedMonthIndex) {
-        currentMonthCumulativeActuals.push(actualPayroll);
-      }
-    }
-  }
-
-  for (const workplace of workplaces) {
-    const cacheKey = toPeriodMapKey(workplace.id, selectedMonthKey);
-    const period = periodByWorkplaceMonth.get(cacheKey);
+  for (const workplace of params.workplaces) {
+    const cacheKey = toPayrollPeriodMapKey(workplace.id, params.monthKey);
+    const period = params.periodByWorkplaceMonth.get(cacheKey);
     if (!period) {
       throw new Error(`PAYROLL_PERIOD_NOT_FOUND: ${cacheKey}`);
     }
 
-    const summarized = getWorkplaceMonthSummary(workplace, selectedMonthKey);
+    const summarized = params.getWorkplaceMonthSummary(
+      workplace,
+      params.monthKey,
+    );
     estimatedTotalWage += summarized.wage;
     totalConfirmedWage += summarized.confirmedWage;
     totalWorkHours += summarized.workHours;
     totalNightHours += summarized.nightHours;
     totalOvertimeHours += summarized.overtimeHours;
+
     const actualPayroll =
-      actualPayrollByWorkplaceMonth.get(
-        buildWorkplaceMonthKey(workplace.id, selectedMonthKey),
+      params.actualPayrollByWorkplaceMonth.get(
+        buildWorkplaceMonthKey(workplace.id, params.monthKey),
       ) ?? null;
     const displayValue = createPayrollDisplayValue(
       summarized.wage,
@@ -449,6 +320,139 @@ export async function getPayrollSummaryForUser(
       displayValue,
       actualPayroll,
     });
+  }
+
+  const actualCoverage = summarizeActualPayrollCoverage(
+    selectedMonthActuals,
+    params.workplaces.length,
+  );
+
+  return {
+    month: params.monthKey,
+    totalWage: roundCurrency(totalWage),
+    estimatedTotalWage: roundCurrency(estimatedTotalWage),
+    displayValue: createPayrollDisplayValue(
+      estimatedTotalWage,
+      actualCoverage.registeredWorkplaceCount > 0
+        ? {
+            taxableAmount: actualCoverage.taxableAmount,
+            nonTaxableAmount: actualCoverage.nonTaxableAmount,
+            totalAmount: actualCoverage.totalAmount,
+          }
+        : null,
+    ),
+    actualCoverage,
+    totalWorkHours: roundHours(totalWorkHours),
+    totalNightHours: roundHours(totalNightHours),
+    totalOvertimeHours: roundHours(totalOvertimeHours),
+    byWorkplace: byWorkplace.sort(
+      (left, right) =>
+        right.displayValue.displayAmount - left.displayValue.displayAmount,
+    ),
+    confirmedShiftWage: roundCurrency(totalConfirmedWage),
+  };
+}
+
+function buildPayrollSummaryAmount(params: {
+  monthKey: string;
+  workplaces: WorkplaceWithPayrollCycle[];
+  actualPayrollByWorkplaceMonth: Map<string, ActualPayrollRecord>;
+  getWorkplaceMonthSummary: (
+    workplace: WorkplaceWithPayrollCycle,
+    monthKey: string,
+  ) => WorkplacePeriodSummary;
+}): PayrollSummaryAmountResult {
+  if (params.workplaces.length === 0) {
+    return createEmptyPayrollSummaryAmount(params.monthKey);
+  }
+
+  let totalWage = 0;
+
+  for (const workplace of params.workplaces) {
+    const estimatedWage = params.getWorkplaceMonthSummary(
+      workplace,
+      params.monthKey,
+    ).wage;
+    const actualPayroll =
+      params.actualPayrollByWorkplaceMonth.get(
+        buildWorkplaceMonthKey(workplace.id, params.monthKey),
+      ) ?? null;
+    totalWage += createPayrollDisplayValue(
+      estimatedWage,
+      actualPayroll,
+    ).displayAmount;
+  }
+
+  return {
+    month: params.monthKey,
+    totalWage: roundCurrency(totalWage),
+  };
+}
+
+function buildPayrollSummaryYearContext(params: {
+  selectedMonth: Date;
+  workplaces: WorkplaceWithPayrollCycle[];
+  actualPayrollByWorkplaceMonth: Map<string, ActualPayrollRecord>;
+  getWorkplaceMonthSummary: (
+    workplace: WorkplaceWithPayrollCycle,
+    monthKey: string,
+  ) => WorkplacePeriodSummary;
+}): PayrollSummaryYearContextResult {
+  const selectedMonthKey = toMonthKey(params.selectedMonth);
+  if (params.workplaces.length === 0) {
+    return createEmptyPayrollSummaryYearContext(selectedMonthKey);
+  }
+
+  const monthsInYear = listMonthsInYear(params.selectedMonth);
+  const selectedMonthIndex = params.selectedMonth.getUTCMonth();
+  const monthlyTotalWage = new Map<string, number>();
+  const monthlyDisplayWage = new Map<string, number>();
+  const monthlyDisplayTaxableWage = new Map<string, number>();
+  const monthlyDisplayNonTaxableWage = new Map<string, number>();
+  const currentMonthCumulativeActuals: Array<ActualPayrollRecord | null> = [];
+  const yearlyActuals: Array<ActualPayrollRecord | null> = [];
+
+  for (const yearMonth of monthsInYear) {
+    const monthKey = toMonthKey(yearMonth);
+    let total = 0;
+    let displayTotal = 0;
+    let displayTaxableTotal = 0;
+    let displayNonTaxableTotal = 0;
+
+    for (const workplace of params.workplaces) {
+      const estimatedWage = params.getWorkplaceMonthSummary(
+        workplace,
+        monthKey,
+      ).wage;
+      const actualPayroll =
+        params.actualPayrollByWorkplaceMonth.get(
+          buildWorkplaceMonthKey(workplace.id, monthKey),
+        ) ?? null;
+      const displayValue = createPayrollDisplayValue(
+        estimatedWage,
+        actualPayroll,
+      );
+
+      total += estimatedWage;
+      displayTotal += displayValue.displayAmount;
+
+      if (actualPayroll) {
+        displayTaxableTotal += actualPayroll.taxableAmount;
+        displayNonTaxableTotal += actualPayroll.nonTaxableAmount;
+      } else {
+        displayTaxableTotal += displayValue.displayAmount;
+      }
+
+      yearlyActuals.push(actualPayroll);
+      if (yearMonth.getUTCMonth() <= selectedMonthIndex) {
+        currentMonthCumulativeActuals.push(actualPayroll);
+      }
+    }
+
+    monthlyTotalWage.set(monthKey, total);
+    monthlyDisplayWage.set(monthKey, displayTotal);
+    monthlyDisplayTaxableWage.set(monthKey, displayTaxableTotal);
+    monthlyDisplayNonTaxableWage.set(monthKey, displayNonTaxableTotal);
   }
 
   const currentMonthCumulative = monthsInYear
@@ -503,42 +507,17 @@ export async function getPayrollSummaryForUser(
       sum + (monthlyTotalWage.get(toMonthKey(yearMonth)) ?? 0),
     0,
   );
-  const actualCoverage = summarizeActualPayrollCoverage(
-    selectedMonthActuals,
-    workplaces.length,
-  );
   const currentMonthActualCoverage = summarizeActualPayrollCoverage(
     currentMonthCumulativeActuals,
-    workplaces.length * (selectedMonthIndex + 1),
+    params.workplaces.length * (selectedMonthIndex + 1),
   );
   const yearlyActualCoverage = summarizeActualPayrollCoverage(
     yearlyActuals,
-    workplaces.length * monthsInYear.length,
+    params.workplaces.length * monthsInYear.length,
   );
 
   return {
     month: selectedMonthKey,
-    totalWage: roundCurrency(totalWage),
-    estimatedTotalWage: roundCurrency(estimatedTotalWage),
-    displayValue: createPayrollDisplayValue(
-      estimatedTotalWage,
-      actualCoverage.registeredWorkplaceCount > 0
-        ? {
-            taxableAmount: actualCoverage.taxableAmount,
-            nonTaxableAmount: actualCoverage.nonTaxableAmount,
-            totalAmount: actualCoverage.totalAmount,
-          }
-        : null,
-    ),
-    actualCoverage,
-    totalWorkHours: roundHours(totalWorkHours),
-    totalNightHours: roundHours(totalNightHours),
-    totalOvertimeHours: roundHours(totalOvertimeHours),
-    byWorkplace: byWorkplace.sort(
-      (left, right) =>
-        right.displayValue.displayAmount - left.displayValue.displayAmount,
-    ),
-    confirmedShiftWage: roundCurrency(totalConfirmedWage),
     currentMonthCumulative: roundCurrency(currentMonthCumulative),
     yearlyTotal: roundCurrency(yearlyTotal),
     currentMonthActualCoverage: mergeCoverageWithDisplayAmount(
@@ -553,5 +532,158 @@ export async function getPayrollSummaryForUser(
       estimatedCurrentMonthCumulative,
     ),
     estimatedYearlyTotal: roundCurrency(estimatedYearlyTotal),
+  };
+}
+
+export async function getPayrollSummaryCoreForUser(
+  userId: string,
+  month: Date,
+): Promise<PayrollSummaryCoreResult> {
+  const selectedMonth = startOfMonth(month);
+  const selectedMonthKey = toMonthKey(selectedMonth);
+  const {
+    workplaces,
+    periodByWorkplaceMonth,
+    shiftsByWorkplace,
+    rulesByWorkplace,
+    actualPayrollByWorkplaceMonth,
+  } = await loadPayrollSnapshot({
+    userId,
+    monthDates: [selectedMonth],
+    includeActualPayroll: true,
+  });
+
+  const getWorkplaceMonthSummary = createWorkplaceMonthSummaryGetter({
+    periodByWorkplaceMonth,
+    shiftsByWorkplace,
+    rulesByWorkplace,
+  });
+
+  return buildPayrollSummaryCore({
+    monthKey: selectedMonthKey,
+    workplaces,
+    periodByWorkplaceMonth,
+    actualPayrollByWorkplaceMonth,
+    getWorkplaceMonthSummary,
+  });
+}
+
+export async function getPayrollSummaryYearContextForUser(
+  userId: string,
+  month: Date,
+): Promise<PayrollSummaryYearContextResult> {
+  const selectedMonth = startOfMonth(month);
+  const selectedMonthKey = toMonthKey(selectedMonth);
+  const {
+    workplaces,
+    periodByWorkplaceMonth,
+    shiftsByWorkplace,
+    rulesByWorkplace,
+    actualPayrollByWorkplaceMonth,
+  } = await loadPayrollSnapshot({
+    userId,
+    monthDates: listMonthsInYear(selectedMonth),
+    includeActualPayroll: true,
+  });
+
+  if (workplaces.length === 0) {
+    return createEmptyPayrollSummaryYearContext(selectedMonthKey);
+  }
+
+  const getWorkplaceMonthSummary = createWorkplaceMonthSummaryGetter({
+    periodByWorkplaceMonth,
+    shiftsByWorkplace,
+    rulesByWorkplace,
+  });
+
+  return buildPayrollSummaryYearContext({
+    selectedMonth,
+    workplaces,
+    actualPayrollByWorkplaceMonth,
+    getWorkplaceMonthSummary,
+  });
+}
+
+export async function getPayrollSummaryAmountForUser(
+  userId: string,
+  month: Date,
+): Promise<PayrollSummaryAmountResult> {
+  const selectedMonth = startOfMonth(month);
+  const selectedMonthKey = toMonthKey(selectedMonth);
+  const {
+    workplaces,
+    periodByWorkplaceMonth,
+    shiftsByWorkplace,
+    rulesByWorkplace,
+    actualPayrollByWorkplaceMonth,
+  } = await loadPayrollSnapshot({
+    userId,
+    monthDates: [selectedMonth],
+    includeActualPayroll: true,
+  });
+
+  if (workplaces.length === 0) {
+    return createEmptyPayrollSummaryAmount(selectedMonthKey);
+  }
+
+  const getWorkplaceMonthSummary = createWorkplaceMonthSummaryGetter({
+    periodByWorkplaceMonth,
+    shiftsByWorkplace,
+    rulesByWorkplace,
+  });
+
+  return buildPayrollSummaryAmount({
+    monthKey: selectedMonthKey,
+    workplaces,
+    actualPayrollByWorkplaceMonth,
+    getWorkplaceMonthSummary,
+  });
+}
+
+export async function getPayrollSummaryForUser(
+  userId: string,
+  month: Date,
+): Promise<PayrollSummaryResult> {
+  const selectedMonth = startOfMonth(month);
+  const selectedMonthKey = toMonthKey(selectedMonth);
+  const {
+    workplaces,
+    periodByWorkplaceMonth,
+    shiftsByWorkplace,
+    rulesByWorkplace,
+    actualPayrollByWorkplaceMonth,
+  } = await loadPayrollSnapshot({
+    userId,
+    monthDates: listMonthsInYear(selectedMonth),
+    includeActualPayroll: true,
+  });
+
+  if (workplaces.length === 0) {
+    return {
+      ...createEmptyPayrollSummaryCore(selectedMonthKey),
+      ...createEmptyPayrollSummaryYearContext(selectedMonthKey),
+    };
+  }
+
+  const getWorkplaceMonthSummary = createWorkplaceMonthSummaryGetter({
+    periodByWorkplaceMonth,
+    shiftsByWorkplace,
+    rulesByWorkplace,
+  });
+
+  return {
+    ...buildPayrollSummaryCore({
+      monthKey: selectedMonthKey,
+      workplaces,
+      periodByWorkplaceMonth,
+      actualPayrollByWorkplaceMonth,
+      getWorkplaceMonthSummary,
+    }),
+    ...buildPayrollSummaryYearContext({
+      selectedMonth,
+      workplaces,
+      actualPayrollByWorkplaceMonth,
+      getWorkplaceMonthSummary,
+    }),
   };
 }
