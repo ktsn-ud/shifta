@@ -27,6 +27,40 @@ type PayrollDetailsMonthlyPageClientProps = {
   initialDetails: PayrollDetailsMonthlyResult;
 };
 
+type PayrollDetailsMonthlyWorkplaceItem =
+  PayrollDetailsMonthlyResult["byWorkplace"][number];
+
+type PayrollDetailsMonthlyHeaderProps = {
+  selectedMonthLabel: string;
+  draftMonthValue: string;
+  currentMonthValue: string;
+  requestedMonthValue: string;
+  canApplyMonth: boolean;
+  isInitialLoading: boolean;
+  isRefreshing: boolean;
+  workplaceYearlyHref: string;
+  onDraftMonthValueChange: (value: string) => void;
+  onApplyMonthValue: (value: string) => void;
+  onBackToCurrentMonth: () => void;
+};
+
+type PayrollDetailsMonthlySummaryCardsProps = {
+  details: PayrollDetailsMonthlyResult;
+  selectedMonthLabel: string;
+};
+
+type PayrollDetailsMonthlyBreakdownCardProps = {
+  workplaceItems: PayrollDetailsMonthlyWorkplaceItem[];
+};
+
+type PayrollDetailsMonthlyWorkplacePanelProps = {
+  item: PayrollDetailsMonthlyWorkplaceItem;
+};
+
+type PayrollDetailsMonthlyWorkplaceFormulaProps = {
+  item: PayrollDetailsMonthlyWorkplaceItem;
+};
+
 export function PayrollDetailsMonthlyPageLoadingSkeleton() {
   return (
     <section className="space-y-6 p-4 md:p-6">
@@ -43,6 +77,321 @@ export function PayrollDetailsMonthlyPageLoadingSkeleton() {
       </header>
       <SpinnerPanel className="min-h-[360px]" label="給与詳細を読み込み中..." />
     </section>
+  );
+}
+
+function PayrollDetailsMonthlyHeader({
+  selectedMonthLabel,
+  draftMonthValue,
+  currentMonthValue,
+  requestedMonthValue,
+  canApplyMonth,
+  isInitialLoading,
+  isRefreshing,
+  workplaceYearlyHref,
+  onDraftMonthValueChange,
+  onApplyMonthValue,
+  onBackToCurrentMonth,
+}: PayrollDetailsMonthlyHeaderProps) {
+  return (
+    <header className="space-y-4 rounded-xl border border-border/80 bg-card/95 p-5 shadow-sm">
+      <div className="space-y-2">
+        <p className="text-xs font-medium uppercase tracking-[0.12em] text-muted-foreground">
+          Payroll Details
+        </p>
+        <h2 className="text-2xl font-semibold tracking-tight">
+          給与詳細（月毎表示）
+        </h2>
+        <p className="text-sm text-muted-foreground">
+          {selectedMonthLabel}支給分の実績優先内訳を確認できます。
+        </p>
+      </div>
+
+      <PayrollDetailsViewSwitch
+        currentMode="monthly"
+        href={workplaceYearlyHref}
+      />
+
+      {!isInitialLoading ? (
+        <div className="flex flex-wrap items-center gap-2">
+          <Button
+            type="button"
+            variant="outline"
+            size="sm"
+            onClick={onBackToCurrentMonth}
+            disabled={requestedMonthValue === currentMonthValue || isRefreshing}
+          >
+            今月に戻る
+          </Button>
+          <Input
+            type="month"
+            value={draftMonthValue}
+            disabled={isRefreshing}
+            onKeyDown={(event) => {
+              if (event.key === "Enter") {
+                onApplyMonthValue(draftMonthValue);
+              }
+            }}
+            onChange={(event) => {
+              onDraftMonthValueChange(event.currentTarget.value);
+            }}
+            className="w-44"
+          />
+          <Button
+            type="button"
+            size="sm"
+            onClick={() => onApplyMonthValue(draftMonthValue)}
+            disabled={!canApplyMonth || isRefreshing}
+          >
+            適用
+          </Button>
+        </div>
+      ) : null}
+    </header>
+  );
+}
+
+function PayrollDetailsMonthlySummaryCards({
+  details,
+  selectedMonthLabel,
+}: PayrollDetailsMonthlySummaryCardsProps) {
+  return (
+    <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-5">
+      <Card size="sm" className="border-primary/30 bg-primary/5">
+        <CardHeader>
+          <CardTitle>実績支給額</CardTitle>
+          <CardDescription>{selectedMonthLabel}支給分</CardDescription>
+        </CardHeader>
+        <CardContent className="space-y-1">
+          <p className="text-3xl font-semibold tracking-tight">
+            {formatCurrency(details.totalsDisplayValue.displayAmount)}
+          </p>
+          <p className="text-xs text-muted-foreground">
+            課税 {formatCurrency(details.actualCoverage.taxableAmount)} / 非課税{" "}
+            {formatCurrency(details.actualCoverage.nonTaxableAmount)}
+          </p>
+          <p className="text-xs text-muted-foreground">
+            {details.actualCoverage.registeredWorkplaceCount === 0
+              ? "実給与は未登録です"
+              : details.actualCoverage.isPartial
+                ? `実給与登録済み ${details.actualCoverage.registeredWorkplaceCount}/${details.actualCoverage.totalWorkplaceCount} 勤務先`
+                : "全勤務先で実給与登録済み"}
+          </p>
+        </CardContent>
+      </Card>
+      <Card size="sm">
+        <CardHeader>
+          <CardTitle>総勤務時間</CardTitle>
+          <CardDescription>休憩控除後の合計</CardDescription>
+        </CardHeader>
+        <CardContent className="space-y-1">
+          <p className="text-2xl font-semibold">
+            {details.totals.workDuration}
+          </p>
+        </CardContent>
+      </Card>
+      <Card size="sm">
+        <CardHeader>
+          <CardTitle>基本勤務</CardTitle>
+          <CardDescription>時間 / 金額</CardDescription>
+        </CardHeader>
+        <CardContent className="space-y-1">
+          <p className="text-base font-semibold">
+            {details.totals.baseDuration} /{" "}
+            {formatCurrency(details.totals.baseWage)}
+          </p>
+        </CardContent>
+      </Card>
+      <Card size="sm">
+        <CardHeader>
+          <CardTitle>深夜勤務</CardTitle>
+          <CardDescription>時間 / 金額</CardDescription>
+        </CardHeader>
+        <CardContent className="space-y-1">
+          <p className="text-base font-semibold">
+            {details.totals.nightDuration} /{" "}
+            {formatCurrency(details.totals.nightWage)}
+          </p>
+        </CardContent>
+      </Card>
+      <Card size="sm">
+        <CardHeader>
+          <CardTitle>休日勤務</CardTitle>
+          <CardDescription>時間 / 金額</CardDescription>
+        </CardHeader>
+        <CardContent className="space-y-1">
+          <p className="text-base font-semibold">
+            {details.totals.holidayDuration} /{" "}
+            {formatCurrency(details.totals.holidayWage)}
+          </p>
+        </CardContent>
+      </Card>
+    </div>
+  );
+}
+
+function PayrollDetailsMonthlyBreakdownCard({
+  workplaceItems,
+}: PayrollDetailsMonthlyBreakdownCardProps) {
+  return (
+    <Card className="border-border/80 bg-card/95 shadow-sm">
+      <CardHeader>
+        <CardTitle>勤務先別内訳</CardTitle>
+        <CardDescription>図は横スクロールが可能です。</CardDescription>
+      </CardHeader>
+      <CardContent className="space-y-4">
+        {workplaceItems.map((item) => (
+          <PayrollDetailsMonthlyWorkplacePanel
+            key={`${item.workplaceId}-formula`}
+            item={item}
+          />
+        ))}
+      </CardContent>
+    </Card>
+  );
+}
+
+function PayrollDetailsMonthlyWorkplacePanel({
+  item,
+}: PayrollDetailsMonthlyWorkplacePanelProps) {
+  return (
+    <div className="space-y-3 rounded-lg border border-border/70 bg-muted/10 p-3">
+      <div className="flex flex-wrap items-center gap-8">
+        <p className="font-medium">
+          <span className="inline-flex items-center gap-2">
+            <span
+              className="h-2.5 w-2.5 rounded-full"
+              style={{ backgroundColor: item.workplaceColor }}
+            />
+            {item.workplaceName}
+          </span>
+        </p>
+        <p className="text-xs text-muted-foreground">
+          {item.periodStartDate} 〜 {item.periodEndDate}
+        </p>
+        <div className="flex flex-wrap items-center gap-2 text-xs">
+          <span className="rounded-full bg-primary/10 px-2 py-1 font-medium text-primary">
+            表示 {formatCurrency(item.displayValue.displayAmount)}
+          </span>
+          <span className="rounded-full bg-muted px-2 py-1 text-muted-foreground">
+            概算 {formatCurrency(item.displayValue.estimatedAmount)}
+          </span>
+          {item.actualPayroll ? (
+            <span className="rounded-full bg-emerald-50 px-2 py-1 text-emerald-700">
+              実績 課税 {formatCurrency(item.actualPayroll.taxableAmount)} /
+              非課税 {formatCurrency(item.actualPayroll.nonTaxableAmount)}
+            </span>
+          ) : null}
+        </div>
+      </div>
+
+      <PayrollDetailsMonthlyWorkplaceFormula item={item} />
+    </div>
+  );
+}
+
+function PayrollDetailsMonthlyWorkplaceFormula({
+  item,
+}: PayrollDetailsMonthlyWorkplaceFormulaProps) {
+  return (
+    <div className="overflow-x-auto">
+      <div className="inline-grid w-max grid-cols-[max-content_auto_max-content] items-center gap-x-1 gap-y-2 text-xs">
+        <div className="flex items-center gap-2 justify-self-start whitespace-nowrap">
+          <ValueFrame
+            label="基本勤務時間"
+            value={item.baseDuration}
+            tone="base"
+          />
+          <span>×</span>
+          <ValueFrame
+            label="適用時給"
+            value={
+              item.effectiveBaseHourlyWage === null
+                ? "-"
+                : formatCurrency(item.effectiveBaseHourlyWage)
+            }
+            tone="neutral"
+          />
+        </div>
+        <span className="font-medium text-muted-foreground">=</span>
+        <ValueFrame
+          label="基本勤務金額"
+          value={formatCurrency(item.baseWage)}
+          tone="base"
+          emphasis="strong"
+        />
+
+        <div className="flex items-center gap-2 justify-self-start whitespace-nowrap">
+          <ValueFrame
+            label="深夜勤務時間"
+            value={item.nightDuration}
+            tone="night"
+          />
+          <span>×</span>
+          <ValueFrame
+            label="深夜時給(割増込)"
+            value={
+              item.effectiveNightHourlyWage === null
+                ? "-"
+                : formatCurrency(item.effectiveNightHourlyWage)
+            }
+            tone="neutral"
+          />
+        </div>
+        <span className="font-medium text-muted-foreground">=</span>
+        <ValueFrame
+          label="深夜勤務金額"
+          value={formatCurrency(item.nightWage)}
+          tone="night"
+          emphasis="strong"
+        />
+
+        <div className="flex items-center gap-2 justify-self-start whitespace-nowrap">
+          <ValueFrame
+            label="休日勤務時間"
+            value={item.holidayDuration}
+            tone="holiday"
+          />
+          <span>×</span>
+          <ValueFrame
+            label="休日手当(円/時)"
+            value={
+              item.effectiveHolidayAllowanceHourly === null
+                ? "-"
+                : formatCurrency(item.effectiveHolidayAllowanceHourly)
+            }
+            tone="neutral"
+          />
+        </div>
+        <span className="font-medium text-muted-foreground">=</span>
+        <ValueFrame
+          label="休日勤務金額"
+          value={formatCurrency(item.holidayWage)}
+          tone="holiday"
+          emphasis="strong"
+        />
+
+        <div className="w-full justify-self-stretch space-y-2">
+          <div className="border-t border-foreground/30" />
+          <ValueFrame
+            label="総勤務時間"
+            value={item.workDuration}
+            tone="neutral"
+            emphasis="strong"
+          />
+        </div>
+        <div />
+        <div className="space-y-2">
+          <div className="border-t border-foreground/30" />
+          <ValueFrame
+            label="合計"
+            value={formatCurrency(item.totalWage)}
+            tone="total"
+            emphasis="strong"
+          />
+        </div>
+      </div>
+    </div>
   );
 }
 
@@ -111,62 +460,19 @@ export function PayrollDetailsMonthlyPageClient({
 
   return (
     <section className="space-y-6 p-4 md:p-6">
-      <header className="space-y-4 rounded-xl border border-border/80 bg-card/95 p-5 shadow-sm">
-        <div className="space-y-2">
-          <p className="text-xs font-medium uppercase tracking-[0.12em] text-muted-foreground">
-            Payroll Details
-          </p>
-          <h2 className="text-2xl font-semibold tracking-tight">
-            給与詳細（月毎表示）
-          </h2>
-          <p className="text-sm text-muted-foreground">
-            {selectedMonthLabel}支給分の実績優先内訳を確認できます。
-          </p>
-        </div>
-
-        <PayrollDetailsViewSwitch
-          currentMode="monthly"
-          href={workplaceYearlyHref}
-        />
-
-        {!isInitialLoading ? (
-          <div className="flex flex-wrap items-center gap-2">
-            <Button
-              type="button"
-              variant="outline"
-              size="sm"
-              onClick={handleBackToCurrentMonth}
-              disabled={
-                requestedMonthValue === currentMonthValue || isRefreshing
-              }
-            >
-              今月に戻る
-            </Button>
-            <Input
-              type="month"
-              value={draftMonthValue}
-              disabled={isRefreshing}
-              onKeyDown={(event) => {
-                if (event.key === "Enter") {
-                  applyMonthValue(draftMonthValue);
-                }
-              }}
-              onChange={(event) => {
-                setDraftMonthValue(event.currentTarget.value);
-              }}
-              className="w-44"
-            />
-            <Button
-              type="button"
-              size="sm"
-              onClick={() => applyMonthValue(draftMonthValue)}
-              disabled={!canApplyMonth || isRefreshing}
-            >
-              適用
-            </Button>
-          </div>
-        ) : null}
-      </header>
+      <PayrollDetailsMonthlyHeader
+        selectedMonthLabel={selectedMonthLabel}
+        draftMonthValue={draftMonthValue}
+        currentMonthValue={currentMonthValue}
+        requestedMonthValue={requestedMonthValue}
+        canApplyMonth={canApplyMonth}
+        isInitialLoading={isInitialLoading}
+        isRefreshing={isRefreshing}
+        workplaceYearlyHref={workplaceYearlyHref}
+        onDraftMonthValueChange={setDraftMonthValue}
+        onApplyMonthValue={applyMonthValue}
+        onBackToCurrentMonth={handleBackToCurrentMonth}
+      />
 
       {errorMessage ? (
         <p className="rounded-lg border border-destructive/40 bg-destructive/5 px-3 py-2 text-sm text-destructive">
@@ -188,234 +494,13 @@ export function PayrollDetailsMonthlyPageClient({
               </p>
             ) : null}
 
-            <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-5">
-              <Card size="sm" className="border-primary/30 bg-primary/5">
-                <CardHeader>
-                  <CardTitle>実績支給額</CardTitle>
-                  <CardDescription>{selectedMonthLabel}支給分</CardDescription>
-                </CardHeader>
-                <CardContent className="space-y-1">
-                  <p className="text-3xl font-semibold tracking-tight">
-                    {formatCurrency(details.totalsDisplayValue.displayAmount)}
-                  </p>
-                  <p className="text-xs text-muted-foreground">
-                    課税 {formatCurrency(details.actualCoverage.taxableAmount)}{" "}
-                    / 非課税{" "}
-                    {formatCurrency(details.actualCoverage.nonTaxableAmount)}
-                  </p>
-                  <p className="text-xs text-muted-foreground">
-                    {details.actualCoverage.registeredWorkplaceCount === 0
-                      ? "実給与は未登録です"
-                      : details.actualCoverage.isPartial
-                        ? `実給与登録済み ${details.actualCoverage.registeredWorkplaceCount}/${details.actualCoverage.totalWorkplaceCount} 勤務先`
-                        : "全勤務先で実給与登録済み"}
-                  </p>
-                </CardContent>
-              </Card>
-              <Card size="sm">
-                <CardHeader>
-                  <CardTitle>総勤務時間</CardTitle>
-                  <CardDescription>休憩控除後の合計</CardDescription>
-                </CardHeader>
-                <CardContent className="space-y-1">
-                  <p className="text-2xl font-semibold">
-                    {details.totals.workDuration}
-                  </p>
-                </CardContent>
-              </Card>
-              <Card size="sm">
-                <CardHeader>
-                  <CardTitle>基本勤務</CardTitle>
-                  <CardDescription>時間 / 金額</CardDescription>
-                </CardHeader>
-                <CardContent className="space-y-1">
-                  <p className="text-base font-semibold">
-                    {details.totals.baseDuration} /{" "}
-                    {formatCurrency(details.totals.baseWage)}
-                  </p>
-                </CardContent>
-              </Card>
-              <Card size="sm">
-                <CardHeader>
-                  <CardTitle>深夜勤務</CardTitle>
-                  <CardDescription>時間 / 金額</CardDescription>
-                </CardHeader>
-                <CardContent className="space-y-1">
-                  <p className="text-base font-semibold">
-                    {details.totals.nightDuration} /{" "}
-                    {formatCurrency(details.totals.nightWage)}
-                  </p>
-                </CardContent>
-              </Card>
-              <Card size="sm">
-                <CardHeader>
-                  <CardTitle>休日勤務</CardTitle>
-                  <CardDescription>時間 / 金額</CardDescription>
-                </CardHeader>
-                <CardContent className="space-y-1">
-                  <p className="text-base font-semibold">
-                    {details.totals.holidayDuration} /{" "}
-                    {formatCurrency(details.totals.holidayWage)}
-                  </p>
-                </CardContent>
-              </Card>
-            </div>
-
-            <Card className="border-border/80 bg-card/95 shadow-sm">
-              <CardHeader>
-                <CardTitle>勤務先別内訳</CardTitle>
-                <CardDescription>図は横スクロールが可能です。</CardDescription>
-              </CardHeader>
-              <CardContent className="space-y-4">
-                {details.byWorkplace.map((item) => (
-                  <div
-                    key={`${item.workplaceId}-formula`}
-                    className="space-y-3 rounded-lg border border-border/70 bg-muted/10 p-3"
-                  >
-                    <div className="flex flex-wrap items-center gap-8">
-                      <p className="font-medium">
-                        <span className="inline-flex items-center gap-2">
-                          <span
-                            className="h-2.5 w-2.5 rounded-full"
-                            style={{ backgroundColor: item.workplaceColor }}
-                          />
-                          {item.workplaceName}
-                        </span>
-                      </p>
-                      <p className="text-xs text-muted-foreground">
-                        {item.periodStartDate} 〜 {item.periodEndDate}
-                      </p>
-                      <div className="flex flex-wrap items-center gap-2 text-xs">
-                        <span className="rounded-full bg-primary/10 px-2 py-1 font-medium text-primary">
-                          表示 {formatCurrency(item.displayValue.displayAmount)}
-                        </span>
-                        <span className="rounded-full bg-muted px-2 py-1 text-muted-foreground">
-                          概算{" "}
-                          {formatCurrency(item.displayValue.estimatedAmount)}
-                        </span>
-                        {item.actualPayroll ? (
-                          <span className="rounded-full bg-emerald-50 px-2 py-1 text-emerald-700">
-                            実績 課税{" "}
-                            {formatCurrency(item.actualPayroll.taxableAmount)} /
-                            非課税{" "}
-                            {formatCurrency(
-                              item.actualPayroll.nonTaxableAmount,
-                            )}
-                          </span>
-                        ) : null}
-                      </div>
-                    </div>
-
-                    <div className="overflow-x-auto">
-                      <div className="inline-grid w-max grid-cols-[max-content_auto_max-content] items-center gap-x-1 gap-y-2 text-xs">
-                        <div className="flex items-center gap-2 justify-self-start whitespace-nowrap">
-                          <ValueFrame
-                            label="基本勤務時間"
-                            value={item.baseDuration}
-                            tone="base"
-                          />
-                          <span>×</span>
-                          <ValueFrame
-                            label="適用時給"
-                            value={
-                              item.effectiveBaseHourlyWage === null
-                                ? "-"
-                                : formatCurrency(item.effectiveBaseHourlyWage)
-                            }
-                            tone="neutral"
-                          />
-                        </div>
-                        <span className="font-medium text-muted-foreground">
-                          =
-                        </span>
-                        <ValueFrame
-                          label="基本勤務金額"
-                          value={formatCurrency(item.baseWage)}
-                          tone="base"
-                          emphasis="strong"
-                        />
-
-                        <div className="flex items-center gap-2 justify-self-start whitespace-nowrap">
-                          <ValueFrame
-                            label="深夜勤務時間"
-                            value={item.nightDuration}
-                            tone="night"
-                          />
-                          <span>×</span>
-                          <ValueFrame
-                            label="深夜時給(割増込)"
-                            value={
-                              item.effectiveNightHourlyWage === null
-                                ? "-"
-                                : formatCurrency(item.effectiveNightHourlyWage)
-                            }
-                            tone="neutral"
-                          />
-                        </div>
-                        <span className="font-medium text-muted-foreground">
-                          =
-                        </span>
-                        <ValueFrame
-                          label="深夜勤務金額"
-                          value={formatCurrency(item.nightWage)}
-                          tone="night"
-                          emphasis="strong"
-                        />
-
-                        <div className="flex items-center gap-2 justify-self-start whitespace-nowrap">
-                          <ValueFrame
-                            label="休日勤務時間"
-                            value={item.holidayDuration}
-                            tone="holiday"
-                          />
-                          <span>×</span>
-                          <ValueFrame
-                            label="休日手当(円/時)"
-                            value={
-                              item.effectiveHolidayAllowanceHourly === null
-                                ? "-"
-                                : formatCurrency(
-                                    item.effectiveHolidayAllowanceHourly,
-                                  )
-                            }
-                            tone="neutral"
-                          />
-                        </div>
-                        <span className="font-medium text-muted-foreground">
-                          =
-                        </span>
-                        <ValueFrame
-                          label="休日勤務金額"
-                          value={formatCurrency(item.holidayWage)}
-                          tone="holiday"
-                          emphasis="strong"
-                        />
-
-                        <div className="w-full justify-self-stretch space-y-2">
-                          <div className="border-t border-foreground/30" />
-                          <ValueFrame
-                            label="総勤務時間"
-                            value={item.workDuration}
-                            tone="neutral"
-                            emphasis="strong"
-                          />
-                        </div>
-                        <div />
-                        <div className="space-y-2">
-                          <div className="border-t border-foreground/30" />
-                          <ValueFrame
-                            label="合計"
-                            value={formatCurrency(item.totalWage)}
-                            tone="total"
-                            emphasis="strong"
-                          />
-                        </div>
-                      </div>
-                    </div>
-                  </div>
-                ))}
-              </CardContent>
-            </Card>
+            <PayrollDetailsMonthlySummaryCards
+              details={details}
+              selectedMonthLabel={selectedMonthLabel}
+            />
+            <PayrollDetailsMonthlyBreakdownCard
+              workplaceItems={details.byWorkplace}
+            />
           </div>
         </LoadingOverlay>
       ) : null}
