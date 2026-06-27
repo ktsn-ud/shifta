@@ -118,7 +118,7 @@ export function ShiftListModal({
   const [retryError, setRetryError] = useState<string | null>(null);
 
   const sortedShifts = useMemo(() => {
-    return [...shifts].sort((left, right) =>
+    return shifts.toSorted((left, right) =>
       left.startTime.localeCompare(right.startTime),
     );
   }, [shifts]);

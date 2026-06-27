@@ -134,7 +134,7 @@ export function MonthCalendar({
     for (const [key, dayShifts] of grouped.entries()) {
       grouped.set(
         key,
-        [...dayShifts].sort((left, right) =>
+        dayShifts.toSorted((left, right) =>
           left.startTime.localeCompare(right.startTime),
         ),
       );

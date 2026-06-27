@@ -112,10 +112,9 @@ function ConfirmShiftCardContent({
   const startTimeInputRef = useRef<HTMLInputElement | null>(null);
   const endTimeInputRef = useRef<HTMLInputElement | null>(null);
   const breakMinutesInputRef = useRef<HTMLInputElement | null>(null);
+  const pendingConfirmationRef = useRef<ValidationResult | null>(null);
   const [isConfirming, setIsConfirming] = useState(false);
   const [isOvernightDialogOpen, setIsOvernightDialogOpen] = useState(false);
-  const [pendingConfirmation, setPendingConfirmation] =
-    useState<ValidationResult | null>(null);
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
   const { isSignOutScheduled, scheduleSignOut } =
     useGoogleTokenExpiredSignOut();
@@ -250,7 +249,7 @@ function ConfirmShiftCardContent({
     }
 
     if (isOvernightShift(validation.data.startTime, validation.data.endTime)) {
-      setPendingConfirmation(validation.data);
+      pendingConfirmationRef.current = validation.data;
       setIsOvernightDialogOpen(true);
       return;
     }
@@ -344,19 +343,25 @@ function ConfirmShiftCardContent({
 
       <ConfirmDialog
         open={isOvernightDialogOpen}
-        onOpenChange={setIsOvernightDialogOpen}
+        onOpenChange={(open) => {
+          if (!open) {
+            pendingConfirmationRef.current = null;
+          }
+          setIsOvernightDialogOpen(open);
+        }}
         title="このシフトは日付をまたぎます"
         description="終了時刻が開始時刻より早いため、翌日終了として確定します。よろしいですか？"
         confirmLabel="翌日終了として確定"
         cancelLabel="キャンセル"
         destructive={false}
         onConfirm={async () => {
+          const pendingConfirmation = pendingConfirmationRef.current;
           if (!pendingConfirmation) {
             return;
           }
 
           await submitConfirmedShift(pendingConfirmation);
-          setPendingConfirmation(null);
+          pendingConfirmationRef.current = null;
         }}
       />
     </>

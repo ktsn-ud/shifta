@@ -435,16 +435,18 @@ function readPersistedBulkCalendarSelection(): PersistedBulkCalendarSelection | 
       return null;
     }
 
+    const selectedCalendarIds = new Set<string>();
+    for (const id of parsed.selectedCalendarIds) {
+      const trimmedId = id.trim();
+      if (trimmedId.length > 0) {
+        selectedCalendarIds.add(trimmedId);
+      }
+    }
+
     return {
       version: parsed.version,
       hasUserSelection: parsed.hasUserSelection,
-      selectedCalendarIds: Array.from(
-        new Set(
-          parsed.selectedCalendarIds
-            .map((id) => id.trim())
-            .filter((id) => id.length > 0),
-        ),
-      ),
+      selectedCalendarIds: Array.from(selectedCalendarIds),
     };
   } catch {
     return null;
@@ -597,7 +599,7 @@ function toMonthGrid(month: Date): CalendarCell[] {
 }
 
 function sortDateKeys(dateKeys: string[]): string[] {
-  return [...dateKeys].sort((left, right) => left.localeCompare(right));
+  return dateKeys.toSorted((left, right) => left.localeCompare(right));
 }
 
 function hasRowErrors(errors: RowErrors): boolean {
@@ -1141,9 +1143,15 @@ function sortCalendarIdsByOptionOrder(
   calendarOptions: GoogleCalendarOption[],
   selectedCalendarIds: Set<string>,
 ): string[] {
-  return calendarOptions
-    .map((calendarOption) => calendarOption.id)
-    .filter((calendarId) => selectedCalendarIds.has(calendarId));
+  const sortedCalendarIds: string[] = [];
+
+  for (const calendarOption of calendarOptions) {
+    if (selectedCalendarIds.has(calendarOption.id)) {
+      sortedCalendarIds.push(calendarOption.id);
+    }
+  }
+
+  return sortedCalendarIds;
 }
 
 export type BulkShiftFormController = ReturnType<
