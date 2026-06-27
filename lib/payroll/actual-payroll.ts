@@ -153,15 +153,14 @@ export async function getActualPayrollMap(input: {
     return new Map();
   }
 
-  const monthDates = input.monthKeys.map((monthKey) =>
-    startOfMonthUtc(new Date(`${monthKey}-01T00:00:00.000Z`)),
-  );
-  const minMonth = monthDates.reduce((current, value) =>
-    value < current ? value : current,
-  );
-  const maxMonth = monthDates.reduce((current, value) =>
-    value > current ? value : current,
-  );
+  const monthDates = Array.from(
+    new Set(
+      input.monthKeys.map((monthKey) =>
+        startOfMonthUtc(new Date(`${monthKey}-01T00:00:00.000Z`)).toISOString(),
+      ),
+    ),
+  ).map((monthIsoString) => new Date(monthIsoString));
+  const allowedMonths = new Set(input.monthKeys);
 
   const rows = await prisma.actualPayroll.findMany({
     where: {
@@ -169,8 +168,7 @@ export async function getActualPayrollMap(input: {
         in: input.workplaceIds,
       },
       paymentMonth: {
-        gte: minMonth,
-        lte: maxMonth,
+        in: monthDates,
       },
     },
     select: {
@@ -182,7 +180,6 @@ export async function getActualPayrollMap(input: {
     },
   });
 
-  const allowedMonths = new Set(input.monthKeys);
   const result = new Map<string, ActualPayrollRecord>();
 
   for (const row of rows) {

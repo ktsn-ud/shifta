@@ -1,15 +1,13 @@
 import type { Prisma } from "@/lib/generated/prisma/client";
 import {
   calculateShiftPayrollResult,
-  groupPayrollRulesByWorkplace,
   type PayrollRulesByWorkplace,
 } from "@/lib/payroll/summarizeByPeriod";
+import { type PayrollPeriod } from "@/lib/payroll/pay-period";
 import {
-  resolvePayrollPeriodForMonth,
-  type ClosingDayType,
-  type PayrollPeriod,
-} from "@/lib/payroll/pay-period";
-import { prisma } from "@/lib/prisma";
+  loadPayrollSnapshot,
+  toPayrollPeriodMapKey,
+} from "@/lib/payroll/snapshot";
 
 type PreviewBaselineByWorkplace = {
   workplaceId: string;
@@ -30,13 +28,6 @@ export type PayrollPreviewBaselineResult = {
   };
 };
 
-type WorkplaceWithPayrollCycle = {
-  id: string;
-  closingDayType: ClosingDayType;
-  closingDay: number | null;
-  payday: number;
-};
-
 type ShiftWithPreviewRelations = Prisma.ShiftGetPayload<{
   include: {
     lessonRange: true;
@@ -51,35 +42,11 @@ function parseMonthKeyToDate(monthKey: string): Date {
   return new Date(Date.UTC(year, month - 1, 1));
 }
 
-function toMonthKey(date: Date): string {
-  const year = String(date.getUTCFullYear());
-  const month = String(date.getUTCMonth() + 1).padStart(2, "0");
-  return `${year}-${month}`;
-}
-
 function toDateOnlyUtc(date: Date): string {
   const year = String(date.getUTCFullYear());
   const month = String(date.getUTCMonth() + 1).padStart(2, "0");
   const day = String(date.getUTCDate()).padStart(2, "0");
   return `${year}-${month}-${day}`;
-}
-
-function toPeriodMapKey(workplaceId: string, monthKey: string): string {
-  return `${workplaceId}:${monthKey}`;
-}
-
-function groupShiftsByWorkplace(
-  shifts: ShiftWithPreviewRelations[],
-): Map<string, ShiftWithPreviewRelations[]> {
-  const map = new Map<string, ShiftWithPreviewRelations[]>();
-
-  for (const shift of shifts) {
-    const bucket = map.get(shift.workplaceId) ?? [];
-    bucket.push(shift);
-    map.set(shift.workplaceId, bucket);
-  }
-
-  return map;
 }
 
 function summarizeWorkplaceByPeriod(
@@ -121,15 +88,14 @@ export async function getPayrollPreviewBaselineForUser(
   }
 
   const monthDates = monthKeys.map(parseMonthKeyToDate);
-  const workplaces = await prisma.workplace.findMany({
-    where: { userId },
-    select: {
-      id: true,
-      closingDayType: true,
-      closingDay: true,
-      payday: true,
-    },
-    orderBy: { createdAt: "asc" },
+  const {
+    workplaces,
+    periodByWorkplaceMonth,
+    shiftsByWorkplace,
+    rulesByWorkplace,
+  } = await loadPayrollSnapshot({
+    userId,
+    monthDates,
   });
 
   if (workplaces.length === 0) {
@@ -144,84 +110,13 @@ export async function getPayrollPreviewBaselineForUser(
     };
   }
 
-  const workplaceIds = workplaces.map((workplace) => workplace.id);
-  const periodByWorkplaceMonth = new Map<string, PayrollPeriod>();
-  let fetchStartDate: Date | null = null;
-  let fetchEndDate: Date | null = null;
-
-  for (const workplace of workplaces) {
-    for (const monthDate of monthDates) {
-      const period = resolvePayrollPeriodForMonth(monthDate, {
-        closingDayType: workplace.closingDayType,
-        closingDay: workplace.closingDay,
-        payday: workplace.payday,
-      });
-      const monthKey = toMonthKey(monthDate);
-      periodByWorkplaceMonth.set(
-        toPeriodMapKey(workplace.id, monthKey),
-        period,
-      );
-
-      if (!fetchStartDate || period.periodStartDate < fetchStartDate) {
-        fetchStartDate = period.periodStartDate;
-      }
-      if (!fetchEndDate || period.periodEndDate > fetchEndDate) {
-        fetchEndDate = period.periodEndDate;
-      }
-    }
-  }
-
-  if (!fetchStartDate || !fetchEndDate) {
-    throw new Error("PAYROLL_PREVIEW_PERIOD_NOT_FOUND");
-  }
-
-  const [shifts, payrollRules] = await Promise.all([
-    prisma.shift.findMany({
-      where: {
-        workplaceId: {
-          in: workplaceIds,
-        },
-        date: {
-          gte: fetchStartDate,
-          lte: fetchEndDate,
-        },
-      },
-      include: {
-        lessonRange: true,
-      },
-      orderBy: [{ date: "asc" }, { startTime: "asc" }],
-    }),
-    prisma.payrollRule.findMany({
-      where: {
-        workplaceId: {
-          in: workplaceIds,
-        },
-        startDate: {
-          lte: fetchEndDate,
-        },
-        OR: [
-          { endDate: null },
-          {
-            endDate: {
-              gt: fetchStartDate,
-            },
-          },
-        ],
-      },
-      orderBy: [{ workplaceId: "asc" }, { startDate: "asc" }],
-    }),
-  ]);
-
-  const rulesByWorkplace = groupPayrollRulesByWorkplace(payrollRules);
-  const shiftsByWorkplace = groupShiftsByWorkplace(shifts);
-
   const monthResults = monthKeys.map((monthKey): PreviewBaselineMonth => {
     let totalWage = 0;
     const byWorkplace: PreviewBaselineByWorkplace[] = [];
 
-    for (const workplace of workplaces as WorkplaceWithPayrollCycle[]) {
+    for (const workplace of workplaces) {
       const period = periodByWorkplaceMonth.get(
-        toPeriodMapKey(workplace.id, monthKey),
+        toPayrollPeriodMapKey(workplace.id, monthKey),
       );
       if (!period) {
         continue;

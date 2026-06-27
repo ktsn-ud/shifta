@@ -6,11 +6,13 @@ import {
 } from "@/components/dashboard/dashboard-page-client";
 import { requireCurrentUser } from "@/lib/api/current-user";
 import {
+  addMonths,
   endOfMonth,
   fromMonthInputValue,
   startOfMonth,
   toDateOnlyString,
 } from "@/lib/calendar/date";
+import { getPayrollSummaryAmountForUser } from "@/lib/payroll/summary";
 import { getMonthShifts } from "@/lib/shifts/month-shifts";
 import { prisma } from "@/lib/prisma";
 
@@ -33,25 +35,11 @@ function resolveInitialMonth(monthParam: string | string[] | undefined): Date {
   return startOfMonth(parsedMonth ?? new Date());
 }
 
-async function getUserWorkplaceIds(userId: string): Promise<string[]> {
-  const workplaces = await prisma.workplace.findMany({
-    where: { userId },
-    select: { id: true },
-  });
-  return workplaces.map((workplace) => workplace.id);
-}
-
-async function getUnconfirmedShiftCount(
-  workplaceIds: string[],
-): Promise<number> {
-  if (workplaceIds.length === 0) {
-    return 0;
-  }
-
+async function getUnconfirmedShiftCount(userId: string): Promise<number> {
   return prisma.shift.count({
     where: {
-      workplaceId: {
-        in: workplaceIds,
+      workplace: {
+        userId,
       },
       date: {
         lte: startOfUtcDay(new Date()),
@@ -69,16 +57,20 @@ async function DashboardPageContent({ month }: { month: Date }) {
 
   const startDate = toDateOnlyString(startOfMonth(month));
   const endDate = toDateOnlyString(endOfMonth(month));
-  const workplaceIds = await getUserWorkplaceIds(current.user.id);
-  const [initialMonthShifts, initialUnconfirmedShiftCount] = await Promise.all([
+  const nextPaymentMonth = addMonths(month, 1);
+  const [
+    initialMonthShifts,
+    initialUnconfirmedShiftCount,
+    initialNextPaymentAmount,
+  ] = await Promise.all([
     getMonthShifts({
       userId: current.user.id,
       startDate,
       endDate,
       includeEstimate: true,
-      workplaceIds,
     }),
-    getUnconfirmedShiftCount(workplaceIds),
+    getUnconfirmedShiftCount(current.user.id),
+    getPayrollSummaryAmountForUser(current.user.id, nextPaymentMonth),
   ]);
   const todayDate = toDateOnlyString(startOfUtcDay(new Date()));
 
@@ -90,7 +82,7 @@ async function DashboardPageContent({ month }: { month: Date }) {
       initialMonthStartDate={startDate}
       initialMonthEndDate={endDate}
       initialUnconfirmedShiftCount={initialUnconfirmedShiftCount}
-      nextMonthPaymentAmount={null}
+      initialNextPaymentAmount={initialNextPaymentAmount}
       todayDate={todayDate}
     />
   );

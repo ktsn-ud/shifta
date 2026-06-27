@@ -19,7 +19,12 @@ jest.mock("@/lib/prisma", () => ({
   },
 }));
 
-import { getPayrollSummaryForUser } from "@/lib/payroll/summary";
+import {
+  getPayrollSummaryAmountForUser,
+  getPayrollSummaryCoreForUser,
+  getPayrollSummaryForUser,
+  getPayrollSummaryYearContextForUser,
+} from "@/lib/payroll/summary";
 
 const prismaWorkplaceFindManyMock = jest.mocked(prisma.workplace.findMany);
 const prismaShiftFindManyMock = jest.mocked(prisma.shift.findMany);
@@ -144,6 +149,51 @@ describe("getPayrollSummaryForUser", () => {
         taxableAmount: 9900,
         nonTaxableAmount: 100,
         totalAmount: 10000,
+      }),
+    );
+  });
+
+  it("月次サマリー本体は対象月の読取だけで同じ実績支給額を返す", async () => {
+    const summary = await getPayrollSummaryCoreForUser(
+      "user-1",
+      date("2026-03-01"),
+    );
+
+    expect(summary).toEqual(
+      expect.objectContaining({
+        month: "2026-03",
+        totalWage: 3000,
+        estimatedTotalWage: 3000,
+        confirmedShiftWage: 0,
+      }),
+    );
+  });
+
+  it("次回支給額向けの軽量取得は表示額だけを返す", async () => {
+    const summaryAmount = await getPayrollSummaryAmountForUser(
+      "user-1",
+      date("2026-01-01"),
+    );
+
+    expect(summaryAmount).toEqual({
+      month: "2026-01",
+      totalWage: 1000,
+    });
+  });
+
+  it("年累計補足は選択月までの累計と年間見込を返す", async () => {
+    const summaryYearContext = await getPayrollSummaryYearContextForUser(
+      "user-1",
+      date("2026-03-01"),
+    );
+
+    expect(summaryYearContext).toEqual(
+      expect.objectContaining({
+        month: "2026-03",
+        currentMonthCumulative: 6000,
+        yearlyTotal: 10000,
+        estimatedCurrentMonthCumulative: 6000,
+        estimatedYearlyTotal: 10000,
       }),
     );
   });

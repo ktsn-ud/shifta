@@ -5,12 +5,18 @@ import { type ActualPayrollEditorResult } from "@/lib/payroll/actual-editor";
 import { type PayrollDetailsMonthlyResult } from "@/lib/payroll/details";
 import { type PayrollDetailsWorkplaceYearlyResult } from "@/lib/payroll/details";
 import { type PayrollPreviewBaselineResult } from "@/lib/payroll/preview-baseline";
-import { type PayrollSummaryResult } from "@/lib/payroll/summary";
+import {
+  type PayrollSummaryAmountResult,
+  type PayrollSummaryCoreResult,
+  type PayrollSummaryYearContextResult,
+} from "@/lib/payroll/summary";
 
 const PAYROLL_STALE_TIME_MS = 2 * 60 * 1000;
 const PAYROLL_GC_TIME_MS = 10 * 60 * 1000;
 
-function parsePayrollSummaryPayload(payload: unknown): PayrollSummaryResult {
+function parsePayrollSummaryPayload(
+  payload: unknown,
+): PayrollSummaryCoreResult {
   if (
     typeof payload !== "object" ||
     payload === null ||
@@ -20,7 +26,39 @@ function parsePayrollSummaryPayload(payload: unknown): PayrollSummaryResult {
     throw new Error("PAYROLL_SUMMARY_RESPONSE_INVALID");
   }
 
-  return payload as PayrollSummaryResult;
+  return payload as PayrollSummaryCoreResult;
+}
+
+function parsePayrollSummaryYearContextPayload(
+  payload: unknown,
+): PayrollSummaryYearContextResult {
+  if (
+    typeof payload !== "object" ||
+    payload === null ||
+    typeof (payload as { month?: unknown }).month !== "string" ||
+    typeof (payload as { currentMonthCumulative?: unknown })
+      .currentMonthCumulative !== "number" ||
+    typeof (payload as { yearlyTotal?: unknown }).yearlyTotal !== "number"
+  ) {
+    throw new Error("PAYROLL_SUMMARY_YEAR_CONTEXT_RESPONSE_INVALID");
+  }
+
+  return payload as PayrollSummaryYearContextResult;
+}
+
+function parsePayrollSummaryAmountPayload(
+  payload: unknown,
+): PayrollSummaryAmountResult {
+  if (
+    typeof payload !== "object" ||
+    payload === null ||
+    typeof (payload as { month?: unknown }).month !== "string" ||
+    typeof (payload as { totalWage?: unknown }).totalWage !== "number"
+  ) {
+    throw new Error("PAYROLL_SUMMARY_AMOUNT_RESPONSE_INVALID");
+  }
+
+  return payload as PayrollSummaryAmountResult;
 }
 
 function parseActualPayrollPayload(
@@ -89,7 +127,7 @@ export function usePayrollSummaryQuery(input: {
   userId: string;
   month: string;
   enabled?: boolean;
-  initialData?: PayrollSummaryResult;
+  initialData?: PayrollSummaryCoreResult;
 }) {
   const { enabled = true, initialData, month, userId } = input;
 
@@ -104,6 +142,67 @@ export function usePayrollSummaryQuery(input: {
         },
         fallbackMessage: "給与集計の取得に失敗しました。",
         parse: parsePayrollSummaryPayload,
+      });
+    },
+    enabled,
+    initialData,
+    placeholderData: (previousData) => previousData,
+    staleTime: PAYROLL_STALE_TIME_MS,
+    gcTime: PAYROLL_GC_TIME_MS,
+  });
+}
+
+export function usePayrollSummaryYearContextQuery(input: {
+  userId: string;
+  month: string;
+  enabled?: boolean;
+  initialData?: PayrollSummaryYearContextResult;
+}) {
+  const { enabled = true, initialData, month, userId } = input;
+
+  return useQuery({
+    queryKey: queryKeys.payroll.summaryYearContext({ userId, month }),
+    queryFn: ({ signal }) => {
+      const params = new URLSearchParams({ month });
+      return fetchJson(
+        `/api/payroll/summary-year-context?${params.toString()}`,
+        {
+          init: {
+            signal,
+            cache: "no-store",
+          },
+          fallbackMessage: "給与集計の累計情報取得に失敗しました。",
+          parse: parsePayrollSummaryYearContextPayload,
+        },
+      );
+    },
+    enabled,
+    initialData,
+    placeholderData: (previousData) => previousData,
+    staleTime: PAYROLL_STALE_TIME_MS,
+    gcTime: PAYROLL_GC_TIME_MS,
+  });
+}
+
+export function usePayrollSummaryAmountQuery(input: {
+  userId: string;
+  month: string;
+  enabled?: boolean;
+  initialData?: PayrollSummaryAmountResult;
+}) {
+  const { enabled = true, initialData, month, userId } = input;
+
+  return useQuery({
+    queryKey: queryKeys.payroll.summaryAmount({ userId, month }),
+    queryFn: ({ signal }) => {
+      const params = new URLSearchParams({ month });
+      return fetchJson(`/api/payroll/summary-amount?${params.toString()}`, {
+        init: {
+          signal,
+          cache: "no-store",
+        },
+        fallbackMessage: "次回支給額の取得に失敗しました。",
+        parse: parsePayrollSummaryAmountPayload,
       });
     },
     enabled,
