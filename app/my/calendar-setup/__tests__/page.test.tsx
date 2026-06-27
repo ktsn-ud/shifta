@@ -38,16 +38,33 @@ describe("app/my/calendar-setup/page", () => {
   });
 
   it("初期化成功時に /my へ遷移する", async () => {
-    fetchMock.mockResolvedValue({
-      ok: true,
-      status: 200,
-    } as Response);
+    let resolveFetch: (response: Response) => void = () => {
+      throw new Error("resolveFetch is not set");
+    };
+    fetchMock.mockImplementation(
+      () =>
+        new Promise<Response>((resolve) => {
+          resolveFetch = resolve;
+        }),
+    );
 
     render(<CalendarSetupPage />);
 
     await userEvent.click(
       screen.getByRole("button", { name: "Google Calendar で設定する" }),
     );
+
+    expect(
+      screen.getByText(
+        "Google Calendar を初期化しています。数秒かかる場合があります。",
+      ),
+    ).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "設定中..." })).toBeDisabled();
+
+    resolveFetch({
+      ok: true,
+      status: 200,
+    } as Response);
 
     await waitFor(() => {
       expect(fetchMock).toHaveBeenCalledWith("/api/calendar/initialize", {

@@ -12,6 +12,7 @@ import {
   CardHeader,
   CardTitle,
 } from "@/components/ui/card";
+import { Spinner } from "@/components/ui/spinner";
 import { messages } from "@/lib/messages";
 import { resolveUserFacingErrorFromResponse } from "@/lib/user-facing-error";
 
@@ -31,7 +32,8 @@ export default function CalendarSetupPage() {
 
       if (response.ok) {
         toast.success(messages.success.calendarInitialized, {
-          description: "これからシフト情報が同期されます。",
+          description:
+            "専用カレンダーを作成しました。既存シフトがあればバックグラウンドで同期します。",
         });
         router.replace("/my");
         return;
@@ -80,7 +82,17 @@ export default function CalendarSetupPage() {
         </CardHeader>
 
         <CardContent>
-          {errorMessage ? (
+          {isSubmitting ? (
+            <div className="rounded-md border border-primary/20 bg-primary/5 px-3 py-3">
+              <Spinner
+                className="justify-start"
+                label="Google Calendar を初期化しています。数秒かかる場合があります。"
+              />
+              <p className="mt-2 text-sm text-muted-foreground">
+                専用カレンダーの作成後は、自動的にホームへ移動します。
+              </p>
+            </div>
+          ) : errorMessage ? (
             <p className="rounded-md border border-destructive/40 bg-destructive/5 px-3 py-2 text-sm text-destructive">
               {errorMessage}
             </p>
