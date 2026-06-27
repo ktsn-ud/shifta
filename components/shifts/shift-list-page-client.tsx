@@ -366,6 +366,420 @@ function SortToggleButton({
   );
 }
 
+type ShiftListHeaderProps = {
+  isRefreshing: boolean;
+  isCurrentMonth: boolean;
+  onPreviousMonth: () => void;
+  onNextMonth: () => void;
+  onBackToCurrentMonth: () => void;
+};
+
+type ShiftListToolbarProps = {
+  displayMonthLabel: string;
+  sortState: SortState;
+  selectedCount: number;
+  isDeleting: boolean;
+  onResetSort: () => void;
+  onOpenDeleteDialog: () => void;
+};
+
+type ShiftListTableCardProps = {
+  displayMonthLabel: string;
+  sortedShifts: MonthShift[];
+  errorMessage: string | null;
+  sortState: SortState;
+  selectedShiftIdSet: Set<string>;
+  selectionState: {
+    selectedCount: number;
+    isAllSelected: boolean;
+    isSomeSelected: boolean;
+  };
+  status: {
+    isInitialLoading: boolean;
+    isDeleting: boolean;
+  };
+  onResetSort: () => void;
+  onOpenDeleteDialog: () => void;
+  onToggleSort: (column: SortColumn) => void;
+  onSelectAll: (checked: boolean) => void;
+  onToggleShiftSelection: (shiftId: string, checked: boolean) => void;
+  onEditShift: (shiftId: string) => void;
+};
+
+type ShiftListTableHeaderRowProps = {
+  sortState: SortState;
+  isAllSelected: boolean;
+  isSomeSelected: boolean;
+  onToggleSort: (column: SortColumn) => void;
+  onSelectAll: (checked: boolean) => void;
+};
+
+type ShiftListTableItemRowProps = {
+  shift: MonthShift;
+  isSelected: boolean;
+  onToggleShiftSelection: (shiftId: string, checked: boolean) => void;
+  onEditShift: (shiftId: string) => void;
+};
+
+type ShiftListBulkDeleteDialogProps = {
+  open: boolean;
+  selectedCount: number;
+  isDeleting: boolean;
+  deleteErrorMessage: string | null;
+  onOpenChange: (open: boolean) => void;
+  onCancel: () => void;
+  onConfirm: () => void;
+};
+
+function ShiftListHeader({
+  isRefreshing,
+  isCurrentMonth,
+  onPreviousMonth,
+  onNextMonth,
+  onBackToCurrentMonth,
+}: ShiftListHeaderProps) {
+  return (
+    <header className="flex flex-wrap items-start justify-between gap-4 rounded-xl border border-border/80 bg-card/95 p-5 shadow-sm">
+      <div className="space-y-2">
+        <p className="text-xs font-medium uppercase tracking-[0.12em] text-muted-foreground">
+          Shift List
+        </p>
+        <h2 className="text-2xl font-semibold tracking-tight">シフト一覧</h2>
+        <p className="text-sm text-muted-foreground">
+          月ごとのシフトを確認し、並び替え・一括削除できます。
+        </p>
+      </div>
+
+      <div className="flex flex-wrap gap-2">
+        <Button
+          type="button"
+          variant="outline"
+          onClick={onPreviousMonth}
+          disabled={isRefreshing}
+        >
+          <ChevronLeftIcon className="size-4" />
+          前月
+        </Button>
+        <Button
+          type="button"
+          variant="outline"
+          onClick={onNextMonth}
+          disabled={isRefreshing}
+        >
+          次月
+          <ChevronRightIcon className="size-4" />
+        </Button>
+        <Button
+          type="button"
+          variant="outline"
+          onClick={onBackToCurrentMonth}
+          disabled={isCurrentMonth || isRefreshing}
+        >
+          今月に戻る
+        </Button>
+      </div>
+    </header>
+  );
+}
+
+function ShiftListToolbar({
+  displayMonthLabel,
+  sortState,
+  selectedCount,
+  isDeleting,
+  onResetSort,
+  onOpenDeleteDialog,
+}: ShiftListToolbarProps) {
+  return (
+    <CardHeader className="flex flex-col gap-3 border-b border-border/70 md:flex-row md:items-center md:justify-between">
+      <CardTitle className="text-lg font-semibold">
+        {displayMonthLabel}
+      </CardTitle>
+      <div className="flex flex-wrap items-center gap-2">
+        <Button
+          type="button"
+          variant="outline"
+          onClick={onResetSort}
+          disabled={sortState === null}
+        >
+          デフォルト表示に戻す
+        </Button>
+        <Button
+          type="button"
+          variant="destructive"
+          onClick={onOpenDeleteDialog}
+          disabled={selectedCount === 0 || isDeleting}
+        >
+          <Trash2Icon className="size-4" />
+          選択したシフトを削除
+        </Button>
+      </div>
+    </CardHeader>
+  );
+}
+
+function ShiftListTableCard({
+  displayMonthLabel,
+  sortedShifts,
+  errorMessage,
+  sortState,
+  selectedShiftIdSet,
+  selectionState,
+  status,
+  onResetSort,
+  onOpenDeleteDialog,
+  onToggleSort,
+  onSelectAll,
+  onToggleShiftSelection,
+  onEditShift,
+}: ShiftListTableCardProps) {
+  return (
+    <Card className="border-border/80 bg-card/95 shadow-sm">
+      <ShiftListToolbar
+        displayMonthLabel={displayMonthLabel}
+        sortState={sortState}
+        selectedCount={selectionState.selectedCount}
+        isDeleting={status.isDeleting}
+        onResetSort={onResetSort}
+        onOpenDeleteDialog={onOpenDeleteDialog}
+      />
+
+      <CardContent className="space-y-4 pt-5">
+        <p className="text-sm text-muted-foreground">
+          {sortedShifts.length}件表示 / {selectionState.selectedCount}件選択中
+        </p>
+
+        {errorMessage ? (
+          <p className="rounded-lg border border-destructive/40 bg-destructive/5 px-3 py-2 text-sm text-destructive">
+            {errorMessage}
+          </p>
+        ) : null}
+
+        {status.isInitialLoading ? (
+          <div className="rounded-lg border border-border/70 bg-muted/20 px-4 py-8 text-center text-sm text-muted-foreground">
+            シフトを読み込み中です...
+          </div>
+        ) : (
+          <div className="overflow-hidden rounded-lg border border-border/70">
+            <Table>
+              <TableHeader className="bg-muted/35">
+                <ShiftListTableHeaderRow
+                  sortState={sortState}
+                  isAllSelected={selectionState.isAllSelected}
+                  isSomeSelected={selectionState.isSomeSelected}
+                  onToggleSort={onToggleSort}
+                  onSelectAll={onSelectAll}
+                />
+              </TableHeader>
+              <TableBody data-testid="shift-list-table-body">
+                {sortedShifts.length === 0 ? (
+                  <TableRow>
+                    <TableCell
+                      colSpan={6}
+                      className="h-24 text-center text-muted-foreground"
+                    >
+                      表示対象のシフトがありません。
+                    </TableCell>
+                  </TableRow>
+                ) : (
+                  sortedShifts.map((shift) => (
+                    <ShiftListTableItemRow
+                      key={shift.id}
+                      shift={shift}
+                      isSelected={selectedShiftIdSet.has(shift.id)}
+                      onToggleShiftSelection={onToggleShiftSelection}
+                      onEditShift={onEditShift}
+                    />
+                  ))
+                )}
+              </TableBody>
+            </Table>
+          </div>
+        )}
+      </CardContent>
+    </Card>
+  );
+}
+
+function ShiftListTableHeaderRow({
+  sortState,
+  isAllSelected,
+  isSomeSelected,
+  onToggleSort,
+  onSelectAll,
+}: ShiftListTableHeaderRowProps) {
+  return (
+    <TableRow>
+      <TableHead className="w-10">
+        <div
+          onClick={(event) => event.stopPropagation()}
+          onKeyDown={(event) => event.stopPropagation()}
+        >
+          <Checkbox
+            checked={isAllSelected}
+            indeterminate={isSomeSelected}
+            onCheckedChange={(checked) => onSelectAll(Boolean(checked))}
+            aria-label="表示中のシフトを全選択"
+          />
+        </div>
+      </TableHead>
+      <TableHead>
+        <SortToggleButton
+          column="date"
+          sortState={sortState}
+          label="日付"
+          onToggle={onToggleSort}
+        />
+      </TableHead>
+      <TableHead>
+        <SortToggleButton
+          column="time"
+          sortState={sortState}
+          label="時間"
+          onToggle={onToggleSort}
+        />
+      </TableHead>
+      <TableHead>
+        <SortToggleButton
+          column="workplace"
+          sortState={sortState}
+          label="勤務先"
+          onToggle={onToggleSort}
+        />
+      </TableHead>
+      <TableHead>
+        <SortToggleButton
+          column="breakMinutes"
+          sortState={sortState}
+          label="休憩時間"
+          onToggle={onToggleSort}
+        />
+      </TableHead>
+      <TableHead className="text-right">
+        <SortToggleButton
+          column="estimatedPay"
+          sortState={sortState}
+          align="right"
+          label="給与"
+          onToggle={onToggleSort}
+        />
+      </TableHead>
+    </TableRow>
+  );
+}
+
+function ShiftListTableItemRow({
+  shift,
+  isSelected,
+  onToggleShiftSelection,
+  onEditShift,
+}: ShiftListTableItemRowProps) {
+  const workplaceLabel = formatShiftWorkplaceLabel({
+    workplaceName: shift.workplace.name,
+    workplaceType: shift.workplace.type,
+    shiftType: shift.shiftType,
+    comment: shift.comment,
+  });
+
+  return (
+    <TableRow
+      data-state={isSelected ? "selected" : undefined}
+      className="transition-colors data-[state=selected]:bg-primary/10"
+    >
+      <TableCell className="w-10">
+        <div
+          onClick={(event) => {
+            event.stopPropagation();
+          }}
+          onKeyDown={(event) => {
+            event.stopPropagation();
+          }}
+        >
+          <Checkbox
+            checked={isSelected}
+            onCheckedChange={(checked) =>
+              onToggleShiftSelection(shift.id, Boolean(checked))
+            }
+            aria-label={`${formatDate(shift.date)}のシフトを選択`}
+          />
+        </div>
+      </TableCell>
+      <TableCell>{formatDate(shift.date)}</TableCell>
+      <TableCell>{formatTimeRange(shift)}</TableCell>
+      <TableCell>
+        <div className="flex items-center gap-2">
+          <span
+            aria-hidden
+            className="size-2.5 rounded-full"
+            style={{
+              backgroundColor: shift.workplace.color,
+            }}
+          />
+          <button
+            type="button"
+            className="text-left hover:underline"
+            onClick={() => onEditShift(shift.id)}
+          >
+            {workplaceLabel}
+          </button>
+        </div>
+      </TableCell>
+      <TableCell>{shift.breakMinutes}分</TableCell>
+      <TableCell className="text-right font-medium">
+        {formatCurrency(shift.estimatedPay)}
+      </TableCell>
+    </TableRow>
+  );
+}
+
+function ShiftListBulkDeleteDialog({
+  open,
+  selectedCount,
+  isDeleting,
+  deleteErrorMessage,
+  onOpenChange,
+  onCancel,
+  onConfirm,
+}: ShiftListBulkDeleteDialogProps) {
+  return (
+    <Dialog open={open} onOpenChange={onOpenChange}>
+      <DialogContent>
+        <DialogHeader>
+          <DialogTitle>選択したシフトを削除しますか？</DialogTitle>
+          <DialogDescription>
+            {selectedCount}件のシフトを削除します。この操作は取り消せません。
+          </DialogDescription>
+        </DialogHeader>
+
+        {deleteErrorMessage ? (
+          <p className="rounded-md border border-destructive/40 bg-destructive/5 px-3 py-2 text-sm text-destructive">
+            {deleteErrorMessage}
+          </p>
+        ) : null}
+
+        <DialogFooter>
+          <Button
+            type="button"
+            variant="outline"
+            disabled={isDeleting}
+            onClick={onCancel}
+          >
+            キャンセル
+          </Button>
+          <Button
+            type="button"
+            variant="destructive"
+            disabled={isDeleting || selectedCount === 0}
+            onClick={onConfirm}
+          >
+            {isDeleting ? "削除中..." : "削除する"}
+          </Button>
+        </DialogFooter>
+      </DialogContent>
+    </Dialog>
+  );
+}
+
 type ShiftListPageClientProps = {
   currentUserId: string;
   initialMonth: string;
@@ -427,6 +841,7 @@ export function ShiftListPageClient({
   const isCurrentMonth = isSameMonth(displayMonth, currentMonth);
   const selectedCount = selectedShiftIds.length;
   const monthValue = toMonthInputValue(displayMonth);
+  const displayMonthLabel = formatMonthLabel(displayMonth);
 
   const isAllSelected =
     sortedShifts.length > 0 &&
@@ -554,294 +969,69 @@ export function ShiftListPageClient({
 
   return (
     <section className="space-y-6 p-4 md:p-6">
-      <header className="flex flex-wrap items-start justify-between gap-4 rounded-xl border border-border/80 bg-card/95 p-5 shadow-sm">
-        <div className="space-y-2">
-          <p className="text-xs font-medium uppercase tracking-[0.12em] text-muted-foreground">
-            Shift List
-          </p>
-          <h2 className="text-2xl font-semibold tracking-tight">シフト一覧</h2>
-          <p className="text-sm text-muted-foreground">
-            月ごとのシフトを確認し、並び替え・一括削除できます。
-          </p>
-        </div>
-
-        <div className="flex flex-wrap gap-2">
-          <Button
-            type="button"
-            variant="outline"
-            onClick={() =>
-              dispatch({
-                type: "setMonth",
-                month: addMonths(displayMonth, -1),
-              })
-            }
-            disabled={isRefreshing}
-          >
-            <ChevronLeftIcon className="size-4" />
-            前月
-          </Button>
-          <Button
-            type="button"
-            variant="outline"
-            onClick={() =>
-              dispatch({
-                type: "setMonth",
-                month: addMonths(displayMonth, 1),
-              })
-            }
-            disabled={isRefreshing}
-          >
-            次月
-            <ChevronRightIcon className="size-4" />
-          </Button>
-          <Button
-            type="button"
-            variant="outline"
-            onClick={() =>
-              dispatch({
-                type: "setMonth",
-                month: currentMonth,
-              })
-            }
-            disabled={isCurrentMonth || isRefreshing}
-          >
-            今月に戻る
-          </Button>
-        </div>
-      </header>
+      <ShiftListHeader
+        isRefreshing={isRefreshing}
+        isCurrentMonth={isCurrentMonth}
+        onPreviousMonth={() =>
+          dispatch({
+            type: "setMonth",
+            month: addMonths(displayMonth, -1),
+          })
+        }
+        onNextMonth={() =>
+          dispatch({
+            type: "setMonth",
+            month: addMonths(displayMonth, 1),
+          })
+        }
+        onBackToCurrentMonth={() =>
+          dispatch({
+            type: "setMonth",
+            month: currentMonth,
+          })
+        }
+      />
 
       <LoadingOverlay isLoading={isRefreshing} className="rounded-xl">
-        <Card className="border-border/80 bg-card/95 shadow-sm">
-          <CardHeader className="flex flex-col gap-3 border-b border-border/70 md:flex-row md:items-center md:justify-between">
-            <CardTitle className="text-lg font-semibold">
-              {formatMonthLabel(displayMonth)}
-            </CardTitle>
-            <div className="flex flex-wrap items-center gap-2">
-              <Button
-                type="button"
-                variant="outline"
-                onClick={() => dispatch({ type: "resetSort" })}
-                disabled={state.sortState === null}
-              >
-                デフォルト表示に戻す
-              </Button>
-              <Button
-                type="button"
-                variant="destructive"
-                onClick={() => dispatch({ type: "openDeleteDialog" })}
-                disabled={selectedCount === 0 || state.isDeleting}
-              >
-                <Trash2Icon className="size-4" />
-                選択したシフトを削除
-              </Button>
-            </div>
-          </CardHeader>
-
-          <CardContent className="space-y-4 pt-5">
-            <p className="text-sm text-muted-foreground">
-              {sortedShifts.length}件表示 / {selectedCount}件選択中
-            </p>
-
-            {errorMessage ? (
-              <p className="rounded-lg border border-destructive/40 bg-destructive/5 px-3 py-2 text-sm text-destructive">
-                {errorMessage}
-              </p>
-            ) : null}
-
-            {isInitialLoading ? (
-              <div className="rounded-lg border border-border/70 bg-muted/20 px-4 py-8 text-center text-sm text-muted-foreground">
-                シフトを読み込み中です...
-              </div>
-            ) : (
-              <div className="overflow-hidden rounded-lg border border-border/70">
-                <Table>
-                  <TableHeader className="bg-muted/35">
-                    <TableRow>
-                      <TableHead className="w-10">
-                        <div
-                          onClick={(event) => event.stopPropagation()}
-                          onKeyDown={(event) => event.stopPropagation()}
-                        >
-                          <Checkbox
-                            checked={isAllSelected}
-                            indeterminate={isSomeSelected}
-                            onCheckedChange={(checked) =>
-                              handleSelectAll(Boolean(checked))
-                            }
-                            aria-label="表示中のシフトを全選択"
-                          />
-                        </div>
-                      </TableHead>
-                      <TableHead>
-                        <SortToggleButton
-                          column="date"
-                          sortState={state.sortState}
-                          label="日付"
-                          onToggle={handleToggleSort}
-                        />
-                      </TableHead>
-                      <TableHead>
-                        <SortToggleButton
-                          column="time"
-                          sortState={state.sortState}
-                          label="時間"
-                          onToggle={handleToggleSort}
-                        />
-                      </TableHead>
-                      <TableHead>
-                        <SortToggleButton
-                          column="workplace"
-                          sortState={state.sortState}
-                          label="勤務先"
-                          onToggle={handleToggleSort}
-                        />
-                      </TableHead>
-                      <TableHead>
-                        <SortToggleButton
-                          column="breakMinutes"
-                          sortState={state.sortState}
-                          label="休憩時間"
-                          onToggle={handleToggleSort}
-                        />
-                      </TableHead>
-                      <TableHead className="text-right">
-                        <SortToggleButton
-                          column="estimatedPay"
-                          sortState={state.sortState}
-                          align="right"
-                          label="給与"
-                          onToggle={handleToggleSort}
-                        />
-                      </TableHead>
-                    </TableRow>
-                  </TableHeader>
-                  <TableBody data-testid="shift-list-table-body">
-                    {sortedShifts.length === 0 ? (
-                      <TableRow>
-                        <TableCell
-                          colSpan={6}
-                          className="h-24 text-center text-muted-foreground"
-                        >
-                          表示対象のシフトがありません。
-                        </TableCell>
-                      </TableRow>
-                    ) : (
-                      sortedShifts.map((shift) => {
-                        const workplaceLabel = formatShiftWorkplaceLabel({
-                          workplaceName: shift.workplace.name,
-                          workplaceType: shift.workplace.type,
-                          shiftType: shift.shiftType,
-                          comment: shift.comment,
-                        });
-                        const isSelected = selectedShiftIdSet.has(shift.id);
-
-                        return (
-                          <TableRow
-                            key={shift.id}
-                            data-state={isSelected ? "selected" : undefined}
-                            className="transition-colors data-[state=selected]:bg-primary/10"
-                          >
-                            <TableCell className="w-10">
-                              <div
-                                onClick={(event) => {
-                                  event.stopPropagation();
-                                }}
-                                onKeyDown={(event) => {
-                                  event.stopPropagation();
-                                }}
-                              >
-                                <Checkbox
-                                  checked={isSelected}
-                                  onCheckedChange={(checked) =>
-                                    handleToggleShiftSelection(
-                                      shift.id,
-                                      Boolean(checked),
-                                    )
-                                  }
-                                  aria-label={`${formatDate(shift.date)}のシフトを選択`}
-                                />
-                              </div>
-                            </TableCell>
-                            <TableCell>{formatDate(shift.date)}</TableCell>
-                            <TableCell>{formatTimeRange(shift)}</TableCell>
-                            <TableCell>
-                              <div className="flex items-center gap-2">
-                                <span
-                                  aria-hidden
-                                  className="size-2.5 rounded-full"
-                                  style={{
-                                    backgroundColor: shift.workplace.color,
-                                  }}
-                                />
-                                <button
-                                  type="button"
-                                  className="text-left hover:underline"
-                                  onClick={() => handleEditShift(shift.id)}
-                                >
-                                  {workplaceLabel}
-                                </button>
-                              </div>
-                            </TableCell>
-                            <TableCell>{shift.breakMinutes}分</TableCell>
-                            <TableCell className="text-right font-medium">
-                              {formatCurrency(shift.estimatedPay)}
-                            </TableCell>
-                          </TableRow>
-                        );
-                      })
-                    )}
-                  </TableBody>
-                </Table>
-              </div>
-            )}
-          </CardContent>
-        </Card>
+        <ShiftListTableCard
+          displayMonthLabel={displayMonthLabel}
+          sortedShifts={sortedShifts}
+          errorMessage={errorMessage}
+          sortState={state.sortState}
+          selectedShiftIdSet={selectedShiftIdSet}
+          selectionState={{
+            selectedCount,
+            isAllSelected,
+            isSomeSelected,
+          }}
+          status={{
+            isInitialLoading,
+            isDeleting: state.isDeleting,
+          }}
+          onResetSort={() => dispatch({ type: "resetSort" })}
+          onOpenDeleteDialog={() => dispatch({ type: "openDeleteDialog" })}
+          onToggleSort={handleToggleSort}
+          onSelectAll={handleSelectAll}
+          onToggleShiftSelection={handleToggleShiftSelection}
+          onEditShift={handleEditShift}
+        />
       </LoadingOverlay>
 
-      <Dialog
+      <ShiftListBulkDeleteDialog
         open={state.deleteDialogOpen}
+        selectedCount={selectedCount}
+        isDeleting={state.isDeleting}
+        deleteErrorMessage={state.deleteErrorMessage}
         onOpenChange={(nextOpen) => {
           dispatch({
             type: nextOpen ? "openDeleteDialog" : "closeDeleteDialog",
           });
         }}
-      >
-        <DialogContent>
-          <DialogHeader>
-            <DialogTitle>選択したシフトを削除しますか？</DialogTitle>
-            <DialogDescription>
-              {selectedCount}件のシフトを削除します。この操作は取り消せません。
-            </DialogDescription>
-          </DialogHeader>
-
-          {state.deleteErrorMessage ? (
-            <p className="rounded-md border border-destructive/40 bg-destructive/5 px-3 py-2 text-sm text-destructive">
-              {state.deleteErrorMessage}
-            </p>
-          ) : null}
-
-          <DialogFooter>
-            <Button
-              type="button"
-              variant="outline"
-              disabled={state.isDeleting}
-              onClick={() => dispatch({ type: "closeDeleteDialog" })}
-            >
-              キャンセル
-            </Button>
-            <Button
-              type="button"
-              variant="destructive"
-              disabled={state.isDeleting || selectedCount === 0}
-              onClick={() => {
-                void handleBulkDelete();
-              }}
-            >
-              {state.isDeleting ? "削除中..." : "削除する"}
-            </Button>
-          </DialogFooter>
-        </DialogContent>
-      </Dialog>
+        onCancel={() => dispatch({ type: "closeDeleteDialog" })}
+        onConfirm={() => {
+          void handleBulkDelete();
+        }}
+      />
     </section>
   );
 }
