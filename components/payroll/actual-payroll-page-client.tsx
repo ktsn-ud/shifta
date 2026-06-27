@@ -95,6 +95,51 @@ type ActualPayrollEditorScreenProps = {
   onBackToCurrentMonth: () => void;
 };
 
+type ActualPayrollHeaderProps = {
+  selectedMonthLabel: string;
+  actions: {
+    draftMonthValue: string;
+    backToCurrentMonthDisabled: boolean;
+    monthInputDisabled: boolean;
+    applyDisabled: boolean;
+    saveDisabled: boolean;
+    onDraftMonthValueChange: (value: string) => void;
+    onApplyMonth: () => void;
+    onBackToCurrentMonth: () => void;
+    onSave: () => void;
+  } | null;
+};
+
+type ActualPayrollHeaderActions = NonNullable<
+  ActualPayrollHeaderProps["actions"]
+>;
+
+type ActualPayrollTableCardProps = {
+  rows: EditableRow[];
+  isDisabled: boolean;
+  onTaxableChange: (workplaceId: string, value: string) => void;
+  onNonTaxableChange: (workplaceId: string, value: string) => void;
+  onNoteChange: (workplaceId: string, value: string) => void;
+  onClear: (workplaceId: string) => void;
+};
+
+type ActualPayrollTableRowProps = {
+  row: EditableRow;
+  isDisabled: boolean;
+  onTaxableChange: (value: string) => void;
+  onNonTaxableChange: (value: string) => void;
+  onNoteChange: (value: string) => void;
+  onClear: () => void;
+};
+
+type ActualPayrollScreenState = {
+  data: ActualPayrollEditorResult;
+  selectedMonthLabel: string;
+  isInitialLoading: boolean;
+  isRefreshing: boolean;
+  errorMessage: string | null;
+};
+
 const currencyFormatter = new Intl.NumberFormat("ja-JP", {
   style: "currency",
   currency: "JPY",
@@ -103,6 +148,52 @@ const currencyFormatter = new Intl.NumberFormat("ja-JP", {
 
 function formatCurrency(value: number): string {
   return currencyFormatter.format(value);
+}
+
+function renderActualPayrollHeaderActions(actions: ActualPayrollHeaderActions) {
+  return (
+    <div className="flex flex-wrap items-center gap-2">
+      <Button
+        type="button"
+        variant="outline"
+        size="sm"
+        onClick={actions.onBackToCurrentMonth}
+        disabled={actions.backToCurrentMonthDisabled}
+      >
+        今月に戻る
+      </Button>
+      <Input
+        type="month"
+        value={actions.draftMonthValue}
+        disabled={actions.monthInputDisabled}
+        onKeyDown={(event) => {
+          if (event.key === "Enter") {
+            actions.onApplyMonth();
+          }
+        }}
+        onChange={(event) => {
+          actions.onDraftMonthValueChange(event.currentTarget.value);
+        }}
+        className="w-44"
+      />
+      <Button
+        type="button"
+        size="sm"
+        onClick={actions.onApplyMonth}
+        disabled={actions.applyDisabled}
+      >
+        適用
+      </Button>
+      <Button
+        type="button"
+        size="sm"
+        onClick={actions.onSave}
+        disabled={actions.saveDisabled}
+      >
+        保存
+      </Button>
+    </div>
+  );
 }
 
 function toEditableRows(data: ActualPayrollEditorResult): EditableRow[] {
@@ -255,6 +346,229 @@ function actualPayrollEditorReducer(
   }
 }
 
+function getDifferenceAmountClassName(differenceAmount: number): string {
+  if (differenceAmount > 0) {
+    return "text-right text-emerald-600";
+  }
+
+  if (differenceAmount < 0) {
+    return "text-right text-amber-700";
+  }
+
+  return "text-right";
+}
+
+function buildActualPayrollScreenState(params: {
+  currentMonthValue: string;
+  requestedMonthValue: string;
+  queryData: ActualPayrollEditorResult | null;
+  queryError: unknown;
+  isValidRequestedMonth: boolean;
+  isLoading: boolean;
+  isFetching: boolean;
+}): ActualPayrollScreenState {
+  const {
+    currentMonthValue,
+    requestedMonthValue,
+    queryData,
+    queryError,
+    isValidRequestedMonth,
+    isLoading,
+    isFetching,
+  } = params;
+
+  const data = queryData;
+  const displayMonthValue = data?.month ?? requestedMonthValue;
+  const selectedMonth =
+    fromMonthInputValue(displayMonthValue) ??
+    fromMonthInputValue(currentMonthValue);
+
+  return {
+    data: data as ActualPayrollEditorResult,
+    selectedMonthLabel: selectedMonth
+      ? formatMonthLabel(selectedMonth)
+      : displayMonthValue,
+    isInitialLoading: isValidRequestedMonth && isLoading && data === null,
+    isRefreshing: isValidRequestedMonth && isFetching && data !== null,
+    errorMessage: !isValidRequestedMonth
+      ? "月は YYYY-MM 形式で指定してください。"
+      : queryError
+        ? toErrorMessage(queryError, "実給与データの取得に失敗しました。")
+        : null,
+  };
+}
+
+function ActualPayrollHeader({
+  selectedMonthLabel,
+  actions,
+}: ActualPayrollHeaderProps) {
+  return (
+    <header className="space-y-4 rounded-xl border border-border/80 bg-card/95 p-5 shadow-sm">
+      <div className="space-y-2">
+        <p className="text-xs font-medium uppercase tracking-[0.12em] text-muted-foreground">
+          Actual Payroll
+        </p>
+        <h2 className="text-2xl font-semibold tracking-tight">実給与編集</h2>
+        <p className="text-sm text-muted-foreground">
+          {selectedMonthLabel}支給分の実績金額を勤務先ごとに登録します。
+        </p>
+      </div>
+
+      {actions ? renderActualPayrollHeaderActions(actions) : null}
+    </header>
+  );
+}
+
+function ActualPayrollTableRow({
+  row,
+  isDisabled,
+  onTaxableChange,
+  onNonTaxableChange,
+  onNoteChange,
+  onClear,
+}: ActualPayrollTableRowProps) {
+  return (
+    <TableRow>
+      <TableCell className="font-medium">
+        <span className="inline-flex items-center gap-2">
+          <span
+            className="h-2.5 w-2.5 rounded-full"
+            style={{ backgroundColor: row.workplaceColor }}
+          />
+          {row.workplaceName}
+        </span>
+      </TableCell>
+      <TableCell>
+        {row.periodStartDate} 〜 {row.periodEndDate}
+      </TableCell>
+      <TableCell className="text-right">
+        {formatCurrency(row.estimatedAmount)}
+      </TableCell>
+      <TableCell className="min-w-32">
+        <Input
+          inputMode="numeric"
+          value={row.taxableAmount}
+          disabled={isDisabled}
+          onChange={(event) => {
+            onTaxableChange(event.currentTarget.value);
+          }}
+        />
+      </TableCell>
+      <TableCell className="min-w-32">
+        <Input
+          inputMode="numeric"
+          value={row.nonTaxableAmount}
+          disabled={isDisabled}
+          onChange={(event) => {
+            onNonTaxableChange(event.currentTarget.value);
+          }}
+        />
+      </TableCell>
+      <TableCell className="text-right font-semibold text-primary">
+        {row.totalActualAmount === null
+          ? "未登録"
+          : formatCurrency(row.totalActualAmount)}
+      </TableCell>
+      <TableCell className={getDifferenceAmountClassName(row.differenceAmount)}>
+        {row.totalActualAmount === null
+          ? "-"
+          : formatCurrency(row.differenceAmount)}
+      </TableCell>
+      <TableCell className="min-w-48">
+        <Input
+          value={row.note}
+          disabled={isDisabled}
+          onChange={(event) => {
+            onNoteChange(event.currentTarget.value);
+          }}
+        />
+      </TableCell>
+      <TableCell className="text-right">
+        <Button
+          type="button"
+          variant="ghost"
+          size="sm"
+          disabled={isDisabled}
+          onClick={onClear}
+        >
+          クリア
+        </Button>
+      </TableCell>
+    </TableRow>
+  );
+}
+
+function ActualPayrollTableCard({
+  rows,
+  isDisabled,
+  onTaxableChange,
+  onNonTaxableChange,
+  onNoteChange,
+  onClear,
+}: ActualPayrollTableCardProps) {
+  return (
+    <Card className="border-border/80 bg-card/95 shadow-sm">
+      <CardHeader>
+        <CardTitle>勤務先別 実給与入力</CardTitle>
+        <CardDescription>
+          課税対象額と非課税対象額を入力すると、サマリーと給与詳細に優先反映されます。
+        </CardDescription>
+      </CardHeader>
+      <CardContent>
+        <div className="overflow-x-auto rounded-lg border border-border/70">
+          <Table>
+            <TableHeader className="bg-muted/35">
+              <TableRow>
+                <TableHead>勤務先</TableHead>
+                <TableHead>対象期間</TableHead>
+                <TableHead className="text-right">概算</TableHead>
+                <TableHead className="text-right">課税対象</TableHead>
+                <TableHead className="text-right">非課税対象</TableHead>
+                <TableHead className="text-right">実合計</TableHead>
+                <TableHead className="text-right">差額</TableHead>
+                <TableHead>メモ</TableHead>
+                <TableHead className="text-right">操作</TableHead>
+              </TableRow>
+            </TableHeader>
+            <TableBody>
+              {rows.length > 0 ? (
+                rows.map((row) => (
+                  <ActualPayrollTableRow
+                    key={row.workplaceId}
+                    row={row}
+                    isDisabled={isDisabled}
+                    onTaxableChange={(value) => {
+                      onTaxableChange(row.workplaceId, value);
+                    }}
+                    onNonTaxableChange={(value) => {
+                      onNonTaxableChange(row.workplaceId, value);
+                    }}
+                    onNoteChange={(value) => {
+                      onNoteChange(row.workplaceId, value);
+                    }}
+                    onClear={() => {
+                      onClear(row.workplaceId);
+                    }}
+                  />
+                ))
+              ) : (
+                <TableRow>
+                  <TableCell
+                    colSpan={9}
+                    className="h-24 text-center text-muted-foreground"
+                  >
+                    登録対象の勤務先がありません
+                  </TableCell>
+                </TableRow>
+              )}
+            </TableBody>
+          </Table>
+        </div>
+      </CardContent>
+    </Card>
+  );
+}
+
 export function ActualPayrollPageLoadingSkeleton() {
   return (
     <section className="space-y-6 p-4 md:p-6">
@@ -295,6 +609,7 @@ function ActualPayrollEditorScreen({
     data,
     createActualPayrollEditorState,
   );
+  const isDisabled = isInitialLoading || isRefreshing || state.isSaving;
 
   const handleSave = async () => {
     const payloadRows = [];
@@ -303,7 +618,6 @@ function ActualPayrollEditorScreen({
       const taxableAmount = parseCurrencyInput(row.taxableAmount);
       const nonTaxableAmount = parseCurrencyInput(row.nonTaxableAmount);
       const trimmedNote = row.note.trim();
-
       const hasAnyValue =
         row.taxableAmount.trim().length > 0 ||
         row.nonTaxableAmount.trim().length > 0 ||
@@ -389,65 +703,25 @@ function ActualPayrollEditorScreen({
 
   return (
     <section className="space-y-6 p-4 md:p-6">
-      <header className="space-y-4 rounded-xl border border-border/80 bg-card/95 p-5 shadow-sm">
-        <div className="space-y-2">
-          <p className="text-xs font-medium uppercase tracking-[0.12em] text-muted-foreground">
-            Actual Payroll
-          </p>
-          <h2 className="text-2xl font-semibold tracking-tight">実給与編集</h2>
-          <p className="text-sm text-muted-foreground">
-            {selectedMonthLabel}支給分の実績金額を勤務先ごとに登録します。
-          </p>
-        </div>
-
-        {!isInitialLoading ? (
-          <div className="flex flex-wrap items-center gap-2">
-            <Button
-              type="button"
-              variant="outline"
-              size="sm"
-              onClick={onBackToCurrentMonth}
-              disabled={
-                requestedMonthValue === currentMonthValue ||
-                isRefreshing ||
-                state.isSaving
+      <ActualPayrollHeader
+        selectedMonthLabel={selectedMonthLabel}
+        actions={
+          isInitialLoading
+            ? null
+            : {
+                draftMonthValue,
+                backToCurrentMonthDisabled:
+                  requestedMonthValue === currentMonthValue || isDisabled,
+                monthInputDisabled: isDisabled,
+                applyDisabled: !canApplyMonth || isDisabled,
+                saveDisabled: isDisabled,
+                onDraftMonthValueChange,
+                onApplyMonth,
+                onBackToCurrentMonth,
+                onSave: handleSave,
               }
-            >
-              今月に戻る
-            </Button>
-            <Input
-              type="month"
-              value={draftMonthValue}
-              disabled={isRefreshing || state.isSaving}
-              onKeyDown={(event) => {
-                if (event.key === "Enter") {
-                  onApplyMonth();
-                }
-              }}
-              onChange={(event) => {
-                onDraftMonthValueChange(event.currentTarget.value);
-              }}
-              className="w-44"
-            />
-            <Button
-              type="button"
-              size="sm"
-              onClick={onApplyMonth}
-              disabled={!canApplyMonth || isRefreshing || state.isSaving}
-            >
-              適用
-            </Button>
-            <Button
-              type="button"
-              size="sm"
-              onClick={handleSave}
-              disabled={isInitialLoading || isRefreshing || state.isSaving}
-            >
-              保存
-            </Button>
-          </div>
-        ) : null}
-      </header>
+        }
+      />
 
       {errorMessage ? (
         <p className="rounded-lg border border-destructive/40 bg-destructive/5 px-3 py-2 text-sm text-destructive">
@@ -465,142 +739,39 @@ function ActualPayrollEditorScreen({
           isLoading={isRefreshing || state.isSaving}
           className="rounded-xl"
         >
-          <Card className="border-border/80 bg-card/95 shadow-sm">
-            <CardHeader>
-              <CardTitle>勤務先別 実給与入力</CardTitle>
-              <CardDescription>
-                課税対象額と非課税対象額を入力すると、サマリーと給与詳細に優先反映されます。
-              </CardDescription>
-            </CardHeader>
-            <CardContent>
-              <div className="overflow-x-auto rounded-lg border border-border/70">
-                <Table>
-                  <TableHeader className="bg-muted/35">
-                    <TableRow>
-                      <TableHead>勤務先</TableHead>
-                      <TableHead>対象期間</TableHead>
-                      <TableHead className="text-right">概算</TableHead>
-                      <TableHead className="text-right">課税対象</TableHead>
-                      <TableHead className="text-right">非課税対象</TableHead>
-                      <TableHead className="text-right">実合計</TableHead>
-                      <TableHead className="text-right">差額</TableHead>
-                      <TableHead>メモ</TableHead>
-                      <TableHead className="text-right">操作</TableHead>
-                    </TableRow>
-                  </TableHeader>
-                  <TableBody>
-                    {state.rows.length > 0 ? (
-                      state.rows.map((row) => (
-                        <TableRow key={row.workplaceId}>
-                          <TableCell className="font-medium">
-                            <span className="inline-flex items-center gap-2">
-                              <span
-                                className="h-2.5 w-2.5 rounded-full"
-                                style={{ backgroundColor: row.workplaceColor }}
-                              />
-                              {row.workplaceName}
-                            </span>
-                          </TableCell>
-                          <TableCell>
-                            {row.periodStartDate} 〜 {row.periodEndDate}
-                          </TableCell>
-                          <TableCell className="text-right">
-                            {formatCurrency(row.estimatedAmount)}
-                          </TableCell>
-                          <TableCell className="min-w-32">
-                            <Input
-                              inputMode="numeric"
-                              value={row.taxableAmount}
-                              disabled={isRefreshing || state.isSaving}
-                              onChange={(event) =>
-                                dispatch({
-                                  type: "updateAmount",
-                                  workplaceId: row.workplaceId,
-                                  field: "taxableAmount",
-                                  value: event.currentTarget.value,
-                                })
-                              }
-                            />
-                          </TableCell>
-                          <TableCell className="min-w-32">
-                            <Input
-                              inputMode="numeric"
-                              value={row.nonTaxableAmount}
-                              disabled={isRefreshing || state.isSaving}
-                              onChange={(event) =>
-                                dispatch({
-                                  type: "updateAmount",
-                                  workplaceId: row.workplaceId,
-                                  field: "nonTaxableAmount",
-                                  value: event.currentTarget.value,
-                                })
-                              }
-                            />
-                          </TableCell>
-                          <TableCell className="text-right font-semibold text-primary">
-                            {row.totalActualAmount === null
-                              ? "未登録"
-                              : formatCurrency(row.totalActualAmount)}
-                          </TableCell>
-                          <TableCell
-                            className={
-                              row.differenceAmount > 0
-                                ? "text-right text-emerald-600"
-                                : row.differenceAmount < 0
-                                  ? "text-right text-amber-700"
-                                  : "text-right"
-                            }
-                          >
-                            {row.totalActualAmount === null
-                              ? "-"
-                              : formatCurrency(row.differenceAmount)}
-                          </TableCell>
-                          <TableCell className="min-w-48">
-                            <Input
-                              value={row.note}
-                              disabled={isRefreshing || state.isSaving}
-                              onChange={(event) => {
-                                dispatch({
-                                  type: "updateNote",
-                                  workplaceId: row.workplaceId,
-                                  value: event.currentTarget.value,
-                                });
-                              }}
-                            />
-                          </TableCell>
-                          <TableCell className="text-right">
-                            <Button
-                              type="button"
-                              variant="ghost"
-                              size="sm"
-                              disabled={isRefreshing || state.isSaving}
-                              onClick={() =>
-                                dispatch({
-                                  type: "clearRow",
-                                  workplaceId: row.workplaceId,
-                                })
-                              }
-                            >
-                              クリア
-                            </Button>
-                          </TableCell>
-                        </TableRow>
-                      ))
-                    ) : (
-                      <TableRow>
-                        <TableCell
-                          colSpan={9}
-                          className="h-24 text-center text-muted-foreground"
-                        >
-                          登録対象の勤務先がありません
-                        </TableCell>
-                      </TableRow>
-                    )}
-                  </TableBody>
-                </Table>
-              </div>
-            </CardContent>
-          </Card>
+          <ActualPayrollTableCard
+            rows={state.rows}
+            isDisabled={isRefreshing || state.isSaving}
+            onTaxableChange={(workplaceId, value) => {
+              dispatch({
+                type: "updateAmount",
+                workplaceId,
+                field: "taxableAmount",
+                value,
+              });
+            }}
+            onNonTaxableChange={(workplaceId, value) => {
+              dispatch({
+                type: "updateAmount",
+                workplaceId,
+                field: "nonTaxableAmount",
+                value,
+              });
+            }}
+            onNoteChange={(workplaceId, value) => {
+              dispatch({
+                type: "updateNote",
+                workplaceId,
+                value,
+              });
+            }}
+            onClear={(workplaceId) => {
+              dispatch({
+                type: "clearRow",
+                workplaceId,
+              });
+            }}
+          />
         </LoadingOverlay>
       )}
     </section>
@@ -618,7 +789,6 @@ export function ActualPayrollPageClient({
     initialMonth,
     createActualPayrollFilterState,
   );
-
   const isValidRequestedMonth =
     fromMonthInputValue(filterState.requestedMonthValue) !== null;
   const canApplyMonth =
@@ -635,40 +805,29 @@ export function ActualPayrollPageClient({
         : undefined,
   });
 
-  const data = actualPayrollQuery.data ?? null;
-  const displayMonthValue = data?.month ?? filterState.requestedMonthValue;
-  const selectedMonth =
-    fromMonthInputValue(displayMonthValue) ??
-    fromMonthInputValue(currentMonthValue);
-  const selectedMonthLabel = selectedMonth
-    ? formatMonthLabel(selectedMonth)
-    : displayMonthValue;
-  const isInitialLoading =
-    isValidRequestedMonth && actualPayrollQuery.isLoading && data === null;
-  const isRefreshing =
-    isValidRequestedMonth && actualPayrollQuery.isFetching && data !== null;
-  const errorMessage = !isValidRequestedMonth
-    ? "月は YYYY-MM 形式で指定してください。"
-    : actualPayrollQuery.error
-      ? toErrorMessage(
-          actualPayrollQuery.error,
-          "実給与データの取得に失敗しました。",
-        )
-      : null;
+  const screenState = buildActualPayrollScreenState({
+    currentMonthValue,
+    requestedMonthValue: filterState.requestedMonthValue,
+    queryData: actualPayrollQuery.data ?? initialData,
+    queryError: actualPayrollQuery.error,
+    isValidRequestedMonth,
+    isLoading: actualPayrollQuery.isLoading,
+    isFetching: actualPayrollQuery.isFetching,
+  });
 
   return (
     <ActualPayrollEditorScreen
-      key={data?.month ?? filterState.requestedMonthValue}
+      key={screenState.data.month}
       currentUserId={currentUserId}
       currentMonthValue={currentMonthValue}
       requestedMonthValue={filterState.requestedMonthValue}
       draftMonthValue={filterState.draftMonthValue}
       canApplyMonth={canApplyMonth}
-      selectedMonthLabel={selectedMonthLabel}
-      isInitialLoading={isInitialLoading}
-      isRefreshing={isRefreshing}
-      errorMessage={errorMessage}
-      data={data ?? initialData}
+      selectedMonthLabel={screenState.selectedMonthLabel}
+      isInitialLoading={screenState.isInitialLoading}
+      isRefreshing={screenState.isRefreshing}
+      errorMessage={screenState.errorMessage}
+      data={screenState.data}
       onDraftMonthValueChange={(value) => {
         dispatch({
           type: "setDraftMonthValue",
