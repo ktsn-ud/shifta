@@ -26,6 +26,10 @@ describe("queryKeys", () => {
       userId: "user-1",
       month: "2026-05",
     });
+    const summaryYearContext = queryKeys.payroll.summaryYearContext({
+      userId: "user-1",
+      month: "2026-05",
+    });
     const yearly = queryKeys.payroll.detailsWorkplaceYearly({
       userId: "user-1",
       workplaceId: "wp-1",
@@ -33,6 +37,7 @@ describe("queryKeys", () => {
     });
 
     expect(monthly).not.toEqual(yearly);
+    expect(summaryYearContext).not.toEqual(monthly);
   });
 
   it("給与プレビューbaselineキーは月配列を正規化する", () => {

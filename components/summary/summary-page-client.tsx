@@ -23,12 +23,18 @@ import {
 } from "@/components/ui/table";
 import { formatMonthLabel, fromMonthInputValue } from "@/lib/calendar/date";
 import { toErrorMessage } from "@/lib/messages";
-import { type PayrollSummaryResult } from "@/lib/payroll/summary";
-import { usePayrollSummaryQuery } from "@/lib/query/queries/payroll";
+import {
+  type PayrollSummaryCoreResult,
+  type PayrollSummaryYearContextResult,
+} from "@/lib/payroll/summary";
+import {
+  usePayrollSummaryQuery,
+  usePayrollSummaryYearContextQuery,
+} from "@/lib/query/queries/payroll";
 
 type SummaryPageClientProps = {
   currentUserId: string;
-  initialSummary: PayrollSummaryResult;
+  initialSummary: PayrollSummaryCoreResult;
   initialMonth: string;
   currentMonthValue: string;
 };
@@ -46,20 +52,21 @@ type SummaryHeaderProps = {
 };
 
 type SummaryPrimaryMetricsProps = {
-  summary: PayrollSummaryResult;
+  summary: PayrollSummaryCoreResult;
   selectedMonthLabel: string;
 };
 
 type SummarySecondaryMetricsProps = {
-  summary: PayrollSummaryResult;
+  summary: PayrollSummaryCoreResult;
+  summaryYearContext: PayrollSummaryYearContextResult | null;
 };
 
 type SummaryWorkplaceChartCardProps = {
-  byWorkplace: PayrollSummaryResult["byWorkplace"];
+  byWorkplace: PayrollSummaryCoreResult["byWorkplace"];
 };
 
 type SummaryWorkplaceTableCardProps = {
-  byWorkplace: PayrollSummaryResult["byWorkplace"];
+  byWorkplace: PayrollSummaryCoreResult["byWorkplace"];
 };
 
 const currencyFormatter = new Intl.NumberFormat("ja-JP", {
@@ -90,7 +97,7 @@ function formatHours(value: number): string {
 }
 
 function toWorkplaceChartData(
-  byWorkplace: PayrollSummaryResult["byWorkplace"],
+  byWorkplace: PayrollSummaryCoreResult["byWorkplace"],
 ) {
   return byWorkplace.map((item) => ({
     workplaceName: item.workplaceName,
@@ -219,7 +226,27 @@ function SummaryPrimaryMetrics({
   );
 }
 
-function SummarySecondaryMetrics({ summary }: SummarySecondaryMetricsProps) {
+function SummarySecondaryMetricLoadingCard(props: {
+  title: string;
+  description: string;
+}) {
+  return (
+    <Card size="sm">
+      <CardHeader>
+        <CardTitle>{props.title}</CardTitle>
+        <CardDescription>{props.description}</CardDescription>
+      </CardHeader>
+      <CardContent className="text-sm text-muted-foreground">
+        読み込み中...
+      </CardContent>
+    </Card>
+  );
+}
+
+function SummarySecondaryMetrics({
+  summary,
+  summaryYearContext,
+}: SummarySecondaryMetricsProps) {
   return (
     <div className="grid gap-4 lg:grid-cols-4">
       <Card size="sm">
@@ -231,47 +258,73 @@ function SummarySecondaryMetrics({ summary }: SummarySecondaryMetricsProps) {
           {formatCurrency(summary.confirmedShiftWage)}
         </CardContent>
       </Card>
-      <Card size="sm">
-        <CardHeader>
-          <CardTitle>年内受取累計（選択月まで）</CardTitle>
-          <CardDescription>実績優先の累計表示</CardDescription>
-        </CardHeader>
-        <CardContent className="space-y-1">
-          <p className="text-2xl font-semibold">
-            {formatCurrency(summary.currentMonthCumulative)}
-          </p>
-          <p className="text-xs text-muted-foreground">
-            課税{" "}
-            {formatCurrency(summary.currentMonthActualCoverage.taxableAmount)} /
-            非課税{" "}
-            {formatCurrency(
-              summary.currentMonthActualCoverage.nonTaxableAmount,
-            )}
-          </p>
-          <p className="text-xs text-muted-foreground">
-            概算 {formatCurrency(summary.estimatedCurrentMonthCumulative)}
-          </p>
-        </CardContent>
-      </Card>
-      <Card size="sm">
-        <CardHeader>
-          <CardTitle>年間受取見込（1月〜12月）</CardTitle>
-          <CardDescription>実績優先の年間表示</CardDescription>
-        </CardHeader>
-        <CardContent className="space-y-1">
-          <p className="text-2xl font-semibold">
-            {formatCurrency(summary.yearlyTotal)}
-          </p>
-          <p className="text-xs text-muted-foreground">
-            課税 {formatCurrency(summary.yearlyActualCoverage.taxableAmount)} /
-            非課税{" "}
-            {formatCurrency(summary.yearlyActualCoverage.nonTaxableAmount)}
-          </p>
-          <p className="text-xs text-muted-foreground">
-            概算 {formatCurrency(summary.estimatedYearlyTotal)}
-          </p>
-        </CardContent>
-      </Card>
+      {summaryYearContext ? (
+        <>
+          <Card size="sm">
+            <CardHeader>
+              <CardTitle>年内受取累計（選択月まで）</CardTitle>
+              <CardDescription>実績優先の累計表示</CardDescription>
+            </CardHeader>
+            <CardContent className="space-y-1">
+              <p className="text-2xl font-semibold">
+                {formatCurrency(summaryYearContext.currentMonthCumulative)}
+              </p>
+              <p className="text-xs text-muted-foreground">
+                課税{" "}
+                {formatCurrency(
+                  summaryYearContext.currentMonthActualCoverage.taxableAmount,
+                )}{" "}
+                / 非課税{" "}
+                {formatCurrency(
+                  summaryYearContext.currentMonthActualCoverage
+                    .nonTaxableAmount,
+                )}
+              </p>
+              <p className="text-xs text-muted-foreground">
+                概算{" "}
+                {formatCurrency(
+                  summaryYearContext.estimatedCurrentMonthCumulative,
+                )}
+              </p>
+            </CardContent>
+          </Card>
+          <Card size="sm">
+            <CardHeader>
+              <CardTitle>年間受取見込（1月〜12月）</CardTitle>
+              <CardDescription>実績優先の年間表示</CardDescription>
+            </CardHeader>
+            <CardContent className="space-y-1">
+              <p className="text-2xl font-semibold">
+                {formatCurrency(summaryYearContext.yearlyTotal)}
+              </p>
+              <p className="text-xs text-muted-foreground">
+                課税{" "}
+                {formatCurrency(
+                  summaryYearContext.yearlyActualCoverage.taxableAmount,
+                )}{" "}
+                / 非課税{" "}
+                {formatCurrency(
+                  summaryYearContext.yearlyActualCoverage.nonTaxableAmount,
+                )}
+              </p>
+              <p className="text-xs text-muted-foreground">
+                概算 {formatCurrency(summaryYearContext.estimatedYearlyTotal)}
+              </p>
+            </CardContent>
+          </Card>
+        </>
+      ) : (
+        <>
+          <SummarySecondaryMetricLoadingCard
+            title="年内受取累計（選択月まで）"
+            description="実績優先の累計表示"
+          />
+          <SummarySecondaryMetricLoadingCard
+            title="年間受取見込（1月〜12月）"
+            description="実績優先の年間表示"
+          />
+        </>
+      )}
       <Card size="sm">
         <CardHeader>
           <CardTitle>残業時間</CardTitle>
@@ -413,9 +466,18 @@ export function SummaryPageClient({
         ? initialSummary
         : undefined,
   });
+  const summaryYearContextQuery = usePayrollSummaryYearContextQuery({
+    userId: currentUserId,
+    month: requestedMonthValue,
+    enabled: isValidRequestedMonth,
+  });
 
   const summary = summaryQuery.data ?? null;
   const displayMonthValue = summary?.month ?? requestedMonthValue;
+  const summaryYearContext =
+    summaryYearContextQuery.data?.month === displayMonthValue
+      ? summaryYearContextQuery.data
+      : null;
   const selectedMonth =
     fromMonthInputValue(displayMonthValue) ??
     fromMonthInputValue(currentMonthValue);
@@ -430,7 +492,12 @@ export function SummaryPageClient({
     ? "月は YYYY-MM 形式で指定してください。"
     : summaryQuery.error
       ? toErrorMessage(summaryQuery.error, "給与集計の取得に失敗しました。")
-      : null;
+      : summaryYearContextQuery.error
+        ? toErrorMessage(
+            summaryYearContextQuery.error,
+            "給与集計の累計情報取得に失敗しました。",
+          )
+        : null;
 
   return (
     <section className="space-y-6 p-4 md:p-6">
@@ -473,7 +540,10 @@ export function SummaryPageClient({
               summary={summary}
               selectedMonthLabel={selectedMonthLabel}
             />
-            <SummarySecondaryMetrics summary={summary} />
+            <SummarySecondaryMetrics
+              summary={summary}
+              summaryYearContext={summaryYearContext}
+            />
             <div className="grid gap-4 xl:grid-cols-2">
               <SummaryWorkplaceChartCard byWorkplace={summary.byWorkplace} />
               <SummaryWorkplaceTableCard byWorkplace={summary.byWorkplace} />
