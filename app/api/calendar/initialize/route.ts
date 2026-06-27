@@ -6,7 +6,6 @@ import {
   GoogleCalendarAuthError,
 } from "@/lib/google-calendar/auth";
 import { createShiftaCalendar } from "@/lib/google-calendar/client";
-import { CALENDAR_SETUP_SKIP_COOKIE } from "@/lib/google-calendar/constants";
 import { syncShiftsAfterBulkCreate } from "@/lib/google-calendar/syncStatus";
 import { prisma } from "@/lib/prisma";
 import { jsonNoStore } from "@/lib/api/cache-control";
@@ -90,7 +89,7 @@ export async function POST(request: Request) {
     const successCount = syncResults.filter((result) => result.ok).length;
     const failedCount = syncResults.length - successCount;
 
-    const response = jsonNoStore({
+    return jsonNoStore({
       success: true,
       calendarId,
       sync: {
@@ -99,13 +98,6 @@ export async function POST(request: Request) {
         failed: failedCount,
       },
     });
-
-    response.cookies.set(CALENDAR_SETUP_SKIP_COOKIE, "", {
-      path: "/",
-      maxAge: 0,
-    });
-
-    return response;
   } catch (error) {
     if (error instanceof GoogleCalendarAuthError) {
       return jsonError(
