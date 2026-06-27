@@ -10,7 +10,7 @@ import {
   toDateOnlyString,
 } from "@/lib/calendar/date";
 import { calculateWorkedMinutes } from "@/lib/payroll/estimate";
-import { fetchJson } from "@/lib/query/fetch-json";
+import { fetchJson, isAbortError } from "@/lib/query/fetch-json";
 import { getBrowserQueryClient } from "@/lib/query/query-client";
 import { queryKeys } from "@/lib/query/query-keys";
 import { toUserFacingMessage } from "@/lib/user-facing-error";
@@ -279,6 +279,10 @@ export function useMonthShifts(month: Date, options: UseMonthShiftsOptions) {
     typeof initialEndDate === "string" &&
     initialStartDate === startDate &&
     initialEndDate === endDate;
+  // The dashboard SSR payload already includes estimated pay for the initial month.
+  // Reuse it for the deferred estimate query so the client only does the background
+  // fetch after the user changes month instead of immediately re-fetching and aborting.
+  const hasInitialEstimatedData = deferEstimate && hasInitialData;
 
   const primaryIncludeEstimate = deferEstimate === false;
 
@@ -328,10 +332,14 @@ export function useMonthShifts(month: Date, options: UseMonthShiftsOptions) {
         includeEstimate: true,
         signal,
       }).catch((error: unknown) => {
-        console.error("useMonthShifts estimate fetch failed", error);
+        if (!isAbortError(error)) {
+          console.error("useMonthShifts estimate fetch failed", error);
+        }
+
         throw error;
       }),
     enabled: deferEstimate,
+    initialData: hasInitialEstimatedData ? (initialShifts ?? []) : undefined,
     placeholderData: (previousData) => previousData,
     staleTime: MONTH_SHIFTS_STALE_TIME_MS,
     gcTime: MONTH_SHIFTS_GC_TIME_MS,
