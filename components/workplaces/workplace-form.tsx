@@ -100,6 +100,61 @@ type WorkplaceEditorFormProps = {
   externalFormError?: string;
 };
 
+type WorkplaceFormValueChange = (patch: Partial<FormValues>) => void;
+type WorkplaceInitialRuleValueChange = (
+  patch: Partial<InitialRuleValues>,
+) => void;
+
+type WorkplaceBasicFieldsSectionProps = {
+  values: Pick<FormValues, "name" | "type" | "color">;
+  errors: Pick<FormErrors, "name" | "type" | "color">;
+  onChange: WorkplaceFormValueChange;
+};
+
+type WorkplaceClosingDaySectionProps = {
+  values: Pick<FormValues, "closingDayType" | "closingDay">;
+  errors: Pick<FormErrors, "closingDayType" | "closingDay">;
+  onChange: WorkplaceFormValueChange;
+};
+
+type WorkplacePaydayFieldProps = {
+  payday: string;
+  error?: string;
+  onChange: (value: string) => void;
+};
+
+type InitialPayrollRuleToggleSectionProps = {
+  enabled: boolean;
+  state: {
+    isSubmitting: boolean;
+  };
+  onChange: (value: boolean) => void;
+};
+
+type InitialPayrollRuleFieldsSectionProps = {
+  values: InitialRuleValues;
+  errors: Pick<
+    FormErrors,
+    | "startDate"
+    | "endDate"
+    | "baseHourlyWage"
+    | "nightPremiumRate"
+    | "holidayAllowanceHourly"
+    | "overtimePremiumRate"
+    | "dailyOvertimeThreshold"
+    | "holidayType"
+  >;
+  onChange: WorkplaceInitialRuleValueChange;
+};
+
+type WorkplaceEditorActionsProps = {
+  submitLabel: string;
+  state: {
+    isSubmitting: boolean;
+  };
+  onCancel: () => void;
+};
+
 function createInitialWorkplaceValues(): FormValues {
   return {
     name: "",
@@ -383,6 +438,481 @@ function findFirstValidationMessage(errors: FormErrors): string | undefined {
   );
 }
 
+function WorkplaceEditorHeader({ pageTitle }: { pageTitle: string }) {
+  return (
+    <header className="space-y-1">
+      <h2 className="text-xl font-semibold">{pageTitle}</h2>
+      <p className="text-sm text-muted-foreground">
+        勤務先名・タイプ・表示色・締日・給料日を設定します。
+      </p>
+    </header>
+  );
+}
+
+function WorkplaceBasicFieldsSection({
+  values,
+  errors,
+  onChange,
+}: WorkplaceBasicFieldsSectionProps) {
+  return (
+    <>
+      <Field data-invalid={Boolean(errors.name)}>
+        <FieldLabel htmlFor="workplace-name">勤務先名</FieldLabel>
+        <FieldContent>
+          <Input
+            id="workplace-name"
+            value={values.name}
+            maxLength={50}
+            onChange={(event) => {
+              onChange({ name: event.currentTarget.value });
+            }}
+            className="max-w-50"
+          />
+          <FieldDescription>1〜50文字で入力してください。</FieldDescription>
+          <FormErrorMessage message={errors.name} />
+        </FieldContent>
+      </Field>
+
+      <Field data-invalid={Boolean(errors.type)}>
+        <FieldLabel>タイプ</FieldLabel>
+        <FieldContent>
+          <RadioGroup
+            value={values.type}
+            onValueChange={(value) => {
+              onChange({ type: value as WorkplaceType });
+            }}
+          >
+            <Field orientation="horizontal">
+              <RadioGroupItem id="workplace-type-general" value="GENERAL" />
+              <FieldLabel htmlFor="workplace-type-general">
+                {formatWorkplaceType("GENERAL")}
+              </FieldLabel>
+            </Field>
+            <Field orientation="horizontal">
+              <RadioGroupItem id="workplace-type-cram" value="CRAM_SCHOOL" />
+              <FieldLabel htmlFor="workplace-type-cram">
+                {formatWorkplaceType("CRAM_SCHOOL")}
+              </FieldLabel>
+            </Field>
+          </RadioGroup>
+          <FormErrorMessage message={errors.type} />
+        </FieldContent>
+      </Field>
+
+      <Field data-invalid={Boolean(errors.color)}>
+        <FieldLabel htmlFor="workplace-color">色</FieldLabel>
+        <FieldContent>
+          <div className="flex items-center gap-3">
+            <Input
+              id="workplace-color"
+              type="color"
+              value={values.color}
+              className="h-10 w-16 p-1"
+              onChange={(event) => {
+                onChange({ color: event.currentTarget.value });
+              }}
+            />
+            <Input
+              value={values.color}
+              onChange={(event) => {
+                onChange({ color: event.currentTarget.value });
+              }}
+              className="max-w-50"
+            />
+          </div>
+          <FieldDescription>HEX形式（例: #3B82F6）</FieldDescription>
+          <FormErrorMessage message={errors.color} />
+        </FieldContent>
+      </Field>
+    </>
+  );
+}
+
+function WorkplaceClosingDaySection({
+  values,
+  errors,
+  onChange,
+}: WorkplaceClosingDaySectionProps) {
+  return (
+    <>
+      <Field data-invalid={Boolean(errors.closingDayType)}>
+        <FieldLabel>締日設定</FieldLabel>
+        <FieldContent>
+          <RadioGroup
+            value={values.closingDayType}
+            onValueChange={(value) => {
+              onChange({
+                closingDayType: value as ClosingDayType,
+                closingDay: value === "END_OF_MONTH" ? "" : values.closingDay,
+              });
+            }}
+          >
+            <Field orientation="horizontal">
+              <RadioGroupItem
+                id="workplace-closing-day-end"
+                value="END_OF_MONTH"
+              />
+              <FieldLabel htmlFor="workplace-closing-day-end">
+                月末締め
+              </FieldLabel>
+            </Field>
+            <Field orientation="horizontal">
+              <RadioGroupItem
+                id="workplace-closing-day-day"
+                value="DAY_OF_MONTH"
+              />
+              <FieldLabel htmlFor="workplace-closing-day-day">
+                日付指定
+              </FieldLabel>
+            </Field>
+          </RadioGroup>
+          <FieldDescription>
+            月末締めを選択すると、締日は毎月の末日になります。
+          </FieldDescription>
+          <FormErrorMessage message={errors.closingDayType} />
+        </FieldContent>
+      </Field>
+
+      {values.closingDayType === "DAY_OF_MONTH" ? (
+        <Field data-invalid={Boolean(errors.closingDay)}>
+          <FieldLabel htmlFor="workplace-closing-day">締日</FieldLabel>
+          <FieldContent>
+            <div className="flex items-center gap-2">
+              <Input
+                id="workplace-closing-day"
+                type="number"
+                min={PAYROLL_DAY_MIN}
+                max={PAYROLL_DAY_MAX}
+                step="1"
+                value={values.closingDay}
+                onChange={(event) => {
+                  onChange({ closingDay: event.currentTarget.value });
+                }}
+                className="max-w-20"
+              />
+              <span className="shrink-0 text-sm text-muted-foreground">日</span>
+            </div>
+            <FieldDescription>1〜31の整数で入力してください。</FieldDescription>
+            <FormErrorMessage message={errors.closingDay} />
+          </FieldContent>
+        </Field>
+      ) : null}
+    </>
+  );
+}
+
+function WorkplacePaydayField({
+  payday,
+  error,
+  onChange,
+}: WorkplacePaydayFieldProps) {
+  return (
+    <Field data-invalid={Boolean(error)}>
+      <FieldLabel htmlFor="workplace-payday">給料日</FieldLabel>
+      <FieldContent>
+        <div className="flex items-center gap-2">
+          <Input
+            id="workplace-payday"
+            type="number"
+            min={PAYROLL_DAY_MIN}
+            max={PAYROLL_DAY_MAX}
+            step="1"
+            value={payday}
+            onChange={(event) => {
+              onChange(event.currentTarget.value);
+            }}
+            className="max-w-20"
+          />
+          <span className="shrink-0 text-sm text-muted-foreground">日</span>
+        </div>
+        <FieldDescription>1〜31の整数で入力してください。</FieldDescription>
+        <FormErrorMessage message={error} />
+      </FieldContent>
+    </Field>
+  );
+}
+
+function InitialPayrollRuleToggleSection({
+  enabled,
+  state,
+  onChange,
+}: InitialPayrollRuleToggleSectionProps) {
+  return (
+    <Field orientation="horizontal">
+      <Checkbox
+        id="create-initial-rule"
+        checked={enabled}
+        onCheckedChange={(checked) => {
+          onChange(Boolean(checked));
+        }}
+        disabled={state.isSubmitting}
+      />
+      <FieldContent>
+        <FieldLabel htmlFor="create-initial-rule">
+          初期給与ルールを同時に作成する
+        </FieldLabel>
+        <FieldDescription>
+          勤務先作成と同時に、最初の給与ルールを作成します。
+        </FieldDescription>
+      </FieldContent>
+    </Field>
+  );
+}
+
+function InitialPayrollRuleFieldsSection({
+  values,
+  errors,
+  onChange,
+}: InitialPayrollRuleFieldsSectionProps) {
+  return (
+    <>
+      <Field data-invalid={Boolean(errors.startDate)}>
+        <FieldLabel htmlFor="initial-rule-start-date">適用開始日</FieldLabel>
+        <FieldContent>
+          <Input
+            id="initial-rule-start-date"
+            type="date"
+            value={values.startDate}
+            onChange={(event) => {
+              onChange({ startDate: event.currentTarget.value });
+            }}
+            className="max-w-40"
+          />
+          <FormErrorMessage message={errors.startDate} />
+        </FieldContent>
+      </Field>
+
+      <Field data-invalid={Boolean(errors.endDate)}>
+        <FieldLabel htmlFor="initial-rule-end-date">適用終了日</FieldLabel>
+        <FieldContent>
+          <Input
+            id="initial-rule-end-date"
+            type="date"
+            value={values.endDate}
+            onChange={(event) => {
+              onChange({ endDate: event.currentTarget.value });
+            }}
+            className="max-w-40"
+          />
+          <FieldDescription>
+            空欄の場合は現在有効として扱います。
+          </FieldDescription>
+          <FormErrorMessage message={errors.endDate} />
+        </FieldContent>
+      </Field>
+
+      <Field data-invalid={Boolean(errors.baseHourlyWage)}>
+        <FieldLabel htmlFor="initial-rule-base-hourly-wage">
+          基本時給
+        </FieldLabel>
+        <FieldContent>
+          <div className="flex items-center gap-2">
+            <Input
+              id="initial-rule-base-hourly-wage"
+              type="number"
+              min="0"
+              step="10"
+              value={values.baseHourlyWage}
+              onChange={(event) => {
+                onChange({ baseHourlyWage: event.currentTarget.value });
+              }}
+              className="max-w-20"
+            />
+            <span className="shrink-0 text-sm text-muted-foreground">
+              円/時
+            </span>
+          </div>
+          <FormErrorMessage message={errors.baseHourlyWage} />
+        </FieldContent>
+      </Field>
+
+      <Field data-invalid={Boolean(errors.nightPremiumRate)}>
+        <FieldLabel htmlFor="initial-rule-night-multiplier">
+          深夜割増率
+        </FieldLabel>
+        <FieldContent>
+          <div className="flex items-center gap-2">
+            <Input
+              id="initial-rule-night-multiplier"
+              type="number"
+              min="0"
+              step="0.01"
+              value={values.nightPremiumRate}
+              onChange={(event) => {
+                onChange({ nightPremiumRate: event.currentTarget.value });
+              }}
+              className="max-w-20"
+            />
+            <span className="shrink-0 text-sm text-muted-foreground">率</span>
+          </div>
+          <FieldDescription>例: 0.25 = 25%</FieldDescription>
+          <FormErrorMessage message={errors.nightPremiumRate} />
+        </FieldContent>
+      </Field>
+
+      <Field data-invalid={Boolean(errors.holidayAllowanceHourly)}>
+        <FieldLabel htmlFor="initial-rule-holiday-hourly-wage">
+          休日手当（時間あたり）
+        </FieldLabel>
+        <FieldContent>
+          <div className="flex items-center gap-2">
+            <Input
+              id="initial-rule-holiday-hourly-wage"
+              type="number"
+              min="0"
+              step="10"
+              value={values.holidayAllowanceHourly}
+              onChange={(event) => {
+                onChange({
+                  holidayAllowanceHourly: event.currentTarget.value,
+                });
+              }}
+              className="max-w-20"
+            />
+            <span className="shrink-0 text-sm text-muted-foreground">
+              円/時
+            </span>
+          </div>
+          <FieldDescription>
+            休日勤務時間に対して加算する手当です。
+          </FieldDescription>
+          <FormErrorMessage message={errors.holidayAllowanceHourly} />
+        </FieldContent>
+      </Field>
+
+      <Field data-invalid={Boolean(errors.overtimePremiumRate)}>
+        <FieldLabel htmlFor="initial-rule-overtime-multiplier">
+          所定時間外割増率（保留）
+        </FieldLabel>
+        <FieldContent>
+          <div className="flex items-center gap-2">
+            <Input
+              id="initial-rule-overtime-multiplier"
+              type="number"
+              min="0"
+              step="0.01"
+              value={values.overtimePremiumRate}
+              onChange={(event) => {
+                onChange({ overtimePremiumRate: event.currentTarget.value });
+              }}
+              className="max-w-20"
+            />
+            <span className="shrink-0 text-sm text-muted-foreground">率</span>
+          </div>
+          <FieldDescription>
+            将来拡張のため保持します（現時点の計算では未使用）。
+          </FieldDescription>
+          <FormErrorMessage message={errors.overtimePremiumRate} />
+        </FieldContent>
+      </Field>
+
+      <Field data-invalid={Boolean(errors.dailyOvertimeThreshold)}>
+        <FieldLabel htmlFor="initial-rule-daily-threshold">
+          1日所定時間
+        </FieldLabel>
+        <FieldContent>
+          <div className="flex items-center gap-2">
+            <Input
+              id="initial-rule-daily-threshold"
+              type="number"
+              min="0"
+              step="0.01"
+              value={values.dailyOvertimeThreshold}
+              onChange={(event) => {
+                onChange({ dailyOvertimeThreshold: event.currentTarget.value });
+              }}
+              className="max-w-16"
+            />
+            <span className="shrink-0 text-sm text-muted-foreground">時間</span>
+          </div>
+          <FormErrorMessage message={errors.dailyOvertimeThreshold} />
+        </FieldContent>
+      </Field>
+
+      <Field>
+        <FieldLabel>深夜時間帯</FieldLabel>
+        <FieldContent>
+          <FieldDescription>
+            深夜時間帯は 22:00〜05:00 で固定です。
+          </FieldDescription>
+        </FieldContent>
+      </Field>
+
+      <Field data-invalid={Boolean(errors.holidayType)}>
+        <FieldLabel>休日判定</FieldLabel>
+        <FieldContent>
+          <RadioGroup
+            value={values.holidayType}
+            onValueChange={(value) => {
+              onChange({ holidayType: value as HolidayType });
+            }}
+          >
+            <Field orientation="horizontal">
+              <RadioGroupItem
+                id="initial-rule-holiday-type-none"
+                value="NONE"
+              />
+              <FieldLabel htmlFor="initial-rule-holiday-type-none">
+                {formatHolidayType("NONE")}
+              </FieldLabel>
+            </Field>
+            <Field orientation="horizontal">
+              <RadioGroupItem
+                id="initial-rule-holiday-type-weekend"
+                value="WEEKEND"
+              />
+              <FieldLabel htmlFor="initial-rule-holiday-type-weekend">
+                {formatHolidayType("WEEKEND")}
+              </FieldLabel>
+            </Field>
+            <Field orientation="horizontal">
+              <RadioGroupItem
+                id="initial-rule-holiday-type-holiday"
+                value="HOLIDAY"
+              />
+              <FieldLabel htmlFor="initial-rule-holiday-type-holiday">
+                {formatHolidayType("HOLIDAY")}
+              </FieldLabel>
+            </Field>
+            <Field orientation="horizontal">
+              <RadioGroupItem
+                id="initial-rule-holiday-type-weekend-holiday"
+                value="WEEKEND_HOLIDAY"
+              />
+              <FieldLabel htmlFor="initial-rule-holiday-type-weekend-holiday">
+                {formatHolidayType("WEEKEND_HOLIDAY")}
+              </FieldLabel>
+            </Field>
+          </RadioGroup>
+          <FormErrorMessage message={errors.holidayType} />
+        </FieldContent>
+      </Field>
+    </>
+  );
+}
+
+function WorkplaceEditorActions({
+  submitLabel,
+  state,
+  onCancel,
+}: WorkplaceEditorActionsProps) {
+  return (
+    <div className="flex flex-wrap gap-2">
+      <Button type="submit" disabled={state.isSubmitting}>
+        {state.isSubmitting ? "保存中..." : submitLabel}
+      </Button>
+      <Button
+        type="button"
+        variant="outline"
+        disabled={state.isSubmitting}
+        onClick={onCancel}
+      >
+        キャンセル
+      </Button>
+    </div>
+  );
+}
+
 function WorkplaceEditorForm({
   mode,
   workplaceId,
@@ -569,15 +1099,25 @@ function WorkplaceEditorForm({
   };
 
   const formErrorMessage = errors.form ?? externalFormError;
+  const submitLabel = isEdit ? "保存" : "作成";
+  const handleValueChange: WorkplaceFormValueChange = (patch) => {
+    dispatch({
+      type: "updateValues",
+      patch,
+    });
+  };
+  const handleInitialRuleValueChange: WorkplaceInitialRuleValueChange = (
+    patch,
+  ) => {
+    dispatch({
+      type: "updateInitialRuleValues",
+      patch,
+    });
+  };
 
   return (
     <section className="space-y-6 p-4 md:p-6">
-      <header className="space-y-1">
-        <h2 className="text-xl font-semibold">{pageTitle}</h2>
-        <p className="text-sm text-muted-foreground">
-          勤務先名・タイプ・表示色・締日・給料日を設定します。
-        </p>
-      </header>
+      <WorkplaceEditorHeader pageTitle={pageTitle} />
 
       <Form
         className="max-w-md"
@@ -586,498 +1126,80 @@ function WorkplaceEditorForm({
           void handleSubmit();
         }}
       >
-        <Field data-invalid={Boolean(errors.name)}>
-          <FieldLabel htmlFor="workplace-name">勤務先名</FieldLabel>
-          <FieldContent>
-            <Input
-              id="workplace-name"
-              value={values.name}
-              maxLength={50}
-              onChange={(event) => {
-                dispatch({
-                  type: "updateValues",
-                  patch: { name: event.currentTarget.value },
-                });
-              }}
-              className="max-w-50"
-            />
-            <FieldDescription>1〜50文字で入力してください。</FieldDescription>
-            <FormErrorMessage message={errors.name} />
-          </FieldContent>
-        </Field>
-
-        <Field data-invalid={Boolean(errors.type)}>
-          <FieldLabel>タイプ</FieldLabel>
-          <FieldContent>
-            <RadioGroup
-              value={values.type}
-              onValueChange={(value) => {
-                dispatch({
-                  type: "updateValues",
-                  patch: { type: value as WorkplaceType },
-                });
-              }}
-            >
-              <Field orientation="horizontal">
-                <RadioGroupItem id="workplace-type-general" value="GENERAL" />
-                <FieldLabel htmlFor="workplace-type-general">
-                  {formatWorkplaceType("GENERAL")}
-                </FieldLabel>
-              </Field>
-              <Field orientation="horizontal">
-                <RadioGroupItem id="workplace-type-cram" value="CRAM_SCHOOL" />
-                <FieldLabel htmlFor="workplace-type-cram">
-                  {formatWorkplaceType("CRAM_SCHOOL")}
-                </FieldLabel>
-              </Field>
-            </RadioGroup>
-            <FormErrorMessage message={errors.type} />
-          </FieldContent>
-        </Field>
-
-        <Field data-invalid={Boolean(errors.color)}>
-          <FieldLabel htmlFor="workplace-color">色</FieldLabel>
-          <FieldContent>
-            <div className="flex items-center gap-3">
-              <Input
-                id="workplace-color"
-                type="color"
-                value={values.color}
-                className="h-10 w-16 p-1"
-                onChange={(event) => {
-                  dispatch({
-                    type: "updateValues",
-                    patch: { color: event.currentTarget.value },
-                  });
-                }}
-              />
-              <Input
-                value={values.color}
-                onChange={(event) => {
-                  dispatch({
-                    type: "updateValues",
-                    patch: { color: event.currentTarget.value },
-                  });
-                }}
-                className="max-w-50"
-              />
-            </div>
-            <FieldDescription>HEX形式（例: #3B82F6）</FieldDescription>
-            <FormErrorMessage message={errors.color} />
-          </FieldContent>
-        </Field>
-
-        <Field data-invalid={Boolean(errors.closingDayType)}>
-          <FieldLabel>締日設定</FieldLabel>
-          <FieldContent>
-            <RadioGroup
-              value={values.closingDayType}
-              onValueChange={(value) => {
-                dispatch({
-                  type: "updateValues",
-                  patch: {
-                    closingDayType: value as ClosingDayType,
-                    closingDay:
-                      value === "END_OF_MONTH" ? "" : values.closingDay,
-                  },
-                });
-              }}
-            >
-              <Field orientation="horizontal">
-                <RadioGroupItem
-                  id="workplace-closing-day-end"
-                  value="END_OF_MONTH"
-                />
-                <FieldLabel htmlFor="workplace-closing-day-end">
-                  月末締め
-                </FieldLabel>
-              </Field>
-              <Field orientation="horizontal">
-                <RadioGroupItem
-                  id="workplace-closing-day-day"
-                  value="DAY_OF_MONTH"
-                />
-                <FieldLabel htmlFor="workplace-closing-day-day">
-                  日付指定
-                </FieldLabel>
-              </Field>
-            </RadioGroup>
-            <FieldDescription>
-              月末締めを選択すると、締日は毎月の末日になります。
-            </FieldDescription>
-            <FormErrorMessage message={errors.closingDayType} />
-          </FieldContent>
-        </Field>
-
-        {values.closingDayType === "DAY_OF_MONTH" ? (
-          <Field data-invalid={Boolean(errors.closingDay)}>
-            <FieldLabel htmlFor="workplace-closing-day">締日</FieldLabel>
-            <FieldContent>
-              <div className="flex items-center gap-2">
-                <Input
-                  id="workplace-closing-day"
-                  type="number"
-                  min={PAYROLL_DAY_MIN}
-                  max={PAYROLL_DAY_MAX}
-                  step="1"
-                  value={values.closingDay}
-                  onChange={(event) => {
-                    dispatch({
-                      type: "updateValues",
-                      patch: { closingDay: event.currentTarget.value },
-                    });
-                  }}
-                  className="max-w-20"
-                />
-                <span className="shrink-0 text-sm text-muted-foreground">
-                  日
-                </span>
-              </div>
-              <FieldDescription>
-                1〜31の整数で入力してください。
-              </FieldDescription>
-              <FormErrorMessage message={errors.closingDay} />
-            </FieldContent>
-          </Field>
-        ) : null}
-
-        <Field data-invalid={Boolean(errors.payday)}>
-          <FieldLabel htmlFor="workplace-payday">給料日</FieldLabel>
-          <FieldContent>
-            <div className="flex items-center gap-2">
-              <Input
-                id="workplace-payday"
-                type="number"
-                min={PAYROLL_DAY_MIN}
-                max={PAYROLL_DAY_MAX}
-                step="1"
-                value={values.payday}
-                onChange={(event) => {
-                  dispatch({
-                    type: "updateValues",
-                    patch: { payday: event.currentTarget.value },
-                  });
-                }}
-                className="max-w-20"
-              />
-              <span className="shrink-0 text-sm text-muted-foreground">日</span>
-            </div>
-            <FieldDescription>1〜31の整数で入力してください。</FieldDescription>
-            <FormErrorMessage message={errors.payday} />
-          </FieldContent>
-        </Field>
+        <WorkplaceBasicFieldsSection
+          values={{
+            name: values.name,
+            type: values.type,
+            color: values.color,
+          }}
+          errors={{
+            name: errors.name,
+            type: errors.type,
+            color: errors.color,
+          }}
+          onChange={handleValueChange}
+        />
+        <WorkplaceClosingDaySection
+          values={{
+            closingDayType: values.closingDayType,
+            closingDay: values.closingDay,
+          }}
+          errors={{
+            closingDayType: errors.closingDayType,
+            closingDay: errors.closingDay,
+          }}
+          onChange={handleValueChange}
+        />
+        <WorkplacePaydayField
+          payday={values.payday}
+          error={errors.payday}
+          onChange={(payday) => {
+            handleValueChange({ payday });
+          }}
+        />
 
         {!isEdit ? (
           <>
-            <Field orientation="horizontal">
-              <Checkbox
-                checked={createInitialRule}
-                onCheckedChange={(checked) => {
-                  dispatch({
-                    type: "setCreateInitialRule",
-                    value: Boolean(checked),
-                  });
-                }}
-                disabled={isSubmitting}
-              />
-              <FieldContent>
-                <FieldLabel htmlFor="create-initial-rule">
-                  初期給与ルールを同時に作成する
-                </FieldLabel>
-                <FieldDescription>
-                  勤務先作成と同時に、最初の給与ルールを作成します。
-                </FieldDescription>
-              </FieldContent>
-            </Field>
+            <InitialPayrollRuleToggleSection
+              enabled={createInitialRule}
+              state={{ isSubmitting }}
+              onChange={(value) => {
+                dispatch({
+                  type: "setCreateInitialRule",
+                  value,
+                });
+              }}
+            />
 
             {createInitialRule ? (
-              <>
-                <Field data-invalid={Boolean(errors.startDate)}>
-                  <FieldLabel htmlFor="initial-rule-start-date">
-                    適用開始日
-                  </FieldLabel>
-                  <FieldContent>
-                    <Input
-                      id="initial-rule-start-date"
-                      type="date"
-                      value={initialRuleValues.startDate}
-                      onChange={(event) => {
-                        dispatch({
-                          type: "updateInitialRuleValues",
-                          patch: { startDate: event.currentTarget.value },
-                        });
-                      }}
-                      className="max-w-40"
-                    />
-                    <FormErrorMessage message={errors.startDate} />
-                  </FieldContent>
-                </Field>
-
-                <Field data-invalid={Boolean(errors.endDate)}>
-                  <FieldLabel htmlFor="initial-rule-end-date">
-                    適用終了日
-                  </FieldLabel>
-                  <FieldContent>
-                    <Input
-                      id="initial-rule-end-date"
-                      type="date"
-                      value={initialRuleValues.endDate}
-                      onChange={(event) => {
-                        dispatch({
-                          type: "updateInitialRuleValues",
-                          patch: { endDate: event.currentTarget.value },
-                        });
-                      }}
-                      className="max-w-40"
-                    />
-                    <FieldDescription>
-                      空欄の場合は現在有効として扱います。
-                    </FieldDescription>
-                    <FormErrorMessage message={errors.endDate} />
-                  </FieldContent>
-                </Field>
-
-                <Field data-invalid={Boolean(errors.baseHourlyWage)}>
-                  <FieldLabel htmlFor="initial-rule-base-hourly-wage">
-                    基本時給
-                  </FieldLabel>
-                  <FieldContent>
-                    <div className="flex items-center gap-2">
-                      <Input
-                        id="initial-rule-base-hourly-wage"
-                        type="number"
-                        min="0"
-                        step="10"
-                        value={initialRuleValues.baseHourlyWage}
-                        onChange={(event) => {
-                          dispatch({
-                            type: "updateInitialRuleValues",
-                            patch: {
-                              baseHourlyWage: event.currentTarget.value,
-                            },
-                          });
-                        }}
-                        className="max-w-20"
-                      />
-                      <span className="shrink-0 text-sm text-muted-foreground">
-                        円/時
-                      </span>
-                    </div>
-                    <FormErrorMessage message={errors.baseHourlyWage} />
-                  </FieldContent>
-                </Field>
-
-                <Field data-invalid={Boolean(errors.nightPremiumRate)}>
-                  <FieldLabel htmlFor="initial-rule-night-multiplier">
-                    深夜割増率
-                  </FieldLabel>
-                  <FieldContent>
-                    <div className="flex items-center gap-2">
-                      <Input
-                        id="initial-rule-night-multiplier"
-                        type="number"
-                        min="0"
-                        step="0.01"
-                        value={initialRuleValues.nightPremiumRate}
-                        onChange={(event) => {
-                          dispatch({
-                            type: "updateInitialRuleValues",
-                            patch: {
-                              nightPremiumRate: event.currentTarget.value,
-                            },
-                          });
-                        }}
-                        className="max-w-20"
-                      />
-                      <span className="shrink-0 text-sm text-muted-foreground">
-                        率
-                      </span>
-                    </div>
-                    <FieldDescription>例: 0.25 = 25%</FieldDescription>
-                    <FormErrorMessage message={errors.nightPremiumRate} />
-                  </FieldContent>
-                </Field>
-
-                <Field data-invalid={Boolean(errors.holidayAllowanceHourly)}>
-                  <FieldLabel htmlFor="initial-rule-holiday-hourly-wage">
-                    休日手当（時間あたり）
-                  </FieldLabel>
-                  <FieldContent>
-                    <div className="flex items-center gap-2">
-                      <Input
-                        id="initial-rule-holiday-hourly-wage"
-                        type="number"
-                        min="0"
-                        step="10"
-                        value={initialRuleValues.holidayAllowanceHourly}
-                        onChange={(event) => {
-                          dispatch({
-                            type: "updateInitialRuleValues",
-                            patch: {
-                              holidayAllowanceHourly: event.currentTarget.value,
-                            },
-                          });
-                        }}
-                        className="max-w-20"
-                      />
-                      <span className="shrink-0 text-sm text-muted-foreground">
-                        円/時
-                      </span>
-                    </div>
-                    <FieldDescription>
-                      休日勤務時間に対して加算する手当です。
-                    </FieldDescription>
-                    <FormErrorMessage message={errors.holidayAllowanceHourly} />
-                  </FieldContent>
-                </Field>
-
-                <Field data-invalid={Boolean(errors.overtimePremiumRate)}>
-                  <FieldLabel htmlFor="initial-rule-overtime-multiplier">
-                    所定時間外割増率（保留）
-                  </FieldLabel>
-                  <FieldContent>
-                    <div className="flex items-center gap-2">
-                      <Input
-                        id="initial-rule-overtime-multiplier"
-                        type="number"
-                        min="0"
-                        step="0.01"
-                        value={initialRuleValues.overtimePremiumRate}
-                        onChange={(event) => {
-                          dispatch({
-                            type: "updateInitialRuleValues",
-                            patch: {
-                              overtimePremiumRate: event.currentTarget.value,
-                            },
-                          });
-                        }}
-                        className="max-w-20"
-                      />
-                      <span className="shrink-0 text-sm text-muted-foreground">
-                        率
-                      </span>
-                    </div>
-                    <FieldDescription>
-                      将来拡張のため保持します（現時点の計算では未使用）。
-                    </FieldDescription>
-                    <FormErrorMessage message={errors.overtimePremiumRate} />
-                  </FieldContent>
-                </Field>
-
-                <Field data-invalid={Boolean(errors.dailyOvertimeThreshold)}>
-                  <FieldLabel htmlFor="initial-rule-daily-threshold">
-                    1日所定時間
-                  </FieldLabel>
-                  <FieldContent>
-                    <div className="flex items-center gap-2">
-                      <Input
-                        id="initial-rule-daily-threshold"
-                        type="number"
-                        min="0"
-                        step="0.01"
-                        value={initialRuleValues.dailyOvertimeThreshold}
-                        onChange={(event) => {
-                          dispatch({
-                            type: "updateInitialRuleValues",
-                            patch: {
-                              dailyOvertimeThreshold: event.currentTarget.value,
-                            },
-                          });
-                        }}
-                        className="max-w-16"
-                      />
-                      <span className="shrink-0 text-sm text-muted-foreground">
-                        時間
-                      </span>
-                    </div>
-                    <FormErrorMessage message={errors.dailyOvertimeThreshold} />
-                  </FieldContent>
-                </Field>
-
-                <Field>
-                  <FieldLabel>深夜時間帯</FieldLabel>
-                  <FieldContent>
-                    <FieldDescription>
-                      深夜時間帯は 22:00〜05:00 で固定です。
-                    </FieldDescription>
-                  </FieldContent>
-                </Field>
-
-                <Field data-invalid={Boolean(errors.holidayType)}>
-                  <FieldLabel>休日判定</FieldLabel>
-                  <FieldContent>
-                    <RadioGroup
-                      value={initialRuleValues.holidayType}
-                      onValueChange={(value) => {
-                        dispatch({
-                          type: "updateInitialRuleValues",
-                          patch: { holidayType: value as HolidayType },
-                        });
-                      }}
-                    >
-                      <Field orientation="horizontal">
-                        <RadioGroupItem
-                          id="initial-rule-holiday-type-none"
-                          value="NONE"
-                        />
-                        <FieldLabel htmlFor="initial-rule-holiday-type-none">
-                          {formatHolidayType("NONE")}
-                        </FieldLabel>
-                      </Field>
-                      <Field orientation="horizontal">
-                        <RadioGroupItem
-                          id="initial-rule-holiday-type-weekend"
-                          value="WEEKEND"
-                        />
-                        <FieldLabel htmlFor="initial-rule-holiday-type-weekend">
-                          {formatHolidayType("WEEKEND")}
-                        </FieldLabel>
-                      </Field>
-                      <Field orientation="horizontal">
-                        <RadioGroupItem
-                          id="initial-rule-holiday-type-holiday"
-                          value="HOLIDAY"
-                        />
-                        <FieldLabel htmlFor="initial-rule-holiday-type-holiday">
-                          {formatHolidayType("HOLIDAY")}
-                        </FieldLabel>
-                      </Field>
-                      <Field orientation="horizontal">
-                        <RadioGroupItem
-                          id="initial-rule-holiday-type-weekend-holiday"
-                          value="WEEKEND_HOLIDAY"
-                        />
-                        <FieldLabel htmlFor="initial-rule-holiday-type-weekend-holiday">
-                          {formatHolidayType("WEEKEND_HOLIDAY")}
-                        </FieldLabel>
-                      </Field>
-                    </RadioGroup>
-                    <FormErrorMessage message={errors.holidayType} />
-                  </FieldContent>
-                </Field>
-              </>
+              <InitialPayrollRuleFieldsSection
+                values={initialRuleValues}
+                errors={{
+                  startDate: errors.startDate,
+                  endDate: errors.endDate,
+                  baseHourlyWage: errors.baseHourlyWage,
+                  nightPremiumRate: errors.nightPremiumRate,
+                  holidayAllowanceHourly: errors.holidayAllowanceHourly,
+                  overtimePremiumRate: errors.overtimePremiumRate,
+                  dailyOvertimeThreshold: errors.dailyOvertimeThreshold,
+                  holidayType: errors.holidayType,
+                }}
+                onChange={handleInitialRuleValueChange}
+              />
             ) : null}
           </>
         ) : null}
 
         <FormErrorMessage message={formErrorMessage} />
 
-        <div className="flex flex-wrap gap-2">
-          <Button type="submit" disabled={isSubmitting}>
-            {isSubmitting ? "保存中..." : isEdit ? "保存" : "作成"}
-          </Button>
-          <Button
-            type="button"
-            variant="outline"
-            disabled={isSubmitting}
-            onClick={() => {
-              markForResetOnRouteHidden();
-              router.push("/my/workplaces");
-            }}
-          >
-            キャンセル
-          </Button>
-        </div>
+        <WorkplaceEditorActions
+          submitLabel={submitLabel}
+          state={{ isSubmitting }}
+          onCancel={() => {
+            markForResetOnRouteHidden();
+            router.push("/my/workplaces");
+          }}
+        />
       </Form>
     </section>
   );
@@ -1110,12 +1232,7 @@ export function WorkplaceForm(props: WorkplaceFormProps) {
   if (isLoading) {
     return (
       <section className="space-y-6 p-4 md:p-6">
-        <header className="space-y-1">
-          <h2 className="text-xl font-semibold">{pageTitle}</h2>
-          <p className="text-sm text-muted-foreground">
-            勤務先名・タイプ・表示色・締日・給料日を設定します。
-          </p>
-        </header>
+        <WorkplaceEditorHeader pageTitle={pageTitle} />
         <FormLoadingSkeleton />
       </section>
     );

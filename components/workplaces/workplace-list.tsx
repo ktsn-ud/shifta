@@ -69,6 +69,35 @@ type WorkplaceListProps = {
   initialWorkplaces?: Workplace[];
 };
 
+type WorkplaceListHeaderProps = {
+  createHref: string;
+};
+
+type WorkplaceListMessagesProps = {
+  infoMessage: string | null;
+  errorMessage: string | null;
+};
+
+type WorkplaceTableCardProps = {
+  workplaces: Workplace[];
+  isLoading: boolean;
+  onRequestDelete: (workplaceId: string) => void;
+};
+
+type WorkplaceTableRowActionsProps = {
+  workplace: Workplace;
+  onRequestDelete: (workplaceId: string) => void;
+};
+
+type WorkplaceDeleteDialogProps = {
+  target: Workplace | null;
+  deleteError: string | null;
+  isDeleting: boolean;
+  onOpenChange: (open: boolean) => void;
+  onCancel: () => void;
+  onConfirm: () => void;
+};
+
 function isRecord(value: unknown): value is Record<string, unknown> {
   return typeof value === "object" && value !== null;
 }
@@ -137,6 +166,235 @@ async function readApiErrorMessage(
 ): Promise<string> {
   const resolved = await resolveUserFacingErrorFromResponse(response, fallback);
   return resolved.message;
+}
+
+function WorkplaceListHeader({ createHref }: WorkplaceListHeaderProps) {
+  return (
+    <header className="flex flex-wrap items-start justify-between gap-4 rounded-xl border border-border/80 bg-card/95 p-5 shadow-sm">
+      <div className="space-y-2">
+        <p className="text-xs font-medium uppercase tracking-[0.12em] text-muted-foreground">
+          Workplace
+        </p>
+        <h2 className="text-2xl font-semibold tracking-tight">勤務先管理</h2>
+        <p className="text-sm text-muted-foreground">
+          勤務先の作成・編集・削除を行います。
+        </p>
+      </div>
+      <Link href={createHref} className={buttonVariants({})}>
+        新規追加
+      </Link>
+    </header>
+  );
+}
+
+function WorkplaceListMessages({
+  infoMessage,
+  errorMessage,
+}: WorkplaceListMessagesProps) {
+  return (
+    <>
+      {infoMessage ? (
+        <p className="rounded-lg border border-emerald-700/30 bg-emerald-700/5 px-3 py-2 text-sm text-emerald-800">
+          {infoMessage}
+        </p>
+      ) : null}
+
+      {errorMessage ? (
+        <p className="rounded-lg border border-destructive/40 bg-destructive/5 px-3 py-2 text-sm text-destructive">
+          {errorMessage}
+        </p>
+      ) : null}
+    </>
+  );
+}
+
+function WorkplaceTableCard({
+  workplaces,
+  isLoading,
+  onRequestDelete,
+}: WorkplaceTableCardProps) {
+  return (
+    <Card className="border-border/80 bg-card/95 shadow-sm">
+      <CardHeader className="border-b border-border/70">
+        <CardTitle className="text-lg">勤務先一覧</CardTitle>
+        <CardDescription>
+          一覧から給与ルール管理・時間割管理へ遷移できます。
+        </CardDescription>
+      </CardHeader>
+      <CardContent className="pt-5">
+        {isLoading ? (
+          <TableLoadingSkeleton rows={6} columns={5} />
+        ) : (
+          <div className="overflow-hidden rounded-lg border border-border/70">
+            <Table>
+              <TableHeader className="bg-muted/35">
+                <TableRow>
+                  <TableHead>勤務先名</TableHead>
+                  <TableHead>タイプ</TableHead>
+                  <TableHead>色</TableHead>
+                  <TableHead>関連データ</TableHead>
+                  <TableHead className="text-right">操作</TableHead>
+                </TableRow>
+              </TableHeader>
+              <TableBody>
+                {workplaces.length === 0 ? (
+                  <TableRow>
+                    <TableCell
+                      colSpan={5}
+                      className="h-24 text-center text-muted-foreground"
+                    >
+                      勤務先がありません。
+                    </TableCell>
+                  </TableRow>
+                ) : (
+                  workplaces.map((workplace) => (
+                    <TableRow key={workplace.id}>
+                      <TableCell className="font-medium">
+                        {workplace.name}
+                      </TableCell>
+                      <TableCell>
+                        {formatWorkplaceType(workplace.type)}
+                      </TableCell>
+                      <TableCell>
+                        <div className="flex items-center gap-2">
+                          <span
+                            className="inline-block size-4 rounded-full border"
+                            style={{ backgroundColor: workplace.color }}
+                            aria-label={`カラー ${workplace.color}`}
+                          />
+                          <span className="text-sm text-muted-foreground">
+                            {workplace.color}
+                          </span>
+                        </div>
+                      </TableCell>
+                      <TableCell className="text-sm text-muted-foreground">
+                        シフト {workplace._count.shifts} / 給与ルール{" "}
+                        {workplace._count.payrollRules} / 時間割{" "}
+                        {workplace._count.timetableSets}
+                      </TableCell>
+                      <TableCell>
+                        <WorkplaceTableRowActions
+                          workplace={workplace}
+                          onRequestDelete={onRequestDelete}
+                        />
+                      </TableCell>
+                    </TableRow>
+                  ))
+                )}
+              </TableBody>
+            </Table>
+          </div>
+        )}
+      </CardContent>
+    </Card>
+  );
+}
+
+function WorkplaceTableRowActions({
+  workplace,
+  onRequestDelete,
+}: WorkplaceTableRowActionsProps) {
+  return (
+    <div className="flex flex-wrap justify-end gap-2">
+      <Link
+        href={`/my/workplaces/${workplace.id}/edit`}
+        className={buttonVariants({
+          size: "sm",
+          variant: "outline",
+        })}
+      >
+        編集
+      </Link>
+      <Link
+        href={`/my/workplaces/${workplace.id}/payroll-rules`}
+        className={buttonVariants({
+          size: "sm",
+          variant: "outline",
+        })}
+      >
+        給与ルール
+      </Link>
+      {workplace.type === "CRAM_SCHOOL" ? (
+        <Link
+          href={`/my/workplaces/${workplace.id}/timetables`}
+          className={buttonVariants({
+            size: "sm",
+            variant: "outline",
+          })}
+        >
+          時間割
+        </Link>
+      ) : (
+        <Button size="sm" variant="outline" disabled>
+          時間割
+        </Button>
+      )}
+      <Button
+        size="sm"
+        variant="destructive"
+        onClick={() => onRequestDelete(workplace.id)}
+      >
+        削除
+      </Button>
+    </div>
+  );
+}
+
+function WorkplaceDeleteDialog({
+  target,
+  deleteError,
+  isDeleting,
+  onOpenChange,
+  onCancel,
+  onConfirm,
+}: WorkplaceDeleteDialogProps) {
+  return (
+    <Dialog open={target !== null} onOpenChange={onOpenChange}>
+      <DialogContent>
+        <DialogHeader>
+          <DialogTitle>勤務先を削除しますか？</DialogTitle>
+          <DialogDescription>
+            {target
+              ? `${target.name} を削除します。この操作は取り消せません。`
+              : "この操作は取り消せません。"}
+          </DialogDescription>
+        </DialogHeader>
+
+        {target ? (
+          <div className="rounded-md border bg-muted/30 px-3 py-2 text-sm text-muted-foreground">
+            関連データ: シフト {target._count.shifts} 件 / 給与ルール{" "}
+            {target._count.payrollRules} 件 / 時間割{" "}
+            {target._count.timetableSets} 件
+          </div>
+        ) : null}
+
+        {deleteError ? (
+          <p className="rounded-md border border-destructive/40 bg-destructive/5 px-3 py-2 text-sm text-destructive">
+            {deleteError}
+          </p>
+        ) : null}
+
+        <DialogFooter>
+          <Button
+            type="button"
+            variant="outline"
+            disabled={isDeleting}
+            onClick={onCancel}
+          >
+            キャンセル
+          </Button>
+          <Button
+            type="button"
+            variant="destructive"
+            disabled={isDeleting}
+            onClick={onConfirm}
+          >
+            {isDeleting ? "削除中..." : "削除"}
+          </Button>
+        </DialogFooter>
+      </DialogContent>
+    </Dialog>
+  );
 }
 
 export function WorkplaceList({
@@ -243,206 +501,37 @@ export function WorkplaceList({
 
   return (
     <section className="space-y-6 p-4 md:p-6">
-      <header className="flex flex-wrap items-start justify-between gap-4 rounded-xl border border-border/80 bg-card/95 p-5 shadow-sm">
-        <div className="space-y-2">
-          <p className="text-xs font-medium uppercase tracking-[0.12em] text-muted-foreground">
-            Workplace
-          </p>
-          <h2 className="text-2xl font-semibold tracking-tight">勤務先管理</h2>
-          <p className="text-sm text-muted-foreground">
-            勤務先の作成・編集・削除を行います。
-          </p>
-        </div>
-        <Link href="/my/workplaces/new" className={buttonVariants({})}>
-          新規追加
-        </Link>
-      </header>
-
-      {infoMessage ? (
-        <p className="rounded-lg border border-emerald-700/30 bg-emerald-700/5 px-3 py-2 text-sm text-emerald-800">
-          {infoMessage}
-        </p>
-      ) : null}
-
-      {errorMessage ? (
-        <p className="rounded-lg border border-destructive/40 bg-destructive/5 px-3 py-2 text-sm text-destructive">
-          {errorMessage}
-        </p>
-      ) : null}
-
-      <Card className="border-border/80 bg-card/95 shadow-sm">
-        <CardHeader className="border-b border-border/70">
-          <CardTitle className="text-lg">勤務先一覧</CardTitle>
-          <CardDescription>
-            一覧から給与ルール管理・時間割管理へ遷移できます。
-          </CardDescription>
-        </CardHeader>
-        <CardContent className="pt-5">
-          {isLoading ? (
-            <TableLoadingSkeleton rows={6} columns={5} />
-          ) : (
-            <div className="overflow-hidden rounded-lg border border-border/70">
-              <Table>
-                <TableHeader className="bg-muted/35">
-                  <TableRow>
-                    <TableHead>勤務先名</TableHead>
-                    <TableHead>タイプ</TableHead>
-                    <TableHead>色</TableHead>
-                    <TableHead>関連データ</TableHead>
-                    <TableHead className="text-right">操作</TableHead>
-                  </TableRow>
-                </TableHeader>
-                <TableBody>
-                  {workplaces.length === 0 ? (
-                    <TableRow>
-                      <TableCell
-                        colSpan={5}
-                        className="h-24 text-center text-muted-foreground"
-                      >
-                        勤務先がありません。
-                      </TableCell>
-                    </TableRow>
-                  ) : (
-                    workplaces.map((workplace) => (
-                      <TableRow key={workplace.id}>
-                        <TableCell className="font-medium">
-                          {workplace.name}
-                        </TableCell>
-                        <TableCell>
-                          {formatWorkplaceType(workplace.type)}
-                        </TableCell>
-                        <TableCell>
-                          <div className="flex items-center gap-2">
-                            <span
-                              className="inline-block size-4 rounded-full border"
-                              style={{ backgroundColor: workplace.color }}
-                              aria-label={`カラー ${workplace.color}`}
-                            />
-                            <span className="text-sm text-muted-foreground">
-                              {workplace.color}
-                            </span>
-                          </div>
-                        </TableCell>
-                        <TableCell className="text-sm text-muted-foreground">
-                          シフト {workplace._count.shifts} / 給与ルール{" "}
-                          {workplace._count.payrollRules} / 時間割{" "}
-                          {workplace._count.timetableSets}
-                        </TableCell>
-                        <TableCell>
-                          <div className="flex flex-wrap justify-end gap-2">
-                            <Link
-                              href={`/my/workplaces/${workplace.id}/edit`}
-                              className={buttonVariants({
-                                size: "sm",
-                                variant: "outline",
-                              })}
-                            >
-                              編集
-                            </Link>
-                            <Link
-                              href={`/my/workplaces/${workplace.id}/payroll-rules`}
-                              className={buttonVariants({
-                                size: "sm",
-                                variant: "outline",
-                              })}
-                            >
-                              給与ルール
-                            </Link>
-                            {workplace.type === "CRAM_SCHOOL" ? (
-                              <Link
-                                href={`/my/workplaces/${workplace.id}/timetables`}
-                                className={buttonVariants({
-                                  size: "sm",
-                                  variant: "outline",
-                                })}
-                              >
-                                時間割
-                              </Link>
-                            ) : (
-                              <Button size="sm" variant="outline" disabled>
-                                時間割
-                              </Button>
-                            )}
-                            <Button
-                              size="sm"
-                              variant="destructive"
-                              onClick={() => {
-                                setDeleteError(null);
-                                setDeletingId(workplace.id);
-                              }}
-                            >
-                              削除
-                            </Button>
-                          </div>
-                        </TableCell>
-                      </TableRow>
-                    ))
-                  )}
-                </TableBody>
-              </Table>
-            </div>
-          )}
-        </CardContent>
-      </Card>
-
-      <Dialog
-        open={deletingTarget !== null}
+      <WorkplaceListHeader createHref="/my/workplaces/new" />
+      <WorkplaceListMessages
+        infoMessage={infoMessage}
+        errorMessage={errorMessage}
+      />
+      <WorkplaceTableCard
+        workplaces={workplaces}
+        isLoading={isLoading}
+        onRequestDelete={(workplaceId) => {
+          setDeleteError(null);
+          setDeletingId(workplaceId);
+        }}
+      />
+      <WorkplaceDeleteDialog
+        target={deletingTarget}
+        deleteError={deleteError}
+        isDeleting={isDeleting}
         onOpenChange={(open) => {
           if (open === false) {
             setDeletingId(null);
             setDeleteError(null);
           }
         }}
-      >
-        <DialogContent>
-          <DialogHeader>
-            <DialogTitle>勤務先を削除しますか？</DialogTitle>
-            <DialogDescription>
-              {deletingTarget
-                ? `${deletingTarget.name} を削除します。この操作は取り消せません。`
-                : "この操作は取り消せません。"}
-            </DialogDescription>
-          </DialogHeader>
-
-          {deletingTarget ? (
-            <div className="rounded-md border bg-muted/30 px-3 py-2 text-sm text-muted-foreground">
-              関連データ: シフト {deletingTarget._count.shifts} 件 / 給与ルール{" "}
-              {deletingTarget._count.payrollRules} 件 / 時間割{" "}
-              {deletingTarget._count.timetableSets} 件
-            </div>
-          ) : null}
-
-          {deleteError ? (
-            <p className="rounded-md border border-destructive/40 bg-destructive/5 px-3 py-2 text-sm text-destructive">
-              {deleteError}
-            </p>
-          ) : null}
-
-          <DialogFooter>
-            <Button
-              type="button"
-              variant="outline"
-              disabled={isDeleting}
-              onClick={() => {
-                setDeletingId(null);
-                setDeleteError(null);
-              }}
-            >
-              キャンセル
-            </Button>
-            <Button
-              type="button"
-              variant="destructive"
-              disabled={isDeleting}
-              onClick={() => {
-                void confirmDelete();
-              }}
-            >
-              {isDeleting ? "削除中..." : "削除"}
-            </Button>
-          </DialogFooter>
-        </DialogContent>
-      </Dialog>
+        onCancel={() => {
+          setDeletingId(null);
+          setDeleteError(null);
+        }}
+        onConfirm={() => {
+          void confirmDelete();
+        }}
+      />
     </section>
   );
 }
