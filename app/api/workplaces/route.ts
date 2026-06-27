@@ -24,27 +24,25 @@ const workplacePayrollCycleBaseSchema = z.object({
   payday: z.coerce.number().int().min(PAYROLL_DAY_MIN).max(PAYROLL_DAY_MAX),
 });
 
-const createInitialPayrollRuleSchema = z
-  .object({
-    startDate: z
-      .string()
-      .regex(DATE_ONLY_REGEX, "YYYY-MM-DD形式で入力してください"),
-    endDate: z
-      .string()
-      .regex(DATE_ONLY_REGEX, "YYYY-MM-DD形式で入力してください")
-      .nullable()
-      .optional(),
-    baseHourlyWage: z.coerce.number().positive(),
-    holidayAllowanceHourly: z.coerce.number().min(0).optional().default(0),
-    nightPremiumRate: z.coerce.number().min(0),
-    overtimePremiumRate: z.coerce.number().min(0),
-    dailyOvertimeThreshold: z.coerce.number().positive(),
-    holidayType: z.enum(["NONE", "WEEKEND", "HOLIDAY", "WEEKEND_HOLIDAY"]),
-  })
-  .strict();
+const createInitialPayrollRuleSchema = z.strictObject({
+  startDate: z
+    .string()
+    .regex(DATE_ONLY_REGEX, "YYYY-MM-DD形式で入力してください"),
+  endDate: z
+    .string()
+    .regex(DATE_ONLY_REGEX, "YYYY-MM-DD形式で入力してください")
+    .nullable()
+    .optional(),
+  baseHourlyWage: z.coerce.number().positive(),
+  holidayAllowanceHourly: z.coerce.number().min(0).optional().default(0),
+  nightPremiumRate: z.coerce.number().min(0),
+  overtimePremiumRate: z.coerce.number().min(0),
+  dailyOvertimeThreshold: z.coerce.number().positive(),
+  holidayType: z.enum(["NONE", "WEEKEND", "HOLIDAY", "WEEKEND_HOLIDAY"]),
+});
 
 const createWorkplaceSchema = z
-  .object({
+  .strictObject({
     name: z.string().trim().min(1).max(50),
     type: z.enum(["GENERAL", "CRAM_SCHOOL"]),
     color: z.string().regex(colorRegex, "HEX形式(#RRGGBB)で入力してください"),
@@ -53,7 +51,6 @@ const createWorkplaceSchema = z
     payday: workplacePayrollCycleBaseSchema.shape.payday,
     initialPayrollRule: createInitialPayrollRuleSchema.optional(),
   })
-  .strict()
   .superRefine((value, ctx) => {
     if (value.closingDayType === "DAY_OF_MONTH" && value.closingDay == null) {
       ctx.addIssue({

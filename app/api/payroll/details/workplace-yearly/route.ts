@@ -9,19 +9,17 @@ const YEAR_REGEX = /^\d{4}$/;
 const MIN_YEAR = 2000;
 const MAX_YEAR = 2100;
 
-const yearlyQuerySchema = z
-  .object({
-    year: z
-      .string()
-      .regex(YEAR_REGEX, "year は YYYY形式で入力してください")
-      .transform((value) => Number(value))
-      .refine(
-        (value) =>
-          Number.isInteger(value) && value >= MIN_YEAR && value <= MAX_YEAR,
-        `year は ${MIN_YEAR}〜${MAX_YEAR} の範囲で入力してください`,
-      ),
-  })
-  .strict();
+const yearlyQuerySchema = z.strictObject({
+  year: z
+    .string()
+    .regex(YEAR_REGEX, "year は YYYY形式で入力してください")
+    .transform((value) => Number(value))
+    .refine(
+      (value) =>
+        Number.isInteger(value) && value >= MIN_YEAR && value <= MAX_YEAR,
+      `year は ${MIN_YEAR}〜${MAX_YEAR} の範囲で入力してください`,
+    ),
+});
 
 export async function GET(request: Request) {
   await connection();

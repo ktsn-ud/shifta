@@ -20,13 +20,11 @@ export class ShiftValidationError extends Error {
   }
 }
 
-export const lessonRangeSchema = z
-  .object({
-    timetableSetId: z.string().min(1),
-    startPeriod: z.coerce.number().int().positive(),
-    endPeriod: z.coerce.number().int().positive(),
-  })
-  .strict();
+export const lessonRangeSchema = z.strictObject({
+  timetableSetId: z.string().min(1),
+  startPeriod: z.coerce.number().int().positive(),
+  endPeriod: z.coerce.number().int().positive(),
+});
 
 export const shiftCommentSchema = z
   .string()
@@ -37,24 +35,22 @@ export const shiftCommentSchema = z
   .nullable()
   .optional();
 
-export const shiftInputSchema = z
-  .object({
-    workplaceId: z.string().min(1),
-    date: z.string().regex(DATE_ONLY_REGEX, "YYYY-MM-DD形式で入力してください"),
-    shiftType: z.enum(["NORMAL", "LESSON"]),
-    comment: shiftCommentSchema,
-    startTime: z
-      .string()
-      .regex(TIME_ONLY_REGEX, "HH:MM形式で入力してください")
-      .optional(),
-    endTime: z
-      .string()
-      .regex(TIME_ONLY_REGEX, "HH:MM形式で入力してください")
-      .optional(),
-    breakMinutes: z.coerce.number().int().min(0).default(0),
-    lessonRange: lessonRangeSchema.optional(),
-  })
-  .strict();
+export const shiftInputSchema = z.strictObject({
+  workplaceId: z.string().min(1),
+  date: z.string().regex(DATE_ONLY_REGEX, "YYYY-MM-DD形式で入力してください"),
+  shiftType: z.enum(["NORMAL", "LESSON"]),
+  comment: shiftCommentSchema,
+  startTime: z
+    .string()
+    .regex(TIME_ONLY_REGEX, "HH:MM形式で入力してください")
+    .optional(),
+  endTime: z
+    .string()
+    .regex(TIME_ONLY_REGEX, "HH:MM形式で入力してください")
+    .optional(),
+  breakMinutes: z.coerce.number().int().min(0).default(0),
+  lessonRange: lessonRangeSchema.optional(),
+});
 
 export type ShiftInput = z.infer<typeof shiftInputSchema>;
 

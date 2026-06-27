@@ -1,3 +1,4 @@
+import { after } from "next/server";
 import { auth } from "@/lib/auth";
 import { requireCurrentUser } from "@/lib/api/current-user";
 import { jsonError, verifyMutationRequest } from "@/lib/api/http";
@@ -6,7 +7,7 @@ import {
   GoogleCalendarAuthError,
 } from "@/lib/google-calendar/auth";
 import { createShiftaCalendar } from "@/lib/google-calendar/client";
-import { CALENDAR_SETUP_SKIP_COOKIE } from "@/lib/google-calendar/constants";
+import { buildPendingSyncResponse } from "@/lib/google-calendar/sync-response";
 import { syncShiftsAfterBulkCreate } from "@/lib/google-calendar/syncStatus";
 import { prisma } from "@/lib/prisma";
 import { jsonNoStore } from "@/lib/api/cache-control";
@@ -71,41 +72,49 @@ export async function POST(request: Request) {
       },
     });
 
-    const ownedShiftIds = await prisma.shift.findMany({
-      where: {
-        workplace: {
+    after(async () => {
+      try {
+        const ownedShiftIds = await prisma.shift.findMany({
+          where: {
+            workplace: {
+              userId: current.user.id,
+            },
+          },
+          select: {
+            id: true,
+          },
+          orderBy: [{ date: "asc" }, { createdAt: "asc" }],
+        });
+
+        const syncResults = await syncShiftsAfterBulkCreate(
+          ownedShiftIds.map((shift) => shift.id),
+          current.user.id,
+        );
+        const syncedCount = syncResults.filter((result) => result.ok).length;
+        const failedCount = syncResults.length - syncedCount;
+
+        console.info(
+          "POST /api/calendar/initialize background sync completed",
+          {
+            userId: current.user.id,
+            total: syncResults.length,
+            synced: syncedCount,
+            failed: failedCount,
+          },
+        );
+      } catch (error) {
+        console.error("POST /api/calendar/initialize background sync failed", {
           userId: current.user.id,
-        },
-      },
-      select: {
-        id: true,
-      },
-      orderBy: [{ date: "asc" }, { createdAt: "asc" }],
+          error,
+        });
+      }
     });
 
-    const syncResults = await syncShiftsAfterBulkCreate(
-      ownedShiftIds.map((shift) => shift.id),
-      current.user.id,
-    );
-    const successCount = syncResults.filter((result) => result.ok).length;
-    const failedCount = syncResults.length - successCount;
-
-    const response = jsonNoStore({
+    return jsonNoStore({
       success: true,
       calendarId,
-      sync: {
-        total: syncResults.length,
-        success: successCount,
-        failed: failedCount,
-      },
+      sync: buildPendingSyncResponse(),
     });
-
-    response.cookies.set(CALENDAR_SETUP_SKIP_COOKIE, "", {
-      path: "/",
-      maxAge: 0,
-    });
-
-    return response;
   } catch (error) {
     if (error instanceof GoogleCalendarAuthError) {
       return jsonError(

@@ -145,7 +145,7 @@ describe("major flow integration", () => {
       throw new Error("Unexpected fetch: " + input);
     });
 
-    render(<WorkplaceForm mode="create" />);
+    render(<WorkplaceForm mode="create" initialRuleStartDate="2026-03-15" />);
 
     fireEvent.change(screen.getByLabelText("勤務先名"), {
       target: { value: "店舗A" },

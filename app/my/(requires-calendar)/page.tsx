@@ -80,15 +80,18 @@ async function DashboardPageContent({ month }: { month: Date }) {
     }),
     getUnconfirmedShiftCount(workplaceIds),
   ]);
+  const todayDate = toDateOnlyString(startOfUtcDay(new Date()));
 
   return (
     <DashboardPageClient
+      key={startDate}
       currentUserId={current.user.id}
       initialMonthShifts={initialMonthShifts}
       initialMonthStartDate={startDate}
       initialMonthEndDate={endDate}
       initialUnconfirmedShiftCount={initialUnconfirmedShiftCount}
       nextMonthPaymentAmount={null}
+      todayDate={todayDate}
     />
   );
 }

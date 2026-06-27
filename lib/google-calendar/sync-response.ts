@@ -1,5 +1,3 @@
-import type { SyncResult } from "@/lib/google-calendar/syncStatus";
-
 export type SyncResponseStatus = "pending" | "success" | "failed";
 
 export type SyncResponsePayload = {
@@ -33,23 +31,5 @@ export function buildPendingSyncResponse(): SyncResponsePayload {
     errorCode: null,
     requiresCalendarSetup: false,
     requiresSignOut: false,
-  };
-}
-
-export function buildSyncResponseFromResult(
-  result: SyncResult,
-): SyncResponsePayload {
-  if (result.ok) {
-    return buildSuccessSyncResponse();
-  }
-
-  return {
-    status: "failed",
-    ok: false,
-    pending: false,
-    errorMessage: result.errorMessage,
-    errorCode: result.errorCode,
-    requiresCalendarSetup: result.requiresCalendarSetup,
-    requiresSignOut: result.requiresSignOut,
   };
 }

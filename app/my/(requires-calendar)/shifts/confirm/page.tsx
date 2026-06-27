@@ -152,6 +152,7 @@ async function getShiftConfirmationInitialData(userId: string): Promise<{
   const grouped = new Map<string, ConfirmedShiftWorkplaceGroup>();
 
   for (const shift of confirmedShiftsRaw) {
+    const { color, id, name } = shift.workplace;
     const normalizedShiftType =
       shift.shiftType === "LESSON" ? "LESSON" : "NORMAL";
     const workedMinutes = calculateWorkedMinutes({
@@ -194,16 +195,16 @@ async function getShiftConfirmationInitialData(userId: string): Promise<{
       wage,
     };
 
-    const existing = grouped.get(shift.workplace.id);
+    const existing = grouped.get(id);
     if (existing) {
       existing.shifts.push(entry);
       continue;
     }
 
-    grouped.set(shift.workplace.id, {
-      workplaceId: shift.workplace.id,
-      workplaceName: shift.workplace.name,
-      workplaceColor: shift.workplace.color,
+    grouped.set(id, {
+      workplaceId: id,
+      workplaceName: name,
+      workplaceColor: color,
       shifts: [entry],
     });
   }

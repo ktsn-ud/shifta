@@ -11,6 +11,7 @@ import userEvent from "@testing-library/user-event";
 import { ShiftListModal } from "@/components/calendar/ShiftListModal";
 import { ShiftForm } from "@/components/shifts/ShiftForm";
 import type { MonthShift } from "@/hooks/use-month-shifts";
+import { CALENDAR_SETUP_PATH } from "@/lib/google-calendar/constants";
 import { getBrowserQueryClient } from "@/lib/query/query-client";
 import { queryKeys } from "@/lib/query/query-keys";
 
@@ -636,7 +637,7 @@ describe("shift flow integration", () => {
     await userEvent.click(screen.getByRole("button", { name: "登録" }));
 
     await waitFor(() => {
-      expect(pushMock).toHaveBeenCalledWith("/my");
+      expect(pushMock).toHaveBeenCalledWith(CALENDAR_SETUP_PATH);
     });
   });
 

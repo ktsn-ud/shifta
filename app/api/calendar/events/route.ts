@@ -1,4 +1,4 @@
-import { connection } from "next/server";
+import { after, connection } from "next/server";
 import { createHash } from "node:crypto";
 import { calendar_v3 } from "googleapis";
 import { requireCurrentUser } from "@/lib/api/current-user";
@@ -204,10 +204,35 @@ function normalizeHexColor(value: string | null | undefined): string | null {
   return normalized.toUpperCase();
 }
 
+function buildColorPaletteMap(palette: unknown): Map<string, string> {
+  if (typeof palette !== "object" || palette === null) {
+    return new Map<string, string>();
+  }
+
+  return new Map(
+    Object.entries(palette).flatMap(([colorId, definition]) => {
+      if (
+        !definition ||
+        typeof definition !== "object" ||
+        typeof definition.background !== "string"
+      ) {
+        return [];
+      }
+
+      const color = normalizeHexColor(definition.background);
+      return color ? ([[colorId, color]] as const) : [];
+    }),
+  );
+}
+
 function normalizeRequestedCalendarIds(values: string[]): string[] {
-  const ids = values
-    .map((value) => value.trim())
-    .filter((value) => value.length > 0);
+  const ids: string[] = [];
+  for (const value of values) {
+    const trimmed = value.trim();
+    if (trimmed.length > 0) {
+      ids.push(trimmed);
+    }
+  }
 
   return Array.from(new Set(ids))
     .sort((left, right) => left.localeCompare(right))
@@ -296,7 +321,6 @@ function readCalendarEventsCacheStale(
   }
 
   if (cached.staleExpiresAt <= Date.now()) {
-    calendarEventsCache.delete(cacheKey);
     return null;
   }
 
@@ -306,10 +330,8 @@ function readCalendarEventsCacheStale(
 function writeCalendarEventsCache(
   cacheKey: string,
   data: CalendarEventsResponseData,
+  now: number,
 ): void {
-  const now = Date.now();
-  pruneCalendarEventsCache(now);
-
   calendarEventsCache.set(cacheKey, {
     data,
     expiresAt: now + CALENDAR_EVENTS_CACHE_TTL_MS,
@@ -330,25 +352,22 @@ async function mapWithConcurrency<T, R>(
   const results = new Array<R>(values.length);
   let nextIndex = 0;
 
-  async function worker() {
-    for (;;) {
-      const currentIndex = nextIndex;
-      nextIndex += 1;
+  function worker(): Promise<void> {
+    const currentIndex = nextIndex;
+    nextIndex += 1;
 
-      if (currentIndex >= values.length) {
-        return;
-      }
-
-      results[currentIndex] = await iteratee(values[currentIndex]);
+    if (currentIndex >= values.length) {
+      return Promise.resolve();
     }
+
+    return iteratee(values[currentIndex]).then((result) => {
+      results[currentIndex] = result;
+      return worker();
+    });
   }
 
   const workerCount = Math.min(Math.max(limit, 1), values.length);
-  await Promise.all(
-    Array.from({ length: workerCount }, async () => {
-      await worker();
-    }),
-  );
+  await Promise.all(Array.from({ length: workerCount }, () => worker()));
 
   return results;
 }
@@ -529,6 +548,7 @@ function aggregateEvent(
 export async function GET(request: Request) {
   await connection();
   let cacheKey: string | null = null;
+  let pendingCacheWrite: CalendarEventsResponseData | null = null;
 
   try {
     const current = await requireCurrentUser();
@@ -547,7 +567,17 @@ export async function GET(request: Request) {
     }
 
     cacheKey = toCacheKey(current.user.id, range.month, requestedCalendarIds);
-    pruneCalendarEventsCache(Date.now());
+    after(() => {
+      const now = Date.now();
+      pruneCalendarEventsCache(now);
+
+      if (!cacheKey || !pendingCacheWrite) {
+        return;
+      }
+
+      writeCalendarEventsCache(cacheKey, pendingCacheWrite, now);
+    });
+
     const cached = readCalendarEventsCacheFresh(cacheKey);
     if (cached) {
       return jsonNoStore({
@@ -562,42 +592,9 @@ export async function GET(request: Request) {
     const colorPalettes = await (async (): Promise<GoogleColorPalettes> => {
       try {
         const response = await calendar.colors.get();
-        const calendarPalette = new Map<string, string>();
-        const eventPalette = new Map<string, string>();
-
-        for (const [colorId, definition] of Object.entries(
-          response.data.calendar ?? {},
-        )) {
-          if (
-            definition &&
-            typeof definition === "object" &&
-            typeof definition.background === "string"
-          ) {
-            const color = normalizeHexColor(definition.background);
-            if (color) {
-              calendarPalette.set(colorId, color);
-            }
-          }
-        }
-
-        for (const [colorId, definition] of Object.entries(
-          response.data.event ?? {},
-        )) {
-          if (
-            definition &&
-            typeof definition === "object" &&
-            typeof definition.background === "string"
-          ) {
-            const color = normalizeHexColor(definition.background);
-            if (color) {
-              eventPalette.set(colorId, color);
-            }
-          }
-        }
-
         return {
-          calendar: calendarPalette,
-          event: eventPalette,
+          calendar: buildColorPaletteMap(response.data.calendar),
+          event: buildColorPaletteMap(response.data.event),
         };
       } catch {
         return {
@@ -648,7 +645,7 @@ export async function GET(request: Request) {
       ),
       dates,
     };
-    writeCalendarEventsCache(cacheKey, responseData);
+    pendingCacheWrite = responseData;
 
     return jsonNoStore({
       data: responseData,

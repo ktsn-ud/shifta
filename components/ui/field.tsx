@@ -1,10 +1,8 @@
 "use client";
 
-import { useMemo } from "react";
 import { cva, type VariantProps } from "class-variance-authority";
 
 import { cn } from "@/lib/utils";
-import { Label } from "@/components/ui/label";
 import { Separator } from "@/components/ui/separator";
 
 function FieldSet({ className, ...props }: React.ComponentProps<"fieldset">) {
@@ -76,7 +74,6 @@ function Field({
 }: React.ComponentProps<"div"> & VariantProps<typeof fieldVariants>) {
   return (
     <div
-      role="group"
       data-slot="field"
       data-orientation={orientation}
       className={cn(fieldVariants({ orientation }), className)}
@@ -98,20 +95,32 @@ function FieldContent({ className, ...props }: React.ComponentProps<"div">) {
   );
 }
 
-function FieldLabel({
-  className,
-  ...props
-}: React.ComponentProps<typeof Label>) {
+type FieldLabelProps = React.HTMLAttributes<HTMLElement> & {
+  htmlFor?: string;
+};
+
+function FieldLabel(props: FieldLabelProps) {
+  const resolvedClassName = cn(
+    "group/field-label peer/field-label flex w-fit gap-2 leading-snug group-data-[disabled=true]/field:opacity-50 has-data-checked:border-primary/30 has-data-checked:bg-primary/5 has-[>[data-slot=field]]:rounded-md has-[>[data-slot=field]]:border *:data-[slot=field]:p-3 dark:has-data-checked:border-primary/20 dark:has-data-checked:bg-primary/10",
+    "has-[>[data-slot=field]]:w-full has-[>[data-slot=field]]:flex-col",
+    props.className,
+  );
+
+  if (props.htmlFor) {
+    const { htmlFor, ...labelProps } = props;
+
+    return (
+      <label
+        data-slot="field-label"
+        htmlFor={htmlFor}
+        className={resolvedClassName}
+        {...labelProps}
+      />
+    );
+  }
+
   return (
-    <Label
-      data-slot="field-label"
-      className={cn(
-        "group/field-label peer/field-label flex w-fit gap-2 leading-snug group-data-[disabled=true]/field:opacity-50 has-data-checked:border-primary/30 has-data-checked:bg-primary/5 has-[>[data-slot=field]]:rounded-md has-[>[data-slot=field]]:border *:data-[slot=field]:p-3 dark:has-data-checked:border-primary/20 dark:has-data-checked:bg-primary/10",
-        "has-[>[data-slot=field]]:w-full has-[>[data-slot=field]]:flex-col",
-        className,
-      )}
-      {...props}
-    />
+    <div data-slot="field-label" className={resolvedClassName} {...props} />
   );
 }
 
@@ -181,32 +190,38 @@ function FieldError({
 }: React.ComponentProps<"div"> & {
   errors?: Array<{ message?: string } | undefined>;
 }) {
-  const content = useMemo(() => {
-    if (children) {
-      return children;
-    }
-
-    if (!errors?.length) {
-      return null;
-    }
-
-    const uniqueErrors = [
-      ...new Map(errors.map((error) => [error?.message, error])).values(),
-    ];
-
-    if (uniqueErrors.length === 1) {
-      return uniqueErrors[0]?.message;
-    }
-
+  if (children) {
     return (
+      <div
+        role="alert"
+        data-slot="field-error"
+        className={cn("text-sm font-normal text-destructive", className)}
+        {...props}
+      >
+        {children}
+      </div>
+    );
+  }
+
+  if (!errors?.length) {
+    return null;
+  }
+
+  const uniqueErrors = [
+    ...new Map(errors.map((error) => [error?.message, error])).values(),
+  ];
+
+  const content =
+    uniqueErrors.length === 1 ? (
+      uniqueErrors[0]?.message
+    ) : (
       <ul className="ml-4 flex list-disc flex-col gap-1">
         {uniqueErrors.map(
-          (error, index) =>
-            error?.message && <li key={index}>{error.message}</li>,
+          (error) =>
+            error?.message && <li key={error.message}>{error.message}</li>,
         )}
       </ul>
     );
-  }, [children, errors]);
 
   if (!content) {
     return null;

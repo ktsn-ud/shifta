@@ -1,12 +1,12 @@
 "use server";
 
-import { signOut } from "@/lib/auth";
-import { GOOGLE_TOKEN_EXPIRED_LOGIN_PATH } from "@/lib/google-calendar/constants";
+import { auth, signOut } from "@/lib/auth";
 
 export async function signOutAction() {
-  await signOut({ redirectTo: "/login" });
-}
+  const session = await auth();
+  if (!session?.user) {
+    return;
+  }
 
-export async function signOutForGoogleTokenExpiredAction() {
-  await signOut({ redirectTo: GOOGLE_TOKEN_EXPIRED_LOGIN_PATH });
+  await signOut({ redirectTo: "/login" });
 }

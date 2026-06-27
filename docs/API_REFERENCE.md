@@ -118,9 +118,15 @@ type PayrollPreviewBaselineResponse = {
 
 ## Google Calendar
 
+| Route                | 概要                                                          |
+| -------------------- | ------------------------------------------------------------- |
+| `/my/calendar-setup` | Google Calendar 初期設定画面。`calendarId` 未設定時の専用導線 |
+
 | Method | Path                       | 概要                                           |
 | ------ | -------------------------- | ---------------------------------------------- |
 | `POST` | `/api/calendar/initialize` | Google Calendar 初期設定（専用カレンダー作成） |
+
+- 初期化成功後の既存シフト同期はバックグラウンドで継続し、レスポンスは同期完了を待たない。
 
 ## エラーコードの目安
 

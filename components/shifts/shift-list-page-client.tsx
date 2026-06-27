@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useMemo, useState } from "react";
+import { useMemo, useReducer } from "react";
 import { useRouter } from "next/navigation";
 import {
   ArrowDownIcon,
@@ -33,6 +33,7 @@ import {
 } from "@/components/ui/table";
 import {
   addMonths,
+  dateFromDateKey,
   dateKeyFromApiDate,
   formatMonthLabel,
   fromMonthInputValue,
@@ -62,6 +63,30 @@ type SortState = {
   column: SortColumn;
   direction: SortDirection;
 } | null;
+
+type ShiftListState = {
+  month: Date;
+  sortState: SortState;
+  selectedShiftIds: string[];
+  deleteDialogOpen: boolean;
+  isDeleting: boolean;
+  deleteErrorMessage: string | null;
+};
+
+type ShiftListAction =
+  | { type: "setMonth"; month: Date }
+  | { type: "toggleSort"; column: SortColumn }
+  | { type: "resetSort" }
+  | { type: "setSelectedShiftIds"; selectedShiftIds: string[] }
+  | { type: "openDeleteDialog" }
+  | { type: "closeDeleteDialog" }
+  | { type: "startDelete" }
+  | { type: "finishDeleteSuccess" }
+  | {
+      type: "finishDeleteFailure";
+      selectedShiftIds: string[];
+      message: string;
+    };
 
 const shiftDateFormatter = new Intl.DateTimeFormat("ja-JP", {
   month: "2-digit",
@@ -137,6 +162,13 @@ function compareNullableEstimatedPay(
   return direction === "asc" ? left - right : right - left;
 }
 
+function isSameMonth(left: Date, right: Date): boolean {
+  return (
+    left.getFullYear() === right.getFullYear() &&
+    left.getMonth() === right.getMonth()
+  );
+}
+
 function compareShifts(
   left: MonthShift,
   right: MonthShift,
@@ -208,12 +240,553 @@ function compareShifts(
   return sortState.direction === "asc" ? baseCompare : -baseCompare;
 }
 
+function createInitialShiftListState(initialMonth: string): ShiftListState {
+  const parsedMonth = fromMonthInputValue(initialMonth);
+
+  return {
+    month: startOfMonth(parsedMonth ?? new Date()),
+    sortState: null,
+    selectedShiftIds: [],
+    deleteDialogOpen: false,
+    isDeleting: false,
+    deleteErrorMessage: null,
+  };
+}
+
+function shiftListReducer(
+  state: ShiftListState,
+  action: ShiftListAction,
+): ShiftListState {
+  switch (action.type) {
+    case "setMonth":
+      return {
+        ...state,
+        month: action.month,
+      };
+    case "toggleSort":
+      if (!state.sortState || state.sortState.column !== action.column) {
+        return {
+          ...state,
+          sortState: {
+            column: action.column,
+            direction: "asc",
+          },
+        };
+      }
+
+      return {
+        ...state,
+        sortState: {
+          column: action.column,
+          direction: state.sortState.direction === "asc" ? "desc" : "asc",
+        },
+      };
+    case "resetSort":
+      return {
+        ...state,
+        sortState: null,
+      };
+    case "setSelectedShiftIds":
+      return {
+        ...state,
+        selectedShiftIds: action.selectedShiftIds,
+      };
+    case "openDeleteDialog":
+      return {
+        ...state,
+        deleteDialogOpen: true,
+        deleteErrorMessage: null,
+      };
+    case "closeDeleteDialog":
+      return {
+        ...state,
+        deleteDialogOpen: false,
+        deleteErrorMessage: null,
+      };
+    case "startDelete":
+      return {
+        ...state,
+        isDeleting: true,
+        deleteErrorMessage: null,
+        selectedShiftIds: [],
+      };
+    case "finishDeleteSuccess":
+      return {
+        ...state,
+        deleteDialogOpen: false,
+        isDeleting: false,
+        deleteErrorMessage: null,
+      };
+    case "finishDeleteFailure":
+      return {
+        ...state,
+        isDeleting: false,
+        deleteErrorMessage: action.message,
+        selectedShiftIds: action.selectedShiftIds,
+      };
+  }
+}
+
+type SortToggleButtonProps = {
+  column: SortColumn;
+  sortState: SortState;
+  align?: "left" | "right";
+  label: string;
+  onToggle: (column: SortColumn) => void;
+};
+
+function SortToggleButton({
+  column,
+  sortState,
+  align = "left",
+  label,
+  onToggle,
+}: SortToggleButtonProps) {
+  const icon =
+    !sortState || sortState.column !== column ? (
+      <ArrowUpDownIcon className="size-3.5 text-muted-foreground" />
+    ) : sortState.direction === "asc" ? (
+      <ArrowUpIcon className="size-3.5" />
+    ) : (
+      <ArrowDownIcon className="size-3.5" />
+    );
+
+  return (
+    <Button
+      type="button"
+      variant="ghost"
+      size="sm"
+      className={align === "right" ? "ml-auto h-8 px-2" : "-ml-2 h-8 px-2"}
+      onClick={() => onToggle(column)}
+      aria-label={`${label}で並び替え`}
+    >
+      {label}
+      {icon}
+    </Button>
+  );
+}
+
+type ShiftListHeaderProps = {
+  isRefreshing: boolean;
+  isCurrentMonth: boolean;
+  onPreviousMonth: () => void;
+  onNextMonth: () => void;
+  onBackToCurrentMonth: () => void;
+};
+
+type ShiftListToolbarProps = {
+  displayMonthLabel: string;
+  sortState: SortState;
+  selectedCount: number;
+  isDeleting: boolean;
+  onResetSort: () => void;
+  onOpenDeleteDialog: () => void;
+};
+
+type ShiftListTableCardProps = {
+  displayMonthLabel: string;
+  sortedShifts: MonthShift[];
+  errorMessage: string | null;
+  sortState: SortState;
+  selectedShiftIdSet: Set<string>;
+  selectionState: {
+    selectedCount: number;
+    isAllSelected: boolean;
+    isSomeSelected: boolean;
+  };
+  status: {
+    isInitialLoading: boolean;
+    isDeleting: boolean;
+  };
+  onResetSort: () => void;
+  onOpenDeleteDialog: () => void;
+  onToggleSort: (column: SortColumn) => void;
+  onSelectAll: (checked: boolean) => void;
+  onToggleShiftSelection: (shiftId: string, checked: boolean) => void;
+  onEditShift: (shiftId: string) => void;
+};
+
+type ShiftListTableHeaderRowProps = {
+  sortState: SortState;
+  isAllSelected: boolean;
+  isSomeSelected: boolean;
+  onToggleSort: (column: SortColumn) => void;
+  onSelectAll: (checked: boolean) => void;
+};
+
+type ShiftListTableItemRowProps = {
+  shift: MonthShift;
+  isSelected: boolean;
+  onToggleShiftSelection: (shiftId: string, checked: boolean) => void;
+  onEditShift: (shiftId: string) => void;
+};
+
+type ShiftListBulkDeleteDialogProps = {
+  open: boolean;
+  selectedCount: number;
+  isDeleting: boolean;
+  deleteErrorMessage: string | null;
+  onOpenChange: (open: boolean) => void;
+  onCancel: () => void;
+  onConfirm: () => void;
+};
+
+function ShiftListHeader({
+  isRefreshing,
+  isCurrentMonth,
+  onPreviousMonth,
+  onNextMonth,
+  onBackToCurrentMonth,
+}: ShiftListHeaderProps) {
+  return (
+    <header className="flex flex-wrap items-start justify-between gap-4 rounded-xl border border-border/80 bg-card/95 p-5 shadow-sm">
+      <div className="space-y-2">
+        <p className="text-xs font-medium uppercase tracking-[0.12em] text-muted-foreground">
+          Shift List
+        </p>
+        <h2 className="text-2xl font-semibold tracking-tight">シフト一覧</h2>
+        <p className="text-sm text-muted-foreground">
+          月ごとのシフトを確認し、並び替え・一括削除できます。
+        </p>
+      </div>
+
+      <div className="flex flex-wrap gap-2">
+        <Button
+          type="button"
+          variant="outline"
+          onClick={onPreviousMonth}
+          disabled={isRefreshing}
+        >
+          <ChevronLeftIcon className="size-4" />
+          前月
+        </Button>
+        <Button
+          type="button"
+          variant="outline"
+          onClick={onNextMonth}
+          disabled={isRefreshing}
+        >
+          次月
+          <ChevronRightIcon className="size-4" />
+        </Button>
+        <Button
+          type="button"
+          variant="outline"
+          onClick={onBackToCurrentMonth}
+          disabled={isCurrentMonth || isRefreshing}
+        >
+          今月に戻る
+        </Button>
+      </div>
+    </header>
+  );
+}
+
+function ShiftListToolbar({
+  displayMonthLabel,
+  sortState,
+  selectedCount,
+  isDeleting,
+  onResetSort,
+  onOpenDeleteDialog,
+}: ShiftListToolbarProps) {
+  return (
+    <CardHeader className="flex flex-col gap-3 border-b border-border/70 md:flex-row md:items-center md:justify-between">
+      <CardTitle className="text-lg font-semibold">
+        {displayMonthLabel}
+      </CardTitle>
+      <div className="flex flex-wrap items-center gap-2">
+        <Button
+          type="button"
+          variant="outline"
+          onClick={onResetSort}
+          disabled={sortState === null}
+        >
+          デフォルト表示に戻す
+        </Button>
+        <Button
+          type="button"
+          variant="destructive"
+          onClick={onOpenDeleteDialog}
+          disabled={selectedCount === 0 || isDeleting}
+        >
+          <Trash2Icon className="size-4" />
+          選択したシフトを削除
+        </Button>
+      </div>
+    </CardHeader>
+  );
+}
+
+function ShiftListTableCard({
+  displayMonthLabel,
+  sortedShifts,
+  errorMessage,
+  sortState,
+  selectedShiftIdSet,
+  selectionState,
+  status,
+  onResetSort,
+  onOpenDeleteDialog,
+  onToggleSort,
+  onSelectAll,
+  onToggleShiftSelection,
+  onEditShift,
+}: ShiftListTableCardProps) {
+  return (
+    <Card className="border-border/80 bg-card/95 shadow-sm">
+      <ShiftListToolbar
+        displayMonthLabel={displayMonthLabel}
+        sortState={sortState}
+        selectedCount={selectionState.selectedCount}
+        isDeleting={status.isDeleting}
+        onResetSort={onResetSort}
+        onOpenDeleteDialog={onOpenDeleteDialog}
+      />
+
+      <CardContent className="space-y-4 pt-5">
+        <p className="text-sm text-muted-foreground">
+          {sortedShifts.length}件表示 / {selectionState.selectedCount}件選択中
+        </p>
+
+        {errorMessage ? (
+          <p className="rounded-lg border border-destructive/40 bg-destructive/5 px-3 py-2 text-sm text-destructive">
+            {errorMessage}
+          </p>
+        ) : null}
+
+        {status.isInitialLoading ? (
+          <div className="rounded-lg border border-border/70 bg-muted/20 px-4 py-8 text-center text-sm text-muted-foreground">
+            シフトを読み込み中です...
+          </div>
+        ) : (
+          <div className="overflow-hidden rounded-lg border border-border/70">
+            <Table>
+              <TableHeader className="bg-muted/35">
+                <ShiftListTableHeaderRow
+                  sortState={sortState}
+                  isAllSelected={selectionState.isAllSelected}
+                  isSomeSelected={selectionState.isSomeSelected}
+                  onToggleSort={onToggleSort}
+                  onSelectAll={onSelectAll}
+                />
+              </TableHeader>
+              <TableBody data-testid="shift-list-table-body">
+                {sortedShifts.length === 0 ? (
+                  <TableRow>
+                    <TableCell
+                      colSpan={6}
+                      className="h-24 text-center text-muted-foreground"
+                    >
+                      表示対象のシフトがありません。
+                    </TableCell>
+                  </TableRow>
+                ) : (
+                  sortedShifts.map((shift) => (
+                    <ShiftListTableItemRow
+                      key={shift.id}
+                      shift={shift}
+                      isSelected={selectedShiftIdSet.has(shift.id)}
+                      onToggleShiftSelection={onToggleShiftSelection}
+                      onEditShift={onEditShift}
+                    />
+                  ))
+                )}
+              </TableBody>
+            </Table>
+          </div>
+        )}
+      </CardContent>
+    </Card>
+  );
+}
+
+function ShiftListTableHeaderRow({
+  sortState,
+  isAllSelected,
+  isSomeSelected,
+  onToggleSort,
+  onSelectAll,
+}: ShiftListTableHeaderRowProps) {
+  return (
+    <TableRow>
+      <TableHead className="w-10">
+        <div
+          onClick={(event) => event.stopPropagation()}
+          onKeyDown={(event) => event.stopPropagation()}
+        >
+          <Checkbox
+            checked={isAllSelected}
+            indeterminate={isSomeSelected}
+            onCheckedChange={(checked) => onSelectAll(Boolean(checked))}
+            aria-label="表示中のシフトを全選択"
+          />
+        </div>
+      </TableHead>
+      <TableHead>
+        <SortToggleButton
+          column="date"
+          sortState={sortState}
+          label="日付"
+          onToggle={onToggleSort}
+        />
+      </TableHead>
+      <TableHead>
+        <SortToggleButton
+          column="time"
+          sortState={sortState}
+          label="時間"
+          onToggle={onToggleSort}
+        />
+      </TableHead>
+      <TableHead>
+        <SortToggleButton
+          column="workplace"
+          sortState={sortState}
+          label="勤務先"
+          onToggle={onToggleSort}
+        />
+      </TableHead>
+      <TableHead>
+        <SortToggleButton
+          column="breakMinutes"
+          sortState={sortState}
+          label="休憩時間"
+          onToggle={onToggleSort}
+        />
+      </TableHead>
+      <TableHead className="text-right">
+        <SortToggleButton
+          column="estimatedPay"
+          sortState={sortState}
+          align="right"
+          label="給与"
+          onToggle={onToggleSort}
+        />
+      </TableHead>
+    </TableRow>
+  );
+}
+
+function ShiftListTableItemRow({
+  shift,
+  isSelected,
+  onToggleShiftSelection,
+  onEditShift,
+}: ShiftListTableItemRowProps) {
+  const workplaceLabel = formatShiftWorkplaceLabel({
+    workplaceName: shift.workplace.name,
+    workplaceType: shift.workplace.type,
+    shiftType: shift.shiftType,
+    comment: shift.comment,
+  });
+
+  return (
+    <TableRow
+      data-state={isSelected ? "selected" : undefined}
+      className="transition-colors data-[state=selected]:bg-primary/10"
+    >
+      <TableCell className="w-10">
+        <div
+          onClick={(event) => {
+            event.stopPropagation();
+          }}
+          onKeyDown={(event) => {
+            event.stopPropagation();
+          }}
+        >
+          <Checkbox
+            checked={isSelected}
+            onCheckedChange={(checked) =>
+              onToggleShiftSelection(shift.id, Boolean(checked))
+            }
+            aria-label={`${formatDate(shift.date)}のシフトを選択`}
+          />
+        </div>
+      </TableCell>
+      <TableCell>{formatDate(shift.date)}</TableCell>
+      <TableCell>{formatTimeRange(shift)}</TableCell>
+      <TableCell>
+        <div className="flex items-center gap-2">
+          <span
+            aria-hidden
+            className="size-2.5 rounded-full"
+            style={{
+              backgroundColor: shift.workplace.color,
+            }}
+          />
+          <button
+            type="button"
+            className="text-left hover:underline"
+            onClick={() => onEditShift(shift.id)}
+          >
+            {workplaceLabel}
+          </button>
+        </div>
+      </TableCell>
+      <TableCell>{shift.breakMinutes}分</TableCell>
+      <TableCell className="text-right font-medium">
+        {formatCurrency(shift.estimatedPay)}
+      </TableCell>
+    </TableRow>
+  );
+}
+
+function ShiftListBulkDeleteDialog({
+  open,
+  selectedCount,
+  isDeleting,
+  deleteErrorMessage,
+  onOpenChange,
+  onCancel,
+  onConfirm,
+}: ShiftListBulkDeleteDialogProps) {
+  return (
+    <Dialog open={open} onOpenChange={onOpenChange}>
+      <DialogContent>
+        <DialogHeader>
+          <DialogTitle>選択したシフトを削除しますか？</DialogTitle>
+          <DialogDescription>
+            {selectedCount}件のシフトを削除します。この操作は取り消せません。
+          </DialogDescription>
+        </DialogHeader>
+
+        {deleteErrorMessage ? (
+          <p className="rounded-md border border-destructive/40 bg-destructive/5 px-3 py-2 text-sm text-destructive">
+            {deleteErrorMessage}
+          </p>
+        ) : null}
+
+        <DialogFooter>
+          <Button
+            type="button"
+            variant="outline"
+            disabled={isDeleting}
+            onClick={onCancel}
+          >
+            キャンセル
+          </Button>
+          <Button
+            type="button"
+            variant="destructive"
+            disabled={isDeleting || selectedCount === 0}
+            onClick={onConfirm}
+          >
+            {isDeleting ? "削除中..." : "削除する"}
+          </Button>
+        </DialogFooter>
+      </DialogContent>
+    </Dialog>
+  );
+}
+
 type ShiftListPageClientProps = {
   currentUserId: string;
   initialMonth: string;
   initialMonthShifts: MonthShift[];
   initialMonthStartDate: string;
   initialMonthEndDate: string;
+  todayDate: string;
 };
 
 export function ShiftListPageClient({
@@ -222,160 +795,100 @@ export function ShiftListPageClient({
   initialMonthShifts,
   initialMonthStartDate,
   initialMonthEndDate,
+  todayDate,
 }: ShiftListPageClientProps) {
   const router = useRouter();
   const queryClient = getBrowserQueryClient();
-  const [month, setMonth] = useState(() => {
-    const parsedMonth = fromMonthInputValue(initialMonth);
-    return startOfMonth(parsedMonth ?? new Date());
-  });
-  const [displayMonth, setDisplayMonth] = useState(() => {
-    const parsedMonth = fromMonthInputValue(initialMonth);
-    return startOfMonth(parsedMonth ?? new Date());
-  });
-  const [sortState, setSortState] = useState<SortState>(null);
-  const [selectedShiftIds, setSelectedShiftIds] = useState<Set<string>>(
-    new Set(),
-  );
-  const [deleteDialogOpen, setDeleteDialogOpen] = useState(false);
-  const [isDeleting, setIsDeleting] = useState(false);
-  const [deleteErrorMessage, setDeleteErrorMessage] = useState<string | null>(
-    null,
+  const [state, dispatch] = useReducer(
+    shiftListReducer,
+    initialMonth,
+    createInitialShiftListState,
   );
 
-  const {
-    shifts,
-    isInitialLoading,
-    isRefreshing,
-    isPlaceholderData,
-    errorMessage,
-  } = useMonthShifts(month, {
-    cacheUserKey: currentUserId,
-    initialShifts: initialMonthShifts,
-    initialStartDate: initialMonthStartDate,
-    initialEndDate: initialMonthEndDate,
-  });
+  const { shifts, displayMonth, isInitialLoading, isRefreshing, errorMessage } =
+    useMonthShifts(state.month, {
+      cacheUserKey: currentUserId,
+      initialShifts: initialMonthShifts,
+      initialStartDate: initialMonthStartDate,
+      initialEndDate: initialMonthEndDate,
+    });
 
   const sortedShifts = useMemo(() => {
-    return [...shifts].sort((left, right) =>
-      compareShifts(left, right, sortState),
+    return shifts.toSorted((left, right) =>
+      compareShifts(left, right, state.sortState),
     );
-  }, [shifts, sortState]);
+  }, [shifts, state.sortState]);
 
-  const now = new Date();
-  const isCurrentMonth =
-    displayMonth.getFullYear() === now.getFullYear() &&
-    displayMonth.getMonth() === now.getMonth();
-  const selectedCount = selectedShiftIds.size;
+  const currentMonth = useMemo(
+    () => startOfMonth(dateFromDateKey(todayDate) ?? new Date()),
+    [todayDate],
+  );
+  const visibleShiftIdSet = useMemo(
+    () => new Set(shifts.map((shift) => shift.id)),
+    [shifts],
+  );
+  const selectedShiftIds = useMemo(
+    () =>
+      state.selectedShiftIds.filter((shiftId) =>
+        visibleShiftIdSet.has(shiftId),
+      ),
+    [state.selectedShiftIds, visibleShiftIdSet],
+  );
+  const selectedShiftIdSet = useMemo(
+    () => new Set(selectedShiftIds),
+    [selectedShiftIds],
+  );
+  const isCurrentMonth = isSameMonth(displayMonth, currentMonth);
+  const selectedCount = selectedShiftIds.length;
   const monthValue = toMonthInputValue(displayMonth);
+  const displayMonthLabel = formatMonthLabel(displayMonth);
 
   const isAllSelected =
     sortedShifts.length > 0 &&
-    sortedShifts.every((shift) => selectedShiftIds.has(shift.id));
+    sortedShifts.every((shift) => selectedShiftIdSet.has(shift.id));
   const isSomeSelected =
-    sortedShifts.some((shift) => selectedShiftIds.has(shift.id)) &&
+    sortedShifts.some((shift) => selectedShiftIdSet.has(shift.id)) &&
     !isAllSelected;
 
-  useEffect(() => {
-    const nextMonth = startOfMonth(
-      fromMonthInputValue(initialMonth) ?? new Date(),
-    );
-
-    setMonth((current) => {
-      const isSameMonth =
-        current.getFullYear() === nextMonth.getFullYear() &&
-        current.getMonth() === nextMonth.getMonth();
-
-      return isSameMonth ? current : nextMonth;
-    });
-    setDisplayMonth((current) => {
-      const isSameMonth =
-        current.getFullYear() === nextMonth.getFullYear() &&
-        current.getMonth() === nextMonth.getMonth();
-
-      return isSameMonth ? current : nextMonth;
-    });
-  }, [initialMonth]);
-
-  useEffect(() => {
-    if (isPlaceholderData) {
-      return;
-    }
-
-    setDisplayMonth((current) => {
-      const isSameMonth =
-        current.getFullYear() === month.getFullYear() &&
-        current.getMonth() === month.getMonth();
-
-      return isSameMonth ? current : month;
-    });
-  }, [isPlaceholderData, month]);
-
-  useEffect(() => {
-    const validIds = new Set(shifts.map((shift) => shift.id));
-
-    setSelectedShiftIds((current) => {
-      const next = new Set(
-        Array.from(current).filter((shiftId) => validIds.has(shiftId)),
-      );
-
-      if (next.size === current.size) {
-        return current;
-      }
-
-      return next;
-    });
-  }, [shifts]);
-
   function handleToggleSort(column: SortColumn) {
-    setSortState((current) => {
-      if (!current || current.column !== column) {
-        return {
-          column,
-          direction: "asc",
-        };
-      }
-
-      return {
-        column,
-        direction: current.direction === "asc" ? "desc" : "asc",
-      };
+    dispatch({
+      type: "toggleSort",
+      column,
     });
-  }
-
-  function renderSortIcon(column: SortColumn) {
-    if (!sortState || sortState.column !== column) {
-      return <ArrowUpDownIcon className="size-3.5 text-muted-foreground" />;
-    }
-
-    if (sortState.direction === "asc") {
-      return <ArrowUpIcon className="size-3.5" />;
-    }
-
-    return <ArrowDownIcon className="size-3.5" />;
   }
 
   function handleToggleShiftSelection(shiftId: string, checked: boolean) {
-    setSelectedShiftIds((current) => {
-      const next = new Set(current);
+    const next = new Set(
+      state.selectedShiftIds.filter((currentShiftId) =>
+        visibleShiftIdSet.has(currentShiftId),
+      ),
+    );
 
-      if (checked) {
-        next.add(shiftId);
-      } else {
-        next.delete(shiftId);
-      }
+    if (checked) {
+      next.add(shiftId);
+    } else {
+      next.delete(shiftId);
+    }
 
-      return next;
+    dispatch({
+      type: "setSelectedShiftIds",
+      selectedShiftIds: Array.from(next),
     });
   }
 
   function handleSelectAll(checked: boolean) {
     if (!checked) {
-      setSelectedShiftIds(new Set());
+      dispatch({
+        type: "setSelectedShiftIds",
+        selectedShiftIds: [],
+      });
       return;
     }
 
-    setSelectedShiftIds(new Set(sortedShifts.map((shift) => shift.id)));
+    dispatch({
+      type: "setSelectedShiftIds",
+      selectedShiftIds: sortedShifts.map((shift) => shift.id),
+    });
   }
 
   function handleEditShift(shiftId: string) {
@@ -387,19 +900,17 @@ export function ShiftListPageClient({
   }
 
   async function handleBulkDelete() {
-    if (selectedShiftIds.size === 0 || isDeleting) {
+    if (selectedShiftIds.length === 0 || state.isDeleting) {
       return;
     }
 
-    const shiftIds = Array.from(selectedShiftIds);
+    const shiftIds = selectedShiftIds;
     const rollback = removeShiftsFromMonthCachesOptimistically(
       queryClient,
       shiftIds,
     );
 
-    setIsDeleting(true);
-    setDeleteErrorMessage(null);
-    setSelectedShiftIds(new Set());
+    dispatch({ type: "startDelete" });
 
     try {
       const response = await fetch("/api/shifts", {
@@ -428,7 +939,7 @@ export function ShiftListPageClient({
         messages.error.calendarSyncFailed,
       );
 
-      setDeleteDialogOpen(false);
+      dispatch({ type: "finishDeleteSuccess" });
       void invalidateAfterShiftMutation(queryClient, {
         mode: "background",
       });
@@ -441,326 +952,86 @@ export function ShiftListPageClient({
       });
     } catch (error) {
       rollback();
-      setSelectedShiftIds(new Set(shiftIds));
 
       console.error("failed to bulk delete shifts", error);
       const message = toErrorMessage(error, messages.error.shiftDeleteFailed);
-      setDeleteErrorMessage(message);
+      dispatch({
+        type: "finishDeleteFailure",
+        selectedShiftIds: shiftIds,
+        message,
+      });
       toast.error(messages.error.shiftDeleteFailed, {
         description: message,
         duration: 6000,
       });
-    } finally {
-      setIsDeleting(false);
     }
   }
 
   return (
     <section className="space-y-6 p-4 md:p-6">
-      <header className="flex flex-wrap items-start justify-between gap-4 rounded-xl border border-border/80 bg-card/95 p-5 shadow-sm">
-        <div className="space-y-2">
-          <p className="text-xs font-medium uppercase tracking-[0.12em] text-muted-foreground">
-            Shift List
-          </p>
-          <h2 className="text-2xl font-semibold tracking-tight">シフト一覧</h2>
-          <p className="text-sm text-muted-foreground">
-            月ごとのシフトを確認し、並び替え・一括削除できます。
-          </p>
-        </div>
-
-        <div className="flex flex-wrap gap-2">
-          <Button
-            type="button"
-            variant="outline"
-            onClick={() => setMonth((current) => addMonths(current, -1))}
-            disabled={isRefreshing}
-          >
-            <ChevronLeftIcon className="size-4" />
-            前月
-          </Button>
-          <Button
-            type="button"
-            variant="outline"
-            onClick={() => setMonth((current) => addMonths(current, 1))}
-            disabled={isRefreshing}
-          >
-            次月
-            <ChevronRightIcon className="size-4" />
-          </Button>
-          <Button
-            type="button"
-            variant="outline"
-            onClick={() => setMonth(startOfMonth(new Date()))}
-            disabled={isCurrentMonth || isRefreshing}
-          >
-            今月に戻る
-          </Button>
-        </div>
-      </header>
+      <ShiftListHeader
+        isRefreshing={isRefreshing}
+        isCurrentMonth={isCurrentMonth}
+        onPreviousMonth={() =>
+          dispatch({
+            type: "setMonth",
+            month: addMonths(displayMonth, -1),
+          })
+        }
+        onNextMonth={() =>
+          dispatch({
+            type: "setMonth",
+            month: addMonths(displayMonth, 1),
+          })
+        }
+        onBackToCurrentMonth={() =>
+          dispatch({
+            type: "setMonth",
+            month: currentMonth,
+          })
+        }
+      />
 
       <LoadingOverlay isLoading={isRefreshing} className="rounded-xl">
-        <Card className="border-border/80 bg-card/95 shadow-sm">
-          <CardHeader className="flex flex-col gap-3 border-b border-border/70 md:flex-row md:items-center md:justify-between">
-            <CardTitle className="text-lg font-semibold">
-              {formatMonthLabel(displayMonth)}
-            </CardTitle>
-            <div className="flex flex-wrap items-center gap-2">
-              <Button
-                type="button"
-                variant="outline"
-                onClick={() => setSortState(null)}
-                disabled={sortState === null}
-              >
-                デフォルト表示に戻す
-              </Button>
-              <Button
-                type="button"
-                variant="destructive"
-                onClick={() => {
-                  setDeleteErrorMessage(null);
-                  setDeleteDialogOpen(true);
-                }}
-                disabled={selectedCount === 0 || isDeleting}
-              >
-                <Trash2Icon className="size-4" />
-                選択したシフトを削除
-              </Button>
-            </div>
-          </CardHeader>
-
-          <CardContent className="space-y-4 pt-5">
-            <p className="text-sm text-muted-foreground">
-              {sortedShifts.length}件表示 / {selectedCount}件選択中
-            </p>
-
-            {errorMessage ? (
-              <p className="rounded-lg border border-destructive/40 bg-destructive/5 px-3 py-2 text-sm text-destructive">
-                {errorMessage}
-              </p>
-            ) : null}
-
-            {isInitialLoading ? (
-              <div className="rounded-lg border border-border/70 bg-muted/20 px-4 py-8 text-center text-sm text-muted-foreground">
-                シフトを読み込み中です...
-              </div>
-            ) : (
-              <div className="overflow-hidden rounded-lg border border-border/70">
-                <Table>
-                  <TableHeader className="bg-muted/35">
-                    <TableRow>
-                      <TableHead className="w-10">
-                        <div
-                          onClick={(event) => event.stopPropagation()}
-                          onKeyDown={(event) => event.stopPropagation()}
-                        >
-                          <Checkbox
-                            checked={isAllSelected}
-                            indeterminate={isSomeSelected}
-                            onCheckedChange={(checked) =>
-                              handleSelectAll(Boolean(checked))
-                            }
-                            aria-label="表示中のシフトを全選択"
-                          />
-                        </div>
-                      </TableHead>
-                      <TableHead>
-                        <Button
-                          type="button"
-                          variant="ghost"
-                          size="sm"
-                          className="-ml-2 h-8 px-2"
-                          onClick={() => handleToggleSort("date")}
-                          aria-label="日付で並び替え"
-                        >
-                          日付
-                          {renderSortIcon("date")}
-                        </Button>
-                      </TableHead>
-                      <TableHead>
-                        <Button
-                          type="button"
-                          variant="ghost"
-                          size="sm"
-                          className="-ml-2 h-8 px-2"
-                          onClick={() => handleToggleSort("time")}
-                          aria-label="時間で並び替え"
-                        >
-                          時間
-                          {renderSortIcon("time")}
-                        </Button>
-                      </TableHead>
-                      <TableHead>
-                        <Button
-                          type="button"
-                          variant="ghost"
-                          size="sm"
-                          className="-ml-2 h-8 px-2"
-                          onClick={() => handleToggleSort("workplace")}
-                          aria-label="勤務先で並び替え"
-                        >
-                          勤務先
-                          {renderSortIcon("workplace")}
-                        </Button>
-                      </TableHead>
-                      <TableHead>
-                        <Button
-                          type="button"
-                          variant="ghost"
-                          size="sm"
-                          className="-ml-2 h-8 px-2"
-                          onClick={() => handleToggleSort("breakMinutes")}
-                          aria-label="休憩時間で並び替え"
-                        >
-                          休憩時間
-                          {renderSortIcon("breakMinutes")}
-                        </Button>
-                      </TableHead>
-                      <TableHead className="text-right">
-                        <Button
-                          type="button"
-                          variant="ghost"
-                          size="sm"
-                          className="ml-auto h-8 px-2"
-                          onClick={() => handleToggleSort("estimatedPay")}
-                          aria-label="給与で並び替え"
-                        >
-                          給与
-                          {renderSortIcon("estimatedPay")}
-                        </Button>
-                      </TableHead>
-                    </TableRow>
-                  </TableHeader>
-                  <TableBody data-testid="shift-list-table-body">
-                    {sortedShifts.length === 0 ? (
-                      <TableRow>
-                        <TableCell
-                          colSpan={6}
-                          className="h-24 text-center text-muted-foreground"
-                        >
-                          表示対象のシフトがありません。
-                        </TableCell>
-                      </TableRow>
-                    ) : (
-                      sortedShifts.map((shift) => {
-                        const workplaceLabel = formatShiftWorkplaceLabel({
-                          workplaceName: shift.workplace.name,
-                          workplaceType: shift.workplace.type,
-                          shiftType: shift.shiftType,
-                          comment: shift.comment,
-                        });
-                        const isSelected = selectedShiftIds.has(shift.id);
-
-                        return (
-                          <TableRow
-                            key={shift.id}
-                            role="button"
-                            tabIndex={0}
-                            data-state={isSelected ? "selected" : undefined}
-                            className="cursor-pointer transition-colors hover:bg-muted/30 data-[state=selected]:bg-primary/10"
-                            onClick={() => handleEditShift(shift.id)}
-                            onKeyDown={(event) => {
-                              if (event.key === "Enter" || event.key === " ") {
-                                event.preventDefault();
-                                handleEditShift(shift.id);
-                              }
-                            }}
-                          >
-                            <TableCell className="w-10">
-                              <div
-                                onClick={(event) => {
-                                  event.stopPropagation();
-                                }}
-                                onKeyDown={(event) => {
-                                  event.stopPropagation();
-                                }}
-                              >
-                                <Checkbox
-                                  checked={isSelected}
-                                  onCheckedChange={(checked) =>
-                                    handleToggleShiftSelection(
-                                      shift.id,
-                                      Boolean(checked),
-                                    )
-                                  }
-                                  aria-label={`${formatDate(shift.date)}のシフトを選択`}
-                                />
-                              </div>
-                            </TableCell>
-                            <TableCell>{formatDate(shift.date)}</TableCell>
-                            <TableCell>{formatTimeRange(shift)}</TableCell>
-                            <TableCell>
-                              <div className="flex items-center gap-2">
-                                <span
-                                  aria-hidden
-                                  className="size-2.5 rounded-full"
-                                  style={{
-                                    backgroundColor: shift.workplace.color,
-                                  }}
-                                />
-                                <span>{workplaceLabel}</span>
-                              </div>
-                            </TableCell>
-                            <TableCell>{shift.breakMinutes}分</TableCell>
-                            <TableCell className="text-right font-medium">
-                              {formatCurrency(shift.estimatedPay)}
-                            </TableCell>
-                          </TableRow>
-                        );
-                      })
-                    )}
-                  </TableBody>
-                </Table>
-              </div>
-            )}
-          </CardContent>
-        </Card>
+        <ShiftListTableCard
+          displayMonthLabel={displayMonthLabel}
+          sortedShifts={sortedShifts}
+          errorMessage={errorMessage}
+          sortState={state.sortState}
+          selectedShiftIdSet={selectedShiftIdSet}
+          selectionState={{
+            selectedCount,
+            isAllSelected,
+            isSomeSelected,
+          }}
+          status={{
+            isInitialLoading,
+            isDeleting: state.isDeleting,
+          }}
+          onResetSort={() => dispatch({ type: "resetSort" })}
+          onOpenDeleteDialog={() => dispatch({ type: "openDeleteDialog" })}
+          onToggleSort={handleToggleSort}
+          onSelectAll={handleSelectAll}
+          onToggleShiftSelection={handleToggleShiftSelection}
+          onEditShift={handleEditShift}
+        />
       </LoadingOverlay>
 
-      <Dialog
-        open={deleteDialogOpen}
+      <ShiftListBulkDeleteDialog
+        open={state.deleteDialogOpen}
+        selectedCount={selectedCount}
+        isDeleting={state.isDeleting}
+        deleteErrorMessage={state.deleteErrorMessage}
         onOpenChange={(nextOpen) => {
-          if (!nextOpen) {
-            setDeleteErrorMessage(null);
-          }
-          setDeleteDialogOpen(nextOpen);
+          dispatch({
+            type: nextOpen ? "openDeleteDialog" : "closeDeleteDialog",
+          });
         }}
-      >
-        <DialogContent>
-          <DialogHeader>
-            <DialogTitle>選択したシフトを削除しますか？</DialogTitle>
-            <DialogDescription>
-              {selectedCount}件のシフトを削除します。この操作は取り消せません。
-            </DialogDescription>
-          </DialogHeader>
-
-          {deleteErrorMessage ? (
-            <p className="rounded-md border border-destructive/40 bg-destructive/5 px-3 py-2 text-sm text-destructive">
-              {deleteErrorMessage}
-            </p>
-          ) : null}
-
-          <DialogFooter>
-            <Button
-              type="button"
-              variant="outline"
-              disabled={isDeleting}
-              onClick={() => setDeleteDialogOpen(false)}
-            >
-              キャンセル
-            </Button>
-            <Button
-              type="button"
-              variant="destructive"
-              disabled={isDeleting || selectedCount === 0}
-              onClick={() => {
-                void handleBulkDelete();
-              }}
-            >
-              {isDeleting ? "削除中..." : "削除する"}
-            </Button>
-          </DialogFooter>
-        </DialogContent>
-      </Dialog>
+        onCancel={() => dispatch({ type: "closeDeleteDialog" })}
+        onConfirm={() => {
+          void handleBulkDelete();
+        }}
+      />
     </section>
   );
 }

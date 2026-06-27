@@ -1,0 +1,6 @@
+{
+  "rules": {
+    "react-doctor/server-auth-actions": "warn",
+    "react-doctor/url-prefilled-privileged-action": "warn"
+  }
+}

@@ -18,6 +18,10 @@ const pushMock = jest.fn();
 const refreshMock = jest.fn();
 const BULK_CALENDAR_SELECTION_STORAGE_KEY = "shifta:bulk-calendar-selection";
 const WORKPLACE_LIST_URL = "/api/workplaces?includeCounts=false";
+const BULK_SHIFT_FORM_PROPS = {
+  initialMonthInputValue: "2026-03",
+  todayDateKey: "2026-03-15",
+} as const;
 
 jest.mock("next/navigation", () => ({
   useRouter: () => ({
@@ -37,6 +41,10 @@ function render(ui: ReactElement) {
   return baseRender(
     <QueryClientProvider client={queryClient}>{ui}</QueryClientProvider>,
   );
+}
+
+function renderBulkShiftForm() {
+  return render(<BulkShiftForm {...BULK_SHIFT_FORM_PROPS} />);
 }
 
 function jsonResponse(payload: unknown, status = 200): Response {
@@ -222,7 +230,7 @@ describe("bulk shift flow integration", () => {
       },
     );
 
-    render(<BulkShiftForm />);
+    renderBulkShiftForm();
 
     await waitFor(() => {
       expect(
@@ -405,7 +413,7 @@ describe("bulk shift flow integration", () => {
       },
     );
 
-    render(<BulkShiftForm />);
+    renderBulkShiftForm();
 
     const queryClient = getBrowserQueryClient();
     const marchKey = queryKeys.shifts.month({
@@ -505,7 +513,7 @@ describe("bulk shift flow integration", () => {
       },
     );
 
-    render(<BulkShiftForm />);
+    renderBulkShiftForm();
 
     await waitFor(() => {
       expect(
@@ -617,7 +625,7 @@ describe("bulk shift flow integration", () => {
       },
     );
 
-    render(<BulkShiftForm />);
+    renderBulkShiftForm();
 
     const queryClient = getBrowserQueryClient();
     const marchKey = queryKeys.shifts.month({
@@ -709,7 +717,7 @@ describe("bulk shift flow integration", () => {
       throw new Error("Unexpected fetch: " + input);
     });
 
-    render(<BulkShiftForm />);
+    renderBulkShiftForm();
 
     await waitFor(() => {
       expect(
@@ -774,7 +782,7 @@ describe("bulk shift flow integration", () => {
       throw new Error("Unexpected fetch: " + input);
     });
 
-    render(<BulkShiftForm />);
+    renderBulkShiftForm();
 
     await waitFor(() => {
       expect(
@@ -857,7 +865,7 @@ describe("bulk shift flow integration", () => {
       throw new Error("Unexpected fetch: " + input);
     });
 
-    render(<BulkShiftForm />);
+    renderBulkShiftForm();
 
     await waitFor(() => {
       expect(calendarRequests.length).toBeGreaterThan(0);
@@ -917,7 +925,7 @@ describe("bulk shift flow integration", () => {
       throw new Error("Unexpected fetch: " + input);
     });
 
-    render(<BulkShiftForm />);
+    renderBulkShiftForm();
 
     await waitFor(() => {
       expect(
@@ -1006,7 +1014,7 @@ describe("bulk shift flow integration", () => {
       throw new Error("Unexpected fetch: " + input);
     });
 
-    render(<BulkShiftForm />);
+    renderBulkShiftForm();
 
     await waitFor(() => {
       expect(screen.getByText("09:00-10:00 March Event")).toBeInTheDocument();

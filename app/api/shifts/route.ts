@@ -45,11 +45,9 @@ const shiftListQuerySchema = z
     },
   );
 
-const shiftBulkDeleteSchema = z
-  .object({
-    shiftIds: z.array(z.string().min(1)).min(1).max(100),
-  })
-  .strict();
+const shiftBulkDeleteSchema = z.strictObject({
+  shiftIds: z.array(z.string().min(1)).min(1).max(100),
+});
 
 function revalidateShiftMutationTags(input: {
   userId: string;

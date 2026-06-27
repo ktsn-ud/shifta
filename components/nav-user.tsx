@@ -43,6 +43,7 @@ export function NavUser({
             render={
               <SidebarMenuButton
                 size="lg"
+                aria-label={`${user.name} のメニュー`}
                 className="h-12 rounded-xl border border-sidebar-border/70 bg-sidebar-accent/30 px-2.5 aria-expanded:bg-sidebar-accent/70"
               />
             }
@@ -111,7 +112,13 @@ export function NavUser({
             <form action={signOutAction}>
               <DropdownMenuItem
                 variant="destructive"
-                render={<button type="submit" className="w-full" />}
+                render={
+                  <button
+                    type="submit"
+                    aria-label="ログアウト"
+                    className="w-full"
+                  />
+                }
               >
                 <LogOutIcon />
                 ログアウト

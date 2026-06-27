@@ -1,53 +1,23 @@
 "use client";
 
-import { useEffect, useMemo, useRef, useState } from "react";
+import { useCallback, useMemo, useReducer, useRef } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { useRouter } from "next/navigation";
-import { ChevronLeftIcon, ChevronRightIcon, Trash2Icon } from "lucide-react";
 import { toast } from "sonner";
-import holidayJp from "@holiday-jp/holiday_jp";
-import { FormErrorMessage } from "@/components/form/form-error-message";
-import { ShiftPayrollPreviewFloating } from "@/components/shifts/ShiftPayrollPreviewFloating";
+import { BulkShiftFormScreen } from "@/components/shifts/bulk-shift-form/screen";
+import {
+  formatSelectedDate,
+  getLessonSelectionValues,
+  MAX_BREAK_MINUTES,
+} from "@/components/shifts/bulk-shift-form/view-helpers";
 import { useShiftPayrollPreview } from "@/components/shifts/use-shift-payroll-preview";
-import { Button } from "@/components/ui/button";
-import { Checkbox } from "@/components/ui/checkbox";
-import {
-  Dialog,
-  DialogContent,
-  DialogDescription,
-  DialogFooter,
-  DialogHeader,
-  DialogTitle,
-} from "@/components/ui/dialog";
-import {
-  Field,
-  FieldContent,
-  FieldDescription,
-  FieldGroup,
-  FieldLabel,
-  Form,
-} from "@/components/ui/form";
-import { Input } from "@/components/ui/input";
-import { LoadingOverlay } from "@/components/ui/loading-overlay";
-import { RadioGroup, RadioGroupItem } from "@/components/ui/radio-group";
-import {
-  Select,
-  SelectContent,
-  SelectGroup,
-  SelectItem,
-  SelectTrigger,
-  SelectValue,
-} from "@/components/ui/select";
-import { SpinnerPanel } from "@/components/ui/spinner";
 import { DATE_ONLY_REGEX, TIME_ONLY_REGEX } from "@/lib/api/date-time";
 import {
   addMonths,
-  dateFromDateKey,
-  formatMonthLabel,
+  fromMonthInputValue,
   toMonthInputValue,
   toDateKey,
 } from "@/lib/calendar/date";
-import { formatShiftType } from "@/lib/enum-labels";
 import {
   parseGoogleSyncStateFromPayload,
   readGoogleSyncFailureFromErrorResponse,
@@ -61,7 +31,6 @@ import { invalidateAfterShiftMutation } from "@/lib/query/invalidation";
 import { upsertMonthShiftsInCachesOptimistically } from "@/lib/query/optimistic-shifts";
 import { queryKeys } from "@/lib/query/query-keys";
 import {
-  formatShiftTimeRange,
   getShiftEndDate,
   isOvernightShift,
   isSameTimeShift,
@@ -70,7 +39,6 @@ import {
   resolveUserFacingErrorFromResponse,
   toUserFacingMessage,
 } from "@/lib/user-facing-error";
-import { cn } from "@/lib/utils";
 import { useGoogleTokenExpiredSignOut } from "@/hooks/use-google-token-expired-signout";
 import { type MonthShift, normalizeMonthShift } from "@/hooks/use-month-shifts";
 import { useResetOnRouteHidden } from "@/hooks/use-reset-on-route-hidden";
@@ -78,23 +46,13 @@ import { useResetOnRouteHidden } from "@/hooks/use-reset-on-route-hidden";
 const LAST_WORKPLACE_ID_KEY = "shifta:last-workplace-id";
 const BULK_CALENDAR_SELECTION_STORAGE_KEY = "shifta:bulk-calendar-selection";
 const BULK_CALENDAR_SELECTION_SCHEMA_VERSION = 1;
-const WEEKDAY_LABELS = ["日", "月", "火", "水", "木", "金", "土"] as const;
 const DAY_CELL_COUNT = 42;
-const MAX_BREAK_MINUTES = 240;
-const GOOGLE_EVENT_LIST_LIMIT = 5;
-const GOOGLE_EVENT_LIST_VISIBLE_WHEN_OVERFLOW = 3;
 const GOOGLE_TOKEN_EXPIRED_DESCRIPTION =
   "3秒後にログアウトします。再度Googleアカウントでログインしてください。";
-const selectedDateFormatter = new Intl.DateTimeFormat("ja-JP", {
-  year: "numeric",
-  month: "long",
-  day: "numeric",
-  weekday: "short",
-});
 
-type ShiftType = "NORMAL" | "LESSON";
+export type ShiftType = "NORMAL" | "LESSON";
 
-type Workplace = {
+export type Workplace = {
   id: string;
   name: string;
   color: string;
@@ -146,7 +104,7 @@ type GoogleCalendarOption = {
   color: string | null;
 };
 
-type GoogleCalendarEventItem = {
+export type GoogleCalendarEventItem = {
   title: string;
   start: string;
   end: string;
@@ -156,10 +114,18 @@ type GoogleCalendarEventItem = {
   calendarColor: string | null;
 };
 
-type GoogleCalendarDay = {
+export type GoogleCalendarDay = {
   date: string;
   count: number;
   items: GoogleCalendarEventItem[];
+};
+
+type GoogleCalendarEventsResponse = {
+  month: string;
+  calendars: GoogleCalendarOption[];
+  selectedCalendarIds: string[];
+  dates: GoogleCalendarDay[];
+  cacheWarning: string | null;
 };
 
 type PersistedBulkCalendarSelection = {
@@ -384,13 +350,9 @@ function normalizeTimeOnly(value: string): string {
   return `${hours}:${minutes}`;
 }
 
-function parseGoogleCalendarEventsResponse(payload: unknown): {
-  month: string;
-  calendars: GoogleCalendarOption[];
-  selectedCalendarIds: string[];
-  dates: GoogleCalendarDay[];
-  cacheWarning: string | null;
-} | null {
+function parseGoogleCalendarEventsResponse(
+  payload: unknown,
+): GoogleCalendarEventsResponse | null {
   if (!isRecord(payload) || !isRecord(payload.data)) {
     return null;
   }
@@ -473,23 +435,25 @@ function readPersistedBulkCalendarSelection(): PersistedBulkCalendarSelection | 
       return null;
     }
 
+    const selectedCalendarIds = new Set<string>();
+    for (const id of parsed.selectedCalendarIds) {
+      const trimmedId = id.trim();
+      if (trimmedId.length > 0) {
+        selectedCalendarIds.add(trimmedId);
+      }
+    }
+
     return {
       version: parsed.version,
       hasUserSelection: parsed.hasUserSelection,
-      selectedCalendarIds: Array.from(
-        new Set(
-          parsed.selectedCalendarIds
-            .map((id) => id.trim())
-            .filter((id) => id.length > 0),
-        ),
-      ),
+      selectedCalendarIds: Array.from(selectedCalendarIds),
     };
   } catch {
     return null;
   }
 }
 
-type BulkShiftRow = {
+export type BulkShiftRow = {
   date: string;
   shiftType: ShiftType;
   comment: string;
@@ -501,7 +465,7 @@ type BulkShiftRow = {
   endPeriod: string;
 };
 
-type BulkDefaults = Omit<BulkShiftRow, "date">;
+export type BulkDefaults = Omit<BulkShiftRow, "date">;
 
 type RowErrorKey =
   | "shiftType"
@@ -513,9 +477,9 @@ type RowErrorKey =
   | "startPeriod"
   | "endPeriod";
 
-type RowErrors = Partial<Record<RowErrorKey, string>>;
+export type RowErrors = Partial<Record<RowErrorKey, string>>;
 
-type FormErrors = {
+export type FormErrors = {
   workplaceId?: string;
   selectedDates?: string;
   form?: string;
@@ -557,7 +521,7 @@ type BulkShiftMutationResult = {
   failedCount: number | null;
 };
 
-type OvernightSummaryItem = {
+export type OvernightSummaryItem = {
   date: string;
   startTime: string;
   endTime: string;
@@ -615,11 +579,6 @@ function parseBulkShiftMutationResult(
   };
 }
 
-function createCurrentMonthStart(): Date {
-  const current = new Date();
-  return new Date(current.getFullYear(), current.getMonth(), 1);
-}
-
 function addDays(base: Date, days: number): Date {
   return new Date(base.getFullYear(), base.getMonth(), base.getDate() + days);
 }
@@ -640,93 +599,7 @@ function toMonthGrid(month: Date): CalendarCell[] {
 }
 
 function sortDateKeys(dateKeys: string[]): string[] {
-  return [...dateKeys].sort((left, right) => left.localeCompare(right));
-}
-
-function getVisibleGoogleEvents(day: GoogleCalendarDay | undefined): {
-  visible: GoogleCalendarEventItem[];
-  hiddenCount: number;
-} {
-  if (!day || day.count <= 0) {
-    return {
-      visible: [],
-      hiddenCount: 0,
-    };
-  }
-
-  const items = day.items;
-  if (items.length <= GOOGLE_EVENT_LIST_LIMIT) {
-    return {
-      visible: items,
-      hiddenCount: Math.max(day.count - items.length, 0),
-    };
-  }
-
-  return {
-    visible: items.slice(0, GOOGLE_EVENT_LIST_VISIBLE_WHEN_OVERFLOW),
-    hiddenCount: Math.max(
-      day.count - GOOGLE_EVENT_LIST_VISIBLE_WHEN_OVERFLOW,
-      0,
-    ),
-  };
-}
-
-function getGoogleEventBadgeColor(color: string | null | undefined): string {
-  if (typeof color !== "string") {
-    return "#0ea5e9";
-  }
-
-  const normalized = color.trim();
-  if (/^#[0-9A-Fa-f]{6}$/.test(normalized)) {
-    return normalized;
-  }
-
-  return "#0ea5e9";
-}
-
-function formatGoogleEventLabel(event: GoogleCalendarEventItem): string {
-  if (event.allDay) {
-    return event.title;
-  }
-
-  return `${event.start}-${event.end} ${event.title}`;
-}
-
-function formatSelectedDate(dateKey: string): string {
-  const date = dateFromDateKey(dateKey);
-  if (!date) {
-    return dateKey;
-  }
-
-  return selectedDateFormatter.format(date);
-}
-
-function formatShiftTypeForWorkplace(
-  shiftType: ShiftType,
-  workplaceType: Workplace["type"] | undefined,
-): string {
-  if (workplaceType === "CRAM_SCHOOL" && shiftType === "NORMAL") {
-    return "事務";
-  }
-
-  return formatShiftType(shiftType);
-}
-
-function formatEventNamePreview(
-  workplaceName: string | undefined,
-  comment: string,
-): string {
-  if (!workplaceName) {
-    return "勤務先を選択するとイベント名を確認できます";
-  }
-
-  const trimmedComment = comment.trim();
-  const eventName =
-    trimmedComment.length > 0
-      ? `${workplaceName} (${trimmedComment})`
-      : workplaceName;
-
-  return `イベント名プレビュー「${eventName}」`;
+  return dateKeys.toSorted((left, right) => left.localeCompare(right));
 }
 
 function hasRowErrors(errors: RowErrors): boolean {
@@ -773,77 +646,554 @@ function normalizeRowForWorkplace(
   };
 }
 
-export function BulkShiftForm() {
+type CalendarSelectionMode = "default" | "custom";
+
+type BulkShiftFormState = {
+  requestedMonth: Date;
+  selectedWorkplaceId: string;
+  selectedDateKeys: string[];
+  rowsByDate: Record<string, BulkShiftRow>;
+  defaults: BulkDefaults;
+  hasInteractedWithDefaults: boolean;
+  calendarSelectionMode: CalendarSelectionMode;
+  selectedCalendarIds: string[];
+  errors: FormErrors;
+  isSubmitting: boolean;
+  isOvernightConfirmOpen: boolean;
+  overnightSummaries: OvernightSummaryItem[];
+};
+
+export type BulkShiftFormProps = {
+  initialMonthInputValue: string;
+  todayDateKey: string;
+};
+
+type BulkShiftFormAction =
+  | {
+      type: "reset";
+      state: BulkShiftFormState;
+    }
+  | {
+      type: "setRequestedMonth";
+      requestedMonth: Date;
+    }
+  | {
+      type: "selectWorkplace";
+      selectedWorkplaceId: string;
+      defaults: BulkDefaults;
+      hasInteractedWithDefaults: boolean;
+    }
+  | {
+      type: "updateDefaults";
+      defaults: BulkDefaults;
+      hasInteractedWithDefaults: boolean;
+    }
+  | {
+      type: "toggleDateSelection";
+      dateKey: string;
+      row: BulkShiftRow;
+    }
+  | {
+      type: "clearSelectedDates";
+    }
+  | {
+      type: "removeRow";
+      dateKey: string;
+    }
+  | {
+      type: "setRow";
+      dateKey: string;
+      row: BulkShiftRow;
+    }
+  | {
+      type: "replaceRowsByDate";
+      rowsByDate: Record<string, BulkShiftRow>;
+    }
+  | {
+      type: "setErrors";
+      errors: FormErrors;
+    }
+  | {
+      type: "clearFormError";
+    }
+  | {
+      type: "setSubmitting";
+      isSubmitting: boolean;
+    }
+  | {
+      type: "openOvernightConfirm";
+      overnightSummaries: OvernightSummaryItem[];
+    }
+  | {
+      type: "closeOvernightConfirm";
+    }
+  | {
+      type: "setCalendarSelectionCustom";
+      selectedCalendarIds: string[];
+    }
+  | {
+      type: "resetCalendarSelectionDefault";
+    };
+
+function readLastWorkplaceId(): string {
+  try {
+    return localStorage.getItem(LAST_WORKPLACE_ID_KEY) ?? "";
+  } catch {
+    return "";
+  }
+}
+
+function writePersistedBulkCalendarSelection(
+  selectedCalendarIds: string[],
+): void {
+  const payload: PersistedBulkCalendarSelection = {
+    version: BULK_CALENDAR_SELECTION_SCHEMA_VERSION,
+    hasUserSelection: true,
+    selectedCalendarIds,
+  };
+
+  localStorage.setItem(
+    BULK_CALENDAR_SELECTION_STORAGE_KEY,
+    JSON.stringify(payload),
+  );
+}
+
+function clearPersistedBulkCalendarSelection(): void {
+  localStorage.removeItem(BULK_CALENDAR_SELECTION_STORAGE_KEY);
+}
+
+function createInitialBulkShiftFormState(
+  initialRequestedMonth: Date,
+): BulkShiftFormState {
+  const persistedSelection = readPersistedBulkCalendarSelection();
+
+  return {
+    requestedMonth: initialRequestedMonth,
+    selectedWorkplaceId: readLastWorkplaceId(),
+    selectedDateKeys: [],
+    rowsByDate: {},
+    defaults: DEFAULT_BULK_VALUES,
+    hasInteractedWithDefaults: false,
+    calendarSelectionMode:
+      persistedSelection?.hasUserSelection &&
+      persistedSelection.selectedCalendarIds.length > 0
+        ? "custom"
+        : "default",
+    selectedCalendarIds: persistedSelection?.selectedCalendarIds ?? [],
+    errors: {},
+    isSubmitting: false,
+    isOvernightConfirmOpen: false,
+    overnightSummaries: [],
+  };
+}
+
+function clearRowError(
+  rows: Record<string, RowErrors> | undefined,
+  dateKey: string,
+): Record<string, RowErrors> | undefined {
+  if (!rows?.[dateKey]) {
+    return rows;
+  }
+
+  const nextRows = { ...rows };
+  delete nextRows[dateKey];
+  return Object.keys(nextRows).length > 0 ? nextRows : undefined;
+}
+
+function bulkShiftFormReducer(
+  state: BulkShiftFormState,
+  action: BulkShiftFormAction,
+): BulkShiftFormState {
+  switch (action.type) {
+    case "reset":
+      return action.state;
+    case "setRequestedMonth":
+      return {
+        ...state,
+        requestedMonth: action.requestedMonth,
+      };
+    case "selectWorkplace":
+      return {
+        ...state,
+        selectedWorkplaceId: action.selectedWorkplaceId,
+        defaults: action.defaults,
+        hasInteractedWithDefaults: action.hasInteractedWithDefaults,
+        errors: {
+          ...state.errors,
+          workplaceId: undefined,
+          form: undefined,
+        },
+      };
+    case "updateDefaults":
+      return {
+        ...state,
+        defaults: action.defaults,
+        hasInteractedWithDefaults: action.hasInteractedWithDefaults,
+      };
+    case "toggleDateSelection":
+      if (state.selectedDateKeys.includes(action.dateKey)) {
+        const nextRowsByDate = { ...state.rowsByDate };
+        delete nextRowsByDate[action.dateKey];
+
+        return {
+          ...state,
+          selectedDateKeys: state.selectedDateKeys.filter(
+            (dateKey) => dateKey !== action.dateKey,
+          ),
+          rowsByDate: nextRowsByDate,
+          errors: {
+            ...state.errors,
+            selectedDates: undefined,
+            rows: clearRowError(state.errors.rows, action.dateKey),
+          },
+        };
+      }
+
+      return {
+        ...state,
+        selectedDateKeys: sortDateKeys([
+          ...state.selectedDateKeys,
+          action.dateKey,
+        ]),
+        rowsByDate: {
+          ...state.rowsByDate,
+          [action.dateKey]: action.row,
+        },
+        errors: {
+          ...state.errors,
+          selectedDates: undefined,
+        },
+      };
+    case "clearSelectedDates":
+      return {
+        ...state,
+        selectedDateKeys: [],
+        rowsByDate: {},
+        errors: {
+          ...state.errors,
+          selectedDates: undefined,
+          rows: undefined,
+        },
+      };
+    case "removeRow": {
+      const nextRowsByDate = { ...state.rowsByDate };
+      delete nextRowsByDate[action.dateKey];
+
+      return {
+        ...state,
+        selectedDateKeys: state.selectedDateKeys.filter(
+          (dateKey) => dateKey !== action.dateKey,
+        ),
+        rowsByDate: nextRowsByDate,
+        errors: {
+          ...state.errors,
+          rows: clearRowError(state.errors.rows, action.dateKey),
+        },
+      };
+    }
+    case "setRow":
+      return {
+        ...state,
+        rowsByDate: {
+          ...state.rowsByDate,
+          [action.dateKey]: action.row,
+        },
+        errors: {
+          ...state.errors,
+          rows:
+            state.errors.rows && state.errors.rows[action.dateKey]
+              ? {
+                  ...state.errors.rows,
+                  [action.dateKey]: {},
+                }
+              : state.errors.rows,
+        },
+      };
+    case "replaceRowsByDate":
+      return {
+        ...state,
+        rowsByDate: action.rowsByDate,
+      };
+    case "setErrors":
+      return {
+        ...state,
+        errors: action.errors,
+      };
+    case "clearFormError":
+      return state.errors.form
+        ? {
+            ...state,
+            errors: {
+              ...state.errors,
+              form: undefined,
+            },
+          }
+        : state;
+    case "setSubmitting":
+      return {
+        ...state,
+        isSubmitting: action.isSubmitting,
+      };
+    case "openOvernightConfirm":
+      return {
+        ...state,
+        isOvernightConfirmOpen: true,
+        overnightSummaries: action.overnightSummaries,
+      };
+    case "closeOvernightConfirm":
+      return {
+        ...state,
+        isOvernightConfirmOpen: false,
+        overnightSummaries: [],
+      };
+    case "setCalendarSelectionCustom":
+      return {
+        ...state,
+        calendarSelectionMode: "custom",
+        selectedCalendarIds: action.selectedCalendarIds,
+      };
+    case "resetCalendarSelectionDefault":
+      return {
+        ...state,
+        calendarSelectionMode: "default",
+        selectedCalendarIds: [],
+      };
+  }
+}
+
+function normalizeLessonDefaults(
+  defaults: BulkDefaults,
+  lessonPeriodsBySetId: Record<string, number[]>,
+  firstTimetableSetId: string,
+): BulkDefaults {
+  if (defaults.shiftType !== "LESSON") {
+    return defaults;
+  }
+
+  const nextSetId =
+    defaults.timetableSetId && lessonPeriodsBySetId[defaults.timetableSetId]
+      ? defaults.timetableSetId
+      : firstTimetableSetId;
+  const periods = lessonPeriodsBySetId[nextSetId] ?? [];
+  if (periods.length === 0) {
+    return {
+      ...defaults,
+      timetableSetId: nextSetId,
+      startPeriod: "",
+      endPeriod: "",
+    };
+  }
+
+  const fallbackPeriod = String(periods[0]);
+  return {
+    ...defaults,
+    timetableSetId: nextSetId,
+    startPeriod: defaults.startPeriod || fallbackPeriod,
+    endPeriod: defaults.endPeriod || fallbackPeriod,
+  };
+}
+
+function normalizeLessonRow(
+  row: BulkShiftRow,
+  lessonPeriodsBySetId: Record<string, number[]>,
+  firstTimetableSetId: string,
+): BulkShiftRow {
+  if (row.shiftType !== "LESSON") {
+    return row;
+  }
+
+  const nextSetId =
+    row.timetableSetId && lessonPeriodsBySetId[row.timetableSetId]
+      ? row.timetableSetId
+      : firstTimetableSetId;
+  const periods = lessonPeriodsBySetId[nextSetId] ?? [];
+  const fallbackPeriod = periods[0] ? String(periods[0]) : "";
+
+  return {
+    ...row,
+    timetableSetId: nextSetId,
+    startPeriod: row.startPeriod || fallbackPeriod,
+    endPeriod: row.endPeriod || fallbackPeriod,
+  };
+}
+
+function normalizeDefaultsForContext(params: {
+  defaults: BulkDefaults;
+  workplaceType: Workplace["type"] | undefined;
+  lessonPeriodsBySetId: Record<string, number[]>;
+  firstTimetableSetId: string;
+  hasInteractedWithDefaults: boolean;
+}): BulkDefaults {
+  const {
+    defaults,
+    workplaceType,
+    lessonPeriodsBySetId,
+    firstTimetableSetId,
+    hasInteractedWithDefaults,
+  } = params;
+
+  let nextDefaults = normalizeDefaultsForWorkplace(defaults, workplaceType);
+  if (
+    workplaceType === "CRAM_SCHOOL" &&
+    !hasInteractedWithDefaults &&
+    nextDefaults.shiftType === "NORMAL"
+  ) {
+    nextDefaults = {
+      ...nextDefaults,
+      shiftType: "LESSON",
+    };
+  }
+
+  if (workplaceType !== "CRAM_SCHOOL") {
+    return nextDefaults;
+  }
+
+  return normalizeLessonDefaults(
+    nextDefaults,
+    lessonPeriodsBySetId,
+    firstTimetableSetId,
+  );
+}
+
+function normalizeRowsForContext(params: {
+  rowsByDate: Record<string, BulkShiftRow>;
+  workplaceType: Workplace["type"] | undefined;
+  lessonPeriodsBySetId: Record<string, number[]>;
+  firstTimetableSetId: string;
+}): Record<string, BulkShiftRow> {
+  const {
+    rowsByDate,
+    workplaceType,
+    lessonPeriodsBySetId,
+    firstTimetableSetId,
+  } = params;
+
+  const nextRowsByDate: Record<string, BulkShiftRow> = {};
+  for (const [dateKey, row] of Object.entries(rowsByDate)) {
+    let nextRow = normalizeRowForWorkplace(row, workplaceType);
+    if (workplaceType === "CRAM_SCHOOL") {
+      nextRow = normalizeLessonRow(
+        nextRow,
+        lessonPeriodsBySetId,
+        firstTimetableSetId,
+      );
+    }
+    nextRowsByDate[dateKey] = nextRow;
+  }
+
+  return nextRowsByDate;
+}
+
+function resolveSelectedWorkplaceId(
+  selectedWorkplaceId: string,
+  workplaces: Workplace[],
+): string {
+  if (selectedWorkplaceId) {
+    const hasCurrentWorkplace = workplaces.some(
+      (workplace) => workplace.id === selectedWorkplaceId,
+    );
+    if (hasCurrentWorkplace) {
+      return selectedWorkplaceId;
+    }
+  }
+
+  return workplaces[0]?.id ?? "";
+}
+
+function buildGoogleEventsByDate(
+  data: GoogleCalendarEventsResponse | undefined,
+): Record<string, GoogleCalendarDay> {
+  const eventsByDate: Record<string, GoogleCalendarDay> = {};
+
+  for (const day of data?.dates ?? []) {
+    eventsByDate[day.date] = day;
+  }
+
+  return eventsByDate;
+}
+
+function getEffectiveSelectedCalendarIds(params: {
+  calendarSelectionMode: CalendarSelectionMode;
+  selectedCalendarIds: string[];
+  calendarOptions: GoogleCalendarOption[];
+  defaultSelectedCalendarIds: string[];
+}): string[] {
+  const {
+    calendarSelectionMode,
+    selectedCalendarIds,
+    calendarOptions,
+    defaultSelectedCalendarIds,
+  } = params;
+
+  if (calendarSelectionMode === "default") {
+    return defaultSelectedCalendarIds;
+  }
+
+  const availableCalendarIds = new Set(calendarOptions.map((item) => item.id));
+  const filteredSelectedCalendarIds = selectedCalendarIds.filter((calendarId) =>
+    availableCalendarIds.has(calendarId),
+  );
+
+  return filteredSelectedCalendarIds.length > 0
+    ? filteredSelectedCalendarIds
+    : defaultSelectedCalendarIds;
+}
+
+function sortCalendarIdsByOptionOrder(
+  calendarOptions: GoogleCalendarOption[],
+  selectedCalendarIds: Set<string>,
+): string[] {
+  const sortedCalendarIds: string[] = [];
+
+  for (const calendarOption of calendarOptions) {
+    if (selectedCalendarIds.has(calendarOption.id)) {
+      sortedCalendarIds.push(calendarOption.id);
+    }
+  }
+
+  return sortedCalendarIds;
+}
+
+export type BulkShiftFormController = ReturnType<
+  typeof useBulkShiftFormController
+>;
+
+function useBulkShiftFormController({
+  initialMonthInputValue,
+  todayDateKey,
+}: BulkShiftFormProps) {
   const router = useRouter();
   const queryClient = getBrowserQueryClient();
-
-  const [month, setMonth] = useState(() => createCurrentMonthStart());
-  const [displayMonth, setDisplayMonth] = useState(() =>
-    createCurrentMonthStart(),
+  const pendingPayloadRef = useRef<BulkShiftPayload[] | null>(null);
+  const initialRequestedMonth = fromMonthInputValue(initialMonthInputValue);
+  if (!initialRequestedMonth) {
+    throw new Error(`Invalid initial month: ${initialMonthInputValue}`);
+  }
+  const [state, dispatch] = useReducer(
+    bulkShiftFormReducer,
+    initialRequestedMonth,
+    createInitialBulkShiftFormState,
   );
-  const [selectedWorkplaceId, setSelectedWorkplaceId] = useState("");
-  const [selectedDateKeys, setSelectedDateKeys] = useState<string[]>([]);
-  const [rowsByDate, setRowsByDate] = useState<Record<string, BulkShiftRow>>(
-    {},
-  );
-  const [googleEventsByDate, setGoogleEventsByDate] = useState<
-    Record<string, GoogleCalendarDay>
-  >({});
-  const [calendarOptions, setCalendarOptions] = useState<
-    GoogleCalendarOption[]
-  >([]);
-  const [selectedCalendarIds, setSelectedCalendarIds] = useState<string[]>([]);
-  const [hasUserCalendarSelection, setHasUserCalendarSelection] =
-    useState(false);
-  const [isCalendarSelectionReady, setIsCalendarSelectionReady] =
-    useState(false);
-  const [isGoogleEventsLoading, setIsGoogleEventsLoading] = useState(true);
-  const [hasLoadedGoogleEvents, setHasLoadedGoogleEvents] = useState(false);
-  const hasLoadedGoogleEventsRef = useRef(false);
-  const [googleEventsError, setGoogleEventsError] = useState<string | null>(
-    null,
-  );
-  const [googleEventsWarning, setGoogleEventsWarning] = useState<string | null>(
-    null,
-  );
-  const [defaults, setDefaults] = useState<BulkDefaults>(DEFAULT_BULK_VALUES);
-  const [errors, setErrors] = useState<FormErrors>({});
-  const [isSubmitting, setIsSubmitting] = useState(false);
-  const [isOvernightConfirmOpen, setIsOvernightConfirmOpen] = useState(false);
-  const [pendingPayload, setPendingPayload] = useState<
-    BulkShiftPayload[] | null
-  >(null);
-  const [overnightSummaries, setOvernightSummaries] = useState<
-    OvernightSummaryItem[]
-  >([]);
   const { isSignOutScheduled, scheduleSignOut } =
     useGoogleTokenExpiredSignOut();
-  const { markForResetOnRouteHidden } = useResetOnRouteHidden(() => {
-    setMonth(createCurrentMonthStart());
-    setDisplayMonth(createCurrentMonthStart());
-    setSelectedWorkplaceId("");
-    setSelectedDateKeys([]);
-    setRowsByDate({});
-    setGoogleEventsByDate({});
-    setSelectedCalendarIds([]);
-    setHasUserCalendarSelection(false);
-    setIsGoogleEventsLoading(true);
-    setHasLoadedGoogleEvents(false);
-    hasLoadedGoogleEventsRef.current = false;
-    setGoogleEventsError(null);
-    setGoogleEventsWarning(null);
-    setDefaults(DEFAULT_BULK_VALUES);
-    setErrors({});
-    setIsSubmitting(false);
-    setIsOvernightConfirmOpen(false);
-    setPendingPayload(null);
-    setOvernightSummaries([]);
-  });
+
+  const resetFormState = useCallback(() => {
+    pendingPayloadRef.current = null;
+    dispatch({
+      type: "reset",
+      state: createInitialBulkShiftFormState(initialRequestedMonth),
+    });
+  }, [initialRequestedMonth]);
+
+  const { markForResetOnRouteHidden } = useResetOnRouteHidden(resetFormState);
   const loadQueryUserId = "self";
+  const todayKey = todayDateKey;
 
-  const todayKey = toDateKey(new Date());
-
-  const workplacesQuery = useQuery({
+  const {
+    data: workplacesData,
+    error: workplacesError,
+    isPending: isWorkplacePending,
+  } = useQuery({
     queryKey: queryKeys.workplaces.list({
       userId: loadQueryUserId,
       includeCounts: false,
@@ -866,17 +1216,18 @@ export function BulkShiftForm() {
     refetchOnReconnect: false,
   });
 
-  const workplaces = useMemo(
-    () => workplacesQuery.data ?? [],
-    [workplacesQuery.data],
+  const workplaces = useMemo(() => workplacesData ?? [], [workplacesData]);
+  const isWorkplaceLoading = isWorkplacePending;
+  const selectedWorkplaceId = useMemo(
+    () => resolveSelectedWorkplaceId(state.selectedWorkplaceId, workplaces),
+    [state.selectedWorkplaceId, workplaces],
   );
-  const isWorkplaceLoading = workplacesQuery.isPending;
+  const selectedWorkplace = useMemo(
+    () => workplaces.find((workplace) => workplace.id === selectedWorkplaceId),
+    [selectedWorkplaceId, workplaces],
+  );
 
-  const selectedWorkplace = useMemo(() => {
-    return workplaces.find((workplace) => workplace.id === selectedWorkplaceId);
-  }, [selectedWorkplaceId, workplaces]);
-
-  const workplacePayrollCycleQuery = useQuery({
+  const { data: workplacePayrollCycleData } = useQuery({
     queryKey: queryKeys.workplaces.editDetail({
       workplaceId: selectedWorkplaceId,
     }),
@@ -899,7 +1250,7 @@ export function BulkShiftForm() {
     refetchOnReconnect: false,
   });
 
-  const previewPayrollRulesQuery = useQuery({
+  const { data: previewPayrollRulesData } = useQuery({
     queryKey: queryKeys.workplaces.payrollRules({
       workplaceId: selectedWorkplaceId,
     }),
@@ -922,12 +1273,16 @@ export function BulkShiftForm() {
     refetchOnReconnect: false,
   });
 
-  const timetableSetsQuery = useQuery({
+  const {
+    data: timetableSetsData,
+    error: timetableSetsError,
+    isPending: isTimetableSetsPending,
+  } = useQuery({
     queryKey: queryKeys.workplaces.timetables({
-      workplaceId: selectedWorkplace?.id ?? "",
+      workplaceId: selectedWorkplaceId,
     }),
     queryFn: ({ signal }) =>
-      fetchJson(`/api/workplaces/${selectedWorkplace?.id}/timetables`, {
+      fetchJson(`/api/workplaces/${selectedWorkplaceId}/timetables`, {
         init: { signal },
         fallbackMessage: "時間割の取得に失敗しました。",
         parse: (payload) => {
@@ -950,76 +1305,202 @@ export function BulkShiftForm() {
       return [] as TimetableSet[];
     }
 
-    return (timetableSetsQuery.data ?? []).slice().sort((left, right) => {
+    return (timetableSetsData ?? []).toSorted((left, right) => {
       if (left.sortOrder !== right.sortOrder) {
         return left.sortOrder - right.sortOrder;
       }
+
       return left.createdAt.localeCompare(right.createdAt);
     });
-  }, [selectedWorkplace?.type, timetableSetsQuery.data]);
+  }, [selectedWorkplace?.type, timetableSetsData]);
   const isTimetableLoading =
-    selectedWorkplace?.type === "CRAM_SCHOOL" && timetableSetsQuery.isPending;
+    selectedWorkplace?.type === "CRAM_SCHOOL" && isTimetableSetsPending;
   const firstTimetableSetId = timetableSets[0]?.id ?? "";
-
   const lessonPeriodsBySetId = useMemo(() => {
-    const map: Record<string, number[]> = {};
-    for (const set of timetableSets) {
-      map[set.id] = set.items
+    const periodsBySetId: Record<string, number[]> = {};
+
+    for (const timetableSet of timetableSets) {
+      periodsBySetId[timetableSet.id] = timetableSet.items
         .map((item) => item.period)
         .sort((left, right) => left - right);
     }
 
-    return map;
+    return periodsBySetId;
   }, [timetableSets]);
-
   const timetableSetOptions = useMemo(
     () =>
-      timetableSets.map((set) => ({
-        id: set.id,
-        name: set.name,
+      timetableSets.map((timetableSet) => ({
+        id: timetableSet.id,
+        name: timetableSet.name,
       })),
     [timetableSets],
   );
   const timetableSetNameById = useMemo(
     () =>
       Object.fromEntries(
-        timetableSets.map((set) => [set.id, set.name] as const),
+        timetableSets.map((timetableSet) => [
+          timetableSet.id,
+          timetableSet.name,
+        ]),
       ),
     [timetableSets],
   );
 
-  const calendarCells = useMemo(() => {
-    return toMonthGrid(displayMonth);
-  }, [displayMonth]);
+  const defaults = useMemo(
+    () =>
+      normalizeDefaultsForContext({
+        defaults: state.defaults,
+        workplaceType: selectedWorkplace?.type,
+        lessonPeriodsBySetId,
+        firstTimetableSetId,
+        hasInteractedWithDefaults: state.hasInteractedWithDefaults,
+      }),
+    [
+      firstTimetableSetId,
+      lessonPeriodsBySetId,
+      selectedWorkplace?.type,
+      state.defaults,
+      state.hasInteractedWithDefaults,
+    ],
+  );
+  const rowsByDate = useMemo(
+    () =>
+      normalizeRowsForContext({
+        rowsByDate: state.rowsByDate,
+        workplaceType: selectedWorkplace?.type,
+        lessonPeriodsBySetId,
+        firstTimetableSetId,
+      }),
+    [
+      firstTimetableSetId,
+      lessonPeriodsBySetId,
+      selectedWorkplace?.type,
+      state.rowsByDate,
+    ],
+  );
 
-  const selectedRows = useMemo(() => {
-    return selectedDateKeys
-      .map((dateKey) => rowsByDate[dateKey])
-      .filter((row): row is BulkShiftRow => Boolean(row));
-  }, [rowsByDate, selectedDateKeys]);
+  const requestedMonthInputValue = toMonthInputValue(state.requestedMonth);
+  const {
+    data: googleCalendarEventsData,
+    error: googleCalendarEventsQueryError,
+    isPending: isGoogleCalendarEventsPending,
+    isFetching: isGoogleCalendarEventsFetching,
+  } = useQuery({
+    queryKey: [
+      "bulk-google-calendar-events",
+      requestedMonthInputValue,
+      state.calendarSelectionMode,
+      state.calendarSelectionMode === "custom"
+        ? state.selectedCalendarIds.join(",")
+        : "default",
+    ],
+    queryFn: async ({ signal }) => {
+      const searchParams = new URLSearchParams({
+        month: requestedMonthInputValue,
+      });
+
+      if (state.calendarSelectionMode === "custom") {
+        for (const calendarId of state.selectedCalendarIds) {
+          searchParams.append("calendarId", calendarId);
+        }
+      }
+
+      const response = await fetch(
+        `/api/calendar/events?${searchParams.toString()}`,
+        { signal },
+      );
+
+      if (response.ok === false) {
+        const resolved = await resolveUserFacingErrorFromResponse(
+          response,
+          "Google予定の取得に失敗しました。",
+        );
+        if (resolved.code === "READ_SCOPE_MISSING") {
+          throw new Error(
+            "Google予定を表示するには、再ログインして権限を再同意してください。",
+          );
+        }
+        throw new Error(resolved.message);
+      }
+
+      const payload = parseGoogleCalendarEventsResponse(
+        (await response.json()) as unknown,
+      );
+      if (!payload) {
+        throw new Error("Google予定レスポンスの形式が不正です。");
+      }
+
+      return payload;
+    },
+    placeholderData: (previousData) => previousData,
+    staleTime: 0,
+    gcTime: 15 * 60 * 1000,
+    refetchOnWindowFocus: false,
+    refetchOnReconnect: false,
+  });
+
+  const calendarOptions = googleCalendarEventsData?.calendars ?? [];
+  const selectedCalendarIds = getEffectiveSelectedCalendarIds({
+    calendarSelectionMode: state.calendarSelectionMode,
+    selectedCalendarIds: state.selectedCalendarIds,
+    calendarOptions,
+    defaultSelectedCalendarIds:
+      googleCalendarEventsData?.selectedCalendarIds ?? [],
+  });
+  const googleEventsByDate = useMemo(
+    () => buildGoogleEventsByDate(googleCalendarEventsData),
+    [googleCalendarEventsData],
+  );
+  const displayMonth = useMemo(() => {
+    const parsedMonth = googleCalendarEventsData
+      ? fromMonthInputValue(googleCalendarEventsData.month)
+      : null;
+    return parsedMonth ?? state.requestedMonth;
+  }, [googleCalendarEventsData, state.requestedMonth]);
+  const calendarCells = useMemo(
+    () => toMonthGrid(displayMonth),
+    [displayMonth],
+  );
+  const isInitialGoogleCalendarLoading =
+    isGoogleCalendarEventsPending && !googleCalendarEventsData;
+  const isRefreshingGoogleEvents =
+    isGoogleCalendarEventsFetching && Boolean(googleCalendarEventsData);
+  const googleEventsError = googleCalendarEventsQueryError
+    ? toErrorMessage(
+        googleCalendarEventsQueryError,
+        "Google予定の取得に失敗しました。",
+      )
+    : null;
+  const googleEventsWarning = googleCalendarEventsData?.cacheWarning ?? null;
+
+  const selectedRows = useMemo(
+    () =>
+      state.selectedDateKeys
+        .map((dateKey) => rowsByDate[dateKey])
+        .filter((row): row is BulkShiftRow => Boolean(row)),
+    [rowsByDate, state.selectedDateKeys],
+  );
 
   const previewWorkplaces = useMemo(() => {
-    const detail = workplacePayrollCycleQuery.data;
-    if (!detail) {
+    if (!workplacePayrollCycleData) {
       return [];
     }
 
     return [
       {
-        id: detail.id,
-        closingDayType: detail.closingDayType,
-        closingDay: detail.closingDay,
-        payday: detail.payday,
+        id: workplacePayrollCycleData.id,
+        closingDayType: workplacePayrollCycleData.closingDayType,
+        closingDay: workplacePayrollCycleData.closingDay,
+        payday: workplacePayrollCycleData.payday,
       },
     ];
-  }, [workplacePayrollCycleQuery.data]);
-
+  }, [workplacePayrollCycleData]);
   const previewTimetableSets = useMemo(
     () =>
-      timetableSets.map((set) => ({
-        id: set.id,
-        workplaceId: set.workplaceId,
-        items: set.items.map((item) => ({
+      timetableSets.map((timetableSet) => ({
+        id: timetableSet.id,
+        workplaceId: timetableSet.workplaceId,
+        items: timetableSet.items.map((item) => ({
           timetableSetId: item.timetableSetId,
           period: item.period,
           startTime: normalizeTimeOnly(item.startTime),
@@ -1028,7 +1509,6 @@ export function BulkShiftForm() {
       })),
     [timetableSets],
   );
-
   const previewInputShifts = useMemo(() => {
     if (!selectedWorkplaceId || previewWorkplaces.length === 0) {
       return [];
@@ -1052,448 +1532,184 @@ export function BulkShiftForm() {
           : undefined,
     }));
   }, [previewWorkplaces.length, selectedRows, selectedWorkplaceId]);
-
   const shiftPayrollPreview = useShiftPayrollPreview({
     userId: loadQueryUserId,
     shifts: previewInputShifts,
     workplaces: previewWorkplaces,
-    payrollRules: previewPayrollRulesQuery.data ?? [],
+    payrollRules: previewPayrollRulesData ?? [],
     timetableSets: previewTimetableSets,
   });
 
-  const calendarFilterKey = useMemo(
-    () =>
-      hasUserCalendarSelection ? selectedCalendarIds.join(",") : "default",
-    [hasUserCalendarSelection, selectedCalendarIds],
-  );
-  const isInitialGoogleCalendarLoading =
-    !isCalendarSelectionReady ||
-    (isGoogleEventsLoading && !hasLoadedGoogleEvents);
-  const isRefreshingGoogleEvents =
-    isCalendarSelectionReady && isGoogleEventsLoading && hasLoadedGoogleEvents;
+  const updateDefaults = (
+    nextDefaults: BulkDefaults,
+    hasInteractedWithDefaults: boolean,
+  ) => {
+    dispatch({
+      type: "updateDefaults",
+      defaults: nextDefaults,
+      hasInteractedWithDefaults,
+    });
+  };
 
-  useEffect(() => {
-    const persistedSelection = readPersistedBulkCalendarSelection();
-    if (
-      persistedSelection?.hasUserSelection &&
-      persistedSelection.selectedCalendarIds.length > 0
-    ) {
-      setHasUserCalendarSelection(true);
-      setSelectedCalendarIds(persistedSelection.selectedCalendarIds);
-    }
-
-    setIsCalendarSelectionReady(true);
-  }, []);
-
-  useEffect(() => {
-    if (!isCalendarSelectionReady) {
-      return;
-    }
-
-    if (!hasUserCalendarSelection || selectedCalendarIds.length === 0) {
-      localStorage.removeItem(BULK_CALENDAR_SELECTION_STORAGE_KEY);
-      return;
-    }
-
-    const payload: PersistedBulkCalendarSelection = {
-      version: BULK_CALENDAR_SELECTION_SCHEMA_VERSION,
-      hasUserSelection: true,
-      selectedCalendarIds,
-    };
-
-    localStorage.setItem(
-      BULK_CALENDAR_SELECTION_STORAGE_KEY,
-      JSON.stringify(payload),
+  const handleWorkplaceChange = (nextWorkplaceId: string) => {
+    const nextWorkplace = workplaces.find(
+      (workplace) => workplace.id === nextWorkplaceId,
     );
-  }, [hasUserCalendarSelection, isCalendarSelectionReady, selectedCalendarIds]);
-
-  useEffect(() => {
-    if (workplaces.length === 0) {
-      setSelectedWorkplaceId("");
-      return;
-    }
-
-    setSelectedWorkplaceId((current) => {
-      if (current && workplaces.some((workplace) => workplace.id === current)) {
-        return current;
-      }
-
-      const lastId = localStorage.getItem(LAST_WORKPLACE_ID_KEY);
-      if (lastId && workplaces.some((workplace) => workplace.id === lastId)) {
-        return lastId;
-      }
-
-      return workplaces[0]?.id ?? "";
-    });
-  }, [workplaces]);
-
-  useEffect(() => {
-    if (!isCalendarSelectionReady) {
-      return;
-    }
-
-    const abortController = new AbortController();
-    const params = new URLSearchParams({
-      month: toMonthInputValue(month),
-    });
-    if (hasUserCalendarSelection) {
-      for (const calendarId of selectedCalendarIds) {
-        params.append("calendarId", calendarId);
-      }
-    }
-
-    async function fetchGoogleCalendarEvents() {
-      setIsGoogleEventsLoading(true);
-      setGoogleEventsError(null);
-      setGoogleEventsWarning(null);
-
-      try {
-        const response = await fetch(
-          `/api/calendar/events?${params.toString()}`,
-          {
-            signal: abortController.signal,
-          },
-        );
-
-        if (response.ok === false) {
-          const resolved = await resolveUserFacingErrorFromResponse(
-            response,
-            "Google予定の取得に失敗しました。",
-          );
-
-          if (resolved.code === "READ_SCOPE_MISSING") {
-            throw new Error(
-              "Google予定を表示するには、再ログインして権限を再同意してください。",
-            );
+    const nextDefaults =
+      nextWorkplace?.type === "CRAM_SCHOOL"
+        ? {
+            ...defaults,
+            shiftType: "LESSON" as const,
+            timetableSetId: "",
+            startPeriod: "",
+            endPeriod: "",
           }
+        : normalizeDefaultsForWorkplace(defaults, nextWorkplace?.type);
 
-          throw new Error(resolved.message);
-        }
+    localStorage.setItem(LAST_WORKPLACE_ID_KEY, nextWorkplaceId);
+    dispatch({
+      type: "selectWorkplace",
+      selectedWorkplaceId: nextWorkplaceId,
+      defaults: nextDefaults,
+      hasInteractedWithDefaults: false,
+    });
+  };
 
-        const payload = parseGoogleCalendarEventsResponse(
-          (await response.json()) as unknown,
-        );
-        if (!payload) {
-          throw new Error("Google予定レスポンスの形式が不正です。");
-        }
+  const handleRequestedMonthChange = (offset: number) => {
+    dispatch({
+      type: "setRequestedMonth",
+      requestedMonth: addMonths(state.requestedMonth, offset),
+    });
+  };
 
-        const nextByDate: Record<string, GoogleCalendarDay> = {};
-        for (const day of payload.dates) {
-          nextByDate[day.date] = day;
-        }
+  const handleToggleCalendarSelection = (
+    calendarId: string,
+    checked: boolean,
+  ) => {
+    const currentSet = new Set(selectedCalendarIds);
 
-        setCalendarOptions(payload.calendars);
-        setGoogleEventsWarning(payload.cacheWarning);
-        setSelectedCalendarIds((current) => {
-          if (!hasUserCalendarSelection) {
-            const nextDefaultIds = payload.selectedCalendarIds;
-            const isSameDefaultSelection =
-              current.length === nextDefaultIds.length &&
-              current.every((id, index) => id === nextDefaultIds[index]);
-
-            return isSameDefaultSelection ? current : nextDefaultIds;
-          }
-
-          const availableIds = new Set(
-            payload.calendars.map((item) => item.id),
-          );
-          const filtered = current.filter((id) => availableIds.has(id));
-          const nextIds =
-            filtered.length > 0 ? filtered : payload.selectedCalendarIds;
-          const isSameSelection =
-            current.length === nextIds.length &&
-            current.every((id, index) => id === nextIds[index]);
-
-          return isSameSelection ? current : nextIds;
-        });
-        setGoogleEventsByDate(nextByDate);
-        setDisplayMonth(month);
-        hasLoadedGoogleEventsRef.current = true;
-        setHasLoadedGoogleEvents(true);
-      } catch (error) {
-        if (abortController.signal.aborted) {
-          return;
-        }
-
-        console.error("failed to fetch google calendar events", error);
-        if (!hasLoadedGoogleEventsRef.current) {
-          setCalendarOptions([]);
-          setGoogleEventsByDate({});
-          setGoogleEventsWarning(null);
-        }
-        setGoogleEventsError(
-          toErrorMessage(error, "Google予定の取得に失敗しました。"),
-        );
-        hasLoadedGoogleEventsRef.current = true;
-        setHasLoadedGoogleEvents(true);
-      } finally {
-        if (abortController.signal.aborted === false) {
-          setIsGoogleEventsLoading(false);
-        }
-      }
+    if (checked) {
+      currentSet.add(calendarId);
+    } else {
+      currentSet.delete(calendarId);
     }
 
-    void fetchGoogleCalendarEvents();
-
-    return () => {
-      abortController.abort();
-    };
-  }, [
-    calendarFilterKey,
-    hasUserCalendarSelection,
-    isCalendarSelectionReady,
-    month,
-    selectedCalendarIds,
-  ]);
-
-  useEffect(() => {
-    if (!selectedWorkplaceId) {
+    if (currentSet.size === 0) {
       return;
     }
 
-    localStorage.setItem(LAST_WORKPLACE_ID_KEY, selectedWorkplaceId);
-  }, [selectedWorkplaceId]);
-
-  useEffect(() => {
-    if (timetableSetsQuery.error) {
-      console.error("failed to fetch timetableSets", timetableSetsQuery.error);
-    }
-  }, [timetableSetsQuery.error]);
-
-  useEffect(() => {
-    const workplaceType = selectedWorkplace?.type;
-
-    setDefaults((current) =>
-      normalizeDefaultsForWorkplace(current, workplaceType),
+    const nextSelectedCalendarIds = sortCalendarIdsByOptionOrder(
+      calendarOptions,
+      currentSet,
     );
-    setRowsByDate((current) => {
-      const next = { ...current };
-      for (const dateKey of Object.keys(next)) {
-        next[dateKey] = normalizeRowForWorkplace(next[dateKey], workplaceType);
-      }
-      return next;
-    });
-  }, [selectedWorkplace?.type]);
 
-  useEffect(() => {
-    if (selectedWorkplace?.type !== "CRAM_SCHOOL") {
+    writePersistedBulkCalendarSelection(nextSelectedCalendarIds);
+    dispatch({
+      type: "setCalendarSelectionCustom",
+      selectedCalendarIds: nextSelectedCalendarIds,
+    });
+  };
+
+  const handleResetCalendarSelectionToDefault = () => {
+    clearPersistedBulkCalendarSelection();
+    dispatch({
+      type: "resetCalendarSelectionDefault",
+    });
+  };
+
+  const handleToggleDateSelection = (dateKey: string) => {
+    dispatch({
+      type: "toggleDateSelection",
+      dateKey,
+      row: createRow(dateKey, defaults),
+    });
+  };
+
+  const handleRemoveRow = (dateKey: string) => {
+    dispatch({
+      type: "removeRow",
+      dateKey,
+    });
+  };
+
+  const handleUpdateRow = (dateKey: string, patch: Partial<BulkShiftRow>) => {
+    const currentRow = rowsByDate[dateKey];
+    if (!currentRow) {
       return;
     }
 
-    setDefaults((current) => {
-      if (current.shiftType !== "NORMAL") {
-        return current;
-      }
-
-      return {
-        ...current,
-        shiftType: "LESSON",
-      };
+    dispatch({
+      type: "setRow",
+      dateKey,
+      row: {
+        ...currentRow,
+        ...patch,
+      },
     });
-  }, [selectedWorkplace?.type]);
+  };
 
-  useEffect(() => {
-    if (selectedWorkplace?.type !== "CRAM_SCHOOL") {
+  const handleDefaultShiftTypeChange = (shiftType: ShiftType) => {
+    if (shiftType === "LESSON" && selectedWorkplace?.type !== "CRAM_SCHOOL") {
       return;
     }
 
-    setDefaults((current) => {
-      if (current.shiftType !== "LESSON") {
-        return current;
-      }
-
-      const nextSetId =
-        current.timetableSetId && lessonPeriodsBySetId[current.timetableSetId]
-          ? current.timetableSetId
-          : firstTimetableSetId;
-      const periods = lessonPeriodsBySetId[nextSetId] ?? [];
-      if (periods.length === 0) {
-        return {
-          ...current,
-          timetableSetId: nextSetId,
-          startPeriod: "",
-          endPeriod: "",
-        };
-      }
-
-      const fallback = String(periods[0]);
-      return {
-        ...current,
-        timetableSetId: nextSetId,
-        startPeriod: current.startPeriod || fallback,
-        endPeriod: current.endPeriod || fallback,
-      };
-    });
-
-    setRowsByDate((current) => {
-      const next = { ...current };
-
-      for (const dateKey of Object.keys(next)) {
-        const row = next[dateKey];
-        if (!row || row.shiftType !== "LESSON") {
-          continue;
-        }
-
-        const nextSetId =
-          row.timetableSetId && lessonPeriodsBySetId[row.timetableSetId]
-            ? row.timetableSetId
-            : firstTimetableSetId;
-        const periods = lessonPeriodsBySetId[nextSetId] ?? [];
-        const fallback = periods[0] ? String(periods[0]) : "";
-
-        next[dateKey] = {
-          ...row,
-          timetableSetId: nextSetId,
-          startPeriod: row.startPeriod || fallback,
-          endPeriod: row.endPeriod || fallback,
-        };
-      }
-
-      return next;
-    });
-  }, [firstTimetableSetId, lessonPeriodsBySetId, selectedWorkplace?.type]);
-
-  const applyDefaultsToRows = () => {
-    const normalizedDefaults = normalizeDefaultsForWorkplace(
-      defaults,
-      selectedWorkplace?.type,
+    const lessonSelectionValues = getLessonSelectionValues(
+      defaults.timetableSetId,
+      lessonPeriodsBySetId,
+      firstTimetableSetId,
     );
 
-    setDefaults(normalizedDefaults);
-    setRowsByDate((current) => {
-      const next = { ...current };
-
-      for (const dateKey of selectedDateKeys) {
-        if (!next[dateKey]) {
-          continue;
-        }
-
-        next[dateKey] = createRow(dateKey, normalizedDefaults);
-      }
-
-      return next;
-    });
-  };
-
-  const resetDefaults = () => {
-    setDefaults(
-      normalizeDefaultsForWorkplace(
-        DEFAULT_BULK_VALUES,
-        selectedWorkplace?.type,
-      ),
+    updateDefaults(
+      {
+        ...defaults,
+        shiftType,
+        ...(shiftType === "LESSON" ? lessonSelectionValues : {}),
+      },
+      true,
     );
   };
 
-  const toggleCalendarSelection = (calendarId: string, checked: boolean) => {
-    setHasUserCalendarSelection(true);
-    setSelectedCalendarIds((current) => {
-      const currentSet = new Set(current);
+  const handleRowShiftTypeChange = (dateKey: string, shiftType: ShiftType) => {
+    const row = rowsByDate[dateKey];
+    if (!row) {
+      return;
+    }
 
-      if (checked) {
-        currentSet.add(calendarId);
-      } else {
-        currentSet.delete(calendarId);
-      }
+    if (shiftType === "LESSON" && selectedWorkplace?.type !== "CRAM_SCHOOL") {
+      return;
+    }
 
-      if (currentSet.size === 0) {
-        return current;
-      }
+    const lessonSelectionValues = getLessonSelectionValues(
+      row.timetableSetId,
+      lessonPeriodsBySetId,
+      firstTimetableSetId,
+    );
 
-      return calendarOptions
-        .map((option) => option.id)
-        .filter((id) => currentSet.has(id));
+    handleUpdateRow(dateKey, {
+      shiftType,
+      ...(shiftType === "LESSON" ? lessonSelectionValues : {}),
     });
   };
 
-  const resetCalendarSelectionToDefault = () => {
-    setHasUserCalendarSelection(false);
-    setSelectedCalendarIds([]);
-  };
+  const handleApplyDefaultsToRows = () => {
+    const nextRowsByDate = { ...rowsByDate };
 
-  const toggleDateSelection = (dateKey: string) => {
-    setErrors((current) => ({
-      ...current,
-      selectedDates: undefined,
-    }));
-
-    setSelectedDateKeys((current) => {
-      if (current.includes(dateKey)) {
-        return current.filter((key) => key !== dateKey);
+    for (const dateKey of state.selectedDateKeys) {
+      if (!nextRowsByDate[dateKey]) {
+        continue;
       }
 
-      return sortDateKeys([...current, dateKey]);
-    });
+      nextRowsByDate[dateKey] = createRow(dateKey, defaults);
+    }
 
-    setRowsByDate((current) => {
-      if (current[dateKey]) {
-        const next = { ...current };
-        delete next[dateKey];
-        return next;
-      }
-
-      return {
-        ...current,
-        [dateKey]: createRow(
-          dateKey,
-          normalizeDefaultsForWorkplace(defaults, selectedWorkplace?.type),
-        ),
-      };
+    dispatch({
+      type: "replaceRowsByDate",
+      rowsByDate: nextRowsByDate,
     });
   };
 
-  const removeRow = (dateKey: string) => {
-    setSelectedDateKeys((current) => current.filter((key) => key !== dateKey));
-
-    setRowsByDate((current) => {
-      const next = { ...current };
-      delete next[dateKey];
-      return next;
-    });
-
-    setErrors((current) => {
-      if (!current.rows) {
-        return current;
-      }
-
-      const nextRows = { ...current.rows };
-      delete nextRows[dateKey];
-
-      return {
-        ...current,
-        rows: nextRows,
-      };
-    });
-  };
-
-  const updateRow = (dateKey: string, patch: Partial<BulkShiftRow>) => {
-    setRowsByDate((current) => {
-      const existing = current[dateKey];
-      if (!existing) {
-        return current;
-      }
-
-      return {
-        ...current,
-        [dateKey]: {
-          ...existing,
-          ...patch,
-        },
-      };
-    });
-
-    setErrors((current) => {
-      if (!current.rows?.[dateKey]) {
-        return current;
-      }
-
-      return {
-        ...current,
-        rows: {
-          ...current.rows,
-          [dateKey]: {},
-        },
-      };
-    });
+  const handleResetDefaults = () => {
+    updateDefaults(DEFAULT_BULK_VALUES, false);
   };
 
   const validateAndBuildPayload = ():
@@ -1514,14 +1730,14 @@ export function BulkShiftForm() {
       nextErrors.workplaceId = "勤務先を選択してください。";
     }
 
-    if (selectedDateKeys.length === 0) {
+    if (state.selectedDateKeys.length === 0) {
       nextErrors.selectedDates = "1日以上選択してください。";
     }
 
     const payload: BulkShiftPayload[] = [];
     const overnightCandidates: OvernightSummaryItem[] = [];
 
-    for (const dateKey of selectedDateKeys) {
+    for (const dateKey of state.selectedDateKeys) {
       const row = rowsByDate[dateKey];
       const rowErrors: RowErrors = {};
 
@@ -1625,16 +1841,14 @@ export function BulkShiftForm() {
 
         if (!hasRowErrors(rowErrors)) {
           if (isOvernightShift(row.startTime, row.endTime)) {
-            const startDateLabel = formatSelectedDate(dateKey);
-            const endDateLabel = formatSelectedDate(
-              getShiftEndDate(dateKey, row.startTime, row.endTime),
-            );
             overnightCandidates.push({
               date: dateKey,
               startTime: row.startTime,
               endTime: row.endTime,
-              startDateLabel,
-              endDateLabel,
+              startDateLabel: formatSelectedDate(dateKey),
+              endDateLabel: formatSelectedDate(
+                getShiftEndDate(dateKey, row.startTime, row.endTime),
+              ),
             });
           }
 
@@ -1677,8 +1891,14 @@ export function BulkShiftForm() {
       return;
     }
 
-    setIsSubmitting(true);
-    setErrors({});
+    dispatch({
+      type: "setSubmitting",
+      isSubmitting: true,
+    });
+    dispatch({
+      type: "setErrors",
+      errors: {},
+    });
     const loadingToastId = toast.loading("シフトを一括登録中です...");
 
     try {
@@ -1729,7 +1949,6 @@ export function BulkShiftForm() {
         responsePayload,
         messages.error.calendarSyncFailed,
       );
-      const isSyncPending = syncState.pending;
       const syncFailure = syncState.failure;
 
       if (mutationResult.monthShifts.length > 0) {
@@ -1780,7 +1999,7 @@ export function BulkShiftForm() {
       toast.success(messages.success.shiftsBulkCreated(createdCount), {
         id: loadingToastId,
         description: buildMutationSuccessDescription({
-          syncPending: isSyncPending,
+          syncPending: syncState.pending,
         }),
       });
       markForResetOnRouteHidden();
@@ -1788,8 +2007,11 @@ export function BulkShiftForm() {
     } catch (error) {
       console.error("failed to submit bulk shifts", error);
       const message = toErrorMessage(error, messages.error.bulkShiftSaveFailed);
-      setErrors({
-        form: message,
+      dispatch({
+        type: "setErrors",
+        errors: {
+          form: message,
+        },
       });
       toast.error(messages.error.bulkShiftSaveFailed, {
         id: loadingToastId,
@@ -1797,7 +2019,10 @@ export function BulkShiftForm() {
         duration: 6000,
       });
     } finally {
-      setIsSubmitting(false);
+      dispatch({
+        type: "setSubmitting",
+        isSubmitting: false,
+      });
     }
   };
 
@@ -1807,9 +2032,11 @@ export function BulkShiftForm() {
     }
 
     const validated = validateAndBuildPayload();
-
     if (!validated.success) {
-      setErrors(validated.errors);
+      dispatch({
+        type: "setErrors",
+        errors: validated.errors,
+      });
       const firstRowError = Object.values(validated.errors.rows ?? {})
         .flatMap((rowError) => Object.values(rowError))
         .find((message): message is string => Boolean(message));
@@ -1824,25 +2051,56 @@ export function BulkShiftForm() {
     }
 
     if (validated.overnightSummaries.length > 0) {
-      setPendingPayload(validated.payload);
-      setOvernightSummaries(validated.overnightSummaries);
-      setIsOvernightConfirmOpen(true);
+      pendingPayloadRef.current = validated.payload;
+      dispatch({
+        type: "openOvernightConfirm",
+        overnightSummaries: validated.overnightSummaries,
+      });
       return;
     }
 
     await submitBulk(validated.payload);
   };
 
+  const handleOvernightConfirm = async () => {
+    const pendingPayload = pendingPayloadRef.current;
+    if (!pendingPayload) {
+      return;
+    }
+
+    dispatch({
+      type: "closeOvernightConfirm",
+    });
+    await submitBulk(pendingPayload);
+    pendingPayloadRef.current = null;
+  };
+
+  const handleOvernightDialogOpenChange = (open: boolean) => {
+    if (open) {
+      return;
+    }
+
+    pendingPayloadRef.current = null;
+    dispatch({
+      type: "closeOvernightConfirm",
+    });
+  };
+
+  const handleCancel = () => {
+    markForResetOnRouteHidden();
+    router.push("/my");
+  };
+
   const formErrorMessage =
-    errors.form ??
-    (timetableSetsQuery.error
+    state.errors.form ??
+    (timetableSetsError
       ? toUserFacingMessage(
-          timetableSetsQuery.error,
+          timetableSetsError,
           "時間割の取得に失敗しました。時間を置いて再度お試しください。",
         )
-      : workplacesQuery.error
+      : workplacesError
         ? toUserFacingMessage(
-            workplacesQuery.error,
+            workplacesError,
             "勤務先一覧の取得に失敗しました。時間を置いて再度お試しください。",
           )
         : undefined);
@@ -1853,1110 +2111,70 @@ export function BulkShiftForm() {
       : (shiftPayrollPreview.items.find((item) => item.status !== "ready")
           ?.message ?? "日付とシフト情報を入力すると支給額を確認できます");
 
-  return (
-    <section className="space-y-6 p-4 pb-32 md:p-6 md:pb-6">
-      <header className="space-y-2">
-        <h2 className="text-xl font-semibold">シフト一括登録</h2>
-        <p className="text-sm text-muted-foreground">
-          勤務先と日付を選び、複数日のシフトをまとめて登録します。
-        </p>
-      </header>
+  return {
+    todayKey,
+    workplaces,
+    isWorkplaceLoading,
+    selectedWorkplace,
+    selectedWorkplaceId,
+    selectedDateKeys: state.selectedDateKeys,
+    rowsByDate,
+    defaults,
+    errors: state.errors,
+    isSubmitting: state.isSubmitting,
+    isOvernightConfirmOpen: state.isOvernightConfirmOpen,
+    overnightSummaries: state.overnightSummaries,
+    isSignOutScheduled,
+    calendarOptions,
+    selectedCalendarIds,
+    googleEventsByDate,
+    googleEventsError,
+    googleEventsWarning,
+    calendarCells,
+    displayMonth,
+    isInitialGoogleCalendarLoading,
+    isRefreshingGoogleEvents,
+    isTimetableLoading,
+    lessonPeriodsBySetId,
+    timetableSetOptions,
+    timetableSetNameById,
+    selectedRows,
+    formErrorMessage,
+    previewMonths: shiftPayrollPreview.months,
+    previewUnresolvedCount: shiftPayrollPreview.unresolvedCount,
+    previewBaselineErrorMessage: shiftPayrollPreview.baselineErrorMessage,
+    previewEmptyMessage,
+    handleWorkplaceChange,
+    handleRequestedMonthChange,
+    handleToggleCalendarSelection,
+    handleResetCalendarSelectionToDefault,
+    handleToggleDateSelection,
+    handleClearSelectedDates: () =>
+      dispatch({
+        type: "clearSelectedDates",
+      }),
+    handleDefaultShiftTypeChange,
+    handleUpdateDefaults: (patch: Partial<BulkDefaults>) =>
+      updateDefaults(
+        {
+          ...defaults,
+          ...patch,
+        },
+        true,
+      ),
+    handleApplyDefaultsToRows,
+    handleResetDefaults,
+    handleRemoveRow,
+    handleRowShiftTypeChange,
+    handleUpdateRow,
+    handleSubmit,
+    handleCancel,
+    handleOvernightDialogOpenChange,
+    handleOvernightConfirm,
+  };
+}
 
-      <Form
-        onSubmit={(event) => {
-          event.preventDefault();
-          void handleSubmit();
-        }}
-      >
-        <section className="space-y-4 rounded-xl border p-4">
-          <h3 className="text-base font-semibold">1. 勤務先選択</h3>
-
-          {isWorkplaceLoading ? (
-            <SpinnerPanel
-              className="min-h-[120px] max-w-md"
-              label="勤務先情報を読み込み中..."
-            />
-          ) : (
-            <Field>
-              <FieldLabel htmlFor="bulk-workplace">勤務先</FieldLabel>
-              <FieldContent>
-                <Select
-                  value={selectedWorkplaceId}
-                  onValueChange={(value) => {
-                    if (value === null) {
-                      return;
-                    }
-
-                    setSelectedWorkplaceId(value);
-                    setErrors((current) => ({
-                      ...current,
-                      workplaceId: undefined,
-                      form: undefined,
-                    }));
-                  }}
-                  disabled={workplaces.length === 0}
-                >
-                  <SelectTrigger
-                    id="bulk-workplace"
-                    className="w-full md:w-72 max-w-50"
-                  >
-                    <SelectValue placeholder="勤務先を選択">
-                      {selectedWorkplace?.name}
-                    </SelectValue>
-                  </SelectTrigger>
-                  <SelectContent>
-                    <SelectGroup>
-                      {workplaces.map((workplace) => (
-                        <SelectItem key={workplace.id} value={workplace.id}>
-                          {workplace.name}
-                        </SelectItem>
-                      ))}
-                    </SelectGroup>
-                  </SelectContent>
-                </Select>
-                <FieldDescription>
-                  前回選択した勤務先を初期表示します。
-                </FieldDescription>
-                <FormErrorMessage message={errors.workplaceId} />
-              </FieldContent>
-            </Field>
-          )}
-        </section>
-
-        <section className="space-y-4 rounded-xl border p-4">
-          <div className="flex flex-wrap items-center justify-between gap-2">
-            <h3 className="text-base font-semibold">2. 日付選択</h3>
-            <div className="flex items-center gap-2">
-              <span className="text-sm text-muted-foreground">
-                選択中: {selectedDateKeys.length}日
-              </span>
-              <Button
-                type="button"
-                variant="outline"
-                size="sm"
-                onClick={() => {
-                  setSelectedDateKeys([]);
-                  setRowsByDate({});
-                  setErrors((current) => ({
-                    ...current,
-                    selectedDates: undefined,
-                    rows: undefined,
-                  }));
-                }}
-                disabled={selectedDateKeys.length === 0}
-              >
-                選択をリセット
-              </Button>
-            </div>
-          </div>
-
-          {isInitialGoogleCalendarLoading ? (
-            <SpinnerPanel
-              className="min-h-[360px]"
-              label="Google予定を読み込み中..."
-            />
-          ) : (
-            <LoadingOverlay
-              isLoading={isRefreshingGoogleEvents}
-              className="rounded-lg"
-            >
-              <>
-                {calendarOptions.length > 0 ? (
-                  <div className="space-y-2 rounded-md border border-dashed px-3 py-2">
-                    <div className="flex flex-wrap items-center justify-between gap-2">
-                      <p className="text-xs text-muted-foreground">
-                        Google予定の表示対象カレンダー（
-                        {selectedCalendarIds.length}/{calendarOptions.length}）
-                      </p>
-                      <Button
-                        type="button"
-                        variant="ghost"
-                        size="sm"
-                        onClick={resetCalendarSelectionToDefault}
-                      >
-                        デフォルトに戻す
-                      </Button>
-                    </div>
-                    <div className="grid gap-2 md:grid-cols-2 xl:grid-cols-3">
-                      {calendarOptions.map((calendar) => (
-                        <label
-                          key={calendar.id}
-                          className="flex items-center gap-2 rounded-md border px-2 py-1.5 text-xs"
-                        >
-                          <Checkbox
-                            checked={selectedCalendarIds.includes(calendar.id)}
-                            onCheckedChange={(checked) => {
-                              toggleCalendarSelection(
-                                calendar.id,
-                                checked === true,
-                              );
-                            }}
-                          />
-                          <span
-                            className="size-2 shrink-0 rounded-full"
-                            style={{
-                              backgroundColor: getGoogleEventBadgeColor(
-                                calendar.color,
-                              ),
-                            }}
-                          />
-                          <span className="truncate">{calendar.summary}</span>
-                        </label>
-                      ))}
-                    </div>
-                  </div>
-                ) : null}
-
-                <div className="rounded-lg border">
-                  <div className="flex items-center justify-between border-b px-3 py-2 md:px-4">
-                    <Button
-                      type="button"
-                      variant="outline"
-                      size="sm"
-                      onClick={() =>
-                        setMonth((current) => addMonths(current, -1))
-                      }
-                    >
-                      <ChevronLeftIcon className="size-4" />
-                      前月
-                    </Button>
-                    <p className="text-sm font-semibold">
-                      {formatMonthLabel(displayMonth)}
-                    </p>
-                    <Button
-                      type="button"
-                      variant="outline"
-                      size="sm"
-                      onClick={() =>
-                        setMonth((current) => addMonths(current, 1))
-                      }
-                    >
-                      次月
-                      <ChevronRightIcon className="size-4" />
-                    </Button>
-                  </div>
-
-                  <div className="grid grid-cols-7 border-b bg-muted/30">
-                    {WEEKDAY_LABELS.map((label) => (
-                      <div key={label} className="py-2 text-center text-xs">
-                        {label}
-                      </div>
-                    ))}
-                  </div>
-
-                  <div className="grid grid-cols-7">
-                    {calendarCells.map((cell) => {
-                      const isSelected = selectedDateKeys.includes(cell.key);
-                      const isToday = cell.key === todayKey;
-                      const dayOfWeek = cell.date.getDay();
-                      const isHoliday = holidayJp.isHoliday(cell.key);
-                      const isSunday = dayOfWeek === 0;
-                      const isSaturday = dayOfWeek === 6;
-                      const isRedDate = isSunday || isHoliday;
-                      const googleEventDay = googleEventsByDate[cell.key];
-                      const { visible: visibleGoogleEvents, hiddenCount } =
-                        getVisibleGoogleEvents(googleEventDay);
-
-                      return (
-                        <button
-                          key={cell.key}
-                          type="button"
-                          onClick={() => {
-                            if (!cell.isCurrentMonth) {
-                              return;
-                            }
-                            toggleDateSelection(cell.key);
-                          }}
-                          className={cn(
-                            "relative flex min-h-24 flex-col border-b border-r px-1 py-2 text-left text-sm last:border-r-0 md:min-h-28",
-                            cell.isCurrentMonth
-                              ? "cursor-pointer hover:bg-muted/50"
-                              : "cursor-not-allowed bg-muted/20 text-muted-foreground/60",
-                            isSelected &&
-                              "bg-zinc-200 font-semibold hover:bg-zinc-200 ring-2 ring-inset ring-zinc-400 dark:bg-zinc-800/50 dark:hover:bg-zinc-800/50 dark:ring-zinc-600",
-                          )}
-                          disabled={cell.isCurrentMonth === false}
-                          aria-label={String(cell.date.getDate())}
-                        >
-                          {isToday ? (
-                            <span className="pointer-events-none absolute top-0.5 left-1/2 size-8 -translate-x-1/2 rounded-full bg-primary/20" />
-                          ) : null}
-
-                          <span
-                            className={cn(
-                              "relative z-10 self-center text-sm font-medium",
-                              cell.isCurrentMonth &&
-                                isRedDate &&
-                                "text-red-600",
-                              cell.isCurrentMonth &&
-                                !isRedDate &&
-                                isSaturday &&
-                                "text-blue-600",
-                              !cell.isCurrentMonth && "text-muted-foreground",
-                            )}
-                          >
-                            {cell.date.getDate()}
-                          </span>
-
-                          <ul className="mt-2 w-full space-y-1 px-1">
-                            {visibleGoogleEvents.map((item, index) => (
-                              <li
-                                key={`${cell.key}:${item.calendarId}:${item.title}:${index}`}
-                                className="flex items-center gap-1 text-[10px] leading-none"
-                              >
-                                <span
-                                  className="size-2 shrink-0 rounded-full"
-                                  style={{
-                                    backgroundColor: getGoogleEventBadgeColor(
-                                      item.calendarColor,
-                                    ),
-                                  }}
-                                />
-                                <span className="truncate text-foreground">
-                                  {formatGoogleEventLabel(item)}
-                                </span>
-                              </li>
-                            ))}
-                            {hiddenCount > 0 ? (
-                              <li className="text-[10px] font-medium text-muted-foreground">
-                                +{hiddenCount}
-                              </li>
-                            ) : null}
-                          </ul>
-                        </button>
-                      );
-                    })}
-                  </div>
-                </div>
-              </>
-            </LoadingOverlay>
-          )}
-
-          {googleEventsError ? (
-            <p className="text-xs text-amber-600">{googleEventsError}</p>
-          ) : null}
-          {googleEventsWarning ? (
-            <p className="text-xs text-muted-foreground">
-              {googleEventsWarning}
-            </p>
-          ) : null}
-
-          <FormErrorMessage message={errors.selectedDates} />
-        </section>
-
-        <section className="space-y-4 rounded-xl border p-4">
-          <h3 className="text-base font-semibold">3. デフォルト値設定</h3>
-
-          <FieldGroup className="grid gap-4 md:grid-cols-2">
-            <Field>
-              <FieldLabel>デフォルトシフトタイプ</FieldLabel>
-              <FieldContent>
-                <RadioGroup
-                  value={defaults.shiftType}
-                  onValueChange={(value) => {
-                    const shiftType = value as ShiftType;
-                    if (
-                      shiftType === "LESSON" &&
-                      selectedWorkplace?.type !== "CRAM_SCHOOL"
-                    ) {
-                      return;
-                    }
-
-                    const nextSetId =
-                      defaults.timetableSetId || firstTimetableSetId;
-                    const periods = lessonPeriodsBySetId[nextSetId] ?? [];
-                    const fallbackPeriod = periods[0] ? String(periods[0]) : "";
-
-                    setDefaults((current) => ({
-                      ...current,
-                      shiftType,
-                      ...(shiftType === "LESSON"
-                        ? {
-                            timetableSetId: nextSetId,
-                            startPeriod: current.startPeriod || fallbackPeriod,
-                            endPeriod: current.endPeriod || fallbackPeriod,
-                          }
-                        : {}),
-                    }));
-                  }}
-                >
-                  {selectedWorkplace?.type === "CRAM_SCHOOL" ? (
-                    <>
-                      <div className="flex items-center gap-2">
-                        <RadioGroupItem
-                          value="LESSON"
-                          id="default-shift-lesson"
-                        />
-                        <FieldLabel htmlFor="default-shift-lesson">
-                          {formatShiftTypeForWorkplace(
-                            "LESSON",
-                            selectedWorkplace?.type,
-                          )}
-                        </FieldLabel>
-                      </div>
-                      <div className="flex items-center gap-2">
-                        <RadioGroupItem
-                          value="NORMAL"
-                          id="default-shift-normal"
-                        />
-                        <FieldLabel htmlFor="default-shift-normal">
-                          {formatShiftTypeForWorkplace(
-                            "NORMAL",
-                            selectedWorkplace?.type,
-                          )}
-                        </FieldLabel>
-                      </div>
-                    </>
-                  ) : (
-                    <div className="flex items-center gap-2">
-                      <RadioGroupItem
-                        value="NORMAL"
-                        id="default-shift-normal"
-                      />
-                      <FieldLabel htmlFor="default-shift-normal">
-                        {formatShiftTypeForWorkplace(
-                          "NORMAL",
-                          selectedWorkplace?.type,
-                        )}
-                      </FieldLabel>
-                    </div>
-                  )}
-                </RadioGroup>
-              </FieldContent>
-            </Field>
-
-            {defaults.shiftType === "LESSON" ? null : (
-              <Field>
-                <FieldLabel htmlFor="default-break">
-                  デフォルト休憩時間
-                </FieldLabel>
-                <FieldContent>
-                  <div className="flex items-center gap-2">
-                    <Input
-                      id="default-break"
-                      type="number"
-                      min={0}
-                      max={MAX_BREAK_MINUTES}
-                      value={defaults.breakMinutes}
-                      onChange={(event) => {
-                        const breakMinutes = event.currentTarget.value;
-                        setDefaults((current) => ({
-                          ...current,
-                          breakMinutes,
-                        }));
-                      }}
-                      className="max-w-16"
-                    />
-                    <span className="shrink-0 text-sm text-muted-foreground">
-                      分
-                    </span>
-                  </div>
-                </FieldContent>
-              </Field>
-            )}
-          </FieldGroup>
-
-          <Field>
-            <FieldLabel htmlFor="default-comment">
-              デフォルトコメント
-            </FieldLabel>
-            <FieldContent>
-              <Input
-                id="default-comment"
-                value={defaults.comment}
-                onChange={(event) => {
-                  const comment = event.currentTarget.value;
-                  setDefaults((current) => ({
-                    ...current,
-                    comment,
-                  }));
-                }}
-                maxLength={100}
-                placeholder="例: 事務、授業補助、研修"
-              />
-              <FieldDescription>
-                {formatEventNamePreview(
-                  selectedWorkplace?.name,
-                  defaults.comment,
-                )}
-              </FieldDescription>
-            </FieldContent>
-          </Field>
-
-          {defaults.shiftType === "LESSON" ? (
-            <FieldGroup className="grid gap-4 md:grid-cols-3">
-              <Field>
-                <FieldLabel>デフォルト時間割セット</FieldLabel>
-                <FieldContent>
-                  <Select
-                    value={defaults.timetableSetId}
-                    onValueChange={(value) => {
-                      if (value === null) {
-                        return;
-                      }
-
-                      const timetableSetId = value;
-                      const periods =
-                        lessonPeriodsBySetId[timetableSetId] ?? [];
-                      const fallback = periods[0] ? String(periods[0]) : "";
-
-                      setDefaults((current) => ({
-                        ...current,
-                        timetableSetId,
-                        startPeriod: fallback,
-                        endPeriod: fallback,
-                      }));
-                    }}
-                  >
-                    <SelectTrigger>
-                      <SelectValue placeholder="時間割セットを選択">
-                        {timetableSetNameById[defaults.timetableSetId]}
-                      </SelectValue>
-                    </SelectTrigger>
-                    <SelectContent>
-                      <SelectGroup>
-                        {timetableSetOptions.map((set) => (
-                          <SelectItem key={set.id} value={set.id}>
-                            {set.name}
-                          </SelectItem>
-                        ))}
-                      </SelectGroup>
-                    </SelectContent>
-                  </Select>
-                </FieldContent>
-              </Field>
-
-              <Field>
-                <FieldLabel>デフォルト開始コマ</FieldLabel>
-                <FieldContent>
-                  <Select
-                    value={defaults.startPeriod}
-                    onValueChange={(value) => {
-                      if (value === null) {
-                        return;
-                      }
-
-                      setDefaults((current) => ({
-                        ...current,
-                        startPeriod: value,
-                      }));
-                    }}
-                  >
-                    <SelectTrigger>
-                      <SelectValue placeholder="開始コマ" />
-                    </SelectTrigger>
-                    <SelectContent>
-                      <SelectGroup>
-                        {(
-                          lessonPeriodsBySetId[defaults.timetableSetId] ?? []
-                        ).map((period) => (
-                          <SelectItem
-                            key={`default-start-${period}`}
-                            value={String(period)}
-                          >
-                            {period}限
-                          </SelectItem>
-                        ))}
-                      </SelectGroup>
-                    </SelectContent>
-                  </Select>
-                </FieldContent>
-              </Field>
-
-              <Field>
-                <FieldLabel>デフォルト終了コマ</FieldLabel>
-                <FieldContent>
-                  <Select
-                    value={defaults.endPeriod}
-                    onValueChange={(value) => {
-                      if (value === null) {
-                        return;
-                      }
-
-                      setDefaults((current) => ({
-                        ...current,
-                        endPeriod: value,
-                      }));
-                    }}
-                  >
-                    <SelectTrigger>
-                      <SelectValue placeholder="終了コマ" />
-                    </SelectTrigger>
-                    <SelectContent>
-                      <SelectGroup>
-                        {(
-                          lessonPeriodsBySetId[defaults.timetableSetId] ?? []
-                        ).map((period) => (
-                          <SelectItem
-                            key={`default-end-${period}`}
-                            value={String(period)}
-                          >
-                            {period}限
-                          </SelectItem>
-                        ))}
-                      </SelectGroup>
-                    </SelectContent>
-                  </Select>
-                </FieldContent>
-              </Field>
-            </FieldGroup>
-          ) : (
-            <FieldGroup className="grid gap-4 md:grid-cols-2">
-              <Field>
-                <FieldLabel htmlFor="default-start-time">
-                  デフォルト開始時刻
-                </FieldLabel>
-                <FieldContent>
-                  <Input
-                    id="default-start-time"
-                    type="time"
-                    value={defaults.startTime}
-                    onChange={(event) => {
-                      const startTime = event.currentTarget.value;
-                      setDefaults((current) => ({
-                        ...current,
-                        startTime,
-                      }));
-                    }}
-                  />
-                </FieldContent>
-              </Field>
-
-              <Field>
-                <FieldLabel htmlFor="default-end-time">
-                  デフォルト終了時刻
-                </FieldLabel>
-                <FieldContent>
-                  <Input
-                    id="default-end-time"
-                    type="time"
-                    value={defaults.endTime}
-                    onChange={(event) => {
-                      const endTime = event.currentTarget.value;
-                      setDefaults((current) => ({
-                        ...current,
-                        endTime,
-                      }));
-                    }}
-                  />
-                </FieldContent>
-              </Field>
-            </FieldGroup>
-          )}
-
-          <div className="flex flex-wrap gap-2">
-            <Button
-              type="button"
-              variant="outline"
-              onClick={applyDefaultsToRows}
-            >
-              デフォルト値を適用
-            </Button>
-            <Button type="button" variant="ghost" onClick={resetDefaults}>
-              リセット
-            </Button>
-          </div>
-
-          {defaults.shiftType === "LESSON" &&
-          selectedWorkplace?.type === "CRAM_SCHOOL" &&
-          (lessonPeriodsBySetId[defaults.timetableSetId] ?? []).length === 0 ? (
-            <FormErrorMessage message="塾の授業は時間割が登録されていません。" />
-          ) : null}
-        </section>
-
-        <section className="space-y-4 rounded-xl border p-4">
-          <h3 className="text-base font-semibold">4. 選択日の詳細入力</h3>
-
-          {isTimetableLoading ? (
-            <SpinnerPanel
-              className="min-h-[220px]"
-              label="時間割データを読み込み中..."
-            />
-          ) : selectedRows.length === 0 ? (
-            <p className="text-sm text-muted-foreground">
-              カレンダーから日付を選択してください。
-            </p>
-          ) : (
-            <div className="max-h-[560px] space-y-3 overflow-y-auto pr-1">
-              {selectedRows.map((row) => {
-                const rowErrors = errors.rows?.[row.date] ?? {};
-                const lessonPeriods =
-                  lessonPeriodsBySetId[row.timetableSetId] ?? [];
-                const googleEventDay = googleEventsByDate[row.date];
-                const {
-                  visible: visibleGoogleEvents,
-                  hiddenCount: hiddenGoogleEventCount,
-                } = getVisibleGoogleEvents(googleEventDay);
-
-                return (
-                  <section key={row.date} className="rounded-lg border p-3">
-                    <div className="flex items-center justify-between gap-2">
-                      <p className="text-sm font-semibold">
-                        {formatSelectedDate(row.date)}
-                      </p>
-                      <Button
-                        type="button"
-                        variant="ghost"
-                        size="icon"
-                        onClick={() => removeRow(row.date)}
-                        aria-label={`${row.date}の入力行を削除`}
-                      >
-                        <Trash2Icon className="size-4" />
-                      </Button>
-                    </div>
-
-                    {visibleGoogleEvents.length > 0 ||
-                    hiddenGoogleEventCount > 0 ? (
-                      <div className="mt-2 rounded-md bg-muted/40 px-2 py-2">
-                        <p className="text-xs text-muted-foreground">
-                          Google予定
-                        </p>
-                        <ul className="mt-1 space-y-1">
-                          {visibleGoogleEvents.map((item, index) => (
-                            <li
-                              key={`${row.date}:${item.calendarId}:${item.title}:${index}`}
-                              className="flex items-center gap-1 text-xs leading-tight"
-                            >
-                              <span
-                                className="size-2 shrink-0 rounded-full"
-                                style={{
-                                  backgroundColor: getGoogleEventBadgeColor(
-                                    item.calendarColor,
-                                  ),
-                                }}
-                              />
-                              <span className="truncate text-foreground">
-                                {formatGoogleEventLabel(item)}
-                              </span>
-                            </li>
-                          ))}
-                          {hiddenGoogleEventCount > 0 ? (
-                            <li className="text-xs font-medium text-muted-foreground">
-                              +{hiddenGoogleEventCount}
-                            </li>
-                          ) : null}
-                        </ul>
-                      </div>
-                    ) : null}
-
-                    <FieldGroup className="mt-3 grid gap-4 md:grid-cols-2">
-                      <Field>
-                        <FieldLabel>シフトタイプ</FieldLabel>
-                        <FieldContent>
-                          <RadioGroup
-                            value={row.shiftType}
-                            onValueChange={(value) => {
-                              const shiftType = value as ShiftType;
-                              if (
-                                shiftType === "LESSON" &&
-                                selectedWorkplace?.type !== "CRAM_SCHOOL"
-                              ) {
-                                return;
-                              }
-
-                              const nextSetId =
-                                row.timetableSetId || firstTimetableSetId;
-                              const periods =
-                                lessonPeriodsBySetId[nextSetId] ?? [];
-                              const fallbackPeriod = periods[0]
-                                ? String(periods[0])
-                                : "";
-
-                              updateRow(row.date, {
-                                shiftType,
-                                ...(shiftType === "LESSON"
-                                  ? {
-                                      timetableSetId: nextSetId,
-                                      startPeriod:
-                                        row.startPeriod || fallbackPeriod,
-                                      endPeriod:
-                                        row.endPeriod || fallbackPeriod,
-                                    }
-                                  : {}),
-                              });
-                            }}
-                          >
-                            {selectedWorkplace?.type === "CRAM_SCHOOL" ? (
-                              <>
-                                <div className="flex items-center gap-2">
-                                  <RadioGroupItem
-                                    value="LESSON"
-                                    id={`${row.date}-shift-lesson`}
-                                  />
-                                  <FieldLabel
-                                    htmlFor={`${row.date}-shift-lesson`}
-                                  >
-                                    {formatShiftTypeForWorkplace(
-                                      "LESSON",
-                                      selectedWorkplace?.type,
-                                    )}
-                                  </FieldLabel>
-                                </div>
-                                <div className="flex items-center gap-2">
-                                  <RadioGroupItem
-                                    value="NORMAL"
-                                    id={`${row.date}-shift-normal`}
-                                  />
-                                  <FieldLabel
-                                    htmlFor={`${row.date}-shift-normal`}
-                                  >
-                                    {formatShiftTypeForWorkplace(
-                                      "NORMAL",
-                                      selectedWorkplace?.type,
-                                    )}
-                                  </FieldLabel>
-                                </div>
-                              </>
-                            ) : (
-                              <div className="flex items-center gap-2">
-                                <RadioGroupItem
-                                  value="NORMAL"
-                                  id={`${row.date}-shift-normal`}
-                                />
-                                <FieldLabel
-                                  htmlFor={`${row.date}-shift-normal`}
-                                >
-                                  {formatShiftTypeForWorkplace(
-                                    "NORMAL",
-                                    selectedWorkplace?.type,
-                                  )}
-                                </FieldLabel>
-                              </div>
-                            )}
-                          </RadioGroup>
-                          <FormErrorMessage message={rowErrors.shiftType} />
-                        </FieldContent>
-                      </Field>
-
-                      {row.shiftType === "LESSON" ? null : (
-                        <Field>
-                          <FieldLabel htmlFor={`${row.date}-break`}>
-                            休憩時間（分）
-                          </FieldLabel>
-                          <FieldContent>
-                            <div className="flex items-center gap-2">
-                              <Input
-                                id={`${row.date}-break`}
-                                type="number"
-                                min={0}
-                                max={MAX_BREAK_MINUTES}
-                                className="max-w-16"
-                                value={row.breakMinutes}
-                                onChange={(event) => {
-                                  const breakMinutes =
-                                    event.currentTarget.value;
-                                  updateRow(row.date, {
-                                    breakMinutes,
-                                  });
-                                }}
-                              />
-                              <span className="shrink-0 text-sm text-muted-foreground">
-                                分
-                              </span>
-                            </div>
-                            <FormErrorMessage
-                              message={rowErrors.breakMinutes}
-                            />
-                          </FieldContent>
-                        </Field>
-                      )}
-                    </FieldGroup>
-
-                    <Field
-                      className="mt-4"
-                      data-invalid={Boolean(rowErrors.comment)}
-                    >
-                      <FieldLabel htmlFor={`${row.date}-comment`}>
-                        コメント
-                      </FieldLabel>
-                      <FieldContent>
-                        <Input
-                          id={`${row.date}-comment`}
-                          value={row.comment}
-                          onChange={(event) => {
-                            updateRow(row.date, {
-                              comment: event.currentTarget.value,
-                            });
-                          }}
-                          maxLength={100}
-                          placeholder="例: 事務、授業補助、研修"
-                        />
-                        <FieldDescription>
-                          {formatEventNamePreview(
-                            selectedWorkplace?.name,
-                            row.comment,
-                          )}
-                        </FieldDescription>
-                        <FormErrorMessage message={rowErrors.comment} />
-                      </FieldContent>
-                    </Field>
-
-                    {row.shiftType === "LESSON" ? (
-                      <FieldGroup className="mt-4 grid gap-4 md:grid-cols-3">
-                        <Field>
-                          <FieldLabel>時間割セット</FieldLabel>
-                          <FieldContent>
-                            <Select
-                              value={row.timetableSetId}
-                              onValueChange={(value) => {
-                                if (value === null) {
-                                  return;
-                                }
-
-                                const timetableSetId = value;
-                                const periods =
-                                  lessonPeriodsBySetId[timetableSetId] ?? [];
-                                const fallback = periods[0]
-                                  ? String(periods[0])
-                                  : "";
-
-                                updateRow(row.date, {
-                                  timetableSetId,
-                                  startPeriod: fallback,
-                                  endPeriod: fallback,
-                                });
-                              }}
-                            >
-                              <SelectTrigger>
-                                <SelectValue placeholder="時間割セットを選択">
-                                  {timetableSetNameById[row.timetableSetId]}
-                                </SelectValue>
-                              </SelectTrigger>
-                              <SelectContent>
-                                <SelectGroup>
-                                  {timetableSetOptions.map((set) => (
-                                    <SelectItem
-                                      key={`${row.date}-set-${set.id}`}
-                                      value={set.id}
-                                    >
-                                      {set.name}
-                                    </SelectItem>
-                                  ))}
-                                </SelectGroup>
-                              </SelectContent>
-                            </Select>
-                            <FormErrorMessage
-                              message={rowErrors.timetableSetId}
-                            />
-                          </FieldContent>
-                        </Field>
-
-                        <Field>
-                          <FieldLabel>開始コマ</FieldLabel>
-                          <FieldContent>
-                            <Select
-                              value={row.startPeriod}
-                              onValueChange={(value) => {
-                                if (value === null) {
-                                  return;
-                                }
-
-                                updateRow(row.date, {
-                                  startPeriod: value,
-                                });
-                              }}
-                            >
-                              <SelectTrigger>
-                                <SelectValue placeholder="開始コマ" />
-                              </SelectTrigger>
-                              <SelectContent>
-                                <SelectGroup>
-                                  {lessonPeriods.map((period) => (
-                                    <SelectItem
-                                      key={`${row.date}-start-${period}`}
-                                      value={String(period)}
-                                    >
-                                      {period}限
-                                    </SelectItem>
-                                  ))}
-                                </SelectGroup>
-                              </SelectContent>
-                            </Select>
-                            <FormErrorMessage message={rowErrors.startPeriod} />
-                          </FieldContent>
-                        </Field>
-
-                        <Field>
-                          <FieldLabel>終了コマ</FieldLabel>
-                          <FieldContent>
-                            <Select
-                              value={row.endPeriod}
-                              onValueChange={(value) => {
-                                if (value === null) {
-                                  return;
-                                }
-
-                                updateRow(row.date, {
-                                  endPeriod: value,
-                                });
-                              }}
-                            >
-                              <SelectTrigger>
-                                <SelectValue placeholder="終了コマ" />
-                              </SelectTrigger>
-                              <SelectContent>
-                                <SelectGroup>
-                                  {lessonPeriods.map((period) => (
-                                    <SelectItem
-                                      key={`${row.date}-end-${period}`}
-                                      value={String(period)}
-                                    >
-                                      {period}限
-                                    </SelectItem>
-                                  ))}
-                                </SelectGroup>
-                              </SelectContent>
-                            </Select>
-                            <FormErrorMessage message={rowErrors.endPeriod} />
-                          </FieldContent>
-                        </Field>
-                      </FieldGroup>
-                    ) : (
-                      <FieldGroup className="mt-4 grid gap-4 md:grid-cols-2">
-                        <Field>
-                          <FieldLabel htmlFor={`${row.date}-start-time`}>
-                            開始時刻
-                          </FieldLabel>
-                          <FieldContent>
-                            <Input
-                              id={`${row.date}-start-time`}
-                              type="time"
-                              value={row.startTime}
-                              onChange={(event) => {
-                                const startTime = event.currentTarget.value;
-                                updateRow(row.date, {
-                                  startTime,
-                                });
-                              }}
-                            />
-                            <FormErrorMessage message={rowErrors.startTime} />
-                          </FieldContent>
-                        </Field>
-
-                        <Field>
-                          <FieldLabel htmlFor={`${row.date}-end-time`}>
-                            終了時刻
-                          </FieldLabel>
-                          <FieldContent>
-                            <Input
-                              id={`${row.date}-end-time`}
-                              type="time"
-                              value={row.endTime}
-                              onChange={(event) => {
-                                const endTime = event.currentTarget.value;
-                                updateRow(row.date, {
-                                  endTime,
-                                });
-                              }}
-                            />
-                            <FormErrorMessage message={rowErrors.endTime} />
-                          </FieldContent>
-                        </Field>
-                      </FieldGroup>
-                    )}
-                  </section>
-                );
-              })}
-            </div>
-          )}
-        </section>
-
-        <Field>
-          <FieldContent>
-            <FormErrorMessage message={formErrorMessage} />
-          </FieldContent>
-        </Field>
-
-        <div className="flex flex-wrap gap-2">
-          <Button
-            type="button"
-            variant="outline"
-            onClick={() => {
-              markForResetOnRouteHidden();
-              router.push("/my");
-            }}
-            disabled={isSubmitting || isSignOutScheduled}
-          >
-            キャンセル
-          </Button>
-          <Button
-            type="submit"
-            disabled={isSubmitting || isSignOutScheduled || isWorkplaceLoading}
-          >
-            {isSubmitting ? "登録中..." : "確定"}
-          </Button>
-        </div>
-      </Form>
-
-      <ShiftPayrollPreviewFloating
-        months={shiftPayrollPreview.months}
-        unresolvedCount={shiftPayrollPreview.unresolvedCount}
-        emptyMessage={previewEmptyMessage}
-        baselineErrorMessage={shiftPayrollPreview.baselineErrorMessage}
-      />
-
-      <Dialog
-        open={isOvernightConfirmOpen}
-        onOpenChange={(open) => {
-          setIsOvernightConfirmOpen(open);
-          if (!open) {
-            setPendingPayload(null);
-            setOvernightSummaries([]);
-          }
-        }}
-      >
-        <DialogContent>
-          <DialogHeader>
-            <DialogTitle>翌日終了として登録されるシフトがあります</DialogTitle>
-            <DialogDescription>
-              終了時刻が開始時刻より早いシフトは翌日終了として登録されます。内容を確認してください。
-            </DialogDescription>
-          </DialogHeader>
-
-          <div className="max-h-64 overflow-y-auto rounded-md border">
-            <ul className="divide-y">
-              {overnightSummaries.map((item) => (
-                <li key={item.date} className="space-y-1 px-3 py-2 text-sm">
-                  <p className="font-medium">{formatSelectedDate(item.date)}</p>
-                  <p className="text-muted-foreground">
-                    入力: {formatShiftTimeRange(item.startTime, item.endTime)}
-                  </p>
-                  <p className="text-muted-foreground">
-                    解釈: {item.startDateLabel} {item.startTime} 〜{" "}
-                    {item.endDateLabel} {item.endTime}
-                  </p>
-                </li>
-              ))}
-            </ul>
-          </div>
-
-          <DialogFooter>
-            <Button
-              type="button"
-              variant="outline"
-              onClick={() => setIsOvernightConfirmOpen(false)}
-              disabled={isSubmitting}
-            >
-              戻って修正
-            </Button>
-            <Button
-              type="button"
-              onClick={async () => {
-                if (!pendingPayload) {
-                  return;
-                }
-                setIsOvernightConfirmOpen(false);
-                await submitBulk(pendingPayload);
-                setPendingPayload(null);
-                setOvernightSummaries([]);
-              }}
-              disabled={isSubmitting}
-            >
-              まとめて翌日終了として登録
-            </Button>
-          </DialogFooter>
-        </DialogContent>
-      </Dialog>
-    </section>
-  );
+export function BulkShiftForm(props: BulkShiftFormProps) {
+  const controller = useBulkShiftFormController(props);
+  return <BulkShiftFormScreen controller={controller} />;
 }

@@ -16,19 +16,17 @@ type Context = {
 
 const DATE_PART_PADDING = 2;
 
-const confirmShiftInputSchema = z
-  .object({
-    startTime: z
-      .string()
-      .regex(TIME_ONLY_REGEX, "開始時刻はHH:MM形式で入力してください")
-      .optional(),
-    endTime: z
-      .string()
-      .regex(TIME_ONLY_REGEX, "終了時刻はHH:MM形式で入力してください")
-      .optional(),
-    breakMinutes: z.coerce.number().int().min(0).optional(),
-  })
-  .strict();
+const confirmShiftInputSchema = z.strictObject({
+  startTime: z
+    .string()
+    .regex(TIME_ONLY_REGEX, "開始時刻はHH:MM形式で入力してください")
+    .optional(),
+  endTime: z
+    .string()
+    .regex(TIME_ONLY_REGEX, "終了時刻はHH:MM形式で入力してください")
+    .optional(),
+  breakMinutes: z.coerce.number().int().min(0).optional(),
+});
 
 function pad(value: number): string {
   return String(value).padStart(DATE_PART_PADDING, "0");

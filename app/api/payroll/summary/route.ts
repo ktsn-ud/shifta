@@ -8,13 +8,11 @@ import { jsonNoStore } from "@/lib/api/cache-control";
 
 const MONTH_REGEX = /^\d{4}-(0[1-9]|1[0-2])$/;
 
-const summaryQuerySchema = z
-  .object({
-    month: z
-      .string()
-      .regex(MONTH_REGEX, "month は YYYY-MM形式で入力してください"),
-  })
-  .strict();
+const summaryQuerySchema = z.strictObject({
+  month: z
+    .string()
+    .regex(MONTH_REGEX, "month は YYYY-MM形式で入力してください"),
+});
 
 export async function GET(request: Request) {
   await connection();

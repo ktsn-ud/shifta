@@ -25,7 +25,7 @@ export type ActualPayrollCoverage = ActualPayrollAmount & {
   isPartial: boolean;
 };
 
-export function roundCurrency(value: number): number {
+function roundCurrency(value: number): number {
   return Math.round(value);
 }
 
@@ -46,7 +46,7 @@ export function buildWorkplaceMonthKey(
   return `${workplaceId}:${monthKey}`;
 }
 
-export function decimalToNumber(
+function decimalToNumber(
   value: number | string | { toString: () => string } | null | undefined,
   fallback = 0,
 ): number {
@@ -62,7 +62,7 @@ export function decimalToNumber(
   return numeric;
 }
 
-export function toActualPayrollAmount(
+function toActualPayrollAmount(
   record:
     | {
         taxableAmount: Prisma.Decimal | number | string;

@@ -23,36 +23,43 @@ import {
 
 export const maxDuration = 60;
 
-const bulkShiftItemSchema = z
-  .object({
-    date: z.string().regex(DATE_ONLY_REGEX, "YYYY-MM-DD形式で入力してください"),
-    shiftType: z.enum(["NORMAL", "LESSON"]),
-    comment: shiftCommentSchema,
-    startTime: z
-      .string()
-      .regex(TIME_ONLY_REGEX, "HH:MM形式で入力してください")
-      .optional(),
-    endTime: z
-      .string()
-      .regex(TIME_ONLY_REGEX, "HH:MM形式で入力してください")
-      .optional(),
-    breakMinutes: z.coerce.number().int().min(0).default(0),
-    lessonRange: lessonRangeSchema.optional(),
-  })
-  .strict();
+const bulkShiftItemSchema = z.strictObject({
+  date: z.string().regex(DATE_ONLY_REGEX, "YYYY-MM-DD形式で入力してください"),
+  shiftType: z.enum(["NORMAL", "LESSON"]),
+  comment: shiftCommentSchema,
+  startTime: z
+    .string()
+    .regex(TIME_ONLY_REGEX, "HH:MM形式で入力してください")
+    .optional(),
+  endTime: z
+    .string()
+    .regex(TIME_ONLY_REGEX, "HH:MM形式で入力してください")
+    .optional(),
+  breakMinutes: z.coerce.number().int().min(0).default(0),
+  lessonRange: lessonRangeSchema.optional(),
+});
 
-const bulkCreateSchema = z
-  .object({
-    workplaceId: z.string().min(1),
-    shifts: z.array(bulkShiftItemSchema).min(1),
-  })
-  .strict();
+const bulkCreateSchema = z.strictObject({
+  workplaceId: z.string().min(1),
+  shifts: z.array(bulkShiftItemSchema).min(1),
+});
 
 type CreatedShift = {
   id: string;
 };
 
 type BulkShiftItem = z.infer<typeof bulkShiftItemSchema>;
+
+class BulkShiftBuildError extends Error {
+  constructor(
+    readonly index: number,
+    readonly date: string,
+    detail: string,
+  ) {
+    super(detail);
+    this.name = "BulkShiftBuildError";
+  }
+}
 
 async function createBulkLessonTimeRangeResolver(
   workplaceId: string,
@@ -204,6 +211,38 @@ async function createShiftsInTransaction(
   return shiftRows.map((row) => ({ id: row.id }));
 }
 
+async function buildBulkShiftItems(input: {
+  workplaceId: string;
+  workplaceType: "GENERAL" | "CRAM_SCHOOL";
+  shifts: BulkShiftItem[];
+  lessonTimeRangeResolver?: LessonTimeRangeResolver;
+}): Promise<BuiltShiftData[]> {
+  const { lessonTimeRangeResolver, shifts, workplaceId, workplaceType } = input;
+
+  return Promise.all(
+    shifts.map(async (item, index) => {
+      try {
+        return await buildShiftData(
+          {
+            ...(item as Omit<ShiftInput, "workplaceId">),
+            workplaceId,
+          },
+          workplaceType,
+          {
+            lessonTimeRangeResolver,
+          },
+        );
+      } catch (error) {
+        if (error instanceof ShiftValidationError) {
+          throw new BulkShiftBuildError(index, item.date, error.message);
+        }
+
+        throw error;
+      }
+    }),
+  );
+}
+
 export async function POST(request: Request) {
   try {
     const current = await requireCurrentUser();
@@ -224,39 +263,29 @@ export async function POST(request: Request) {
       return workplaceResult.response;
     }
 
-    const builtItems: BuiltShiftData[] = [];
     const lessonTimeRangeResolver = await createBulkLessonTimeRangeResolver(
       body.data.workplaceId,
       body.data.shifts,
     );
 
-    for (let index = 0; index < body.data.shifts.length; index += 1) {
-      const item = body.data.shifts[index];
-
-      try {
-        const built = await buildShiftData(
-          {
-            ...(item as Omit<ShiftInput, "workplaceId">),
-            workplaceId: body.data.workplaceId,
-          },
-          workplaceResult.workplace.type,
-          {
-            lessonTimeRangeResolver,
-          },
-        );
-
-        builtItems.push(built);
-      } catch (error) {
-        if (error instanceof ShiftValidationError) {
-          return jsonError("シフトの入力値が不正です", 400, {
-            index,
-            date: item.date,
-            detail: error.message,
-          });
-        }
-
-        throw error;
+    let builtItems: BuiltShiftData[];
+    try {
+      builtItems = await buildBulkShiftItems({
+        workplaceId: body.data.workplaceId,
+        workplaceType: workplaceResult.workplace.type,
+        shifts: body.data.shifts,
+        lessonTimeRangeResolver,
+      });
+    } catch (error) {
+      if (error instanceof BulkShiftBuildError) {
+        return jsonError("シフトの入力値が不正です", 400, {
+          index: error.index,
+          date: error.date,
+          detail: error.message,
+        });
       }
+
+      throw error;
     }
 
     const createdShifts = await createShiftsInTransaction(builtItems);
