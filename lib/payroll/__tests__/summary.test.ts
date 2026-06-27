@@ -20,6 +20,7 @@ jest.mock("@/lib/prisma", () => ({
 }));
 
 import {
+  getPayrollSummaryAmountForUser,
   getPayrollSummaryCoreForUser,
   getPayrollSummaryForUser,
   getPayrollSummaryYearContextForUser,
@@ -166,6 +167,18 @@ describe("getPayrollSummaryForUser", () => {
         confirmedShiftWage: 0,
       }),
     );
+  });
+
+  it("次回支給額向けの軽量取得は表示額だけを返す", async () => {
+    const summaryAmount = await getPayrollSummaryAmountForUser(
+      "user-1",
+      date("2026-01-01"),
+    );
+
+    expect(summaryAmount).toEqual({
+      month: "2026-01",
+      totalWage: 1000,
+    });
   });
 
   it("年累計補足は選択月までの累計と年間見込を返す", async () => {

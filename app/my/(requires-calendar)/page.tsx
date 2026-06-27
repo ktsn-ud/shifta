@@ -6,11 +6,13 @@ import {
 } from "@/components/dashboard/dashboard-page-client";
 import { requireCurrentUser } from "@/lib/api/current-user";
 import {
+  addMonths,
   endOfMonth,
   fromMonthInputValue,
   startOfMonth,
   toDateOnlyString,
 } from "@/lib/calendar/date";
+import { getPayrollSummaryAmountForUser } from "@/lib/payroll/summary";
 import { getMonthShifts } from "@/lib/shifts/month-shifts";
 import { prisma } from "@/lib/prisma";
 
@@ -55,7 +57,12 @@ async function DashboardPageContent({ month }: { month: Date }) {
 
   const startDate = toDateOnlyString(startOfMonth(month));
   const endDate = toDateOnlyString(endOfMonth(month));
-  const [initialMonthShifts, initialUnconfirmedShiftCount] = await Promise.all([
+  const nextPaymentMonth = addMonths(month, 1);
+  const [
+    initialMonthShifts,
+    initialUnconfirmedShiftCount,
+    initialNextPaymentAmount,
+  ] = await Promise.all([
     getMonthShifts({
       userId: current.user.id,
       startDate,
@@ -63,6 +70,7 @@ async function DashboardPageContent({ month }: { month: Date }) {
       includeEstimate: true,
     }),
     getUnconfirmedShiftCount(current.user.id),
+    getPayrollSummaryAmountForUser(current.user.id, nextPaymentMonth),
   ]);
   const todayDate = toDateOnlyString(startOfUtcDay(new Date()));
 
@@ -74,7 +82,7 @@ async function DashboardPageContent({ month }: { month: Date }) {
       initialMonthStartDate={startDate}
       initialMonthEndDate={endDate}
       initialUnconfirmedShiftCount={initialUnconfirmedShiftCount}
-      nextMonthPaymentAmount={null}
+      initialNextPaymentAmount={initialNextPaymentAmount}
       todayDate={todayDate}
     />
   );
