@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useRef, useState } from "react";
 import { useRouter } from "next/navigation";
 import { CheckIcon } from "lucide-react";
 import { toast } from "sonner";
@@ -42,6 +42,10 @@ type ValidationResult = {
   endTime: string;
   breakMinutes: number;
 };
+
+export function ConfirmShiftCard(props: ConfirmShiftCardProps) {
+  return <ConfirmShiftCardContent key={props.shift.id} {...props} />;
+}
 
 const GOOGLE_TOKEN_EXPIRED_DESCRIPTION =
   "3秒後にログアウトします。再度Googleアカウントでログインしてください。";
@@ -99,31 +103,21 @@ function validateShiftInput(
   };
 }
 
-export function ConfirmShiftCard({
+function ConfirmShiftCardContent({
   shift,
   onActionCompleted,
 }: ConfirmShiftCardProps) {
   const router = useRouter();
   const queryClient = getBrowserQueryClient();
-  const [startTime, setStartTime] = useState(shift.startTime);
-  const [endTime, setEndTime] = useState(shift.endTime);
-  const [breakMinutes, setBreakMinutes] = useState(String(shift.breakMinutes));
+  const startTimeInputRef = useRef<HTMLInputElement | null>(null);
+  const endTimeInputRef = useRef<HTMLInputElement | null>(null);
+  const breakMinutesInputRef = useRef<HTMLInputElement | null>(null);
+  const pendingConfirmationRef = useRef<ValidationResult | null>(null);
   const [isConfirming, setIsConfirming] = useState(false);
   const [isOvernightDialogOpen, setIsOvernightDialogOpen] = useState(false);
-  const [pendingConfirmation, setPendingConfirmation] =
-    useState<ValidationResult | null>(null);
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
   const { isSignOutScheduled, scheduleSignOut } =
     useGoogleTokenExpiredSignOut();
-
-  useEffect(() => {
-    setStartTime(shift.startTime);
-    setEndTime(shift.endTime);
-    setBreakMinutes(String(shift.breakMinutes));
-    setIsOvernightDialogOpen(false);
-    setPendingConfirmation(null);
-    setErrorMessage(null);
-  }, [shift.breakMinutes, shift.endTime, shift.id, shift.startTime]);
 
   const isMutating = isConfirming || isSignOutScheduled;
   const startTimeInputId = `${shift.id}-confirm-start-time`;
@@ -244,6 +238,10 @@ export function ConfirmShiftCard({
     }
 
     setErrorMessage(null);
+    const startTime = startTimeInputRef.current?.value ?? shift.startTime;
+    const endTime = endTimeInputRef.current?.value ?? shift.endTime;
+    const breakMinutes =
+      breakMinutesInputRef.current?.value ?? String(shift.breakMinutes);
     const validation = validateShiftInput(startTime, endTime, breakMinutes);
     if (!validation.success) {
       setErrorMessage(validation.message);
@@ -251,7 +249,7 @@ export function ConfirmShiftCard({
     }
 
     if (isOvernightShift(validation.data.startTime, validation.data.endTime)) {
-      setPendingConfirmation(validation.data);
+      pendingConfirmationRef.current = validation.data;
       setIsOvernightDialogOpen(true);
       return;
     }
@@ -284,11 +282,11 @@ export function ConfirmShiftCard({
             >
               開始時刻
               <Input
+                ref={startTimeInputRef}
                 id={startTimeInputId}
                 type="time"
-                value={startTime}
+                defaultValue={shift.startTime}
                 disabled={isMutating}
-                onChange={(event) => setStartTime(event.currentTarget.value)}
               />
             </label>
 
@@ -298,11 +296,11 @@ export function ConfirmShiftCard({
             >
               終了時刻
               <Input
+                ref={endTimeInputRef}
                 id={endTimeInputId}
                 type="time"
-                value={endTime}
+                defaultValue={shift.endTime}
                 disabled={isMutating}
-                onChange={(event) => setEndTime(event.currentTarget.value)}
               />
             </label>
 
@@ -312,13 +310,13 @@ export function ConfirmShiftCard({
             >
               休憩時間（分）
               <Input
+                ref={breakMinutesInputRef}
                 id={breakMinutesInputId}
                 type="number"
                 min={0}
                 max={240}
-                value={breakMinutes}
+                defaultValue={String(shift.breakMinutes)}
                 disabled={isMutating}
-                onChange={(event) => setBreakMinutes(event.currentTarget.value)}
               />
             </label>
 
@@ -345,19 +343,25 @@ export function ConfirmShiftCard({
 
       <ConfirmDialog
         open={isOvernightDialogOpen}
-        onOpenChange={setIsOvernightDialogOpen}
+        onOpenChange={(open) => {
+          if (!open) {
+            pendingConfirmationRef.current = null;
+          }
+          setIsOvernightDialogOpen(open);
+        }}
         title="このシフトは日付をまたぎます"
         description="終了時刻が開始時刻より早いため、翌日終了として確定します。よろしいですか？"
         confirmLabel="翌日終了として確定"
         cancelLabel="キャンセル"
         destructive={false}
         onConfirm={async () => {
+          const pendingConfirmation = pendingConfirmationRef.current;
           if (!pendingConfirmation) {
             return;
           }
 
           await submitConfirmedShift(pendingConfirmation);
-          setPendingConfirmation(null);
+          pendingConfirmationRef.current = null;
         }}
       />
     </>

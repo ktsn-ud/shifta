@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useMemo, useState } from "react";
+import { useCallback, useReducer } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { useRouter } from "next/navigation";
 import { PlusIcon, Trash2Icon } from "lucide-react";
@@ -22,18 +22,18 @@ import {
 } from "@/components/ui/form";
 import { Input } from "@/components/ui/input";
 import { SpinnerPanel } from "@/components/ui/spinner";
+import { useResetOnRouteHidden } from "@/hooks/use-reset-on-route-hidden";
 import { parseGoogleSyncStateFromPayload } from "@/lib/google-calendar/clientSync";
 import { messages, toErrorMessage } from "@/lib/messages";
 import { fetchJson } from "@/lib/query/fetch-json";
 import { invalidateAfterTimetableMutation } from "@/lib/query/invalidation";
-import { getBrowserQueryClient } from "@/lib/query/query-client";
 import { buildMutationSuccessDescription } from "@/lib/query/mutation-toast";
+import { getBrowserQueryClient } from "@/lib/query/query-client";
 import { queryKeys } from "@/lib/query/query-keys";
 import {
   resolveUserFacingErrorFromResponse,
   toUserFacingMessage,
 } from "@/lib/user-facing-error";
-import { useResetOnRouteHidden } from "@/hooks/use-reset-on-route-hidden";
 
 const timeRegex = /^([01]\d|2[0-3]):([0-5]\d)$/;
 
@@ -71,17 +71,110 @@ type TimetableSet = {
   items: TimetableItem[];
 };
 
+type FormItemValues = {
+  id: string;
+  period: string;
+  startTime: string;
+  endTime: string;
+};
+
 type FormValues = {
   name: string;
-  items: Array<{
-    period: string;
-    startTime: string;
-    endTime: string;
-  }>;
+  items: FormItemValues[];
+};
+
+type QueuedTimetableSet = {
+  id: string;
+  values: FormValues;
 };
 
 type FormErrors = Partial<Record<"name" | "form", string>>;
 type RowErrors = Partial<Record<"period" | "startTime" | "endTime", string>>;
+type RowErrorMap = Record<string, RowErrors | undefined>;
+
+type TimetableFormState = {
+  values: FormValues;
+  queuedSets: QueuedTimetableSet[];
+  errors: FormErrors;
+  rowErrors: RowErrorMap;
+  isSubmitting: boolean;
+};
+
+type TimetableFormAction =
+  | { type: "reset"; initialValues: FormValues | null }
+  | { type: "updateName"; name: string }
+  | {
+      type: "updateItem";
+      itemId: string;
+      patch: Partial<Pick<FormItemValues, "period" | "startTime" | "endTime">>;
+    }
+  | { type: "appendItem" }
+  | { type: "removeItem"; itemId: string }
+  | { type: "setValidation"; errors: FormErrors; rowErrors: RowErrorMap }
+  | { type: "clearValidation" }
+  | { type: "queueCurrentSet" }
+  | { type: "removeQueuedSet"; queuedSetId: string }
+  | { type: "setFormError"; message: string }
+  | { type: "setSubmitting"; isSubmitting: boolean };
+
+type TimetableEditorFormProps = {
+  mode: TimetableFormMode;
+  workplaceId: string;
+  timetableId?: string;
+  workplaceName?: string;
+  initialValues: FormValues | null;
+  listHref: string;
+  externalFormError?: string | null;
+};
+
+type TimetableItemsSectionProps = {
+  items: FormItemValues[];
+  rowErrors: RowErrorMap;
+  isSubmitting: boolean;
+  isEdit: boolean;
+  onUpdateItem: (
+    itemId: string,
+    patch: Partial<Pick<FormItemValues, "period" | "startTime" | "endTime">>,
+  ) => void;
+  onRemoveItem: (itemId: string) => void;
+  onAppendItem: () => void;
+  onQueueCurrentSet: () => void;
+};
+
+type QueuedSetsSectionProps = {
+  queuedSets: QueuedTimetableSet[];
+  isSubmitting: boolean;
+  onRemoveQueuedSet: (queuedSetId: string) => void;
+};
+
+type TimetableEditorController = {
+  isEdit: boolean;
+  pageTitle: string;
+  values: FormValues;
+  queuedSets: QueuedTimetableSet[];
+  errors: FormErrors;
+  rowErrors: RowErrorMap;
+  isSubmitting: boolean;
+  formErrorMessage: string | null;
+  updateName: (name: string) => void;
+  updateItem: (
+    itemId: string,
+    patch: Partial<Pick<FormItemValues, "period" | "startTime" | "endTime">>,
+  ) => void;
+  removeItem: (itemId: string) => void;
+  appendItem: () => void;
+  queueCurrentSet: () => void;
+  removeQueuedSet: (queuedSetId: string) => void;
+  submit: (event: React.FormEvent<HTMLFormElement>) => Promise<void>;
+  cancel: () => void;
+};
+
+let nextDraftEntityId = 0;
+
+function createDraftEntityId(prefix: string): string {
+  nextDraftEntityId += 1;
+  return `${prefix}-${nextDraftEntityId}`;
+}
 
 function isRecord(value: unknown): value is Record<string, unknown> {
   return typeof value === "object" && value !== null;
@@ -182,8 +275,9 @@ function toMinutes(value: string): number {
   return Number(hour) * 60 + Number(minute);
 }
 
-function createEmptyItem(): FormValues["items"][number] {
+function createEmptyItem(): FormItemValues {
   return {
+    id: createDraftEntityId("timetable-item"),
     period: "",
     startTime: "",
     endTime: "",
@@ -197,6 +291,69 @@ function createEmptyFormValues(): FormValues {
   };
 }
 
+function cloneFormValues(values: FormValues): FormValues {
+  return {
+    name: values.name,
+    items: values.items.map((item) => ({ ...item })),
+  };
+}
+
+function createFormValuesFromTimetableSet(
+  timetableSet: TimetableSet,
+): FormValues {
+  const items = timetableSet.items
+    .slice()
+    .sort((left, right) => left.period - right.period)
+    .map((item) => ({
+      id: item.id,
+      period: String(item.period),
+      startTime: item.startTimeLabel ?? toTimeOnly(item.startTime),
+      endTime: item.endTimeLabel ?? toTimeOnly(item.endTime),
+    }));
+
+  return {
+    name: timetableSet.name,
+    items: items.length > 0 ? items : [createEmptyItem()],
+  };
+}
+
+function createTimetableFormState(
+  initialValues: FormValues | null,
+): TimetableFormState {
+  return {
+    values: initialValues
+      ? cloneFormValues(initialValues)
+      : createEmptyFormValues(),
+    queuedSets: [],
+    errors: {},
+    rowErrors: {},
+    isSubmitting: false,
+  };
+}
+
+function clearFieldError(
+  currentErrors: FormErrors,
+  key: Exclude<keyof FormErrors, "form">,
+): FormErrors {
+  if (!currentErrors[key]) {
+    return currentErrors;
+  }
+
+  const nextErrors = { ...currentErrors };
+  delete nextErrors[key];
+  return nextErrors;
+}
+
+function clearRowError(rowErrors: RowErrorMap, itemId: string): RowErrorMap {
+  if (!rowErrors[itemId]) {
+    return rowErrors;
+  }
+
+  const nextRowErrors = { ...rowErrors };
+  delete nextRowErrors[itemId];
+  return nextRowErrors;
+}
+
 function hasAnySetInput(values: FormValues): boolean {
   if (values.name.trim().length > 0) {
     return true;
@@ -207,32 +364,15 @@ function hasAnySetInput(values: FormValues): boolean {
   );
 }
 
-function normalizeItems(items: TimetableItem[]): FormValues["items"] {
-  return items
-    .slice()
-    .sort((left, right) => left.period - right.period)
-    .map((item) => ({
-      period: String(item.period),
-      startTime: item.startTimeLabel ?? toTimeOnly(item.startTime),
-      endTime: item.endTimeLabel ?? toTimeOnly(item.endTime),
-    }));
-}
-
-function validateRows(items: FormValues["items"]): {
-  rowErrors: RowErrors[];
+function validateRows(items: FormItemValues[]): {
+  rowErrors: RowErrorMap;
   hasError: boolean;
 } {
-  const rowErrors: RowErrors[] = items.map(() => ({}));
+  const rowErrors: RowErrorMap = {};
   let hasError = false;
+  const seenPeriods = new Map<number, string>();
 
-  const seenPeriods = new Map<number, number>();
-
-  for (let index = 0; index < items.length; index += 1) {
-    const item = items[index];
-    if (!item) {
-      continue;
-    }
-
+  for (const item of items) {
     const errors: RowErrors = {};
     const period = Number(item.period);
 
@@ -257,255 +397,390 @@ function validateRows(items: FormValues["items"]): {
     }
 
     if (Object.keys(errors).length > 0) {
-      rowErrors[index] = errors;
+      rowErrors[item.id] = errors;
       hasError = true;
       continue;
     }
 
-    const duplicatedIndex = seenPeriods.get(period);
-    if (duplicatedIndex !== undefined) {
-      rowErrors[index] = {
-        ...rowErrors[index],
+    const duplicatedItemId = seenPeriods.get(period);
+    if (duplicatedItemId) {
+      rowErrors[item.id] = {
+        ...rowErrors[item.id],
         period: "同じコマ番号が重複しています。",
       };
-      rowErrors[duplicatedIndex] = {
-        ...rowErrors[duplicatedIndex],
+      rowErrors[duplicatedItemId] = {
+        ...rowErrors[duplicatedItemId],
         period:
-          rowErrors[duplicatedIndex]?.period ??
+          rowErrors[duplicatedItemId]?.period ??
           "同じコマ番号が重複しています。",
       };
       hasError = true;
       continue;
     }
 
-    seenPeriods.set(period, index);
+    seenPeriods.set(period, item.id);
   }
 
   return { rowErrors, hasError };
 }
 
-export function TimetableForm({
-  mode,
-  workplaceId,
-  timetableId,
-}: TimetableFormProps) {
-  const router = useRouter();
-  const queryClient = getBrowserQueryClient();
-  const isEdit = mode === "edit";
+function validateForm(target: FormValues): {
+  formErrors: FormErrors;
+  rowErrors: RowErrorMap;
+} {
+  const formErrors: FormErrors = {};
 
-  const [values, setValues] = useState<FormValues>(createEmptyFormValues);
-  const [queuedSets, setQueuedSets] = useState<FormValues[]>([]);
-  const [errors, setErrors] = useState<FormErrors>({});
-  const [rowErrors, setRowErrors] = useState<RowErrors[]>([]);
-  const [isSubmitting, setIsSubmitting] = useState(false);
-  const { markForResetOnRouteHidden } = useResetOnRouteHidden(() => {
-    setValues(createEmptyFormValues());
-    setQueuedSets([]);
-    setErrors({});
-    setRowErrors([]);
-    setIsSubmitting(false);
-  });
+  if (!target.name.trim()) {
+    formErrors.name = "時間割セット名は必須です。";
+  } else if (target.name.trim().length > 50) {
+    formErrors.name = "時間割セット名は50文字以内で入力してください。";
+  }
 
-  const pageTitle = useMemo(
-    () => (isEdit ? "時間割セット編集" : "時間割セット作成"),
-    [isEdit],
+  const rowValidation = validateRows(target.items);
+
+  return {
+    formErrors,
+    rowErrors: rowValidation.rowErrors,
+  };
+}
+
+function findFirstValidationMessage(
+  formErrors: FormErrors,
+  rowErrors: RowErrorMap,
+): string | undefined {
+  return (
+    Object.values(formErrors).find(
+      (value): value is string => typeof value === "string" && value.length > 0,
+    ) ??
+    Object.values(rowErrors)
+      .flatMap((error) => Object.values(error ?? {}))
+      .find(
+        (value): value is string =>
+          typeof value === "string" && value.length > 0,
+      )
   );
-  const listHref = `/my/workplaces/${workplaceId}/timetables`;
+}
 
-  const workplaceQuery = useQuery({
-    queryKey: queryKeys.workplaces.detailSummary({
-      workplaceId,
-    }),
-    queryFn: ({ signal }) =>
-      fetchJson(`/api/workplaces/${workplaceId}`, {
-        init: { signal },
-        fallbackMessage: "勤務先情報の取得に失敗しました。",
-        parse: (payload) => {
-          const parsed = parseWorkplaceResponse(payload);
-          if (!parsed) {
-            throw new Error("WORKPLACE_RESPONSE_INVALID");
-          }
-          return parsed;
+function toCreatePayload(set: FormValues) {
+  return {
+    name: set.name.trim(),
+    items: set.items.map((item) => ({
+      period: Number(item.period),
+      startTime: item.startTime,
+      endTime: item.endTime,
+    })),
+  };
+}
+
+function timetableFormReducer(
+  state: TimetableFormState,
+  action: TimetableFormAction,
+): TimetableFormState {
+  switch (action.type) {
+    case "reset":
+      return createTimetableFormState(action.initialValues);
+    case "updateName":
+      return {
+        ...state,
+        values: {
+          ...state.values,
+          name: action.name,
         },
-      }),
-    staleTime: 5 * 60 * 1000,
-    gcTime: 15 * 60 * 1000,
-    refetchOnWindowFocus: false,
-    refetchOnReconnect: false,
-  });
-
-  const workplace = workplaceQuery.data ?? null;
-
-  const timetablesQuery = useQuery({
-    queryKey: queryKeys.workplaces.timetables({
-      workplaceId,
-    }),
-    queryFn: ({ signal }) =>
-      fetchJson(`/api/workplaces/${workplaceId}/timetables`, {
-        init: { signal },
-        fallbackMessage: "時間割一覧の取得に失敗しました。",
-        parse: (payload) => {
-          const parsed = parseTimetableSetListResponse(payload);
-          if (!parsed) {
-            throw new Error("TIMETABLE_LIST_RESPONSE_INVALID");
-          }
-          return parsed;
+        errors: clearFieldError(state.errors, "name"),
+      };
+    case "updateItem":
+      return {
+        ...state,
+        values: {
+          ...state.values,
+          items: state.values.items.map((item) =>
+            item.id === action.itemId ? { ...item, ...action.patch } : item,
+          ),
         },
-      }),
-    enabled:
-      isEdit &&
-      Boolean(timetableId) &&
-      workplaceQuery.data?.type === "CRAM_SCHOOL",
-    staleTime: 5 * 60 * 1000,
-    gcTime: 15 * 60 * 1000,
-    refetchOnWindowFocus: false,
-    refetchOnReconnect: false,
-  });
-
-  const editingTarget = useMemo(() => {
-    if (!isEdit || !timetableId || !timetablesQuery.data) {
-      return null;
-    }
-
-    return timetablesQuery.data.find((set) => set.id === timetableId) ?? null;
-  }, [isEdit, timetableId, timetablesQuery.data]);
-
-  const isLoading =
-    workplaceQuery.isPending ||
-    (isEdit &&
-      Boolean(timetableId) &&
-      workplace?.type === "CRAM_SCHOOL" &&
-      timetablesQuery.isPending);
-
-  useEffect(() => {
-    if (!isEdit || !editingTarget) {
-      return;
-    }
-
-    setValues({
-      name: editingTarget.name,
-      items:
-        editingTarget.items.length > 0
-          ? normalizeItems(editingTarget.items)
-          : [createEmptyItem()],
-    });
-  }, [editingTarget, isEdit]);
-
-  function updateValue(key: "name", value: string) {
-    setValues((current) => ({
-      ...current,
-      [key]: value,
-    }));
-
-    setErrors((current) => {
-      if (!current[key]) {
-        return current;
-      }
-
-      const next = { ...current };
-      delete next[key];
-      return next;
-    });
-  }
-
-  function updateItem(
-    index: number,
-    patch: Partial<FormValues["items"][number]>,
-  ) {
-    setValues((current) => ({
-      ...current,
-      items: current.items.map((item, itemIndex) =>
-        itemIndex === index ? { ...item, ...patch } : item,
-      ),
-    }));
-
-    setRowErrors((current) => {
-      if (!current[index]) {
-        return current;
-      }
-
-      const next = [...current];
-      next[index] = {};
-      return next;
-    });
-  }
-
-  function appendItem() {
-    setValues((current) => ({
-      ...current,
-      items: [...current.items, createEmptyItem()],
-    }));
-    setRowErrors((current) => [...current, {}]);
-  }
-
-  function removeItem(index: number) {
-    setValues((current) => {
-      if (current.items.length <= 1) {
-        return current;
+        rowErrors: clearRowError(state.rowErrors, action.itemId),
+      };
+    case "appendItem":
+      return {
+        ...state,
+        values: {
+          ...state.values,
+          items: [...state.values.items, createEmptyItem()],
+        },
+      };
+    case "removeItem":
+      if (state.values.items.length <= 1) {
+        return state;
       }
 
       return {
-        ...current,
-        items: current.items.filter((_, itemIndex) => itemIndex !== index),
+        ...state,
+        values: {
+          ...state.values,
+          items: state.values.items.filter((item) => item.id !== action.itemId),
+        },
+        rowErrors: clearRowError(state.rowErrors, action.itemId),
       };
+    case "setValidation":
+      return {
+        ...state,
+        errors: action.errors,
+        rowErrors: action.rowErrors,
+      };
+    case "clearValidation":
+      return {
+        ...state,
+        errors: {},
+        rowErrors: {},
+      };
+    case "queueCurrentSet":
+      return {
+        ...state,
+        queuedSets: [
+          ...state.queuedSets,
+          {
+            id: createDraftEntityId("queued-set"),
+            values: cloneFormValues(state.values),
+          },
+        ],
+        values: createEmptyFormValues(),
+        errors: {},
+        rowErrors: {},
+      };
+    case "removeQueuedSet":
+      return {
+        ...state,
+        queuedSets: state.queuedSets.filter(
+          (queuedSet) => queuedSet.id !== action.queuedSetId,
+        ),
+      };
+    case "setFormError":
+      return {
+        ...state,
+        errors: {
+          ...state.errors,
+          form: action.message,
+        },
+      };
+    case "setSubmitting":
+      return {
+        ...state,
+        isSubmitting: action.isSubmitting,
+      };
+  }
+}
+
+function TimetableItemsSection({
+  items,
+  rowErrors,
+  isSubmitting,
+  isEdit,
+  onUpdateItem,
+  onRemoveItem,
+  onAppendItem,
+  onQueueCurrentSet,
+}: TimetableItemsSectionProps) {
+  return (
+    <div className="space-y-3">
+      <h3 className="text-sm font-semibold">コマ設定</h3>
+
+      <div className="space-y-3">
+        {items.map((item, index) => {
+          const error = rowErrors[item.id] ?? {};
+
+          return (
+            <Card key={item.id}>
+              <CardHeader className="pb-3">
+                <div className="flex items-center justify-between gap-2">
+                  <CardTitle className="text-sm">{index + 1}行目</CardTitle>
+                  <Button
+                    type="button"
+                    variant="ghost"
+                    size="icon"
+                    onClick={() => onRemoveItem(item.id)}
+                    disabled={isSubmitting || items.length <= 1}
+                    aria-label={`${index + 1}行目を削除`}
+                  >
+                    <Trash2Icon className="size-4" />
+                  </Button>
+                </div>
+              </CardHeader>
+
+              <div className="grid gap-3 px-6 pb-6 md:grid-cols-3">
+                <Field data-invalid={Boolean(error.period)}>
+                  <FieldLabel>コマ番号</FieldLabel>
+                  <FieldContent>
+                    <Input
+                      type="number"
+                      min={1}
+                      value={item.period}
+                      onChange={(event) =>
+                        onUpdateItem(item.id, {
+                          period: event.currentTarget.value,
+                        })
+                      }
+                      disabled={isSubmitting}
+                    />
+                    <FormErrorMessage message={error.period} />
+                  </FieldContent>
+                </Field>
+
+                <Field data-invalid={Boolean(error.startTime)}>
+                  <FieldLabel>開始時刻</FieldLabel>
+                  <FieldContent>
+                    <Input
+                      type="time"
+                      value={item.startTime}
+                      onChange={(event) =>
+                        onUpdateItem(item.id, {
+                          startTime: event.currentTarget.value,
+                        })
+                      }
+                      disabled={isSubmitting}
+                    />
+                    <FormErrorMessage message={error.startTime} />
+                  </FieldContent>
+                </Field>
+
+                <Field data-invalid={Boolean(error.endTime)}>
+                  <FieldLabel>終了時刻</FieldLabel>
+                  <FieldContent>
+                    <Input
+                      type="time"
+                      value={item.endTime}
+                      onChange={(event) =>
+                        onUpdateItem(item.id, {
+                          endTime: event.currentTarget.value,
+                        })
+                      }
+                      disabled={isSubmitting}
+                    />
+                    <FormErrorMessage message={error.endTime} />
+                  </FieldContent>
+                </Field>
+              </div>
+            </Card>
+          );
+        })}
+      </div>
+
+      <div className="flex justify-center">
+        <div className="flex items-center gap-2">
+          <Button
+            type="button"
+            variant="outline"
+            size="sm"
+            onClick={onAppendItem}
+            disabled={isSubmitting}
+          >
+            <PlusIcon className="size-4" />
+            行を追加
+          </Button>
+          {!isEdit ? (
+            <Button
+              type="button"
+              variant="outline"
+              size="sm"
+              onClick={onQueueCurrentSet}
+              disabled={isSubmitting}
+            >
+              時間割セットを確定
+            </Button>
+          ) : null}
+        </div>
+      </div>
+    </div>
+  );
+}
+
+function QueuedSetsSection({
+  queuedSets,
+  isSubmitting,
+  onRemoveQueuedSet,
+}: QueuedSetsSectionProps) {
+  return (
+    <div className="space-y-3">
+      <h3 className="text-sm font-semibold">
+        作成予定セット ({queuedSets.length})
+      </h3>
+
+      {queuedSets.length === 0 ? (
+        <p className="rounded-md border px-3 py-2 text-sm text-muted-foreground">
+          追加済みのセットはありません。入力中のセットを「時間割セットを確定」で作成予定に積めます。
+        </p>
+      ) : (
+        <div className="space-y-2">
+          {queuedSets.map((queuedSet, index) => (
+            <Card key={queuedSet.id}>
+              <CardHeader className="py-3">
+                <div className="flex items-center justify-between gap-2">
+                  <div className="space-y-1">
+                    <CardTitle className="text-sm">
+                      {index + 1}. {queuedSet.values.name}
+                    </CardTitle>
+                    <CardDescription>
+                      コマ数: {queuedSet.values.items.length}
+                    </CardDescription>
+                  </div>
+                  <Button
+                    type="button"
+                    variant="ghost"
+                    size="icon"
+                    onClick={() => onRemoveQueuedSet(queuedSet.id)}
+                    disabled={isSubmitting}
+                    aria-label={`作成予定${index + 1}を削除`}
+                  >
+                    <Trash2Icon className="size-4" />
+                  </Button>
+                </div>
+              </CardHeader>
+            </Card>
+          ))}
+        </div>
+      )}
+    </div>
+  );
+}
+
+function useTimetableEditorController({
+  mode,
+  workplaceId,
+  timetableId,
+  initialValues,
+  listHref,
+  externalFormError,
+}: TimetableEditorFormProps): TimetableEditorController {
+  const router = useRouter();
+  const queryClient = getBrowserQueryClient();
+  const isEdit = mode === "edit";
+  const pageTitle = isEdit ? "時間割セット編集" : "時間割セット作成";
+  const [state, dispatch] = useReducer(
+    timetableFormReducer,
+    initialValues,
+    createTimetableFormState,
+  );
+  const resetFormState = useCallback(() => {
+    dispatch({
+      type: "reset",
+      initialValues,
     });
+  }, [initialValues]);
+  const { markForResetOnRouteHidden } = useResetOnRouteHidden(resetFormState);
 
-    setRowErrors((current) =>
-      current.filter((_, itemIndex) => itemIndex !== index),
-    );
-  }
-
-  function validateForm(target: FormValues): {
-    formErrors: FormErrors;
-    rowErrors: RowErrors[];
-  } {
-    const formErrors: FormErrors = {};
-
-    if (!target.name.trim()) {
-      formErrors.name = "時間割セット名は必須です。";
-    } else if (target.name.trim().length > 50) {
-      formErrors.name = "時間割セット名は50文字以内で入力してください。";
-    }
-
-    const rowValidation = validateRows(target.items);
-    return {
-      formErrors,
-      rowErrors: rowValidation.rowErrors,
-    };
-  }
-
-  function toCreatePayload(set: FormValues) {
-    return {
-      name: set.name.trim(),
-      items: set.items.map((item) => ({
-        period: Number(item.period),
-        startTime: item.startTime,
-        endTime: item.endTime,
-      })),
-    };
-  }
-
-  function handleQueueCurrentSet() {
-    const validation = validateForm(values);
+  function queueCurrentSet() {
+    const validation = validateForm(state.values);
     const hasFormError = Object.keys(validation.formErrors).length > 0;
-    const hasRowError = validation.rowErrors.some(
-      (error) => Object.keys(error).length > 0,
-    );
+    const hasRowError = Object.keys(validation.rowErrors).length > 0;
 
     if (hasFormError || hasRowError) {
-      setErrors(validation.formErrors);
-      setRowErrors(validation.rowErrors);
-      const firstError =
-        Object.values(validation.formErrors).find(
-          (value): value is string =>
-            typeof value === "string" && value.length > 0,
-        ) ??
-        validation.rowErrors
-          .flatMap((error) => Object.values(error))
-          .find(
-            (value): value is string =>
-              typeof value === "string" && value.length > 0,
-          );
+      dispatch({
+        type: "setValidation",
+        errors: validation.formErrors,
+        rowErrors: validation.rowErrors,
+      });
+      const firstError = findFirstValidationMessage(
+        validation.formErrors,
+        validation.rowErrors,
+      );
 
       toast.error(messages.error.validation, {
         description: firstError,
@@ -514,47 +789,35 @@ export function TimetableForm({
       return;
     }
 
-    setQueuedSets((current) => [...current, values]);
-    setValues(createEmptyFormValues());
-    setErrors({});
-    setRowErrors([]);
+    dispatch({ type: "queueCurrentSet" });
     toast.success("作成予定セットに追加しました。");
   }
 
-  function removeQueuedSet(index: number) {
-    setQueuedSets((current) =>
-      current.filter((_, itemIndex) => itemIndex !== index),
-    );
-  }
-
-  async function handleSubmit(event: React.FormEvent<HTMLFormElement>) {
+  async function submit(event: React.FormEvent<HTMLFormElement>) {
     event.preventDefault();
 
     if (isEdit && !timetableId) {
-      setErrors({ form: "編集対象の時間割セットIDが指定されていません。" });
+      dispatch({
+        type: "setFormError",
+        message: "編集対象の時間割セットIDが指定されていません。",
+      });
       return;
     }
 
-    const validation = validateForm(values);
+    const validation = validateForm(state.values);
     const hasFormError = Object.keys(validation.formErrors).length > 0;
-    const hasRowError = validation.rowErrors.some(
-      (error) => Object.keys(error).length > 0,
-    );
+    const hasRowError = Object.keys(validation.rowErrors).length > 0;
 
     if (isEdit && (hasFormError || hasRowError)) {
-      setErrors(validation.formErrors);
-      setRowErrors(validation.rowErrors);
-      const firstError =
-        Object.values(validation.formErrors).find(
-          (value): value is string =>
-            typeof value === "string" && value.length > 0,
-        ) ??
-        validation.rowErrors
-          .flatMap((error) => Object.values(error))
-          .find(
-            (value): value is string =>
-              typeof value === "string" && value.length > 0,
-          );
+      dispatch({
+        type: "setValidation",
+        errors: validation.formErrors,
+        rowErrors: validation.rowErrors,
+      });
+      const firstError = findFirstValidationMessage(
+        validation.formErrors,
+        validation.rowErrors,
+      );
 
       toast.error(messages.error.validation, {
         description: firstError,
@@ -563,25 +826,21 @@ export function TimetableForm({
       return;
     }
 
-    const createTargets = [...queuedSets];
+    const createTargets = state.queuedSets.map((queuedSet) => queuedSet.values);
     if (!isEdit) {
-      const shouldIncludeCurrent = hasAnySetInput(values);
+      const shouldIncludeCurrent = hasAnySetInput(state.values);
 
       if (shouldIncludeCurrent) {
         if (hasFormError || hasRowError) {
-          setErrors(validation.formErrors);
-          setRowErrors(validation.rowErrors);
-          const firstError =
-            Object.values(validation.formErrors).find(
-              (value): value is string =>
-                typeof value === "string" && value.length > 0,
-            ) ??
-            validation.rowErrors
-              .flatMap((error) => Object.values(error))
-              .find(
-                (value): value is string =>
-                  typeof value === "string" && value.length > 0,
-              );
+          dispatch({
+            type: "setValidation",
+            errors: validation.formErrors,
+            rowErrors: validation.rowErrors,
+          });
+          const firstError = findFirstValidationMessage(
+            validation.formErrors,
+            validation.rowErrors,
+          );
 
           toast.error(messages.error.validation, {
             description: firstError,
@@ -590,11 +849,19 @@ export function TimetableForm({
           return;
         }
 
-        createTargets.push(values);
+        createTargets.push(state.values);
       } else if (createTargets.length === 0) {
-        setErrors({ name: "少なくとも1つの時間割セットを入力してください。" });
+        const formErrors = {
+          name: "少なくとも1つの時間割セットを入力してください。",
+        } satisfies FormErrors;
+
+        dispatch({
+          type: "setValidation",
+          errors: formErrors,
+          rowErrors: {},
+        });
         toast.error(messages.error.validation, {
-          description: "少なくとも1つの時間割セットを入力してください。",
+          description: formErrors.name,
           duration: 6000,
         });
         return;
@@ -603,12 +870,13 @@ export function TimetableForm({
 
     const payload =
       isEdit || createTargets.length <= 1
-        ? toCreatePayload(isEdit ? values : createTargets[0]!)
+        ? toCreatePayload(isEdit ? state.values : createTargets[0]!)
         : {
             sets: createTargets.map((set) => toCreatePayload(set)),
           };
 
-    setIsSubmitting(true);
+    dispatch({ type: "clearValidation" });
+    dispatch({ type: "setSubmitting", isSubmitting: true });
     const loadingToastId = toast.loading(
       isEdit
         ? "時間割セットを更新中です..."
@@ -661,41 +929,260 @@ export function TimetableForm({
     } catch (error) {
       console.error("failed to save timetable set", error);
       const message = toErrorMessage(error, messages.error.timetableSaveFailed);
-      setErrors((current) => ({
-        ...current,
-        form: message,
-      }));
+      dispatch({
+        type: "setFormError",
+        message,
+      });
       toast.error(messages.error.timetableSaveFailed, {
         id: loadingToastId,
         description: message,
         duration: 6000,
       });
     } finally {
-      setIsSubmitting(false);
+      dispatch({ type: "setSubmitting", isSubmitting: false });
     }
   }
 
-  const formErrorMessage =
-    errors.form ??
-    (isEdit && !timetableId
+  return {
+    isEdit,
+    pageTitle,
+    values: state.values,
+    queuedSets: state.queuedSets,
+    errors: state.errors,
+    rowErrors: state.rowErrors,
+    isSubmitting: state.isSubmitting,
+    formErrorMessage: state.errors.form ?? externalFormError ?? null,
+    updateName: (name) => {
+      dispatch({
+        type: "updateName",
+        name,
+      });
+    },
+    updateItem: (itemId, patch) => {
+      dispatch({
+        type: "updateItem",
+        itemId,
+        patch,
+      });
+    },
+    removeItem: (itemId) => {
+      dispatch({
+        type: "removeItem",
+        itemId,
+      });
+    },
+    appendItem: () => {
+      dispatch({ type: "appendItem" });
+    },
+    queueCurrentSet,
+    removeQueuedSet: (queuedSetId) => {
+      dispatch({
+        type: "removeQueuedSet",
+        queuedSetId,
+      });
+    },
+    submit,
+    cancel: () => {
+      markForResetOnRouteHidden();
+      router.push(listHref);
+    },
+  };
+}
+
+function TimetableEditorForm({
+  mode,
+  workplaceId,
+  timetableId,
+  workplaceName,
+  initialValues,
+  listHref,
+  externalFormError,
+}: TimetableEditorFormProps) {
+  const controller = useTimetableEditorController({
+    mode,
+    workplaceId,
+    timetableId,
+    workplaceName,
+    initialValues,
+    listHref,
+    externalFormError,
+  });
+
+  return (
+    <section className="space-y-6 p-4 md:p-6">
+      <header className="space-y-1">
+        <h2 className="text-xl font-semibold">{controller.pageTitle}</h2>
+        <p className="text-sm text-muted-foreground">
+          {workplaceName
+            ? controller.isEdit
+              ? `${workplaceName} の時間割セットを編集します。`
+              : `${workplaceName} の時間割セットを作成します。`
+            : controller.isEdit
+              ? "時間割セットを編集します。"
+              : "時間割セットを作成します。"}
+        </p>
+      </header>
+
+      {controller.formErrorMessage ? (
+        <p className="rounded-md border border-destructive/40 bg-destructive/5 px-3 py-2 text-sm text-destructive">
+          {controller.formErrorMessage}
+        </p>
+      ) : null}
+
+      <Form className="space-y-6" onSubmit={controller.submit}>
+        <FieldGroup className="grid gap-4">
+          <Field data-invalid={Boolean(controller.errors.name)}>
+            <FieldLabel htmlFor="timetable-set-name">時間割セット名</FieldLabel>
+            <FieldContent>
+              <Input
+                id="timetable-set-name"
+                value={controller.values.name}
+                onChange={(event) =>
+                  controller.updateName(event.currentTarget.value)
+                }
+                disabled={controller.isSubmitting}
+                maxLength={50}
+              />
+              <FormErrorMessage message={controller.errors.name} />
+            </FieldContent>
+          </Field>
+        </FieldGroup>
+
+        <TimetableItemsSection
+          items={controller.values.items}
+          rowErrors={controller.rowErrors}
+          isSubmitting={controller.isSubmitting}
+          isEdit={controller.isEdit}
+          onUpdateItem={controller.updateItem}
+          onRemoveItem={controller.removeItem}
+          onAppendItem={controller.appendItem}
+          onQueueCurrentSet={controller.queueCurrentSet}
+        />
+
+        {!controller.isEdit ? (
+          <QueuedSetsSection
+            queuedSets={controller.queuedSets}
+            isSubmitting={controller.isSubmitting}
+            onRemoveQueuedSet={controller.removeQueuedSet}
+          />
+        ) : null}
+
+        <div className="flex gap-2">
+          <Button type="submit" disabled={controller.isSubmitting}>
+            {controller.isSubmitting
+              ? controller.isEdit
+                ? "更新中..."
+                : "作成中..."
+              : controller.isEdit
+                ? "更新"
+                : "まとめて作成"}
+          </Button>
+          <Button
+            type="button"
+            variant="outline"
+            onClick={controller.cancel}
+            disabled={controller.isSubmitting}
+          >
+            キャンセル
+          </Button>
+        </div>
+      </Form>
+    </section>
+  );
+}
+
+export function TimetableForm({
+  mode,
+  workplaceId,
+  timetableId,
+}: TimetableFormProps) {
+  const router = useRouter();
+  const isEdit = mode === "edit";
+  const pageTitle = isEdit ? "時間割セット編集" : "時間割セット作成";
+  const listHref = `/my/workplaces/${workplaceId}/timetables`;
+  const {
+    data: workplaceData,
+    error: workplaceError,
+    isPending: isWorkplacePending,
+  } = useQuery({
+    queryKey: queryKeys.workplaces.detailSummary({
+      workplaceId,
+    }),
+    queryFn: ({ signal }) =>
+      fetchJson(`/api/workplaces/${workplaceId}`, {
+        init: { signal },
+        fallbackMessage: "勤務先情報の取得に失敗しました。",
+        parse: (payload) => {
+          const parsed = parseWorkplaceResponse(payload);
+          if (!parsed) {
+            throw new Error("WORKPLACE_RESPONSE_INVALID");
+          }
+          return parsed;
+        },
+      }),
+    staleTime: 5 * 60 * 1000,
+    gcTime: 15 * 60 * 1000,
+    refetchOnWindowFocus: false,
+    refetchOnReconnect: false,
+  });
+  const workplace = workplaceData ?? null;
+  const {
+    data: timetableData,
+    error: timetableError,
+    isPending: isTimetablePending,
+  } = useQuery({
+    queryKey: queryKeys.workplaces.timetables({
+      workplaceId,
+    }),
+    queryFn: ({ signal }) =>
+      fetchJson(`/api/workplaces/${workplaceId}/timetables`, {
+        init: { signal },
+        fallbackMessage: "時間割一覧の取得に失敗しました。",
+        parse: (payload) => {
+          const parsed = parseTimetableSetListResponse(payload);
+          if (!parsed) {
+            throw new Error("TIMETABLE_LIST_RESPONSE_INVALID");
+          }
+          return parsed;
+        },
+      }),
+    enabled:
+      isEdit && Boolean(timetableId) && workplace?.type === "CRAM_SCHOOL",
+    staleTime: 5 * 60 * 1000,
+    gcTime: 15 * 60 * 1000,
+    refetchOnWindowFocus: false,
+    refetchOnReconnect: false,
+  });
+  const editingTarget =
+    isEdit && timetableId && timetableData
+      ? (timetableData.find((set) => set.id === timetableId) ?? null)
+      : null;
+  const isLoading =
+    isWorkplacePending ||
+    (isEdit &&
+      Boolean(timetableId) &&
+      workplace?.type === "CRAM_SCHOOL" &&
+      isTimetablePending);
+  const externalFormError =
+    isEdit && !timetableId
       ? "編集対象の時間割セットIDが指定されていません。"
-      : workplaceQuery.error
+      : workplaceError
         ? toUserFacingMessage(
-            workplaceQuery.error,
+            workplaceError,
             "勤務先情報の取得に失敗しました。",
           )
-        : timetablesQuery.error
+        : timetableError
           ? toUserFacingMessage(
-              timetablesQuery.error,
+              timetableError,
               "時間割データの読み込みに失敗しました。",
             )
           : isEdit &&
               timetableId &&
               workplace?.type === "CRAM_SCHOOL" &&
-              timetablesQuery.data &&
+              timetableData &&
               !editingTarget
             ? "編集対象の時間割セットが見つかりません。"
-            : null);
+            : null;
 
   if (isLoading) {
     return (
@@ -729,7 +1216,6 @@ export function TimetableForm({
           type="button"
           variant="outline"
           onClick={() => {
-            markForResetOnRouteHidden();
             router.push(listHref);
           }}
         >
@@ -740,221 +1226,17 @@ export function TimetableForm({
   }
 
   return (
-    <section className="space-y-6 p-4 md:p-6">
-      <header className="space-y-1">
-        <h2 className="text-xl font-semibold">{pageTitle}</h2>
-        <p className="text-sm text-muted-foreground">
-          {workplace
-            ? isEdit
-              ? `${workplace.name} の時間割セットを編集します。`
-              : `${workplace.name} の時間割セットを作成します。`
-            : isEdit
-              ? "時間割セットを編集します。"
-              : "時間割セットを作成します。"}
-        </p>
-      </header>
-
-      {formErrorMessage ? (
-        <p className="rounded-md border border-destructive/40 bg-destructive/5 px-3 py-2 text-sm text-destructive">
-          {formErrorMessage}
-        </p>
-      ) : null}
-
-      <Form className="space-y-6" onSubmit={handleSubmit}>
-        <FieldGroup className="grid gap-4">
-          <Field data-invalid={Boolean(errors.name)}>
-            <FieldLabel htmlFor="timetable-set-name">時間割セット名</FieldLabel>
-            <FieldContent>
-              <Input
-                id="timetable-set-name"
-                value={values.name}
-                onChange={(event) =>
-                  updateValue("name", event.currentTarget.value)
-                }
-                disabled={isSubmitting}
-                maxLength={50}
-              />
-              <FormErrorMessage message={errors.name} />
-            </FieldContent>
-          </Field>
-        </FieldGroup>
-
-        <div className="space-y-3">
-          <h3 className="text-sm font-semibold">コマ設定</h3>
-
-          <div className="space-y-3">
-            {values.items.map((item, index) => {
-              const error = rowErrors[index] ?? {};
-
-              return (
-                <Card key={`row-${index}`}>
-                  <CardHeader className="pb-3">
-                    <div className="flex items-center justify-between gap-2">
-                      <CardTitle className="text-sm">{index + 1}行目</CardTitle>
-                      <Button
-                        type="button"
-                        variant="ghost"
-                        size="icon"
-                        onClick={() => removeItem(index)}
-                        disabled={isSubmitting || values.items.length <= 1}
-                        aria-label={`${index + 1}行目を削除`}
-                      >
-                        <Trash2Icon className="size-4" />
-                      </Button>
-                    </div>
-                  </CardHeader>
-
-                  <div className="grid gap-3 px-6 pb-6 md:grid-cols-3">
-                    <Field data-invalid={Boolean(error.period)}>
-                      <FieldLabel>コマ番号</FieldLabel>
-                      <FieldContent>
-                        <Input
-                          type="number"
-                          min={1}
-                          value={item.period}
-                          onChange={(event) =>
-                            updateItem(index, {
-                              period: event.currentTarget.value,
-                            })
-                          }
-                          disabled={isSubmitting}
-                        />
-                        <FormErrorMessage message={error.period} />
-                      </FieldContent>
-                    </Field>
-
-                    <Field data-invalid={Boolean(error.startTime)}>
-                      <FieldLabel>開始時刻</FieldLabel>
-                      <FieldContent>
-                        <Input
-                          type="time"
-                          value={item.startTime}
-                          onChange={(event) =>
-                            updateItem(index, {
-                              startTime: event.currentTarget.value,
-                            })
-                          }
-                          disabled={isSubmitting}
-                        />
-                        <FormErrorMessage message={error.startTime} />
-                      </FieldContent>
-                    </Field>
-
-                    <Field data-invalid={Boolean(error.endTime)}>
-                      <FieldLabel>終了時刻</FieldLabel>
-                      <FieldContent>
-                        <Input
-                          type="time"
-                          value={item.endTime}
-                          onChange={(event) =>
-                            updateItem(index, {
-                              endTime: event.currentTarget.value,
-                            })
-                          }
-                          disabled={isSubmitting}
-                        />
-                        <FormErrorMessage message={error.endTime} />
-                      </FieldContent>
-                    </Field>
-                  </div>
-                </Card>
-              );
-            })}
-          </div>
-
-          <div className="flex justify-center">
-            <div className="flex items-center gap-2">
-              <Button
-                type="button"
-                variant="outline"
-                size="sm"
-                onClick={appendItem}
-                disabled={isSubmitting}
-              >
-                <PlusIcon className="size-4" />
-                行を追加
-              </Button>
-              {!isEdit ? (
-                <Button
-                  type="button"
-                  variant="outline"
-                  size="sm"
-                  onClick={handleQueueCurrentSet}
-                  disabled={isSubmitting}
-                >
-                  時間割セットを確定
-                </Button>
-              ) : null}
-            </div>
-          </div>
-        </div>
-
-        {!isEdit ? (
-          <div className="space-y-3">
-            <h3 className="text-sm font-semibold">
-              作成予定セット ({queuedSets.length})
-            </h3>
-
-            {queuedSets.length === 0 ? (
-              <p className="rounded-md border px-3 py-2 text-sm text-muted-foreground">
-                追加済みのセットはありません。入力中のセットを「時間割セットを確定」で作成予定に積めます。
-              </p>
-            ) : (
-              <div className="space-y-2">
-                {queuedSets.map((set, index) => (
-                  <Card key={`queued-set-${index}`}>
-                    <CardHeader className="py-3">
-                      <div className="flex items-center justify-between gap-2">
-                        <div className="space-y-1">
-                          <CardTitle className="text-sm">
-                            {index + 1}. {set.name}
-                          </CardTitle>
-                          <CardDescription>
-                            コマ数: {set.items.length}
-                          </CardDescription>
-                        </div>
-                        <Button
-                          type="button"
-                          variant="ghost"
-                          size="icon"
-                          onClick={() => removeQueuedSet(index)}
-                          disabled={isSubmitting}
-                          aria-label={`作成予定${index + 1}を削除`}
-                        >
-                          <Trash2Icon className="size-4" />
-                        </Button>
-                      </div>
-                    </CardHeader>
-                  </Card>
-                ))}
-              </div>
-            )}
-          </div>
-        ) : null}
-
-        <div className="flex gap-2">
-          <Button type="submit" disabled={isSubmitting}>
-            {isSubmitting
-              ? isEdit
-                ? "更新中..."
-                : "作成中..."
-              : isEdit
-                ? "更新"
-                : "まとめて作成"}
-          </Button>
-          <Button
-            type="button"
-            variant="outline"
-            onClick={() => {
-              markForResetOnRouteHidden();
-              router.push(listHref);
-            }}
-            disabled={isSubmitting}
-          >
-            キャンセル
-          </Button>
-        </div>
-      </Form>
-    </section>
+    <TimetableEditorForm
+      key={editingTarget?.id ?? `create-${workplaceId}`}
+      mode={mode}
+      workplaceId={workplaceId}
+      timetableId={timetableId}
+      workplaceName={workplace?.name}
+      initialValues={
+        editingTarget ? createFormValuesFromTimetableSet(editingTarget) : null
+      }
+      listHref={listHref}
+      externalFormError={externalFormError}
+    />
   );
 }

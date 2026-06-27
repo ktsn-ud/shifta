@@ -58,24 +58,11 @@ export default async function PayrollRuleListPage({
     workplace.id,
   );
 
-  const initialRules = rules.map((rule) => ({
-    id: rule.id,
-    workplaceId: rule.workplaceId,
-    startDate: rule.startDate.toISOString(),
-    endDate: rule.endDate?.toISOString() ?? null,
-    baseHourlyWage: rule.baseHourlyWage.toString(),
-    holidayAllowanceHourly: rule.holidayAllowanceHourly.toString(),
-    nightPremiumRate: rule.nightPremiumRate.toString(),
-    overtimePremiumRate: rule.overtimePremiumRate.toString(),
-    dailyOvertimeThreshold: rule.dailyOvertimeThreshold.toString(),
-    holidayType: rule.holidayType,
-  }));
-
   return (
     <PayrollRuleList
       workplaceId={workplace.id}
       initialWorkplace={workplace}
-      initialRules={initialRules}
+      initialRules={rules}
       initialInfoMessage={resolveWarning(resolvedSearchParams.warning)}
     />
   );

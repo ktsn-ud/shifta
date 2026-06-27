@@ -1,3 +1,6 @@
+minimumReleaseAge: 1440
+trustPolicy: no-downgrade
+
 ignoredBuiltDependencies:
   - msw
   - sharp

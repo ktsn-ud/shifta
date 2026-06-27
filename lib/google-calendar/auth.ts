@@ -432,14 +432,3 @@ export async function getGoogleReadAuthByUserId(
       "全カレンダー予定表示に必要なGoogle権限が不足しています。再ログインして再同意してください",
   });
 }
-
-export async function getGoogleReadAuthBySession(
-  session: Session,
-): Promise<GoogleAuthResult> {
-  return getGoogleAuthBySession(session, {
-    requiredScopes: GOOGLE_CALENDAR_READ_SCOPES,
-    missingScopeCode: "READ_SCOPE_MISSING",
-    missingScopeMessage:
-      "全カレンダー予定表示に必要なGoogle権限が不足しています。再ログインして再同意してください",
-  });
-}

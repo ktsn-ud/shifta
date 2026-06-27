@@ -1,14 +1,16 @@
 "use client";
 
-import { useEffect, useMemo } from "react";
+import { useMemo } from "react";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import {
+  dateFromDateKey,
+  dateKeyFromApiDate,
   endOfMonth,
   startOfMonth,
   toDateOnlyString,
 } from "@/lib/calendar/date";
 import { calculateWorkedMinutes } from "@/lib/payroll/estimate";
-import { fetchJson } from "@/lib/query/fetch-json";
+import { fetchJson, isAbortError } from "@/lib/query/fetch-json";
 import { getBrowserQueryClient } from "@/lib/query/query-client";
 import { queryKeys } from "@/lib/query/query-keys";
 import { toUserFacingMessage } from "@/lib/user-facing-error";
@@ -277,6 +279,10 @@ export function useMonthShifts(month: Date, options: UseMonthShiftsOptions) {
     typeof initialEndDate === "string" &&
     initialStartDate === startDate &&
     initialEndDate === endDate;
+  // The dashboard SSR payload already includes estimated pay for the initial month.
+  // Reuse it for the deferred estimate query so the client only does the background
+  // fetch after the user changes month instead of immediately re-fetching and aborting.
+  const hasInitialEstimatedData = deferEstimate && hasInitialData;
 
   const primaryIncludeEstimate = deferEstimate === false;
 
@@ -293,7 +299,13 @@ export function useMonthShifts(month: Date, options: UseMonthShiftsOptions) {
     includeEstimate: true,
   });
 
-  const monthShiftsQuery = useQuery({
+  const {
+    data: monthShiftsData,
+    error: monthShiftsError,
+    isLoading: isMonthShiftsLoading,
+    isFetching: isMonthShiftsFetching,
+    isPlaceholderData,
+  } = useQuery({
     queryKey: primaryQueryKey,
     queryFn: ({ signal }) =>
       fetchMonthShifts({
@@ -308,7 +320,10 @@ export function useMonthShifts(month: Date, options: UseMonthShiftsOptions) {
     gcTime: MONTH_SHIFTS_GC_TIME_MS,
   });
 
-  const estimatedMonthShiftsQuery = useQuery({
+  const {
+    data: estimatedMonthShiftsData,
+    isFetching: isEstimatedMonthShiftsFetching,
+  } = useQuery({
     queryKey: estimatedQueryKey,
     queryFn: ({ signal }) =>
       fetchMonthShifts({
@@ -316,30 +331,28 @@ export function useMonthShifts(month: Date, options: UseMonthShiftsOptions) {
         endDate,
         includeEstimate: true,
         signal,
+      }).catch((error: unknown) => {
+        if (!isAbortError(error)) {
+          console.error("useMonthShifts estimate fetch failed", error);
+        }
+
+        throw error;
       }),
     enabled: deferEstimate,
+    initialData: hasInitialEstimatedData ? (initialShifts ?? []) : undefined,
     placeholderData: (previousData) => previousData,
     staleTime: MONTH_SHIFTS_STALE_TIME_MS,
     gcTime: MONTH_SHIFTS_GC_TIME_MS,
   });
 
-  useEffect(() => {
-    if (deferEstimate && estimatedMonthShiftsQuery.error) {
-      console.error(
-        "useMonthShifts estimate fetch failed",
-        estimatedMonthShiftsQuery.error,
-      );
-    }
-  }, [deferEstimate, estimatedMonthShiftsQuery.error]);
-
   const shifts = useMemo(() => {
-    const baseShifts = monthShiftsQuery.data ?? [];
+    const baseShifts = monthShiftsData ?? [];
 
     if (!deferEstimate) {
       return baseShifts;
     }
 
-    const estimatedShifts = estimatedMonthShiftsQuery.data;
+    const estimatedShifts = estimatedMonthShiftsData;
     if (!estimatedShifts) {
       return baseShifts;
     }
@@ -360,20 +373,28 @@ export function useMonthShifts(month: Date, options: UseMonthShiftsOptions) {
         estimatedPay,
       };
     });
-  }, [deferEstimate, estimatedMonthShiftsQuery.data, monthShiftsQuery.data]);
+  }, [deferEstimate, estimatedMonthShiftsData, monthShiftsData]);
 
-  const errorMessage = monthShiftsQuery.error
-    ? toUserFacingMessage(
-        monthShiftsQuery.error,
-        "シフト一覧の取得に失敗しました。",
-      )
+  const displayMonth = useMemo(() => {
+    const firstShiftDate = shifts[0]?.date;
+    if (!firstShiftDate) {
+      return month;
+    }
+
+    return startOfMonth(
+      dateFromDateKey(dateKeyFromApiDate(firstShiftDate)) ?? month,
+    );
+  }, [month, shifts]);
+
+  const errorMessage = monthShiftsError
+    ? toUserFacingMessage(monthShiftsError, "シフト一覧の取得に失敗しました。")
     : null;
-  const hasShiftData = monthShiftsQuery.data !== undefined;
-  const isInitialLoading = monthShiftsQuery.isLoading && !hasShiftData;
+  const hasShiftData = monthShiftsData !== undefined;
+  const isInitialLoading = isMonthShiftsLoading && !hasShiftData;
   const isRefreshing =
     hasShiftData &&
-    (monthShiftsQuery.isFetching ||
-      (deferEstimate && estimatedMonthShiftsQuery.isFetching));
+    (isMonthShiftsFetching ||
+      (deferEstimate && isEstimatedMonthShiftsFetching));
 
   async function reload() {
     await queryClient.invalidateQueries({
@@ -389,10 +410,11 @@ export function useMonthShifts(month: Date, options: UseMonthShiftsOptions) {
 
   return {
     shifts,
+    displayMonth,
     isLoading: isInitialLoading,
     isInitialLoading,
     isRefreshing,
-    isPlaceholderData: monthShiftsQuery.isPlaceholderData,
+    isPlaceholderData,
     errorMessage,
     reload,
   };

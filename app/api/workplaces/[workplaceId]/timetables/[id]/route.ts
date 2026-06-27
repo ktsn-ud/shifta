@@ -14,21 +14,17 @@ import { jsonNoStore } from "@/lib/api/cache-control";
 import { buildSuccessSyncResponse } from "@/lib/google-calendar/sync-response";
 import { revalidateWorkplaceDomainTags } from "@/lib/cache/revalidate";
 
-const timetableItemSchema = z
-  .object({
-    period: z.coerce.number().int().positive(),
-    startTime: z.string().regex(TIME_ONLY_REGEX, "HH:MM形式で入力してください"),
-    endTime: z.string().regex(TIME_ONLY_REGEX, "HH:MM形式で入力してください"),
-  })
-  .strict();
+const timetableItemSchema = z.strictObject({
+  period: z.coerce.number().int().positive(),
+  startTime: z.string().regex(TIME_ONLY_REGEX, "HH:MM形式で入力してください"),
+  endTime: z.string().regex(TIME_ONLY_REGEX, "HH:MM形式で入力してください"),
+});
 
-const timetableSetSchema = z
-  .object({
-    name: z.string().trim().min(1).max(50),
-    sortOrder: z.coerce.number().int().min(0).optional(),
-    items: z.array(timetableItemSchema).min(1),
-  })
-  .strict();
+const timetableSetSchema = z.strictObject({
+  name: z.string().trim().min(1).max(50),
+  sortOrder: z.coerce.number().int().min(0).optional(),
+  items: z.array(timetableItemSchema).min(1),
+});
 
 type Context = {
   params: Promise<{ workplaceId: string; id: string }>;
@@ -160,19 +156,20 @@ export async function PUT(request: Request, context: Context) {
         throw new Error("DUPLICATED_TIMETABLE_SET_NAME");
       }
 
-      await tx.timetableSet.update({
-        where: { id },
-        data: {
-          name: body.data.name,
-          sortOrder: body.data.sortOrder ?? existing.sortOrder,
-        },
-      });
-
-      await tx.timetable.deleteMany({
-        where: {
-          timetableSetId: id,
-        },
-      });
+      await Promise.all([
+        tx.timetableSet.update({
+          where: { id },
+          data: {
+            name: body.data.name,
+            sortOrder: body.data.sortOrder ?? existing.sortOrder,
+          },
+        }),
+        tx.timetable.deleteMany({
+          where: {
+            timetableSetId: id,
+          },
+        }),
+      ]);
 
       await tx.timetable.createMany({
         data: body.data.items.map((item) => ({

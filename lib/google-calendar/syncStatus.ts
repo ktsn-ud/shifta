@@ -245,7 +245,7 @@ async function executeWithSyncRetry<T>(
     shiftId: string;
   },
 ): Promise<T> {
-  for (let attempt = 0; ; attempt += 1) {
+  async function run(attempt: number): Promise<T> {
     try {
       return await operation();
     } catch (error) {
@@ -269,8 +269,11 @@ async function executeWithSyncRetry<T>(
       });
 
       await wait(delayMs);
+      return run(attempt + 1);
     }
   }
+
+  return run(0);
 }
 
 function resolveGoogleSyncError(error: unknown): ResolvedSyncError {
@@ -495,17 +498,22 @@ async function mapWithConcurrency<T, R>(
   const results = new Array<R>(items.length);
   let cursor = 0;
 
-  async function worker(): Promise<void> {
-    while (cursor < items.length) {
-      const index = cursor;
-      cursor += 1;
+  function worker(): Promise<void> {
+    const index = cursor;
+    cursor += 1;
 
-      results[index] = await mapper(items[index], index);
+    if (index >= items.length) {
+      return Promise.resolve();
     }
+
+    return mapper(items[index], index).then((result) => {
+      results[index] = result;
+      return worker();
+    });
   }
 
   await Promise.all(
-    Array.from({ length: Math.min(safeLimit, items.length) }, () => worker()),
+    Array.from({ length: Math.min(safeLimit, items.length) }, worker),
   );
 
   return results;

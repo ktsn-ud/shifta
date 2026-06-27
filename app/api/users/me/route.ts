@@ -7,12 +7,11 @@ import { jsonNoStore } from "@/lib/api/cache-control";
 import { buildSuccessSyncResponse } from "@/lib/google-calendar/sync-response";
 
 const updateUserSchema = z
-  .object({
-    email: z.string().email().optional(),
+  .strictObject({
+    email: z.email().optional(),
     name: z.string().trim().min(1).max(100).nullable().optional(),
-    image: z.string().url().nullable().optional(),
+    image: z.url().nullable().optional(),
   })
-  .strict()
   .refine((data) => Object.keys(data).length > 0, {
     message: "更新対象がありません",
   });

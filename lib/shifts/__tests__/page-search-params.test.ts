@@ -28,4 +28,18 @@ describe("normalizeShiftPageSearchParams", () => {
       returnMonth: undefined,
     });
   });
+
+  it("treats unsupported returnTo values as dashboard", () => {
+    expect(
+      normalizeShiftPageSearchParams({
+        returnTo: "https://example.com",
+        date: "2026-05-02",
+        month: "2026-05",
+      }),
+    ).toEqual({
+      returnTo: "dashboard",
+      initialDate: "2026-05-02",
+      returnMonth: "2026-05",
+    });
+  });
 });

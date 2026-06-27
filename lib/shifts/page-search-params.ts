@@ -17,13 +17,19 @@ function readSingleParam(
   return typeof value === "string" ? value : undefined;
 }
 
+function allowlistedShiftFormReturnTo(
+  searchParams: ShiftPageSearchParams,
+): ShiftFormReturnTo {
+  const returnTo = readSingleParam(searchParams.returnTo);
+
+  return returnTo === "list" ? "list" : "dashboard";
+}
+
 export function normalizeShiftPageSearchParams(
   searchParams: ShiftPageSearchParams,
 ): NormalizedShiftPageSearchParams {
-  const returnTo = readSingleParam(searchParams.returnTo);
-
   return {
-    returnTo: returnTo === "list" ? "list" : "dashboard",
+    returnTo: allowlistedShiftFormReturnTo(searchParams),
     initialDate: readSingleParam(searchParams.date),
     returnMonth: readSingleParam(searchParams.month),
   };

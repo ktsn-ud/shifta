@@ -20,8 +20,8 @@ function Spinner({
 }: SpinnerProps) {
   return (
     <div
-      role="status"
       aria-live="polite"
+      aria-busy="true"
       className={cn(
         "flex items-center justify-center gap-2 text-sm text-muted-foreground",
         className,

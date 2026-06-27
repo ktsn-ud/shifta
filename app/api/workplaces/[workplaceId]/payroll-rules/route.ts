@@ -10,24 +10,22 @@ import { jsonNoStore } from "@/lib/api/cache-control";
 import { buildSuccessSyncResponse } from "@/lib/google-calendar/sync-response";
 import { revalidateWorkplaceDomainTags } from "@/lib/cache/revalidate";
 
-const payrollRuleSchema = z
-  .object({
-    startDate: z
-      .string()
-      .regex(DATE_ONLY_REGEX, "YYYY-MM-DD形式で入力してください"),
-    endDate: z
-      .string()
-      .regex(DATE_ONLY_REGEX, "YYYY-MM-DD形式で入力してください")
-      .nullable()
-      .optional(),
-    baseHourlyWage: z.coerce.number().positive(),
-    holidayAllowanceHourly: z.coerce.number().min(0).optional().default(0),
-    nightPremiumRate: z.coerce.number().min(0),
-    overtimePremiumRate: z.coerce.number().min(0),
-    dailyOvertimeThreshold: z.coerce.number().positive(),
-    holidayType: z.enum(["NONE", "WEEKEND", "HOLIDAY", "WEEKEND_HOLIDAY"]),
-  })
-  .strict();
+const payrollRuleSchema = z.strictObject({
+  startDate: z
+    .string()
+    .regex(DATE_ONLY_REGEX, "YYYY-MM-DD形式で入力してください"),
+  endDate: z
+    .string()
+    .regex(DATE_ONLY_REGEX, "YYYY-MM-DD形式で入力してください")
+    .nullable()
+    .optional(),
+  baseHourlyWage: z.coerce.number().positive(),
+  holidayAllowanceHourly: z.coerce.number().min(0).optional().default(0),
+  nightPremiumRate: z.coerce.number().min(0),
+  overtimePremiumRate: z.coerce.number().min(0),
+  dailyOvertimeThreshold: z.coerce.number().positive(),
+  holidayType: z.enum(["NONE", "WEEKEND", "HOLIDAY", "WEEKEND_HOLIDAY"]),
+});
 
 type Context = {
   params: Promise<{ workplaceId: string }>;
@@ -185,21 +183,24 @@ export async function POST(request: Request, context: Context) {
         });
       }
 
-      const overlaps = await findOverlappingRules(tx, workplaceId, normalized);
-
-      const payrollRule = await tx.payrollRule.create({
-        data: {
-          workplaceId,
-          startDate: normalized.startDate,
-          endDate: normalized.endDate,
-          baseHourlyWage: normalized.baseHourlyWage.toString(),
-          holidayAllowanceHourly: normalized.holidayAllowanceHourly.toString(),
-          nightPremiumRate: normalized.nightPremiumRate.toString(),
-          overtimePremiumRate: normalized.overtimePremiumRate.toString(),
-          dailyOvertimeThreshold: normalized.dailyOvertimeThreshold.toString(),
-          holidayType: normalized.holidayType,
-        },
-      });
+      const [overlaps, payrollRule] = await Promise.all([
+        findOverlappingRules(tx, workplaceId, normalized),
+        tx.payrollRule.create({
+          data: {
+            workplaceId,
+            startDate: normalized.startDate,
+            endDate: normalized.endDate,
+            baseHourlyWage: normalized.baseHourlyWage.toString(),
+            holidayAllowanceHourly:
+              normalized.holidayAllowanceHourly.toString(),
+            nightPremiumRate: normalized.nightPremiumRate.toString(),
+            overtimePremiumRate: normalized.overtimePremiumRate.toString(),
+            dailyOvertimeThreshold:
+              normalized.dailyOvertimeThreshold.toString(),
+            holidayType: normalized.holidayType,
+          },
+        }),
+      ]);
 
       return { payrollRule, overlaps };
     });

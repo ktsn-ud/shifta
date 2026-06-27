@@ -10,28 +10,22 @@ import { prisma } from "@/lib/prisma";
 
 const MONTH_REGEX = /^\d{4}-(0[1-9]|1[0-2])$/;
 
-const actualPayrollQuerySchema = z
-  .object({
-    month: z
-      .string()
-      .regex(MONTH_REGEX, "month は YYYY-MM形式で入力してください"),
-  })
-  .strict();
+const actualPayrollQuerySchema = z.strictObject({
+  month: z
+    .string()
+    .regex(MONTH_REGEX, "month は YYYY-MM形式で入力してください"),
+});
 
-const actualPayrollRowSchema = z
-  .object({
-    workplaceId: z.string().min(1),
-    taxableAmount: z.number().finite().min(0).nullable(),
-    nonTaxableAmount: z.number().finite().min(0).nullable(),
-    note: z.string().max(200).nullable().optional(),
-  })
-  .strict();
+const actualPayrollRowSchema = z.strictObject({
+  workplaceId: z.string().min(1),
+  taxableAmount: z.number().finite().min(0).nullable(),
+  nonTaxableAmount: z.number().finite().min(0).nullable(),
+  note: z.string().max(200).nullable().optional(),
+});
 
-const actualPayrollBodySchema = z
-  .object({
-    rows: z.array(actualPayrollRowSchema),
-  })
-  .strict();
+const actualPayrollBodySchema = z.strictObject({
+  rows: z.array(actualPayrollRowSchema),
+});
 
 function normalizeNote(note: string | null | undefined): string | null {
   const normalized = note?.trim() ?? "";
@@ -124,46 +118,54 @@ export async function PUT(request: Request) {
       }
     }
 
-    await prisma.$transaction(async (tx) => {
-      for (const row of payload.data.rows) {
-        const note = normalizeNote(row.note);
-        const shouldDelete =
-          row.taxableAmount === null && row.nonTaxableAmount === null && !note;
+    const rowsByWorkplaceId = new Map(
+      payload.data.rows.map((row) => [row.workplaceId, row] as const),
+    );
 
-        if (shouldDelete) {
-          await tx.actualPayroll.deleteMany({
+    await prisma.$transaction(async (tx) => {
+      await Promise.all(
+        Array.from(rowsByWorkplaceId.values()).map(async (row) => {
+          const note = normalizeNote(row.note);
+          const shouldDelete =
+            row.taxableAmount === null &&
+            row.nonTaxableAmount === null &&
+            !note;
+
+          if (shouldDelete) {
+            await tx.actualPayroll.deleteMany({
+              where: {
+                workplaceId: row.workplaceId,
+                paymentMonth,
+              },
+            });
+            return;
+          }
+
+          const taxableAmount = row.taxableAmount ?? 0;
+          const nonTaxableAmount = row.nonTaxableAmount ?? 0;
+
+          await tx.actualPayroll.upsert({
             where: {
+              workplaceId_paymentMonth: {
+                workplaceId: row.workplaceId,
+                paymentMonth,
+              },
+            },
+            update: {
+              taxableAmount,
+              nonTaxableAmount,
+              note,
+            },
+            create: {
               workplaceId: row.workplaceId,
               paymentMonth,
+              taxableAmount,
+              nonTaxableAmount,
+              note,
             },
           });
-          continue;
-        }
-
-        const taxableAmount = row.taxableAmount ?? 0;
-        const nonTaxableAmount = row.nonTaxableAmount ?? 0;
-
-        await tx.actualPayroll.upsert({
-          where: {
-            workplaceId_paymentMonth: {
-              workplaceId: row.workplaceId,
-              paymentMonth,
-            },
-          },
-          update: {
-            taxableAmount,
-            nonTaxableAmount,
-            note,
-          },
-          create: {
-            workplaceId: row.workplaceId,
-            paymentMonth,
-            taxableAmount,
-            nonTaxableAmount,
-            note,
-          },
-        });
-      }
+        }),
+      );
     });
 
     revalidateActualPayrollDomainTags({ userId: current.user.id });

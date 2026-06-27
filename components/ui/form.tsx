@@ -6,10 +6,6 @@ import {
   FieldError,
   FieldGroup,
   FieldLabel,
-  FieldLegend,
-  FieldSeparator,
-  FieldSet,
-  FieldTitle,
 } from "@/components/ui/field";
 
 function Form({ className, ...props }: React.ComponentProps<"form">) {
@@ -24,8 +20,4 @@ export {
   FieldError,
   FieldGroup,
   FieldLabel,
-  FieldLegend,
-  FieldSeparator,
-  FieldSet,
-  FieldTitle,
 };

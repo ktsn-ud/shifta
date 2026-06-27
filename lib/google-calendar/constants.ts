@@ -1,8 +1,8 @@
-export const GOOGLE_CALENDAR_SYNC_SCOPE =
+const GOOGLE_CALENDAR_SYNC_SCOPE =
   "https://www.googleapis.com/auth/calendar.app.created";
-export const GOOGLE_CALENDAR_EVENTS_READ_SCOPE =
+const GOOGLE_CALENDAR_EVENTS_READ_SCOPE =
   "https://www.googleapis.com/auth/calendar.events.readonly";
-export const GOOGLE_CALENDAR_CALENDAR_LIST_READ_SCOPE =
+const GOOGLE_CALENDAR_CALENDAR_LIST_READ_SCOPE =
   "https://www.googleapis.com/auth/calendar.calendarlist.readonly";
 
 export const GOOGLE_CALENDAR_SYNC_SCOPES = [

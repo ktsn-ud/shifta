@@ -118,13 +118,6 @@ export function parseGoogleSyncStateFromPayload(
   };
 }
 
-export function parseGoogleSyncFailureFromPayload(
-  payload: unknown,
-  fallbackMessage: string,
-): ParsedGoogleSyncFailure | null {
-  return parseGoogleSyncStateFromPayload(payload, fallbackMessage).failure;
-}
-
 export async function readGoogleSyncFailureFromErrorResponse(
   response: Response,
   fallbackMessage: string,

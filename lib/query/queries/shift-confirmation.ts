@@ -94,7 +94,8 @@ function parseConfirmedPayload(
   const grouped = new Map<string, ConfirmedShiftWorkplaceGroup>();
 
   for (const shift of (payload as ConfirmedShiftApiResponse).shifts) {
-    const existing = grouped.get(shift.workplace.id);
+    const { color, id, name } = shift.workplace;
+    const existing = grouped.get(id);
     if (existing) {
       existing.shifts.push({
         id: shift.id,
@@ -108,10 +109,10 @@ function parseConfirmedPayload(
       continue;
     }
 
-    grouped.set(shift.workplace.id, {
-      workplaceId: shift.workplace.id,
-      workplaceName: shift.workplace.name,
-      workplaceColor: shift.workplace.color,
+    grouped.set(id, {
+      workplaceId: id,
+      workplaceName: name,
+      workplaceColor: color,
       shifts: [
         {
           id: shift.id,

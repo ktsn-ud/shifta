@@ -10,7 +10,7 @@ type FetchJsonOptions<TData> = {
   init?: RequestInit;
 };
 
-function isAbortError(error: unknown): boolean {
+export function isAbortError(error: unknown): boolean {
   if (typeof error !== "object" || error === null) {
     return false;
   }

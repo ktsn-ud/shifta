@@ -262,6 +262,21 @@ async function assertLinkedGoogleEvent(
   }
 }
 
+async function getVerifiedLinkedCalendarClient(input: {
+  googleEventId: string;
+  shiftId: string;
+  user: User;
+}): Promise<CalendarClient> {
+  const calendar = await getVerifiedCalendarClient(input.user);
+  await assertLinkedGoogleEvent(
+    calendar,
+    input.user.calendarId!,
+    input.googleEventId,
+    input.shiftId,
+  );
+  return calendar;
+}
+
 export async function createCalendarEvent(
   shift: ShiftWithLessonRange,
   workplace: Workplace,
@@ -338,14 +353,15 @@ export async function updateCalendarEvent(
   await assertCalendarExists(calendar, user.calendarId);
   const eventDateTime = buildEventDateTime(shift);
   const summary = buildEventSummary(shift, workplace);
-  const description = await buildEventDescription(shift, workplace);
-
-  await assertLinkedGoogleEvent(
-    calendar,
-    user.calendarId,
-    shift.googleEventId,
-    shift.id,
-  );
+  const [description] = await Promise.all([
+    buildEventDescription(shift, workplace),
+    assertLinkedGoogleEvent(
+      calendar,
+      user.calendarId,
+      shift.googleEventId,
+      shift.id,
+    ),
+  ]);
 
   await calendar.events.patch({
     calendarId: user.calendarId,
@@ -385,14 +401,11 @@ export async function deleteCalendarEvent(
     throw new Error("Calendar not initialized");
   }
 
-  const calendar = await getCalendarClientByUserId(user.id);
-  await assertCalendarExists(calendar, user.calendarId);
-  await assertLinkedGoogleEvent(
-    calendar,
-    user.calendarId,
+  const calendar = await getVerifiedLinkedCalendarClient({
     googleEventId,
     shiftId,
-  );
+    user,
+  });
 
   await calendar.events.delete({
     calendarId: user.calendarId,
