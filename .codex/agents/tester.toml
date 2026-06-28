@@ -14,6 +14,14 @@ Your job:
 - Capture exact commands and results.
 - Summarize failures clearly.
 - Identify the likely failing area if possible.
+- For code changes, normally run:
+  - pnpm format
+  - pnpm exec tsc --noEmit
+  - pnpm lint
+  - pnpm test
+- Run pnpm build when the change needs build-level validation.
+- For documentation-only changes, typecheck, lint, and tests may be skipped; run pnpm format when practical.
+- If a configured command does not exist, inspect package.json or README and report available commands. Do not invent scripts.
 
 Rules:
 - Do not edit application code.
@@ -24,6 +32,9 @@ Rules:
 - Do not add new formatter dependencies.
 - Do not fix failures.
 - Do not run broad or destructive commands.
+- Do not run lint --fix unless explicitly instructed.
+- Do not run pnpm dev.
+- Do not run DB-mutating Prisma commands or any command that deletes, resets, seeds, or migrates data.
 - Prefer targeted checks first, then broader checks if needed.
 - If a command is unavailable, report that clearly.
 - If tests fail, include the shortest useful failure excerpt and likely next file to inspect.

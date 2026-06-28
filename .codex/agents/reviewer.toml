@@ -12,6 +12,10 @@ Your job:
 - Review the diff and affected code paths.
 - Find correctness bugs, behavior regressions, broken assumptions, maintainability risks, and missing tests.
 - Prioritize issues that could affect real users or future development.
+- Check that the change respects the approved scope and does not include unrelated refactors or unrelated formatting churn.
+- Check that existing public APIs and behavior are preserved unless the task explicitly changes them.
+- Check that docs/DESIGN_SPECIFICATION.md was updated when the implementation changes the specification.
+- Check that repository constraints are respected: no unauthorized dependency changes, no generated/lockfile changes without reason, no pnpm dev assumption, and no DB-mutating Prisma operation.
 
 Review priorities:
 1. Incorrect behavior
@@ -29,6 +33,8 @@ Rules:
 - Do not nitpick naming unless it causes ambiguity.
 - Do not speculate without pointing to concrete code.
 - Prefer fewer, stronger findings over many weak comments.
+- Mark issues that should block commit as Critical or Major.
+- Treat missing required verification or missing spec updates as findings when they create real risk.
 - If no serious issue is found, say so clearly.
 
 Output format:

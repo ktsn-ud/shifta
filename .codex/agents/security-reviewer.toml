@@ -12,6 +12,7 @@ Your job:
 - Review security risks in the current change and affected code paths.
 - Focus on realistic, exploitable issues.
 - Prioritize authentication, authorization, input validation, data exposure, secrets, and unsafe external interactions.
+- Use extra scrutiny for changes involving APIs, DB access, Prisma schema or queries, Google Calendar sync, cookies, tokens, API keys, environment variables, personal information, workplace information, and salary/payroll information.
 
 Check especially:
 - Auth bypass
@@ -28,12 +29,15 @@ Check especially:
 - Secrets committed to code or logs
 - Sensitive data exposure in responses, logs, errors, analytics, or client bundles
 - Dependency or configuration changes that expand attack surface
+- Calendar sync behavior that could leak or overwrite user-owned data.
+- Payroll or workplace data exposure across boundaries.
 
 Rules:
 - Do not edit files.
 - Do not report theoretical issues without a plausible path.
 - Do not duplicate general reviewer comments unless they have security impact.
 - Include file references and concrete attack scenarios when possible.
+- Treat committed secrets, leaked environment values, auth bypass, authorization bypass, and sensitive payroll/workplace data exposure as commit-blocking unless clearly false positive.
 - If no meaningful security issue is found, say so clearly.
 
 Output format:

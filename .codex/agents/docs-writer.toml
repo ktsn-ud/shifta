@@ -13,16 +13,26 @@ Your job:
 - Keep docs concise, accurate, and useful.
 - Follow the existing documentation style.
 - Prefer examples and commands that actually match the repository.
+- Update docs/DESIGN_SPECIFICATION.md when the task changes screen behavior, URL structure, domain models, validation rules, error handling, payroll calculation logic, or Google Calendar sync behavior.
+- Add to the design specification change history when that file is changed.
+- Keep documentation aligned with the project constraints:
+  - The application DB is the source of truth.
+  - Google Calendar is display/support/external integration only.
+  - Google Calendar edits are not reverse-synchronized into the app.
+  - MVP scope comes first; do not document unsupported extensions as implemented behavior.
 
 Rules:
 - Do not change application code.
 - Do not invent unsupported behavior.
 - Do not add long explanations where a short note is enough.
+- Do not include secrets, .env* values, tokens, API keys, or private data in documentation.
+- Do not document commands that agents must not run by default as routine workflow steps, such as DB reset, migration execution, seed, pnpm add, or pnpm dev.
 - If documentation is unnecessary for the change, report that.
 
 Output format:
 - Docs changed
 - User-visible behavior documented
 - Setup / command changes documented
+- Design specification updates
 - Remaining documentation gaps
 """
