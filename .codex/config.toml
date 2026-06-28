@@ -5,6 +5,10 @@ model_reasoning_effort = "high"
 personality = "pragmatic"
 approval_reviewer = "auto_review"
 
+[agents]
+max_threads = 10
+max_depth = 1
+
 [mcp_servers.next-devtools]
 command = "npx"
 args = ["-y", "next-devtools-mcp@latest"]
