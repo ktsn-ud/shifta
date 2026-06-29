@@ -13,6 +13,7 @@ import {
   CardTitle,
 } from "@/components/ui/card";
 import { TableLoadingSkeleton } from "@/components/ui/loading-skeletons";
+import { LoadingOverlay } from "@/components/ui/loading-overlay";
 import {
   Dialog,
   DialogContent,
@@ -156,6 +157,9 @@ export function PayrollRuleList({
   const workplace = workplaceQuery.data ?? null;
   const rules = useMemo(() => rulesQuery.data ?? [], [rulesQuery.data]);
   const isLoading = workplaceQuery.isLoading || rulesQuery.isLoading;
+  const isRefreshing =
+    (workplaceQuery.isFetching && !workplaceQuery.isLoading) ||
+    (rulesQuery.isFetching && !rulesQuery.isLoading);
   const errorMessage = workplaceQuery.error
     ? toErrorMessage(workplaceQuery.error, "勤務先情報の取得に失敗しました。")
     : rulesQuery.error
@@ -275,6 +279,12 @@ export function PayrollRuleList({
         </p>
       ) : null}
 
+      {isRefreshing ? (
+        <p className="rounded-md border border-amber-700/30 bg-amber-700/5 px-3 py-2 text-sm text-amber-800">
+          給与ルール一覧を更新中です。表示中の内容は前回取得分の可能性があります。
+        </p>
+      ) : null}
+
       <Card>
         <CardHeader>
           <CardTitle>給与ルール一覧</CardTitle>
@@ -286,69 +296,81 @@ export function PayrollRuleList({
           {isLoading ? (
             <TableLoadingSkeleton rows={5} columns={6} />
           ) : (
-            <Table>
-              <TableHeader>
-                <TableRow>
-                  <TableHead>適用期間</TableHead>
-                  <TableHead>基本時給</TableHead>
-                  <TableHead>深夜割増率</TableHead>
-                  <TableHead>休日手当(円/時)</TableHead>
-                  <TableHead>所定時間外割増率</TableHead>
-                  <TableHead className="text-right">操作</TableHead>
-                </TableRow>
-              </TableHeader>
-              <TableBody>
-                {rules.length === 0 ? (
+            <LoadingOverlay
+              isLoading={isRefreshing || isDeleting}
+              label={
+                isDeleting
+                  ? "給与ルールを削除中です..."
+                  : "給与ルール一覧を更新中です。表示中の内容は前回取得分です。"
+              }
+              className="rounded-lg"
+            >
+              <Table>
+                <TableHeader>
                   <TableRow>
-                    <TableCell colSpan={6} className="h-16 text-center">
-                      給与ルールがありません。
-                    </TableCell>
+                    <TableHead>適用期間</TableHead>
+                    <TableHead>基本時給</TableHead>
+                    <TableHead>深夜割増率</TableHead>
+                    <TableHead>休日手当(円/時)</TableHead>
+                    <TableHead>所定時間外割増率</TableHead>
+                    <TableHead className="text-right">操作</TableHead>
                   </TableRow>
-                ) : (
-                  rules.map((rule) => (
-                    <TableRow key={rule.id}>
-                      <TableCell className="font-medium">
-                        {formatDate(rule.startDate)} 〜{" "}
-                        {formatDate(rule.endDate, -1)}
-                      </TableCell>
-                      <TableCell>
-                        {formatCurrency(rule.baseHourlyWage)}
-                      </TableCell>
-                      <TableCell>{formatRate(rule.nightPremiumRate)}</TableCell>
-                      <TableCell>
-                        {formatCurrency(rule.holidayAllowanceHourly)}
-                      </TableCell>
-                      <TableCell>
-                        {formatRate(rule.overtimePremiumRate)}
-                      </TableCell>
-                      <TableCell>
-                        <div className="flex justify-end gap-2">
-                          <Link
-                            href={`/my/workplaces/${workplaceId}/payroll-rules/${rule.id}/edit`}
-                            className={buttonVariants({
-                              variant: "outline",
-                              size: "sm",
-                            })}
-                          >
-                            編集
-                          </Link>
-                          <Button
-                            size="sm"
-                            variant="destructive"
-                            onClick={() => {
-                              setDeleteError(null);
-                              setDeletingRuleId(rule.id);
-                            }}
-                          >
-                            削除
-                          </Button>
-                        </div>
+                </TableHeader>
+                <TableBody>
+                  {rules.length === 0 ? (
+                    <TableRow>
+                      <TableCell colSpan={6} className="h-16 text-center">
+                        給与ルールがありません。
                       </TableCell>
                     </TableRow>
-                  ))
-                )}
-              </TableBody>
-            </Table>
+                  ) : (
+                    rules.map((rule) => (
+                      <TableRow key={rule.id}>
+                        <TableCell className="font-medium">
+                          {formatDate(rule.startDate)} 〜{" "}
+                          {formatDate(rule.endDate, -1)}
+                        </TableCell>
+                        <TableCell>
+                          {formatCurrency(rule.baseHourlyWage)}
+                        </TableCell>
+                        <TableCell>
+                          {formatRate(rule.nightPremiumRate)}
+                        </TableCell>
+                        <TableCell>
+                          {formatCurrency(rule.holidayAllowanceHourly)}
+                        </TableCell>
+                        <TableCell>
+                          {formatRate(rule.overtimePremiumRate)}
+                        </TableCell>
+                        <TableCell>
+                          <div className="flex justify-end gap-2">
+                            <Link
+                              href={`/my/workplaces/${workplaceId}/payroll-rules/${rule.id}/edit`}
+                              className={buttonVariants({
+                                variant: "outline",
+                                size: "sm",
+                              })}
+                            >
+                              編集
+                            </Link>
+                            <Button
+                              size="sm"
+                              variant="destructive"
+                              onClick={() => {
+                                setDeleteError(null);
+                                setDeletingRuleId(rule.id);
+                              }}
+                            >
+                              削除
+                            </Button>
+                          </div>
+                        </TableCell>
+                      </TableRow>
+                    ))
+                  )}
+                </TableBody>
+              </Table>
+            </LoadingOverlay>
           )}
         </CardContent>
       </Card>

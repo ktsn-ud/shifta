@@ -11,6 +11,7 @@ import {
   Trash2Icon,
 } from "lucide-react";
 import { toast } from "sonner";
+import { AsyncStateNotice } from "@/components/ui/async-state-notice";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Checkbox } from "@/components/ui/checkbox";
@@ -805,13 +806,19 @@ export function ShiftListPageClient({
     createInitialShiftListState,
   );
 
-  const { shifts, displayMonth, isInitialLoading, isRefreshing, errorMessage } =
-    useMonthShifts(state.month, {
-      cacheUserKey: currentUserId,
-      initialShifts: initialMonthShifts,
-      initialStartDate: initialMonthStartDate,
-      initialEndDate: initialMonthEndDate,
-    });
+  const {
+    shifts,
+    displayMonth,
+    isInitialLoading,
+    isRefreshing,
+    isPlaceholderData,
+    errorMessage,
+  } = useMonthShifts(state.month, {
+    cacheUserKey: currentUserId,
+    initialShifts: initialMonthShifts,
+    initialStartDate: initialMonthStartDate,
+    initialEndDate: initialMonthEndDate,
+  });
 
   const sortedShifts = useMemo(() => {
     return shifts.toSorted((left, right) =>
@@ -840,8 +847,11 @@ export function ShiftListPageClient({
   );
   const isCurrentMonth = isSameMonth(displayMonth, currentMonth);
   const selectedCount = selectedShiftIds.length;
+  const requestedMonthLabel = formatMonthLabel(state.month);
   const monthValue = toMonthInputValue(displayMonth);
   const displayMonthLabel = formatMonthLabel(displayMonth);
+  const isStaleView =
+    isPlaceholderData && isSameMonth(displayMonth, state.month) === false;
 
   const isAllSelected =
     sortedShifts.length > 0 &&
@@ -992,30 +1002,48 @@ export function ShiftListPageClient({
         }
       />
 
-      <LoadingOverlay isLoading={isRefreshing} className="rounded-xl">
-        <ShiftListTableCard
-          displayMonthLabel={displayMonthLabel}
-          sortedShifts={sortedShifts}
-          errorMessage={errorMessage}
-          sortState={state.sortState}
-          selectedShiftIdSet={selectedShiftIdSet}
-          selectionState={{
-            selectedCount,
-            isAllSelected,
-            isSomeSelected,
-          }}
-          status={{
-            isInitialLoading,
-            isDeleting: state.isDeleting,
-          }}
-          onResetSort={() => dispatch({ type: "resetSort" })}
-          onOpenDeleteDialog={() => dispatch({ type: "openDeleteDialog" })}
-          onToggleSort={handleToggleSort}
-          onSelectAll={handleSelectAll}
-          onToggleShiftSelection={handleToggleShiftSelection}
-          onEditShift={handleEditShift}
-        />
-      </LoadingOverlay>
+      <div className="space-y-4">
+        {isRefreshing ? (
+          <AsyncStateNotice
+            variant={isStaleView ? "stale" : "refresh"}
+            title={
+              isStaleView
+                ? `${requestedMonthLabel} のシフト一覧を読み込み中です。`
+                : "シフト一覧の最新データを確認中です。"
+            }
+            description={
+              isStaleView
+                ? `現在の表示は ${displayMonthLabel} のままです。新しい月の一覧へ切り替わるまでこの内容を維持します。`
+                : "表示中のシフト一覧はまもなく最新化されます。"
+            }
+          />
+        ) : null}
+
+        <LoadingOverlay isLoading={isRefreshing} className="rounded-xl">
+          <ShiftListTableCard
+            displayMonthLabel={displayMonthLabel}
+            sortedShifts={sortedShifts}
+            errorMessage={errorMessage}
+            sortState={state.sortState}
+            selectedShiftIdSet={selectedShiftIdSet}
+            selectionState={{
+              selectedCount,
+              isAllSelected,
+              isSomeSelected,
+            }}
+            status={{
+              isInitialLoading,
+              isDeleting: state.isDeleting,
+            }}
+            onResetSort={() => dispatch({ type: "resetSort" })}
+            onOpenDeleteDialog={() => dispatch({ type: "openDeleteDialog" })}
+            onToggleSort={handleToggleSort}
+            onSelectAll={handleSelectAll}
+            onToggleShiftSelection={handleToggleShiftSelection}
+            onEditShift={handleEditShift}
+          />
+        </LoadingOverlay>
+      </div>
 
       <ShiftListBulkDeleteDialog
         open={state.deleteDialogOpen}

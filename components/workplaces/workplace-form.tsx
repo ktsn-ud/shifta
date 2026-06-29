@@ -14,6 +14,7 @@ import {
 } from "@/components/ui/form";
 import { Input } from "@/components/ui/input";
 import { FormLoadingSkeleton } from "@/components/ui/loading-skeletons";
+import { LoadingOverlay } from "@/components/ui/loading-overlay";
 import { RadioGroup, RadioGroupItem } from "@/components/ui/radio-group";
 import { formatHolidayType, formatWorkplaceType } from "@/lib/enum-labels";
 import { parseGoogleSyncStateFromPayload } from "@/lib/google-calendar/clientSync";
@@ -98,6 +99,7 @@ type WorkplaceEditorFormProps = {
   workplaceId?: string;
   initialSeed: WorkplaceFormSeed;
   externalFormError?: string;
+  isRefreshing?: boolean;
 };
 
 type WorkplaceFormValueChange = (patch: Partial<FormValues>) => void;
@@ -918,6 +920,7 @@ function WorkplaceEditorForm({
   workplaceId,
   initialSeed,
   externalFormError,
+  isRefreshing = false,
 }: WorkplaceEditorFormProps) {
   const router = useRouter();
   const queryClient = getBrowserQueryClient();
@@ -1119,88 +1122,106 @@ function WorkplaceEditorForm({
     <section className="space-y-6 p-4 md:p-6">
       <WorkplaceEditorHeader pageTitle={pageTitle} />
 
-      <Form
-        className="max-w-md"
-        onSubmit={(event) => {
-          event.preventDefault();
-          void handleSubmit();
-        }}
+      {isRefreshing ? (
+        <p className="max-w-md rounded-md border border-amber-700/30 bg-amber-700/5 px-3 py-2 text-sm text-amber-800">
+          サーバー上の最新状態を確認中です。編集中の入力内容はそのまま保持し、自動では上書きしません。
+        </p>
+      ) : null}
+
+      {isSubmitting ? (
+        <p className="max-w-md rounded-md border border-primary/20 bg-primary/5 px-3 py-2 text-sm text-primary">
+          保存中です。反映が完了するまでお待ちください。
+        </p>
+      ) : null}
+
+      <LoadingOverlay
+        isLoading={isSubmitting}
+        label="勤務先を保存中です..."
+        className="max-w-md rounded-xl"
       >
-        <WorkplaceBasicFieldsSection
-          values={{
-            name: values.name,
-            type: values.type,
-            color: values.color,
+        <Form
+          className="max-w-md"
+          onSubmit={(event) => {
+            event.preventDefault();
+            void handleSubmit();
           }}
-          errors={{
-            name: errors.name,
-            type: errors.type,
-            color: errors.color,
-          }}
-          onChange={handleValueChange}
-        />
-        <WorkplaceClosingDaySection
-          values={{
-            closingDayType: values.closingDayType,
-            closingDay: values.closingDay,
-          }}
-          errors={{
-            closingDayType: errors.closingDayType,
-            closingDay: errors.closingDay,
-          }}
-          onChange={handleValueChange}
-        />
-        <WorkplacePaydayField
-          payday={values.payday}
-          error={errors.payday}
-          onChange={(payday) => {
-            handleValueChange({ payday });
-          }}
-        />
+        >
+          <WorkplaceBasicFieldsSection
+            values={{
+              name: values.name,
+              type: values.type,
+              color: values.color,
+            }}
+            errors={{
+              name: errors.name,
+              type: errors.type,
+              color: errors.color,
+            }}
+            onChange={handleValueChange}
+          />
+          <WorkplaceClosingDaySection
+            values={{
+              closingDayType: values.closingDayType,
+              closingDay: values.closingDay,
+            }}
+            errors={{
+              closingDayType: errors.closingDayType,
+              closingDay: errors.closingDay,
+            }}
+            onChange={handleValueChange}
+          />
+          <WorkplacePaydayField
+            payday={values.payday}
+            error={errors.payday}
+            onChange={(payday) => {
+              handleValueChange({ payday });
+            }}
+          />
 
-        {!isEdit ? (
-          <>
-            <InitialPayrollRuleToggleSection
-              enabled={createInitialRule}
-              state={{ isSubmitting }}
-              onChange={(value) => {
-                dispatch({
-                  type: "setCreateInitialRule",
-                  value,
-                });
-              }}
-            />
-
-            {createInitialRule ? (
-              <InitialPayrollRuleFieldsSection
-                values={initialRuleValues}
-                errors={{
-                  startDate: errors.startDate,
-                  endDate: errors.endDate,
-                  baseHourlyWage: errors.baseHourlyWage,
-                  nightPremiumRate: errors.nightPremiumRate,
-                  holidayAllowanceHourly: errors.holidayAllowanceHourly,
-                  overtimePremiumRate: errors.overtimePremiumRate,
-                  dailyOvertimeThreshold: errors.dailyOvertimeThreshold,
-                  holidayType: errors.holidayType,
+          {!isEdit ? (
+            <>
+              <InitialPayrollRuleToggleSection
+                enabled={createInitialRule}
+                state={{ isSubmitting }}
+                onChange={(value) => {
+                  dispatch({
+                    type: "setCreateInitialRule",
+                    value,
+                  });
                 }}
-                onChange={handleInitialRuleValueChange}
               />
-            ) : null}
-          </>
-        ) : null}
 
-        <FormErrorMessage message={formErrorMessage} />
+              {createInitialRule ? (
+                <InitialPayrollRuleFieldsSection
+                  values={initialRuleValues}
+                  errors={{
+                    startDate: errors.startDate,
+                    endDate: errors.endDate,
+                    baseHourlyWage: errors.baseHourlyWage,
+                    nightPremiumRate: errors.nightPremiumRate,
+                    holidayAllowanceHourly: errors.holidayAllowanceHourly,
+                    overtimePremiumRate: errors.overtimePremiumRate,
+                    dailyOvertimeThreshold: errors.dailyOvertimeThreshold,
+                    holidayType: errors.holidayType,
+                  }}
+                  onChange={handleInitialRuleValueChange}
+                />
+              ) : null}
+            </>
+          ) : null}
 
-        <WorkplaceEditorActions
-          submitLabel={submitLabel}
-          state={{ isSubmitting }}
-          onCancel={() => {
-            markForResetOnRouteHidden();
-            router.push("/my/workplaces");
-          }}
-        />
-      </Form>
+          <FormErrorMessage message={formErrorMessage} />
+
+          <WorkplaceEditorActions
+            submitLabel={submitLabel}
+            state={{ isSubmitting }}
+            onCancel={() => {
+              markForResetOnRouteHidden();
+              router.push("/my/workplaces");
+            }}
+          />
+        </Form>
+      </LoadingOverlay>
     </section>
   );
 }
@@ -1219,6 +1240,8 @@ export function WorkplaceForm(props: WorkplaceFormProps) {
   });
 
   const isLoading = isEdit && Boolean(workplaceId) && workplaceQuery.isPending;
+  const isRefreshing =
+    isEdit && Boolean(workplaceId) && workplaceQuery.isFetching && !isLoading;
   const externalFormError =
     isEdit && !workplaceId
       ? "編集対象の勤務先IDが指定されていません。"
@@ -1255,6 +1278,7 @@ export function WorkplaceForm(props: WorkplaceFormProps) {
       workplaceId={workplaceId}
       initialSeed={initialSeed}
       externalFormError={externalFormError}
+      isRefreshing={isRefreshing}
     />
   );
 }
