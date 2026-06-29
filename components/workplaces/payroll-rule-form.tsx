@@ -15,6 +15,7 @@ import {
 } from "@/components/ui/form";
 import { Input } from "@/components/ui/input";
 import { FormLoadingSkeleton } from "@/components/ui/loading-skeletons";
+import { LoadingOverlay } from "@/components/ui/loading-overlay";
 import { RadioGroup, RadioGroupItem } from "@/components/ui/radio-group";
 import { useResetOnRouteHidden } from "@/hooks/use-reset-on-route-hidden";
 import { dateKeyFromApiDate } from "@/lib/calendar/date";
@@ -106,6 +107,7 @@ type PayrollRuleEditorFormProps = {
   initialValues: FormValues | null;
   listHref: string;
   externalFormError?: string;
+  isRefreshing?: boolean;
 };
 
 type PayrollRuleEditorController = {
@@ -913,6 +915,7 @@ function PayrollRuleEditorForm({
   initialValues,
   listHref,
   externalFormError,
+  isRefreshing = false,
 }: PayrollRuleEditorFormProps) {
   const controller = usePayrollRuleEditorController({
     mode,
@@ -935,61 +938,79 @@ function PayrollRuleEditorForm({
         </p>
       </header>
 
-      <Form
-        className="max-w-2xl"
-        onSubmit={(event) => {
-          event.preventDefault();
-          void controller.submit();
-        }}
+      {isRefreshing ? (
+        <p className="max-w-2xl rounded-md border border-amber-700/30 bg-amber-700/5 px-3 py-2 text-sm text-amber-800">
+          サーバー上の最新状態を確認中です。編集中の入力内容はそのまま保持し、自動では上書きしません。
+        </p>
+      ) : null}
+
+      {controller.isSubmitting ? (
+        <p className="max-w-2xl rounded-md border border-primary/20 bg-primary/5 px-3 py-2 text-sm text-primary">
+          保存中です。反映が完了するまでお待ちください。
+        </p>
+      ) : null}
+
+      <LoadingOverlay
+        isLoading={controller.isSubmitting}
+        label="給与ルールを保存中です..."
+        className="max-w-2xl rounded-xl"
       >
-        <PayrollRuleDateFields
-          values={controller.values}
-          errors={controller.errors}
-          updateField={controller.updateField}
-        />
+        <Form
+          className="max-w-2xl"
+          onSubmit={(event) => {
+            event.preventDefault();
+            void controller.submit();
+          }}
+        >
+          <PayrollRuleDateFields
+            values={controller.values}
+            errors={controller.errors}
+            updateField={controller.updateField}
+          />
 
-        <PayrollRuleValueFields
-          values={controller.values}
-          errors={controller.errors}
-          updateField={controller.updateField}
-        />
+          <PayrollRuleValueFields
+            values={controller.values}
+            errors={controller.errors}
+            updateField={controller.updateField}
+          />
 
-        <PayrollRuleHolidayTypeField
-          values={controller.values}
-          updateField={controller.updateField}
-        />
+          <PayrollRuleHolidayTypeField
+            values={controller.values}
+            updateField={controller.updateField}
+          />
 
-        {workplace?.type === "CRAM_SCHOOL" ? (
-          <Field>
-            <FieldLabel>補足</FieldLabel>
-            <FieldContent>
-              <FieldDescription>
-                塾タイプでも通常シフトと同様に時給・割増設定を使用します。
-              </FieldDescription>
-            </FieldContent>
-          </Field>
-        ) : null}
+          {workplace?.type === "CRAM_SCHOOL" ? (
+            <Field>
+              <FieldLabel>補足</FieldLabel>
+              <FieldContent>
+                <FieldDescription>
+                  塾タイプでも通常シフトと同様に時給・割増設定を使用します。
+                </FieldDescription>
+              </FieldContent>
+            </Field>
+          ) : null}
 
-        <FormErrorMessage message={controller.formErrorMessage} />
+          <FormErrorMessage message={controller.formErrorMessage} />
 
-        <div className="flex flex-wrap gap-2">
-          <Button type="submit" disabled={controller.isSubmitting}>
-            {controller.isSubmitting
-              ? "保存中..."
-              : controller.isEdit
-                ? "保存"
-                : "作成"}
-          </Button>
-          <Button
-            type="button"
-            variant="outline"
-            disabled={controller.isSubmitting}
-            onClick={controller.cancel}
-          >
-            キャンセル
-          </Button>
-        </div>
-      </Form>
+          <div className="flex flex-wrap gap-2">
+            <Button type="submit" disabled={controller.isSubmitting}>
+              {controller.isSubmitting
+                ? "保存中..."
+                : controller.isEdit
+                  ? "保存"
+                  : "作成"}
+            </Button>
+            <Button
+              type="button"
+              variant="outline"
+              disabled={controller.isSubmitting}
+              onClick={controller.cancel}
+            >
+              キャンセル
+            </Button>
+          </div>
+        </Form>
+      </LoadingOverlay>
     </section>
   );
 }
@@ -1005,6 +1026,7 @@ export function PayrollRuleForm({
     data: workplaceData,
     error: workplaceError,
     isPending: isWorkplacePending,
+    isFetching: isWorkplaceFetching,
   } = useQuery({
     queryKey: queryKeys.workplaces.detailSummary({
       workplaceId,
@@ -1031,6 +1053,7 @@ export function PayrollRuleForm({
     data: payrollRuleData,
     error: payrollRuleError,
     isPending: isPayrollRulePending,
+    isFetching: isPayrollRuleFetching,
   } = useQuery({
     queryKey: queryKeys.workplaces.payrollRuleDetail({
       workplaceId,
@@ -1056,6 +1079,12 @@ export function PayrollRuleForm({
   });
   const isLoading =
     isWorkplacePending || (isEdit && Boolean(ruleId) && isPayrollRulePending);
+  const isRefreshing =
+    (isWorkplaceFetching && !isWorkplacePending) ||
+    (isEdit &&
+      Boolean(ruleId) &&
+      isPayrollRuleFetching &&
+      !isPayrollRulePending);
   const externalFormError =
     isEdit && !ruleId
       ? "編集対象の給与ルールIDが指定されていません。"
@@ -1099,6 +1128,7 @@ export function PayrollRuleForm({
       }
       listHref={`/my/workplaces/${workplaceId}/payroll-rules`}
       externalFormError={externalFormError}
+      isRefreshing={isRefreshing}
     />
   );
 }

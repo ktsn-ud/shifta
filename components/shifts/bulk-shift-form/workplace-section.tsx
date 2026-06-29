@@ -61,6 +61,7 @@ export function BulkShiftWorkplaceSection(
               disabled={workplaces.length === 0}
             >
               <SelectTrigger
+                aria-label="勤務先"
                 id="bulk-workplace"
                 className="max-w-50 w-full md:w-72"
               >

@@ -13,6 +13,7 @@ import {
   CardTitle,
 } from "@/components/ui/card";
 import { TableLoadingSkeleton } from "@/components/ui/loading-skeletons";
+import { LoadingOverlay } from "@/components/ui/loading-overlay";
 import {
   Dialog,
   DialogContent,
@@ -112,6 +113,9 @@ export function TimetableList({
     [timetablesQuery.data],
   );
   const isLoading = workplaceQuery.isLoading || timetablesQuery.isLoading;
+  const isRefreshing =
+    (workplaceQuery.isFetching && !workplaceQuery.isLoading) ||
+    (timetablesQuery.isFetching && !timetablesQuery.isLoading);
   const errorMessage = workplaceQuery.error
     ? toErrorMessage(workplaceQuery.error, "勤務先情報の取得に失敗しました。")
     : timetablesQuery.error
@@ -235,6 +239,12 @@ export function TimetableList({
         </p>
       ) : null}
 
+      {isRefreshing ? (
+        <p className="rounded-md border border-amber-700/30 bg-amber-700/5 px-3 py-2 text-sm text-amber-800">
+          時間割一覧を更新中です。表示中の内容は前回取得分の可能性があります。
+        </p>
+      ) : null}
+
       {isLoading ? (
         <TableLoadingSkeleton rows={5} columns={4} />
       ) : workplace?.type !== "CRAM_SCHOOL" ? (
@@ -256,76 +266,86 @@ export function TimetableList({
           </CardHeader>
         </Card>
       ) : (
-        <div className="grid gap-4">
-          {timetableSets.map((set) => (
-            <Card key={set.id}>
-              <CardHeader>
-                <CardTitle>{set.name}</CardTitle>
-                <CardDescription>コマ数: {set.items.length}</CardDescription>
-              </CardHeader>
-              <CardContent className="space-y-3">
-                <Table>
-                  <TableHeader>
-                    <TableRow>
-                      <TableHead>コマ番号</TableHead>
-                      <TableHead>開始時刻</TableHead>
-                      <TableHead>終了時刻</TableHead>
-                    </TableRow>
-                  </TableHeader>
-                  <TableBody>
-                    {set.items.length === 0 ? (
+        <LoadingOverlay
+          isLoading={isRefreshing || isDeleting}
+          label={
+            isDeleting
+              ? "時間割セットを削除中です..."
+              : "時間割一覧を更新中です。表示中の内容は前回取得分です。"
+          }
+          className="rounded-xl"
+        >
+          <div className="grid gap-4">
+            {timetableSets.map((set) => (
+              <Card key={set.id}>
+                <CardHeader>
+                  <CardTitle>{set.name}</CardTitle>
+                  <CardDescription>コマ数: {set.items.length}</CardDescription>
+                </CardHeader>
+                <CardContent className="space-y-3">
+                  <Table>
+                    <TableHeader>
                       <TableRow>
-                        <TableCell colSpan={3} className="h-14 text-center">
-                          登録がありません。
-                        </TableCell>
+                        <TableHead>コマ番号</TableHead>
+                        <TableHead>開始時刻</TableHead>
+                        <TableHead>終了時刻</TableHead>
                       </TableRow>
-                    ) : (
-                      set.items
-                        .slice()
-                        .sort((left, right) => left.period - right.period)
-                        .map((item) => (
-                          <TableRow key={item.id}>
-                            <TableCell className="font-medium">
-                              {item.period}限
-                            </TableCell>
-                            <TableCell>
-                              {item.startTimeLabel ??
-                                toTimeOnly(item.startTime)}
-                            </TableCell>
-                            <TableCell>
-                              {item.endTimeLabel ?? toTimeOnly(item.endTime)}
-                            </TableCell>
-                          </TableRow>
-                        ))
-                    )}
-                  </TableBody>
-                </Table>
+                    </TableHeader>
+                    <TableBody>
+                      {set.items.length === 0 ? (
+                        <TableRow>
+                          <TableCell colSpan={3} className="h-14 text-center">
+                            登録がありません。
+                          </TableCell>
+                        </TableRow>
+                      ) : (
+                        set.items
+                          .slice()
+                          .sort((left, right) => left.period - right.period)
+                          .map((item) => (
+                            <TableRow key={item.id}>
+                              <TableCell className="font-medium">
+                                {item.period}限
+                              </TableCell>
+                              <TableCell>
+                                {item.startTimeLabel ??
+                                  toTimeOnly(item.startTime)}
+                              </TableCell>
+                              <TableCell>
+                                {item.endTimeLabel ?? toTimeOnly(item.endTime)}
+                              </TableCell>
+                            </TableRow>
+                          ))
+                      )}
+                    </TableBody>
+                  </Table>
 
-                <div className="flex justify-end gap-2">
-                  <Link
-                    href={`/my/workplaces/${workplaceId}/timetables/${set.id}/edit`}
-                    className={buttonVariants({
-                      size: "sm",
-                      variant: "outline",
-                    })}
-                  >
-                    編集
-                  </Link>
-                  <Button
-                    size="sm"
-                    variant="destructive"
-                    onClick={() => {
-                      setDeleteError(null);
-                      setDeletingId(set.id);
-                    }}
-                  >
-                    削除
-                  </Button>
-                </div>
-              </CardContent>
-            </Card>
-          ))}
-        </div>
+                  <div className="flex justify-end gap-2">
+                    <Link
+                      href={`/my/workplaces/${workplaceId}/timetables/${set.id}/edit`}
+                      className={buttonVariants({
+                        size: "sm",
+                        variant: "outline",
+                      })}
+                    >
+                      編集
+                    </Link>
+                    <Button
+                      size="sm"
+                      variant="destructive"
+                      onClick={() => {
+                        setDeleteError(null);
+                        setDeletingId(set.id);
+                      }}
+                    >
+                      削除
+                    </Button>
+                  </div>
+                </CardContent>
+              </Card>
+            ))}
+          </div>
+        </LoadingOverlay>
       )}
 
       <Dialog

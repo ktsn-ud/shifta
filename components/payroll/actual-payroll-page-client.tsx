@@ -2,6 +2,7 @@
 
 import { useReducer } from "react";
 import { toast } from "sonner";
+import { AsyncStateNotice } from "@/components/ui/async-state-notice";
 import { Button } from "@/components/ui/button";
 import {
   Card,
@@ -86,8 +87,10 @@ type ActualPayrollEditorScreenProps = {
   draftMonthValue: string;
   canApplyMonth: boolean;
   selectedMonthLabel: string;
+  displayMonthValue: string;
   isInitialLoading: boolean;
   isRefreshing: boolean;
+  isStaleView: boolean;
   errorMessage: string | null;
   data: ActualPayrollEditorResult;
   onDraftMonthValueChange: (value: string) => void;
@@ -103,6 +106,8 @@ type ActualPayrollHeaderProps = {
     monthInputDisabled: boolean;
     applyDisabled: boolean;
     saveDisabled: boolean;
+    isRefreshing: boolean;
+    isSaving: boolean;
     onDraftMonthValueChange: (value: string) => void;
     onApplyMonth: () => void;
     onBackToCurrentMonth: () => void;
@@ -135,8 +140,10 @@ type ActualPayrollTableRowProps = {
 type ActualPayrollScreenState = {
   data: ActualPayrollEditorResult;
   selectedMonthLabel: string;
+  displayMonthValue: string;
   isInitialLoading: boolean;
   isRefreshing: boolean;
+  isStaleView: boolean;
   errorMessage: string | null;
 };
 
@@ -182,7 +189,7 @@ function renderActualPayrollHeaderActions(actions: ActualPayrollHeaderActions) {
         onClick={actions.onApplyMonth}
         disabled={actions.applyDisabled}
       >
-        適用
+        {actions.isRefreshing && !actions.isSaving ? "更新中..." : "適用"}
       </Button>
       <Button
         type="button"
@@ -190,7 +197,7 @@ function renderActualPayrollHeaderActions(actions: ActualPayrollHeaderActions) {
         onClick={actions.onSave}
         disabled={actions.saveDisabled}
       >
-        保存
+        {actions.isSaving ? "保存中..." : "保存"}
       </Button>
     </div>
   );
@@ -388,8 +395,11 @@ function buildActualPayrollScreenState(params: {
     selectedMonthLabel: selectedMonth
       ? formatMonthLabel(selectedMonth)
       : displayMonthValue,
+    displayMonthValue,
     isInitialLoading: isValidRequestedMonth && isLoading && data === null,
     isRefreshing: isValidRequestedMonth && isFetching && data !== null,
+    isStaleView:
+      isValidRequestedMonth && displayMonthValue !== requestedMonthValue,
     errorMessage: !isValidRequestedMonth
       ? "月は YYYY-MM 形式で指定してください。"
       : queryError
@@ -595,8 +605,10 @@ function ActualPayrollEditorScreen({
   draftMonthValue,
   canApplyMonth,
   selectedMonthLabel,
+  displayMonthValue,
   isInitialLoading,
   isRefreshing,
+  isStaleView,
   errorMessage,
   data,
   onDraftMonthValueChange,
@@ -715,6 +727,8 @@ function ActualPayrollEditorScreen({
                 monthInputDisabled: isDisabled,
                 applyDisabled: !canApplyMonth || isDisabled,
                 saveDisabled: isDisabled,
+                isRefreshing,
+                isSaving: state.isSaving,
                 onDraftMonthValueChange,
                 onApplyMonth,
                 onBackToCurrentMonth,
@@ -735,44 +749,73 @@ function ActualPayrollEditorScreen({
           label="実給与データを読み込み中..."
         />
       ) : (
-        <LoadingOverlay
-          isLoading={isRefreshing || state.isSaving}
-          className="rounded-xl"
-        >
-          <ActualPayrollTableCard
-            rows={state.rows}
-            isDisabled={isRefreshing || state.isSaving}
-            onTaxableChange={(workplaceId, value) => {
-              dispatch({
-                type: "updateAmount",
-                workplaceId,
-                field: "taxableAmount",
-                value,
-              });
-            }}
-            onNonTaxableChange={(workplaceId, value) => {
-              dispatch({
-                type: "updateAmount",
-                workplaceId,
-                field: "nonTaxableAmount",
-                value,
-              });
-            }}
-            onNoteChange={(workplaceId, value) => {
-              dispatch({
-                type: "updateNote",
-                workplaceId,
-                value,
-              });
-            }}
-            onClear={(workplaceId) => {
-              dispatch({
-                type: "clearRow",
-                workplaceId,
-              });
-            }}
-          />
-        </LoadingOverlay>
+        <>
+          {isRefreshing ? (
+            <AsyncStateNotice
+              variant={isStaleView ? "stale" : "refresh"}
+              title={
+                isStaleView
+                  ? `${requestedMonthValue} の実給与を読み込み中です。`
+                  : "実給与の最新データを確認中です。"
+              }
+              description={
+                isStaleView
+                  ? `現在の表示は ${displayMonthValue} のままです。新しい月の実給与へ切り替わるまでこの内容を維持します。`
+                  : "表示中の実給与データはまもなく最新化されます。"
+              }
+            />
+          ) : null}
+
+          {state.isSaving ? (
+            <p className="rounded-lg border border-primary/20 bg-primary/5 px-3 py-2 text-sm text-primary">
+              実給与を保存中です。反映が完了するまでお待ちください。
+            </p>
+          ) : null}
+
+          <LoadingOverlay
+            isLoading={isRefreshing || state.isSaving}
+            label={
+              state.isSaving
+                ? "実給与を保存中です..."
+                : "最新データを確認中です。表示中の内容は前回取得分です。"
+            }
+            className="rounded-xl"
+          >
+            <ActualPayrollTableCard
+              rows={state.rows}
+              isDisabled={isRefreshing || state.isSaving}
+              onTaxableChange={(workplaceId, value) => {
+                dispatch({
+                  type: "updateAmount",
+                  workplaceId,
+                  field: "taxableAmount",
+                  value,
+                });
+              }}
+              onNonTaxableChange={(workplaceId, value) => {
+                dispatch({
+                  type: "updateAmount",
+                  workplaceId,
+                  field: "nonTaxableAmount",
+                  value,
+                });
+              }}
+              onNoteChange={(workplaceId, value) => {
+                dispatch({
+                  type: "updateNote",
+                  workplaceId,
+                  value,
+                });
+              }}
+              onClear={(workplaceId) => {
+                dispatch({
+                  type: "clearRow",
+                  workplaceId,
+                });
+              }}
+            />
+          </LoadingOverlay>
+        </>
       )}
     </section>
   );
@@ -824,8 +867,10 @@ export function ActualPayrollPageClient({
       draftMonthValue={filterState.draftMonthValue}
       canApplyMonth={canApplyMonth}
       selectedMonthLabel={screenState.selectedMonthLabel}
+      displayMonthValue={screenState.displayMonthValue}
       isInitialLoading={screenState.isInitialLoading}
       isRefreshing={screenState.isRefreshing}
+      isStaleView={screenState.isStaleView}
       errorMessage={screenState.errorMessage}
       data={screenState.data}
       onDraftMonthValueChange={(value) => {
