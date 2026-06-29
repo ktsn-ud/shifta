@@ -173,7 +173,7 @@ function SummaryPrimaryMetrics({
   selectedMonthLabel,
 }: SummaryPrimaryMetricsProps) {
   return (
-    <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
+    <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4 my-4">
       <Card size="sm" className="border-primary/30 bg-primary/5">
         <CardHeader>
           <CardTitle>実績支給額</CardTitle>
@@ -249,7 +249,7 @@ function SummarySecondaryMetrics({
   summaryYearContext,
 }: SummarySecondaryMetricsProps) {
   return (
-    <div className="grid gap-4 lg:grid-cols-4">
+    <div className="grid gap-4 lg:grid-cols-4 my-4">
       <Card size="sm">
         <CardHeader>
           <CardTitle>確定済み支給額</CardTitle>
