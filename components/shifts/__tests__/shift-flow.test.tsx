@@ -17,6 +17,38 @@ import { queryKeys } from "@/lib/query/query-keys";
 
 const pushMock = jest.fn();
 const WORKPLACE_LIST_URL = "/api/workplaces?includeCounts=false";
+const SHIFT_FORM_BOOTSTRAP_URL = "/api/shifts/form-bootstrap";
+
+type ShiftFormBootstrapResponseInput = {
+  selectedWorkplaceId?: string;
+  workplaces?: Array<{
+    id: string;
+    name: string;
+    type: "GENERAL" | "CRAM_SCHOOL";
+    color?: string;
+  }>;
+  timetableSets?: Array<{
+    id: string;
+    workplaceId: string;
+    name: string;
+    sortOrder: number;
+    createdAt: string;
+    updatedAt: string;
+    items: Array<{
+      id: string;
+      timetableSetId: string;
+      period: number;
+      startTime: string;
+      endTime: string;
+    }>;
+  }>;
+};
+
+declare global {
+  var __shiftFormBootstrapResponseInput:
+    | ShiftFormBootstrapResponseInput
+    | undefined;
+}
 
 jest.mock("next/navigation", () => ({
   useRouter: () => ({ push: pushMock }),
@@ -43,30 +75,71 @@ function jsonResponse(payload: unknown, status = 200): Response {
   } as Response;
 }
 
-function handleShiftPreviewFetch(input: string): Response | null {
-  const workplaceDetailMatch = input.match(/^\/api\/workplaces\/([^/]+)$/);
-  if (workplaceDetailMatch) {
-    return jsonResponse({
-      data: {
-        id: workplaceDetailMatch[1],
+function createShiftFormBootstrapResponse(input?: {
+  selectedWorkplaceId?: string;
+  workplaces?: Array<{
+    id: string;
+    name: string;
+    type: "GENERAL" | "CRAM_SCHOOL";
+    color?: string;
+  }>;
+  timetableSets?: Array<{
+    id: string;
+    workplaceId: string;
+    name: string;
+    sortOrder: number;
+    createdAt: string;
+    updatedAt: string;
+    items: Array<{
+      id: string;
+      timetableSetId: string;
+      period: number;
+      startTime: string;
+      endTime: string;
+    }>;
+  }>;
+}) {
+  const {
+    selectedWorkplaceId = "workplace-1",
+    workplaces = [
+      {
+        id: "workplace-1",
         name: "勤務先A",
         type: "GENERAL",
         color: "#3366FF",
+      },
+    ],
+    timetableSets = [],
+  } = input ?? {};
+  const selectedWorkplace =
+    workplaces.find((workplace) => workplace.id === selectedWorkplaceId) ??
+    workplaces[0];
+
+  if (!selectedWorkplace) {
+    throw new Error("selectedWorkplace is required");
+  }
+
+  return jsonResponse({
+    data: {
+      workplaces: workplaces.map((workplace) => ({
+        id: workplace.id,
+        name: workplace.name,
+        type: workplace.type,
+        color: workplace.color ?? "#3366FF",
+      })),
+      selectedWorkplace: {
+        id: selectedWorkplace.id,
+        name: selectedWorkplace.name,
+        type: selectedWorkplace.type,
+        color: selectedWorkplace.color ?? "#3366FF",
         closingDayType: "DAY_OF_MONTH",
         closingDay: 15,
         payday: 25,
       },
-    });
-  }
-
-  const payrollRulesMatch = input.match(
-    /^\/api\/workplaces\/([^/]+)\/payroll-rules$/,
-  );
-  if (payrollRulesMatch) {
-    return jsonResponse({
-      data: [
+      payrollRules: [
         {
-          workplaceId: payrollRulesMatch[1],
+          id: "rule-1",
+          workplaceId: selectedWorkplaceId,
           startDate: "2026-01-01",
           endDate: null,
           baseHourlyWage: 1200,
@@ -77,6 +150,18 @@ function handleShiftPreviewFetch(input: string): Response | null {
           holidayType: "NONE",
         },
       ],
+      timetableSets,
+    },
+  });
+}
+
+function handleShiftPreviewFetch(input: string): Response | null {
+  if (input.startsWith(SHIFT_FORM_BOOTSTRAP_URL)) {
+    const url = new URL(`http://localhost${input}`);
+    return createShiftFormBootstrapResponse({
+      ...globalThis.__shiftFormBootstrapResponseInput,
+      selectedWorkplaceId:
+        url.searchParams.get("selectedWorkplaceId") ?? "workplace-1",
     });
   }
 
@@ -139,9 +224,161 @@ function createMonthShift(overrides: Partial<MonthShift> = {}): MonthShift {
 describe("shift flow integration", () => {
   beforeEach(() => {
     pushMock.mockReset();
+    globalThis.__shiftFormBootstrapResponseInput = undefined;
     Object.defineProperty(globalThis, "fetch", {
       writable: true,
       value: jest.fn(),
+    });
+  });
+
+  it("loads create-form reference data from the bootstrap endpoint", async () => {
+    const fetchMock = globalThis.fetch as jest.Mock;
+
+    fetchMock.mockImplementation(async (input: string) => {
+      if (input.startsWith("/api/shifts?")) {
+        return jsonResponse({ data: [] });
+      }
+
+      const previewResponse = handleShiftPreviewFetch(input);
+      if (previewResponse) {
+        return previewResponse;
+      }
+
+      throw new Error("Unexpected fetch: " + input);
+    });
+
+    render(<ShiftForm mode="create" initialDate="2026-03-18" />);
+
+    await waitFor(() => {
+      expect(screen.getByRole("button", { name: "登録" })).toBeEnabled();
+    });
+
+    expect(fetchMock).toHaveBeenCalledWith(
+      SHIFT_FORM_BOOTSTRAP_URL,
+      expect.objectContaining({
+        cache: "no-store",
+        signal: expect.any(AbortSignal),
+      }),
+    );
+    expect(
+      fetchMock.mock.calls.some(([url]) => String(url) === WORKPLACE_LIST_URL),
+    ).toBe(false);
+    expect(
+      fetchMock.mock.calls.some(([url]) =>
+        /^\/api\/workplaces\/[^/]+(?:\/payroll-rules|\/timetables)?$/.test(
+          String(url),
+        ),
+      ),
+    ).toBe(false);
+  });
+
+  it("keeps workplace options visible while switching workplaces and applies the next bootstrap payload on success", async () => {
+    const user = userEvent.setup();
+    const fetchMock = globalThis.fetch as jest.Mock;
+    const nextBootstrapResponse = createDeferred<Response>();
+    const workplaces = [
+      {
+        id: "workplace-1",
+        name: "勤務先A",
+        type: "GENERAL" as const,
+      },
+      {
+        id: "workplace-2",
+        name: "勤務先B",
+        type: "CRAM_SCHOOL" as const,
+      },
+    ];
+
+    fetchMock.mockImplementation(async (input: string) => {
+      if (input.startsWith("/api/shifts?")) {
+        return jsonResponse({ data: [] });
+      }
+
+      if (input === SHIFT_FORM_BOOTSTRAP_URL) {
+        return createShiftFormBootstrapResponse({
+          selectedWorkplaceId: "workplace-1",
+          workplaces,
+        });
+      }
+
+      if (
+        input ===
+        `${SHIFT_FORM_BOOTSTRAP_URL}?selectedWorkplaceId=workplace-2`
+      ) {
+        return nextBootstrapResponse.promise;
+      }
+
+      const previewResponse = handleShiftPreviewFetch(input);
+      if (previewResponse) {
+        return previewResponse;
+      }
+
+      throw new Error("Unexpected fetch: " + input);
+    });
+
+    render(<ShiftForm mode="create" initialDate="2026-03-18" />);
+
+    await waitFor(() => {
+      expect(
+        screen.getByRole("combobox", { name: "勤務先" }),
+      ).toHaveTextContent("勤務先A");
+    });
+
+    await user.click(screen.getByRole("combobox", { name: "勤務先" }));
+    expect(
+      await screen.findByRole("option", { name: "勤務先A" }),
+    ).toBeInTheDocument();
+    expect(screen.getByRole("option", { name: "勤務先B" })).toBeInTheDocument();
+
+    await user.click(screen.getByRole("option", { name: "勤務先B" }));
+
+    expect(fetchMock).toHaveBeenCalledWith(
+      `${SHIFT_FORM_BOOTSTRAP_URL}?selectedWorkplaceId=workplace-2`,
+      expect.objectContaining({
+        cache: "no-store",
+        signal: expect.any(AbortSignal),
+      }),
+    );
+    expect(
+      screen.getByRole("combobox", { name: "勤務先" }),
+    ).toHaveTextContent("勤務先B");
+
+    await user.click(screen.getByRole("combobox", { name: "勤務先" }));
+    expect(
+      await screen.findByRole("option", { name: "勤務先A" }),
+    ).toBeInTheDocument();
+    expect(screen.getByRole("option", { name: "勤務先B" })).toBeInTheDocument();
+
+    nextBootstrapResponse.resolve(
+      createShiftFormBootstrapResponse({
+        selectedWorkplaceId: "workplace-2",
+        workplaces,
+        timetableSets: [
+          {
+            id: "set-1",
+            workplaceId: "workplace-2",
+            name: "時間割A",
+            sortOrder: 1,
+            createdAt: "2026-01-01T00:00:00.000Z",
+            updatedAt: "2026-01-01T00:00:00.000Z",
+            items: [
+              {
+                id: "item-1",
+                timetableSetId: "set-1",
+                period: 1,
+                startTime: "17:00",
+                endTime: "18:30",
+              },
+            ],
+          },
+        ],
+      }),
+    );
+
+    await waitFor(() => {
+      expect(
+        screen.getByRole("combobox", { name: "時間割セット" }),
+      ).toHaveTextContent("時間割A");
     });
   });
 
@@ -150,17 +387,8 @@ describe("shift flow integration", () => {
 
     fetchMock.mockImplementation(
       async (input: string, init?: { method?: string }) => {
-        if (input === WORKPLACE_LIST_URL) {
-          return jsonResponse({
-            data: [
-              {
-                id: "workplace-1",
-                name: "勤務先A",
-                color: "#3366FF",
-                type: "GENERAL",
-              },
-            ],
-          });
+        if (input.startsWith(SHIFT_FORM_BOOTSTRAP_URL)) {
+          return handleShiftPreviewFetch(input) as Response;
         }
 
         if (input.startsWith("/api/shifts?")) {
@@ -1209,10 +1437,40 @@ describe("shift flow integration", () => {
     const user = userEvent.setup();
     const fetchMock = globalThis.fetch as jest.Mock;
     const workplacesDeferred = createDeferred<Response>();
+    globalThis.__shiftFormBootstrapResponseInput = {
+      workplaceName: "英語塾A",
+      workplaceType: "CRAM_SCHOOL",
+      timetableSets: [
+        {
+          id: "set-normal",
+          workplaceId: "workplace-1",
+          name: "通常授業",
+          sortOrder: 0,
+          createdAt: "2026-03-01T00:00:00.000Z",
+          updatedAt: "2026-03-01T00:00:00.000Z",
+          items: [
+            {
+              id: "tt-1",
+              timetableSetId: "set-normal",
+              period: 1,
+              startTime: "1970-01-01T16:30:00.000Z",
+              endTime: "1970-01-01T17:30:00.000Z",
+            },
+            {
+              id: "tt-2",
+              timetableSetId: "set-normal",
+              period: 2,
+              startTime: "1970-01-01T17:40:00.000Z",
+              endTime: "1970-01-01T18:40:00.000Z",
+            },
+          ],
+        },
+      ],
+    };
 
     fetchMock.mockImplementation(
       async (input: string, init?: { method?: string }) => {
-        if (input === WORKPLACE_LIST_URL) {
+        if (input.startsWith(SHIFT_FORM_BOOTSTRAP_URL)) {
           return workplacesDeferred.promise;
         }
 
@@ -1233,37 +1491,6 @@ describe("shift flow integration", () => {
                 endPeriod: 2,
               },
             },
-          });
-        }
-
-        if (input === "/api/workplaces/workplace-1/timetables") {
-          return jsonResponse({
-            data: [
-              {
-                id: "set-normal",
-                workplaceId: "workplace-1",
-                name: "通常授業",
-                sortOrder: 0,
-                createdAt: "2026-03-01T00:00:00.000Z",
-                updatedAt: "2026-03-01T00:00:00.000Z",
-                items: [
-                  {
-                    id: "tt-1",
-                    timetableSetId: "set-normal",
-                    period: 1,
-                    startTime: "1970-01-01T16:30:00.000Z",
-                    endTime: "1970-01-01T17:30:00.000Z",
-                  },
-                  {
-                    id: "tt-2",
-                    timetableSetId: "set-normal",
-                    period: 2,
-                    startTime: "1970-01-01T17:40:00.000Z",
-                    endTime: "1970-01-01T18:40:00.000Z",
-                  },
-                ],
-              },
-            ],
           });
         }
 
@@ -1295,13 +1522,33 @@ describe("shift flow integration", () => {
     render(<ShiftForm mode="edit" shiftId="shift-lesson-1" />);
 
     workplacesDeferred.resolve(
-      jsonResponse({
-        data: [
+      createShiftFormBootstrapResponse({
+        workplaceName: "英語塾A",
+        workplaceType: "CRAM_SCHOOL",
+        timetableSets: [
           {
-            id: "workplace-1",
-            name: "英語塾A",
-            color: "#3366FF",
-            type: "CRAM_SCHOOL",
+            id: "set-normal",
+            workplaceId: "workplace-1",
+            name: "通常授業",
+            sortOrder: 0,
+            createdAt: "2026-03-01T00:00:00.000Z",
+            updatedAt: "2026-03-01T00:00:00.000Z",
+            items: [
+              {
+                id: "tt-1",
+                timetableSetId: "set-normal",
+                period: 1,
+                startTime: "1970-01-01T16:30:00.000Z",
+                endTime: "1970-01-01T17:30:00.000Z",
+              },
+              {
+                id: "tt-2",
+                timetableSetId: "set-normal",
+                period: 2,
+                startTime: "1970-01-01T17:40:00.000Z",
+                endTime: "1970-01-01T18:40:00.000Z",
+              },
+            ],
           },
         ],
       }),
@@ -1352,10 +1599,71 @@ describe("shift flow integration", () => {
     const user = userEvent.setup();
     const fetchMock = globalThis.fetch as jest.Mock;
     const workplacesDeferred = createDeferred<Response>();
+    globalThis.__shiftFormBootstrapResponseInput = {
+      workplaceName: "英語塾A",
+      workplaceType: "CRAM_SCHOOL",
+      timetableSets: [
+        {
+          id: "set-normal",
+          workplaceId: "workplace-1",
+          name: "通常授業",
+          sortOrder: 0,
+          createdAt: "2026-03-01T00:00:00.000Z",
+          updatedAt: "2026-03-01T00:00:00.000Z",
+          items: [
+            {
+              id: "tt-normal-1",
+              timetableSetId: "set-normal",
+              period: 1,
+              startTime: "1970-01-01T10:00:00.000Z",
+              endTime: "1970-01-01T11:00:00.000Z",
+            },
+            {
+              id: "tt-normal-2",
+              timetableSetId: "set-normal",
+              period: 2,
+              startTime: "1970-01-01T11:10:00.000Z",
+              endTime: "1970-01-01T12:10:00.000Z",
+            },
+          ],
+        },
+        {
+          id: "set-intensive",
+          workplaceId: "workplace-1",
+          name: "講習授業",
+          sortOrder: 1,
+          createdAt: "2026-03-01T00:00:00.000Z",
+          updatedAt: "2026-03-01T00:00:00.000Z",
+          items: [
+            {
+              id: "tt-intensive-1",
+              timetableSetId: "set-intensive",
+              period: 1,
+              startTime: "1970-01-01T12:00:00.000Z",
+              endTime: "1970-01-01T12:50:00.000Z",
+            },
+            {
+              id: "tt-intensive-2",
+              timetableSetId: "set-intensive",
+              period: 2,
+              startTime: "1970-01-01T13:00:00.000Z",
+              endTime: "1970-01-01T14:10:00.000Z",
+            },
+            {
+              id: "tt-intensive-3",
+              timetableSetId: "set-intensive",
+              period: 3,
+              startTime: "1970-01-01T14:20:00.000Z",
+              endTime: "1970-01-01T15:20:00.000Z",
+            },
+          ],
+        },
+      ],
+    };
 
     fetchMock.mockImplementation(
       async (input: string, init?: { method?: string }) => {
-        if (input === WORKPLACE_LIST_URL) {
+        if (input.startsWith(SHIFT_FORM_BOOTSTRAP_URL)) {
           return workplacesDeferred.promise;
         }
 
@@ -1376,68 +1684,6 @@ describe("shift flow integration", () => {
                 endPeriod: 2,
               },
             },
-          });
-        }
-
-        if (input === "/api/workplaces/workplace-1/timetables") {
-          return jsonResponse({
-            data: [
-              {
-                id: "set-normal",
-                workplaceId: "workplace-1",
-                name: "通常授業",
-                sortOrder: 0,
-                createdAt: "2026-03-01T00:00:00.000Z",
-                updatedAt: "2026-03-01T00:00:00.000Z",
-                items: [
-                  {
-                    id: "tt-normal-1",
-                    timetableSetId: "set-normal",
-                    period: 1,
-                    startTime: "1970-01-01T10:00:00.000Z",
-                    endTime: "1970-01-01T11:00:00.000Z",
-                  },
-                  {
-                    id: "tt-normal-2",
-                    timetableSetId: "set-normal",
-                    period: 2,
-                    startTime: "1970-01-01T11:10:00.000Z",
-                    endTime: "1970-01-01T12:10:00.000Z",
-                  },
-                ],
-              },
-              {
-                id: "set-intensive",
-                workplaceId: "workplace-1",
-                name: "講習授業",
-                sortOrder: 1,
-                createdAt: "2026-03-01T00:00:00.000Z",
-                updatedAt: "2026-03-01T00:00:00.000Z",
-                items: [
-                  {
-                    id: "tt-intensive-1",
-                    timetableSetId: "set-intensive",
-                    period: 1,
-                    startTime: "1970-01-01T12:00:00.000Z",
-                    endTime: "1970-01-01T12:50:00.000Z",
-                  },
-                  {
-                    id: "tt-intensive-2",
-                    timetableSetId: "set-intensive",
-                    period: 2,
-                    startTime: "1970-01-01T13:00:00.000Z",
-                    endTime: "1970-01-01T14:10:00.000Z",
-                  },
-                  {
-                    id: "tt-intensive-3",
-                    timetableSetId: "set-intensive",
-                    period: 3,
-                    startTime: "1970-01-01T14:20:00.000Z",
-                    endTime: "1970-01-01T15:20:00.000Z",
-                  },
-                ],
-              },
-            ],
           });
         }
 
@@ -1469,13 +1715,64 @@ describe("shift flow integration", () => {
     render(<ShiftForm mode="edit" shiftId="shift-lesson-2" />);
 
     workplacesDeferred.resolve(
-      jsonResponse({
-        data: [
+      createShiftFormBootstrapResponse({
+        workplaceName: "英語塾A",
+        workplaceType: "CRAM_SCHOOL",
+        timetableSets: [
           {
-            id: "workplace-1",
-            name: "英語塾A",
-            color: "#3366FF",
-            type: "CRAM_SCHOOL",
+            id: "set-normal",
+            workplaceId: "workplace-1",
+            name: "通常授業",
+            sortOrder: 0,
+            createdAt: "2026-03-01T00:00:00.000Z",
+            updatedAt: "2026-03-01T00:00:00.000Z",
+            items: [
+              {
+                id: "tt-normal-1",
+                timetableSetId: "set-normal",
+                period: 1,
+                startTime: "1970-01-01T10:00:00.000Z",
+                endTime: "1970-01-01T11:00:00.000Z",
+              },
+              {
+                id: "tt-normal-2",
+                timetableSetId: "set-normal",
+                period: 2,
+                startTime: "1970-01-01T11:10:00.000Z",
+                endTime: "1970-01-01T12:10:00.000Z",
+              },
+            ],
+          },
+          {
+            id: "set-intensive",
+            workplaceId: "workplace-1",
+            name: "講習授業",
+            sortOrder: 1,
+            createdAt: "2026-03-01T00:00:00.000Z",
+            updatedAt: "2026-03-01T00:00:00.000Z",
+            items: [
+              {
+                id: "tt-intensive-1",
+                timetableSetId: "set-intensive",
+                period: 1,
+                startTime: "1970-01-01T12:00:00.000Z",
+                endTime: "1970-01-01T12:50:00.000Z",
+              },
+              {
+                id: "tt-intensive-2",
+                timetableSetId: "set-intensive",
+                period: 2,
+                startTime: "1970-01-01T13:00:00.000Z",
+                endTime: "1970-01-01T14:10:00.000Z",
+              },
+              {
+                id: "tt-intensive-3",
+                timetableSetId: "set-intensive",
+                period: 3,
+                startTime: "1970-01-01T14:20:00.000Z",
+                endTime: "1970-01-01T15:20:00.000Z",
+              },
+            ],
           },
         ],
       }),
@@ -1524,10 +1821,71 @@ describe("shift flow integration", () => {
     const user = userEvent.setup();
     const fetchMock = globalThis.fetch as jest.Mock;
     const workplacesDeferred = createDeferred<Response>();
+    globalThis.__shiftFormBootstrapResponseInput = {
+      workplaceName: "英語塾A",
+      workplaceType: "CRAM_SCHOOL",
+      timetableSets: [
+        {
+          id: "set-normal",
+          workplaceId: "workplace-1",
+          name: "通常授業",
+          sortOrder: 0,
+          createdAt: "2026-03-01T00:00:00.000Z",
+          updatedAt: "2026-03-01T00:00:00.000Z",
+          items: [
+            {
+              id: "tt-normal-1",
+              timetableSetId: "set-normal",
+              period: 1,
+              startTime: "1970-01-01T10:00:00.000Z",
+              endTime: "1970-01-01T11:00:00.000Z",
+            },
+            {
+              id: "tt-normal-2",
+              timetableSetId: "set-normal",
+              period: 2,
+              startTime: "1970-01-01T11:10:00.000Z",
+              endTime: "1970-01-01T12:10:00.000Z",
+            },
+            {
+              id: "tt-normal-3",
+              timetableSetId: "set-normal",
+              period: 3,
+              startTime: "1970-01-01T12:20:00.000Z",
+              endTime: "1970-01-01T13:20:00.000Z",
+            },
+          ],
+        },
+        {
+          id: "set-intensive",
+          workplaceId: "workplace-1",
+          name: "講習授業",
+          sortOrder: 1,
+          createdAt: "2026-03-01T00:00:00.000Z",
+          updatedAt: "2026-03-01T00:00:00.000Z",
+          items: [
+            {
+              id: "tt-intensive-4",
+              timetableSetId: "set-intensive",
+              period: 4,
+              startTime: "1970-01-01T14:30:00.000Z",
+              endTime: "1970-01-01T15:20:00.000Z",
+            },
+            {
+              id: "tt-intensive-5",
+              timetableSetId: "set-intensive",
+              period: 5,
+              startTime: "1970-01-01T15:30:00.000Z",
+              endTime: "1970-01-01T16:20:00.000Z",
+            },
+          ],
+        },
+      ],
+    };
 
     fetchMock.mockImplementation(
       async (input: string, init?: { method?: string }) => {
-        if (input === WORKPLACE_LIST_URL) {
+        if (input.startsWith(SHIFT_FORM_BOOTSTRAP_URL)) {
           return workplacesDeferred.promise;
         }
 
@@ -1548,68 +1906,6 @@ describe("shift flow integration", () => {
                 endPeriod: 5,
               },
             },
-          });
-        }
-
-        if (input === "/api/workplaces/workplace-1/timetables") {
-          return jsonResponse({
-            data: [
-              {
-                id: "set-normal",
-                workplaceId: "workplace-1",
-                name: "通常授業",
-                sortOrder: 0,
-                createdAt: "2026-03-01T00:00:00.000Z",
-                updatedAt: "2026-03-01T00:00:00.000Z",
-                items: [
-                  {
-                    id: "tt-normal-1",
-                    timetableSetId: "set-normal",
-                    period: 1,
-                    startTime: "1970-01-01T10:00:00.000Z",
-                    endTime: "1970-01-01T11:00:00.000Z",
-                  },
-                  {
-                    id: "tt-normal-2",
-                    timetableSetId: "set-normal",
-                    period: 2,
-                    startTime: "1970-01-01T11:10:00.000Z",
-                    endTime: "1970-01-01T12:10:00.000Z",
-                  },
-                  {
-                    id: "tt-normal-3",
-                    timetableSetId: "set-normal",
-                    period: 3,
-                    startTime: "1970-01-01T12:20:00.000Z",
-                    endTime: "1970-01-01T13:20:00.000Z",
-                  },
-                ],
-              },
-              {
-                id: "set-intensive",
-                workplaceId: "workplace-1",
-                name: "講習授業",
-                sortOrder: 1,
-                createdAt: "2026-03-01T00:00:00.000Z",
-                updatedAt: "2026-03-01T00:00:00.000Z",
-                items: [
-                  {
-                    id: "tt-intensive-4",
-                    timetableSetId: "set-intensive",
-                    period: 4,
-                    startTime: "1970-01-01T14:30:00.000Z",
-                    endTime: "1970-01-01T15:20:00.000Z",
-                  },
-                  {
-                    id: "tt-intensive-5",
-                    timetableSetId: "set-intensive",
-                    period: 5,
-                    startTime: "1970-01-01T15:30:00.000Z",
-                    endTime: "1970-01-01T16:20:00.000Z",
-                  },
-                ],
-              },
-            ],
           });
         }
 
@@ -1641,13 +1937,64 @@ describe("shift flow integration", () => {
     render(<ShiftForm mode="edit" shiftId="shift-lesson-3" />);
 
     workplacesDeferred.resolve(
-      jsonResponse({
-        data: [
+      createShiftFormBootstrapResponse({
+        workplaceName: "英語塾A",
+        workplaceType: "CRAM_SCHOOL",
+        timetableSets: [
           {
-            id: "workplace-1",
-            name: "英語塾A",
-            color: "#3366FF",
-            type: "CRAM_SCHOOL",
+            id: "set-normal",
+            workplaceId: "workplace-1",
+            name: "通常授業",
+            sortOrder: 0,
+            createdAt: "2026-03-01T00:00:00.000Z",
+            updatedAt: "2026-03-01T00:00:00.000Z",
+            items: [
+              {
+                id: "tt-normal-1",
+                timetableSetId: "set-normal",
+                period: 1,
+                startTime: "1970-01-01T10:00:00.000Z",
+                endTime: "1970-01-01T11:00:00.000Z",
+              },
+              {
+                id: "tt-normal-2",
+                timetableSetId: "set-normal",
+                period: 2,
+                startTime: "1970-01-01T11:10:00.000Z",
+                endTime: "1970-01-01T12:10:00.000Z",
+              },
+              {
+                id: "tt-normal-3",
+                timetableSetId: "set-normal",
+                period: 3,
+                startTime: "1970-01-01T12:20:00.000Z",
+                endTime: "1970-01-01T13:20:00.000Z",
+              },
+            ],
+          },
+          {
+            id: "set-intensive",
+            workplaceId: "workplace-1",
+            name: "講習授業",
+            sortOrder: 1,
+            createdAt: "2026-03-01T00:00:00.000Z",
+            updatedAt: "2026-03-01T00:00:00.000Z",
+            items: [
+              {
+                id: "tt-intensive-4",
+                timetableSetId: "set-intensive",
+                period: 4,
+                startTime: "1970-01-01T14:30:00.000Z",
+                endTime: "1970-01-01T15:20:00.000Z",
+              },
+              {
+                id: "tt-intensive-5",
+                timetableSetId: "set-intensive",
+                period: 5,
+                startTime: "1970-01-01T15:30:00.000Z",
+                endTime: "1970-01-01T16:20:00.000Z",
+              },
+            ],
           },
         ],
       }),

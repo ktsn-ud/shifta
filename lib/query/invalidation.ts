@@ -62,6 +62,9 @@ export async function invalidateAfterPayrollRuleMutation(
       queryKey: queryKeys.workplaces.payrollRules({ workplaceId }),
     }),
     queryClient.invalidateQueries({
+      queryKey: ["workplaces", "shiftFormBootstrap"],
+    }),
+    queryClient.invalidateQueries({
       queryKey: ["workplaces", "payrollRuleDetail"],
     }),
     queryClient.invalidateQueries({ queryKey: ["payroll", "actual"] }),
@@ -85,6 +88,9 @@ export async function invalidateAfterTimetableMutation(
     }),
     queryClient.invalidateQueries({
       queryKey: queryKeys.workplaces.editDetail({ workplaceId }),
+    }),
+    queryClient.invalidateQueries({
+      queryKey: ["workplaces", "shiftFormBootstrap"],
     }),
     queryClient.invalidateQueries({ queryKey: ["payroll", "actual"] }),
     queryClient.invalidateQueries({ queryKey: ["shifts"] }),

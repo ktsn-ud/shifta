@@ -2,6 +2,11 @@ import type { PayrollRule, Shift } from "@/lib/generated/prisma/client";
 import { Prisma } from "@/lib/generated/prisma/client";
 import { prisma } from "@/lib/prisma";
 
+jest.mock("next/cache", () => ({
+  cacheLife: jest.fn(),
+  cacheTag: jest.fn(),
+}));
+
 jest.mock("@/lib/prisma", () => ({
   prisma: {
     workplace: {

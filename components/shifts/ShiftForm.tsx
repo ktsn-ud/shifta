@@ -49,6 +49,13 @@ import { fetchJson } from "@/lib/query/fetch-json";
 import { getBrowserQueryClient } from "@/lib/query/query-client";
 import { queryKeys } from "@/lib/query/query-keys";
 import {
+  useWorkplaceShiftFormBootstrapQuery,
+  type PayrollRuleListItem,
+  type WorkplaceDetailItem,
+  type WorkplaceEditDetailItem,
+  type TimetableSetItem as WorkplaceTimetableSet,
+} from "@/lib/query/queries/workplaces";
+import {
   formatShiftTimeRange,
   isOvernightShift,
   isSameTimeShift,
@@ -66,52 +73,11 @@ const GOOGLE_TOKEN_EXPIRED_DESCRIPTION =
 
 type ShiftType = "NORMAL" | "LESSON";
 type ShiftFormReturnTo = "dashboard" | "list";
-
-type Workplace = {
-  id: string;
-  name: string;
-  color: string;
-  type: "GENERAL" | "CRAM_SCHOOL";
-};
-
-type WorkplacePayrollCycleDetail = {
-  id: string;
-  closingDayType: "DAY_OF_MONTH" | "END_OF_MONTH";
-  closingDay: number | null;
-  payday: number;
-};
-
-type PreviewPayrollRule = {
-  workplaceId: string;
-  startDate: string;
-  endDate: string | null;
-  baseHourlyWage: number | string;
-  holidayAllowanceHourly: number | string;
-  nightPremiumRate: number | string;
-  overtimePremiumRate: number | string;
-  dailyOvertimeThreshold: number | string;
-  holidayType: "NONE" | "WEEKEND" | "HOLIDAY" | "WEEKEND_HOLIDAY";
-};
-
-type TimetableSetItem = {
-  id: string;
-  timetableSetId: string;
-  period: number;
-  startTime: string;
-  endTime: string;
-  startTimeLabel?: string;
-  endTimeLabel?: string;
-};
-
-type TimetableSet = {
-  id: string;
-  workplaceId: string;
-  name: string;
-  sortOrder: number;
-  createdAt: string;
-  updatedAt: string;
-  items: TimetableSetItem[];
-};
+type Workplace = WorkplaceDetailItem;
+type WorkplacePayrollCycleDetail = WorkplaceEditDetailItem;
+type PreviewPayrollRule = PayrollRuleListItem;
+type TimetableSet = WorkplaceTimetableSet;
+type TimetableSetItem = TimetableSet["items"][number];
 
 type ShiftListItem = {
   id: string;
@@ -347,158 +313,8 @@ function isRecord(value: unknown): value is Record<string, unknown> {
   return typeof value === "object" && value !== null;
 }
 
-function isShiftWorkplaceType(value: unknown): value is Workplace["type"] {
-  return value === "GENERAL" || value === "CRAM_SCHOOL";
-}
-
-function isClosingDayType(
-  value: unknown,
-): value is WorkplacePayrollCycleDetail["closingDayType"] {
-  return value === "DAY_OF_MONTH" || value === "END_OF_MONTH";
-}
-
 function isShiftType(value: unknown): value is ShiftType {
   return value === "NORMAL" || value === "LESSON";
-}
-
-function isWorkplace(value: unknown): value is Workplace {
-  if (!isRecord(value)) {
-    return false;
-  }
-
-  return (
-    typeof value.id === "string" &&
-    typeof value.name === "string" &&
-    typeof value.color === "string" &&
-    isShiftWorkplaceType(value.type)
-  );
-}
-
-function isTimetableSetItem(value: unknown): value is TimetableSetItem {
-  if (!isRecord(value)) {
-    return false;
-  }
-
-  return (
-    typeof value.id === "string" &&
-    typeof value.timetableSetId === "string" &&
-    typeof value.period === "number" &&
-    Number.isInteger(value.period) &&
-    value.period > 0 &&
-    typeof value.startTime === "string" &&
-    typeof value.endTime === "string" &&
-    (value.startTimeLabel === undefined ||
-      typeof value.startTimeLabel === "string") &&
-    (value.endTimeLabel === undefined || typeof value.endTimeLabel === "string")
-  );
-}
-
-function isTimetableSet(value: unknown): value is TimetableSet {
-  if (!isRecord(value) || !Array.isArray(value.items)) {
-    return false;
-  }
-
-  return (
-    typeof value.id === "string" &&
-    typeof value.workplaceId === "string" &&
-    typeof value.name === "string" &&
-    typeof value.sortOrder === "number" &&
-    Number.isInteger(value.sortOrder) &&
-    typeof value.createdAt === "string" &&
-    typeof value.updatedAt === "string" &&
-    value.items.every(isTimetableSetItem)
-  );
-}
-
-function parseWorkplaceListResponse(payload: unknown): Workplace[] | null {
-  if (!isRecord(payload) || !Array.isArray(payload.data)) {
-    return null;
-  }
-
-  if (payload.data.every(isWorkplace) === false) {
-    return null;
-  }
-
-  return payload.data;
-}
-
-function parseTimetableSetListResponse(
-  payload: unknown,
-): TimetableSet[] | null {
-  if (!isRecord(payload) || !Array.isArray(payload.data)) {
-    return null;
-  }
-
-  if (payload.data.every(isTimetableSet) === false) {
-    return null;
-  }
-
-  return payload.data;
-}
-
-function parseWorkplacePayrollCycleResponse(
-  payload: unknown,
-): WorkplacePayrollCycleDetail | null {
-  if (!isRecord(payload) || !isRecord(payload.data)) {
-    return null;
-  }
-
-  const data = payload.data;
-  if (
-    typeof data.id !== "string" ||
-    !isClosingDayType(data.closingDayType) ||
-    (typeof data.closingDay !== "number" && data.closingDay !== null) ||
-    typeof data.payday !== "number"
-  ) {
-    return null;
-  }
-
-  return {
-    id: data.id,
-    closingDayType: data.closingDayType,
-    closingDay: data.closingDay,
-    payday: data.payday,
-  };
-}
-
-function isPreviewPayrollRule(value: unknown): value is PreviewPayrollRule {
-  if (!isRecord(value)) {
-    return false;
-  }
-
-  return (
-    typeof value.workplaceId === "string" &&
-    typeof value.startDate === "string" &&
-    (typeof value.endDate === "string" || value.endDate === null) &&
-    (typeof value.baseHourlyWage === "number" ||
-      typeof value.baseHourlyWage === "string") &&
-    (typeof value.holidayAllowanceHourly === "number" ||
-      typeof value.holidayAllowanceHourly === "string") &&
-    (typeof value.nightPremiumRate === "number" ||
-      typeof value.nightPremiumRate === "string") &&
-    (typeof value.overtimePremiumRate === "number" ||
-      typeof value.overtimePremiumRate === "string") &&
-    (typeof value.dailyOvertimeThreshold === "number" ||
-      typeof value.dailyOvertimeThreshold === "string") &&
-    (value.holidayType === "NONE" ||
-      value.holidayType === "WEEKEND" ||
-      value.holidayType === "HOLIDAY" ||
-      value.holidayType === "WEEKEND_HOLIDAY")
-  );
-}
-
-function parsePreviewPayrollRuleListResponse(
-  payload: unknown,
-): PreviewPayrollRule[] | null {
-  if (!isRecord(payload) || !Array.isArray(payload.data)) {
-    return null;
-  }
-
-  if (payload.data.every(isPreviewPayrollRule) === false) {
-    return null;
-  }
-
-  return payload.data;
 }
 
 function isShiftListItem(value: unknown): value is ShiftListItem {
@@ -1031,33 +847,6 @@ function useShiftFormData(params: {
   } = params;
 
   const {
-    data: workplacesData,
-    error: workplacesError,
-    isPending: isWorkplacePending,
-  } = useQuery({
-    queryKey: queryKeys.workplaces.list({
-      userId: loadQueryUserId,
-      includeCounts: false,
-    }),
-    queryFn: ({ signal }) =>
-      fetchJson("/api/workplaces?includeCounts=false", {
-        init: { signal, cache: "no-store" },
-        fallbackMessage: "勤務先一覧の取得に失敗しました。",
-        parse: (payload) => {
-          const parsed = parseWorkplaceListResponse(payload);
-          if (!parsed) {
-            throw new Error("WORKPLACE_RESPONSE_INVALID");
-          }
-          return parsed;
-        },
-      }),
-    staleTime: 5 * 60 * 1000,
-    gcTime: 15 * 60 * 1000,
-    refetchOnWindowFocus: false,
-    refetchOnReconnect: false,
-  });
-
-  const {
     data: shiftDetailData,
     error: shiftDetailError,
     isPending: isShiftDetailPending,
@@ -1084,10 +873,27 @@ function useShiftFormData(params: {
     refetchOnReconnect: false,
   });
 
-  const workplaces = useMemo(() => workplacesData ?? [], [workplacesData]);
+  const requestedWorkplaceId =
+    formDraft?.workplaceId ||
+    shiftDetailData?.workplaceId ||
+    preferredWorkplaceId ||
+    null;
+  const {
+    data: bootstrapData,
+    error: workplacesError,
+    isPending: isWorkplacePending,
+  } = useWorkplaceShiftFormBootstrapQuery({
+    userId: loadQueryUserId,
+    selectedWorkplaceId: requestedWorkplaceId,
+  });
+  const workplaces = useMemo(
+    () => bootstrapData?.workplaces ?? [],
+    [bootstrapData],
+  );
   const selectedWorkplaceId =
     formDraft?.workplaceId ||
     shiftDetailData?.workplaceId ||
+    bootstrapData?.selectedWorkplace?.id ||
     resolveFallbackWorkplaceId(workplaces, mode, preferredWorkplaceId);
   const selectedWorkplace = useMemo(
     () => workplaces.find((workplace) => workplace.id === selectedWorkplaceId),
@@ -1095,86 +901,12 @@ function useShiftFormData(params: {
   );
   const selectedWorkplaceType = selectedWorkplace?.type;
 
-  const { data: workplacePayrollCycleData } = useQuery({
-    queryKey: queryKeys.workplaces.editDetail({
-      workplaceId: selectedWorkplaceId,
-    }),
-    queryFn: ({ signal }) =>
-      fetchJson(`/api/workplaces/${selectedWorkplaceId}`, {
-        init: { signal, cache: "no-store" },
-        fallbackMessage: "勤務先情報の取得に失敗しました。",
-        parse: (payload) => {
-          const parsed = parseWorkplacePayrollCycleResponse(payload);
-          if (!parsed) {
-            throw new Error("WORKPLACE_PAYROLL_CYCLE_RESPONSE_INVALID");
-          }
-          return parsed;
-        },
-      }),
-    enabled: Boolean(selectedWorkplaceId),
-    staleTime: 5 * 60 * 1000,
-    gcTime: 15 * 60 * 1000,
-    refetchOnWindowFocus: false,
-    refetchOnReconnect: false,
-  });
-
-  const { data: previewPayrollRulesData } = useQuery({
-    queryKey: queryKeys.workplaces.payrollRules({
-      workplaceId: selectedWorkplaceId,
-    }),
-    queryFn: ({ signal }) =>
-      fetchJson(`/api/workplaces/${selectedWorkplaceId}/payroll-rules`, {
-        init: { signal, cache: "no-store" },
-        fallbackMessage: "給与ルール一覧の取得に失敗しました。",
-        parse: (payload) => {
-          const parsed = parsePreviewPayrollRuleListResponse(payload);
-          if (!parsed) {
-            throw new Error("PREVIEW_PAYROLL_RULES_RESPONSE_INVALID");
-          }
-          return parsed;
-        },
-      }),
-    enabled: Boolean(selectedWorkplaceId),
-    staleTime: 5 * 60 * 1000,
-    gcTime: 15 * 60 * 1000,
-    refetchOnWindowFocus: false,
-    refetchOnReconnect: false,
-  });
-
-  const {
-    data: timetableSetsData,
-    error: timetableSetsError,
-    isPending: isTimetableSetsPending,
-  } = useQuery({
-    queryKey: queryKeys.workplaces.timetables({
-      workplaceId: selectedWorkplaceId,
-    }),
-    queryFn: ({ signal }) =>
-      fetchJson(`/api/workplaces/${selectedWorkplaceId}/timetables`, {
-        init: { signal, cache: "no-store" },
-        fallbackMessage: "時間割一覧の取得に失敗しました。",
-        parse: (payload) => {
-          const parsed = parseTimetableSetListResponse(payload);
-          if (!parsed) {
-            throw new Error("TIMETABLE_RESPONSE_INVALID");
-          }
-          return parsed;
-        },
-      }),
-    enabled:
-      selectedWorkplaceType === "CRAM_SCHOOL" && Boolean(selectedWorkplaceId),
-    staleTime: 5 * 60 * 1000,
-    gcTime: 15 * 60 * 1000,
-    refetchOnWindowFocus: false,
-    refetchOnReconnect: false,
-  });
-
   const timetableSets = useMemo(() => {
     if (selectedWorkplaceType !== "CRAM_SCHOOL") {
       return [] as TimetableSet[];
     }
 
-    const items = timetableSetsData ?? [];
+    const items = bootstrapData?.timetableSets ?? [];
     return items.slice().sort((left, right) => {
       if (left.sortOrder !== right.sortOrder) {
         return left.sortOrder - right.sortOrder;
@@ -1182,7 +914,7 @@ function useShiftFormData(params: {
 
       return left.createdAt.localeCompare(right.createdAt);
     });
-  }, [selectedWorkplaceType, timetableSetsData]);
+  }, [bootstrapData?.timetableSets, selectedWorkplaceType]);
 
   return {
     workplaces,
@@ -1199,12 +931,13 @@ function useShiftFormData(params: {
       mode === "edit" ? getInitialShiftTimes(shiftDetailData ?? null) : null,
     selectedWorkplace,
     selectedWorkplaceType,
-    workplacePayrollCycleData: workplacePayrollCycleData ?? null,
-    previewPayrollRulesData: previewPayrollRulesData ?? [],
+    workplacePayrollCycleData: bootstrapData?.selectedWorkplace ?? null,
+    previewPayrollRulesData: bootstrapData?.payrollRules ?? [],
     timetableSets,
-    timetableSetsError,
+    timetableSetsError:
+      selectedWorkplaceType === "CRAM_SCHOOL" ? workplacesError : null,
     isTimetableLoading:
-      selectedWorkplaceType === "CRAM_SCHOOL" && isTimetableSetsPending,
+      selectedWorkplaceType === "CRAM_SCHOOL" && isWorkplacePending,
   };
 }
 
