@@ -14,6 +14,34 @@ import { WorkplaceForm } from "@/components/workplaces/workplace-form";
 const pushMock = jest.fn();
 const refreshMock = jest.fn();
 const WORKPLACE_LIST_URL = "/api/workplaces?includeCounts=false";
+const SHIFT_FORM_BOOTSTRAP_URL = "/api/shifts/form-bootstrap";
+
+type ShiftFormBootstrapResponseInput = {
+  workplaceName?: string;
+  workplaceType?: "GENERAL" | "CRAM_SCHOOL";
+  timetableSets?: Array<{
+    id: string;
+    workplaceId: string;
+    name: string;
+    sortOrder: number;
+    createdAt: string;
+    updatedAt: string;
+    items: Array<{
+      id: string;
+      timetableSetId: string;
+      period: number;
+      startTime: string;
+      endTime: string;
+    }>;
+  }>;
+};
+
+declare global {
+  var __majorFlowShiftBootstrapResponseInput:
+    | ShiftFormBootstrapResponseInput
+    | undefined;
+  var timetableSetsData: unknown;
+}
 
 jest.mock("next/navigation", () => ({
   useRouter: () => ({
@@ -45,6 +73,48 @@ function jsonResponse(payload: unknown, status = 200): Response {
 }
 
 function handleShiftPreviewFetch(input: string): Response | null {
+  if (input.startsWith(SHIFT_FORM_BOOTSTRAP_URL)) {
+    const bootstrap =
+      globalThis.__majorFlowShiftBootstrapResponseInput ?? undefined;
+
+    return jsonResponse({
+      data: {
+        workplaces: [
+          {
+            id: "workplace-1",
+            name: bootstrap?.workplaceName ?? "勤務先A",
+            type: bootstrap?.workplaceType ?? "GENERAL",
+            color: "#3366FF",
+          },
+        ],
+        selectedWorkplace: {
+          id: "workplace-1",
+          name: bootstrap?.workplaceName ?? "勤務先A",
+          type: bootstrap?.workplaceType ?? "GENERAL",
+          color: "#3366FF",
+          closingDayType: "DAY_OF_MONTH",
+          closingDay: 15,
+          payday: 25,
+        },
+        payrollRules: [
+          {
+            id: "rule-1",
+            workplaceId: "workplace-1",
+            startDate: "2026-01-01",
+            endDate: null,
+            baseHourlyWage: 1200,
+            holidayAllowanceHourly: 0,
+            nightPremiumRate: 0.25,
+            overtimePremiumRate: 0.25,
+            dailyOvertimeThreshold: 8,
+            holidayType: "NONE",
+          },
+        ],
+        timetableSets: bootstrap?.timetableSets ?? [],
+      },
+    });
+  }
+
   const workplaceDetailMatch = input.match(/^\/api\/workplaces\/([^/]+)$/);
   if (workplaceDetailMatch) {
     return jsonResponse({
@@ -107,6 +177,8 @@ describe("major flow integration", () => {
     jest.useFakeTimers().setSystemTime(new Date("2026-03-15T09:00:00.000Z"));
     pushMock.mockReset();
     refreshMock.mockReset();
+    globalThis.__majorFlowShiftBootstrapResponseInput = undefined;
+    globalThis.timetableSetsData = undefined;
 
     Object.defineProperty(globalThis, "fetch", {
       writable: true,
@@ -186,6 +258,36 @@ describe("major flow integration", () => {
       advanceTimers: jest.advanceTimersByTime,
     });
     const fetchMock = globalThis.fetch as jest.Mock;
+    globalThis.__majorFlowShiftBootstrapResponseInput = {
+      workplaceName: "英語塾A",
+      workplaceType: "CRAM_SCHOOL",
+      timetableSets: [
+        {
+          id: "set-1",
+          workplaceId: "workplace-1",
+          name: "通常授業",
+          sortOrder: 0,
+          createdAt: "2026-03-01T00:00:00.000Z",
+          updatedAt: "2026-03-01T00:00:00.000Z",
+          items: [
+            {
+              id: "tt-1",
+              timetableSetId: "set-1",
+              period: 1,
+              startTime: "1970-01-01T16:30:00.000Z",
+              endTime: "1970-01-01T17:30:00.000Z",
+            },
+            {
+              id: "tt-2",
+              timetableSetId: "set-1",
+              period: 2,
+              startTime: "1970-01-01T17:40:00.000Z",
+              endTime: "1970-01-01T18:40:00.000Z",
+            },
+          ],
+        },
+      ],
+    };
 
     fetchMock.mockImplementation(
       async (input: string, init?: { method?: string }) => {

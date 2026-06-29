@@ -71,6 +71,11 @@ type WorkplaceTimetablesQueryInput = {
   workplaceId: string;
 };
 
+type WorkplaceShiftFormBootstrapQueryInput = {
+  userId: string;
+  selectedWorkplaceId: string | null;
+};
+
 function normalizeMonths(months: string[]): string[] {
   return Array.from(new Set(months)).sort((left, right) =>
     left.localeCompare(right),
@@ -124,6 +129,8 @@ export const queryKeys = {
       ["workplaces", "payrollRuleDetail", input] as const,
     timetables: (input: WorkplaceTimetablesQueryInput) =>
       ["workplaces", "timetables", input] as const,
+    shiftFormBootstrap: (input: WorkplaceShiftFormBootstrapQueryInput) =>
+      ["workplaces", "shiftFormBootstrap", input] as const,
   },
 } as const;
 

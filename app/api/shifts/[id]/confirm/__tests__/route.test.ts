@@ -1,5 +1,6 @@
 import { requireCurrentUser } from "@/lib/api/current-user";
 import { parseJsonBody } from "@/lib/api/http";
+import { revalidateShiftDomainTags } from "@/lib/cache/revalidate";
 import { syncShiftAfterUpdate } from "@/lib/google-calendar/syncStatus";
 import { prisma } from "@/lib/prisma";
 
@@ -64,6 +65,7 @@ import { PATCH } from "@/app/api/shifts/[id]/confirm/route";
 
 const requireCurrentUserMock = jest.mocked(requireCurrentUser);
 const parseJsonBodyMock = jest.mocked(parseJsonBody);
+const revalidateShiftDomainTagsMock = jest.mocked(revalidateShiftDomainTags);
 const syncShiftAfterUpdateMock = jest.mocked(syncShiftAfterUpdate);
 const prismaShiftFindFirstMock = jest.mocked(prisma.shift.findFirst);
 const prismaShiftUpdateMock = jest.mocked(prisma.shift.update);
@@ -142,5 +144,9 @@ describe("PATCH /api/shifts/[id]/confirm", () => {
 
     expect(response.status).toBe(200);
     expect(prismaShiftUpdateMock).toHaveBeenCalled();
+    expect(revalidateShiftDomainTagsMock).toHaveBeenCalledWith({
+      userId: "user-1",
+      workplaceId: "workplace-1",
+    });
   });
 });

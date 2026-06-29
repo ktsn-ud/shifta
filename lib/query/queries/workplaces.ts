@@ -10,6 +10,9 @@ type RelatedCounts = {
   timetableSets: number;
 };
 
+type ClosingDayType = "DAY_OF_MONTH" | "END_OF_MONTH";
+type HolidayType = "NONE" | "WEEKEND" | "HOLIDAY" | "WEEKEND_HOLIDAY";
+
 export type WorkplaceListItem = {
   id: string;
   name: string;
@@ -26,7 +29,7 @@ export type WorkplaceDetailItem = {
 };
 
 export type WorkplaceEditDetailItem = WorkplaceDetailItem & {
-  closingDayType: "DAY_OF_MONTH" | "END_OF_MONTH";
+  closingDayType: ClosingDayType;
   closingDay: number | null;
   payday: number;
 };
@@ -41,7 +44,7 @@ export type PayrollRuleListItem = {
   nightPremiumRate: number | string;
   overtimePremiumRate: number | string;
   dailyOvertimeThreshold: number | string;
-  holidayType: "NONE" | "WEEKEND" | "HOLIDAY" | "WEEKEND_HOLIDAY";
+  holidayType: HolidayType;
 };
 
 export type TimetableSetItem = {
@@ -60,6 +63,13 @@ export type TimetableSetItem = {
     startTimeLabel?: string;
     endTimeLabel?: string;
   }[];
+};
+
+export type WorkplaceShiftFormBootstrapData = {
+  workplaces: WorkplaceDetailItem[];
+  selectedWorkplace: WorkplaceEditDetailItem | null;
+  payrollRules: PayrollRuleListItem[];
+  timetableSets: TimetableSetItem[];
 };
 
 function parseListPayload<TData>(payload: unknown): TData[] {
@@ -95,40 +105,136 @@ function isWorkplaceType(value: unknown): value is WorkplaceType {
   return value === "GENERAL" || value === "CRAM_SCHOOL";
 }
 
-function isClosingDayType(
-  value: unknown,
-): value is WorkplaceEditDetailItem["closingDayType"] {
+function isClosingDayType(value: unknown): value is ClosingDayType {
   return value === "DAY_OF_MONTH" || value === "END_OF_MONTH";
+}
+
+function isHolidayType(value: unknown): value is HolidayType {
+  return (
+    value === "NONE" ||
+    value === "WEEKEND" ||
+    value === "HOLIDAY" ||
+    value === "WEEKEND_HOLIDAY"
+  );
+}
+
+function isWorkplaceDetailItem(value: unknown): value is WorkplaceDetailItem {
+  return (
+    isRecord(value) &&
+    typeof value.id === "string" &&
+    typeof value.name === "string" &&
+    typeof value.color === "string" &&
+    isWorkplaceType(value.type)
+  );
+}
+
+function isWorkplaceEditDetailItem(
+  value: unknown,
+): value is WorkplaceEditDetailItem {
+  return (
+    isRecord(value) &&
+    typeof value.id === "string" &&
+    typeof value.name === "string" &&
+    typeof value.color === "string" &&
+    isWorkplaceType(value.type) &&
+    isClosingDayType(value.closingDayType) &&
+    (typeof value.closingDay === "number" || value.closingDay === null) &&
+    typeof value.payday === "number"
+  );
+}
+
+function isPayrollRuleListItem(value: unknown): value is PayrollRuleListItem {
+  return (
+    isRecord(value) &&
+    typeof value.id === "string" &&
+    typeof value.workplaceId === "string" &&
+    typeof value.startDate === "string" &&
+    (typeof value.endDate === "string" || value.endDate === null) &&
+    (typeof value.baseHourlyWage === "number" ||
+      typeof value.baseHourlyWage === "string") &&
+    (typeof value.holidayAllowanceHourly === "number" ||
+      typeof value.holidayAllowanceHourly === "string") &&
+    (typeof value.nightPremiumRate === "number" ||
+      typeof value.nightPremiumRate === "string") &&
+    (typeof value.overtimePremiumRate === "number" ||
+      typeof value.overtimePremiumRate === "string") &&
+    (typeof value.dailyOvertimeThreshold === "number" ||
+      typeof value.dailyOvertimeThreshold === "string") &&
+    isHolidayType(value.holidayType)
+  );
+}
+
+function isTimetableSetItem(value: unknown): value is TimetableSetItem {
+  return (
+    isRecord(value) &&
+    typeof value.id === "string" &&
+    typeof value.workplaceId === "string" &&
+    typeof value.name === "string" &&
+    typeof value.sortOrder === "number" &&
+    Number.isInteger(value.sortOrder) &&
+    typeof value.createdAt === "string" &&
+    typeof value.updatedAt === "string" &&
+    Array.isArray(value.items) &&
+    value.items.every((item) => {
+      return (
+        isRecord(item) &&
+        typeof item.id === "string" &&
+        typeof item.timetableSetId === "string" &&
+        typeof item.period === "number" &&
+        Number.isInteger(item.period) &&
+        typeof item.startTime === "string" &&
+        typeof item.endTime === "string" &&
+        (item.startTimeLabel === undefined ||
+          typeof item.startTimeLabel === "string") &&
+        (item.endTimeLabel === undefined ||
+          typeof item.endTimeLabel === "string")
+      );
+    })
+  );
 }
 
 function parseWorkplaceEditDetailPayload(
   payload: unknown,
 ): WorkplaceEditDetailItem {
   const item = parseItemPayload<unknown>(payload);
-  if (!isRecord(item)) {
-    throw new Error("WORKPLACE_ITEM_RESPONSE_INVALID");
-  }
-
-  if (
-    typeof item.id !== "string" ||
-    typeof item.name !== "string" ||
-    !isWorkplaceType(item.type) ||
-    typeof item.color !== "string" ||
-    !isClosingDayType(item.closingDayType) ||
-    (typeof item.closingDay !== "number" && item.closingDay !== null) ||
-    typeof item.payday !== "number"
-  ) {
+  if (!isWorkplaceEditDetailItem(item)) {
     throw new Error("WORKPLACE_EDIT_DETAIL_RESPONSE_INVALID");
   }
 
+  return item;
+}
+
+function parseWorkplaceShiftFormBootstrapPayload(
+  payload: unknown,
+): WorkplaceShiftFormBootstrapData {
+  const item = parseItemPayload<unknown>(payload);
+  if (!isRecord(item)) {
+    throw new Error("WORKPLACE_SHIFT_FORM_BOOTSTRAP_RESPONSE_INVALID");
+  }
+
+  const { payrollRules, selectedWorkplace, timetableSets, workplaces } = item;
+
+  if (
+    !Array.isArray(workplaces) ||
+    workplaces.every(isWorkplaceDetailItem) === false ||
+    !Array.isArray(payrollRules) ||
+    payrollRules.every(isPayrollRuleListItem) === false ||
+    !Array.isArray(timetableSets) ||
+    timetableSets.every(isTimetableSetItem) === false ||
+    !(
+      selectedWorkplace === null ||
+      selectedWorkplace === undefined ||
+      isWorkplaceEditDetailItem(selectedWorkplace)
+    )
+  ) {
+    throw new Error("WORKPLACE_SHIFT_FORM_BOOTSTRAP_RESPONSE_INVALID");
+  }
+
   return {
-    id: item.id,
-    name: item.name,
-    type: item.type,
-    color: item.color,
-    closingDayType: item.closingDayType,
-    closingDay: item.closingDay,
-    payday: item.payday,
+    workplaces,
+    selectedWorkplace: selectedWorkplace ?? null,
+    payrollRules,
+    timetableSets,
   };
 }
 
@@ -238,5 +344,50 @@ export function useWorkplaceTimetablesQuery(input: {
     initialData,
     staleTime: 5 * 60 * 1000,
     gcTime: 15 * 60 * 1000,
+  });
+}
+
+export function useWorkplaceShiftFormBootstrapQuery(input: {
+  userId: string;
+  selectedWorkplaceId?: string | null;
+  enabled?: boolean;
+  initialData?: WorkplaceShiftFormBootstrapData;
+}) {
+  const {
+    enabled = true,
+    initialData,
+    selectedWorkplaceId = null,
+    userId,
+  } = input;
+
+  return useQuery({
+    queryKey: queryKeys.workplaces.shiftFormBootstrap({
+      userId,
+      selectedWorkplaceId,
+    }),
+    queryFn: ({ signal }) => {
+      const params = new URLSearchParams();
+      if (selectedWorkplaceId) {
+        params.set("selectedWorkplaceId", selectedWorkplaceId);
+      }
+
+      const queryString = params.toString();
+      const path = queryString
+        ? `/api/shifts/form-bootstrap?${queryString}`
+        : "/api/shifts/form-bootstrap";
+
+      return fetchJson(path, {
+        init: { signal, cache: "no-store" },
+        fallbackMessage: "シフト入力の参照データ取得に失敗しました。",
+        parse: parseWorkplaceShiftFormBootstrapPayload,
+      });
+    },
+    enabled,
+    initialData,
+    placeholderData: (previousData) => previousData,
+    staleTime: 5 * 60 * 1000,
+    gcTime: 15 * 60 * 1000,
+    refetchOnWindowFocus: false,
+    refetchOnReconnect: false,
   });
 }
