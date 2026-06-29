@@ -18,6 +18,7 @@ const pushMock = jest.fn();
 const refreshMock = jest.fn();
 const BULK_CALENDAR_SELECTION_STORAGE_KEY = "shifta:bulk-calendar-selection";
 const WORKPLACE_LIST_URL = "/api/workplaces?includeCounts=false";
+const SHIFT_FORM_BOOTSTRAP_URL = "/api/shifts/form-bootstrap";
 const BULK_SHIFT_FORM_PROPS = {
   initialMonthInputValue: "2026-03",
   todayDateKey: "2026-03-15",
@@ -81,7 +82,50 @@ function createMonthShift(overrides: Partial<MonthShift> = {}): MonthShift {
   };
 }
 
+function createShiftFormBootstrapResponse(): Response {
+  return jsonResponse({
+    data: {
+      workplaces: [
+        {
+          id: "workplace-1",
+          name: "勤務先A",
+          type: "GENERAL",
+          color: "#3366FF",
+        },
+      ],
+      selectedWorkplace: {
+        id: "workplace-1",
+        name: "勤務先A",
+        type: "GENERAL",
+        color: "#3366FF",
+        closingDayType: "DAY_OF_MONTH",
+        closingDay: 15,
+        payday: 25,
+      },
+      payrollRules: [
+        {
+          id: "rule-1",
+          workplaceId: "workplace-1",
+          startDate: "2026-01-01",
+          endDate: null,
+          baseHourlyWage: 1200,
+          holidayAllowanceHourly: 0,
+          nightPremiumRate: 0.25,
+          overtimePremiumRate: 0.25,
+          dailyOvertimeThreshold: 8,
+          holidayType: "NONE",
+        },
+      ],
+      timetableSets: [],
+    },
+  });
+}
+
 function handleBulkPreviewFetch(input: string): Response | null {
+  if (input.startsWith(SHIFT_FORM_BOOTSTRAP_URL)) {
+    return createShiftFormBootstrapResponse();
+  }
+
   const workplaceDetailMatch = input.match(/^\/api\/workplaces\/([^/]+)$/);
   if (workplaceDetailMatch) {
     return jsonResponse({
@@ -173,6 +217,56 @@ describe("bulk shift flow integration", () => {
 
   afterEach(() => {
     jest.useRealTimers();
+  });
+
+  it("loads form reference data from the bootstrap endpoint", async () => {
+    const fetchMock = globalThis.fetch as jest.Mock;
+
+    fetchMock.mockImplementation(async (input: string) => {
+      if (input.startsWith("/api/calendar/events?month=")) {
+        return jsonResponse({
+          data: {
+            month: "2026-03",
+            calendars: [],
+            selectedCalendarIds: [],
+            dates: [],
+          },
+        });
+      }
+
+      const previewResponse = handleBulkPreviewFetch(input);
+      if (previewResponse) {
+        return previewResponse;
+      }
+
+      throw new Error("Unexpected fetch: " + input);
+    });
+
+    renderBulkShiftForm();
+
+    await waitFor(() => {
+      expect(
+        screen.getByRole("combobox", { name: "勤務先" }),
+      ).toHaveTextContent("勤務先A");
+    });
+
+    expect(fetchMock).toHaveBeenCalledWith(
+      SHIFT_FORM_BOOTSTRAP_URL,
+      expect.objectContaining({
+        cache: "no-store",
+        signal: expect.any(AbortSignal),
+      }),
+    );
+    expect(
+      fetchMock.mock.calls.some(([url]) => String(url) === WORKPLACE_LIST_URL),
+    ).toBe(false);
+    expect(
+      fetchMock.mock.calls.some(([url]) =>
+        /^\/api\/workplaces\/[^/]+(?:\/payroll-rules|\/timetables)?$/.test(
+          String(url),
+        ),
+      ),
+    ).toBe(false);
   });
 
   it("selects multiple days, edits each row, and posts bulk payload", async () => {

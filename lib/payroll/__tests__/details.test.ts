@@ -4,6 +4,12 @@ import type {
   ShiftLessonRange,
 } from "@/lib/generated/prisma/client";
 import { Prisma } from "@/lib/generated/prisma/client";
+
+jest.mock("next/cache", () => ({
+  cacheLife: jest.fn(),
+  cacheTag: jest.fn(),
+}));
+
 import { summarizeWorkplacePayrollDetailsByPeriod } from "@/lib/payroll/details";
 
 function date(value: string): Date {

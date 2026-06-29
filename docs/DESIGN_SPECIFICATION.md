@@ -123,6 +123,7 @@ Browser (React UI) → Next.js Routes → Prisma ORM → Neon DB
 - `payroll` ドメインには `summary` / `details` / `previewBaseline` に加え `actual`（実給与編集）を含め、実給与更新後は給与サマリー・給与詳細・実給与編集を同時に再取得する。
 - fetch は `lib/query/fetch-json.ts` で共通化し、エラー種別の正規化と UI メッセージ解決を統一する。
 - 月次シフト・給与集計/詳細・勤務先管理一覧・シフト確定・各フォーム編集時の読み取りは TanStack Query を利用する。
+- 単体シフト入力と一括入力の勤務先初期データは `/api/shifts/form-bootstrap` で一括取得し、勤務先一覧 + 選択勤務先詳細 + 給与ルール + 時間割セットをまとめて扱う。
 - 月/年切替や再取得では `placeholderData` により直前データを維持し、置換型ローディングではなくオーバーレイ型ローディングを表示する。
 - 初回表示は full spinner / skeleton を許容し、再取得時は `aria-busy=true` を付与した対象領域に `最新データを更新中...` オーバーレイを重ねる。
 - Mutation 後の整合は `lib/query/invalidation.ts` のドメイン単位 invalidation で行い、手動 reload を原則廃止する。
@@ -2347,6 +2348,7 @@ GET /api/payroll/preview-baseline?months=YYYY-MM,YYYY-MM
 # 更新履歴（git log -p 確認済み）
 
 | 日時 | 変更概要 | 具体的な変更内容 |
+| 2026-06-28 00:00:00 +0000 | シフトフォーム bootstrap API を追加 | `/api/shifts/form-bootstrap` で勤務先一覧・選択勤務先詳細・給与ルール・時間割セットを一括取得し、CRAM_SCHOOL 以外では `timetableSets=[]` を返す仕様を 2.2 に追記。 |
 | 2026-06-18 00:00:00 +0000 | 実給与登録と実績優先表示仕様を追加 | `ActualPayroll` ドメイン、SCR_017 実給与編集、給与サマリー/給与詳細での実績優先表示、年合計の実績優先積み上げルールを16章として追加。 |
 | 2026-06-27 00:00:00 +0000 | Google Calendar 初期化導線を専用画面へ復元 | `/my/calendar-setup` を再導入し、`calendarId` 未設定時は `/my` 系画面の前に SCR_018 へ強制誘導する仕様を追記。 |
 | 2026-06-27 00:00:00 +0000 | Google Calendar 初期化後の待ち時間を非同期化 | 初期化 API は専用カレンダー作成完了で即時応答し、既存シフト同期は background sync として継続する方針を追記。 |
