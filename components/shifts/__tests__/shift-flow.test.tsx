@@ -21,6 +21,9 @@ const SHIFT_FORM_BOOTSTRAP_URL = "/api/shifts/form-bootstrap";
 
 type ShiftFormBootstrapResponseInput = {
   selectedWorkplaceId?: string;
+  workplaceName?: string;
+  workplaceType?: "GENERAL" | "CRAM_SCHOOL";
+  workplaceColor?: string;
   workplaces?: Array<{
     id: string;
     name: string;
@@ -77,6 +80,9 @@ function jsonResponse(payload: unknown, status = 200): Response {
 
 function createShiftFormBootstrapResponse(input?: {
   selectedWorkplaceId?: string;
+  workplaceName?: string;
+  workplaceType?: "GENERAL" | "CRAM_SCHOOL";
+  workplaceColor?: string;
   workplaces?: Array<{
     id: string;
     name: string;
@@ -101,19 +107,24 @@ function createShiftFormBootstrapResponse(input?: {
 }) {
   const {
     selectedWorkplaceId = "workplace-1",
-    workplaces = [
-      {
-        id: "workplace-1",
-        name: "勤務先A",
-        type: "GENERAL",
-        color: "#3366FF",
-      },
-    ],
+    workplaceName,
+    workplaceType,
+    workplaceColor,
+    workplaces,
     timetableSets = [],
   } = input ?? {};
+  const resolvedWorkplaces = workplaces ?? [
+    {
+      id: "workplace-1",
+      name: workplaceName ?? "勤務先A",
+      type: workplaceType ?? "GENERAL",
+      color: workplaceColor ?? "#3366FF",
+    },
+  ];
   const selectedWorkplace =
-    workplaces.find((workplace) => workplace.id === selectedWorkplaceId) ??
-    workplaces[0];
+    resolvedWorkplaces.find(
+      (workplace) => workplace.id === selectedWorkplaceId,
+    ) ?? resolvedWorkplaces[0];
 
   if (!selectedWorkplace) {
     throw new Error("selectedWorkplace is required");
@@ -121,7 +132,7 @@ function createShiftFormBootstrapResponse(input?: {
 
   return jsonResponse({
     data: {
-      workplaces: workplaces.map((workplace) => ({
+      workplaces: resolvedWorkplaces.map((workplace) => ({
         id: workplace.id,
         name: workplace.name,
         type: workplace.type,
@@ -302,8 +313,7 @@ describe("shift flow integration", () => {
       }
 
       if (
-        input ===
-        `${SHIFT_FORM_BOOTSTRAP_URL}?selectedWorkplaceId=workplace-2`
+        input === `${SHIFT_FORM_BOOTSTRAP_URL}?selectedWorkplaceId=workplace-2`
       ) {
         return nextBootstrapResponse.promise;
       }
@@ -339,9 +349,9 @@ describe("shift flow integration", () => {
         signal: expect.any(AbortSignal),
       }),
     );
-    expect(
-      screen.getByRole("combobox", { name: "勤務先" }),
-    ).toHaveTextContent("勤務先B");
+    expect(screen.getByRole("combobox", { name: "勤務先" })).toHaveTextContent(
+      "勤務先B",
+    );
 
     await user.click(screen.getByRole("combobox", { name: "勤務先" }));
     expect(

@@ -8,6 +8,7 @@ import { FormErrorMessage } from "@/components/form/form-error-message";
 import { ConfirmDialog } from "@/components/modal/confirm-dialog";
 import { ShiftPayrollPreviewFloating } from "@/components/shifts/ShiftPayrollPreviewFloating";
 import { useShiftPayrollPreview } from "@/components/shifts/use-shift-payroll-preview";
+import { AsyncStateNotice } from "@/components/ui/async-state-notice";
 import { Button } from "@/components/ui/button";
 import { DatePicker } from "@/components/ui/date-picker";
 import {
@@ -19,6 +20,7 @@ import {
   Form,
 } from "@/components/ui/form";
 import { Input } from "@/components/ui/input";
+import { LoadingOverlay } from "@/components/ui/loading-overlay";
 import { RadioGroup, RadioGroupItem } from "@/components/ui/radio-group";
 import {
   Select,
@@ -224,6 +226,8 @@ type ShiftFormData = {
   workplaces: Workplace[];
   workplacesError: unknown;
   isWorkplaceLoading: boolean;
+  isBootstrapRefreshing: boolean;
+  isStaleWorkplaceContext: boolean;
   shiftDetailData: ShiftDetail | null;
   shiftDetailError: unknown;
   isShiftLoading: boolean;
@@ -287,6 +291,8 @@ type ShiftFormControllerResult = {
   isSubmitting: boolean;
   isShiftLoading: boolean;
   isWorkplaceLoading: boolean;
+  isBootstrapRefreshing: boolean;
+  isStaleWorkplaceContext: boolean;
   formErrorMessage: string | null;
   previewMonths: ReturnType<typeof useShiftPayrollPreview>["months"];
   previewUnresolvedCount: number;
@@ -882,6 +888,8 @@ function useShiftFormData(params: {
     data: bootstrapData,
     error: workplacesError,
     isPending: isWorkplacePending,
+    isFetching: isWorkplaceFetching,
+    isPlaceholderData: isBootstrapPlaceholderData,
   } = useWorkplaceShiftFormBootstrapQuery({
     userId: loadQueryUserId,
     selectedWorkplaceId: requestedWorkplaceId,
@@ -920,6 +928,12 @@ function useShiftFormData(params: {
     workplaces,
     workplacesError,
     isWorkplaceLoading: isWorkplacePending,
+    isBootstrapRefreshing: isWorkplaceFetching && bootstrapData !== undefined,
+    isStaleWorkplaceContext:
+      Boolean(requestedWorkplaceId) &&
+      isBootstrapPlaceholderData &&
+      bootstrapData?.selectedWorkplace?.id !== undefined &&
+      bootstrapData.selectedWorkplace.id !== requestedWorkplaceId,
     shiftDetailData: shiftDetailData ?? null,
     shiftDetailError,
     isShiftLoading: mode === "edit" && Boolean(shiftId) && isShiftDetailPending,
@@ -1358,7 +1372,7 @@ function ShiftFormPrimaryFields(props: {
             onValueChange={(value) => onWorkplaceChange(value ?? "")}
             disabled={disabled}
           >
-            <SelectTrigger className="w-full max-w-50">
+            <SelectTrigger aria-label="勤務先" className="w-full max-w-50">
               <SelectValue placeholder="勤務先を選択">
                 {selectedWorkplace?.name}
               </SelectValue>
@@ -1470,7 +1484,7 @@ function ShiftFormLessonFields(props: {
             onValueChange={(value) => onTimetableSetChange(value ?? "")}
             disabled={disabled || isTimetableLoading}
           >
-            <SelectTrigger className="w-full">
+            <SelectTrigger aria-label="時間割セット" className="w-full">
               <SelectValue placeholder="時間割セットを選択">
                 {selectedSet?.name}
               </SelectValue>
@@ -2410,6 +2424,8 @@ function useShiftFormController(
     isSubmitting: state.isSubmitting,
     isShiftLoading: data.isShiftLoading,
     isWorkplaceLoading: data.isWorkplaceLoading,
+    isBootstrapRefreshing: data.isBootstrapRefreshing,
+    isStaleWorkplaceContext: data.isStaleWorkplaceContext,
     formErrorMessage,
     previewMonths: shiftPayrollPreview.months,
     previewUnresolvedCount: shiftPayrollPreview.unresolvedCount,
@@ -2465,35 +2481,57 @@ function ShiftFormScreen(props: ShiftFormProps) {
         isWorkplaceLoading={controller.isWorkplaceLoading}
       />
 
-      <ShiftFormEditor
-        mode={controller.mode}
-        form={controller.form}
-        errors={controller.errors}
-        workplaces={controller.workplaces}
-        selectedWorkplace={controller.selectedWorkplace}
-        selectedWorkplaceType={controller.selectedWorkplaceType}
-        timetableSets={controller.timetableSets}
-        isTimetableLoading={controller.isTimetableLoading}
-        selectedSet={controller.selectedSet}
-        lessonPeriods={controller.lessonPeriods}
-        selectedStartPeriodItem={controller.selectedStartPeriodItem}
-        selectedEndPeriodItem={controller.selectedEndPeriodItem}
-        eventNamePreview={controller.eventNamePreview}
-        disabled={controller.disabled}
-        isSubmitting={controller.isSubmitting}
-        onSubmit={controller.handleSubmit}
-        onWorkplaceChange={controller.handleWorkplaceChange}
-        onDateChange={controller.handleDateChange}
-        onShiftTypeChange={controller.handleShiftTypeChange}
-        onTimetableSetChange={controller.handleTimetableSetChange}
-        onStartPeriodChange={controller.handleStartPeriodChange}
-        onEndPeriodChange={controller.handleEndPeriodChange}
-        onStartTimeChange={controller.handleStartTimeChange}
-        onEndTimeChange={controller.handleEndTimeChange}
-        onBreakMinutesChange={controller.handleBreakMinutesChange}
-        onCommentChange={controller.handleCommentChange}
-        onCancel={controller.handleCancel}
-      />
+      {controller.isBootstrapRefreshing ? (
+        <AsyncStateNotice
+          variant={controller.isStaleWorkplaceContext ? "stale" : "refresh"}
+          title={
+            controller.isStaleWorkplaceContext
+              ? "勤務先に紐づく補助データを切り替え中です。"
+              : "勤務先に紐づく補助データを更新中です。"
+          }
+          description={
+            controller.isStaleWorkplaceContext
+              ? "給与ルールや時間割は前の勤務先の内容を一時表示しています。切り替え完了まで入力は停止します。"
+              : "給与ルールと時間割の最新状態を確認しています。"
+          }
+        />
+      ) : null}
+
+      <LoadingOverlay
+        isLoading={controller.isSubmitting}
+        label="シフトを保存中..."
+        className="rounded-xl"
+      >
+        <ShiftFormEditor
+          mode={controller.mode}
+          form={controller.form}
+          errors={controller.errors}
+          workplaces={controller.workplaces}
+          selectedWorkplace={controller.selectedWorkplace}
+          selectedWorkplaceType={controller.selectedWorkplaceType}
+          timetableSets={controller.timetableSets}
+          isTimetableLoading={controller.isTimetableLoading}
+          selectedSet={controller.selectedSet}
+          lessonPeriods={controller.lessonPeriods}
+          selectedStartPeriodItem={controller.selectedStartPeriodItem}
+          selectedEndPeriodItem={controller.selectedEndPeriodItem}
+          eventNamePreview={controller.eventNamePreview}
+          disabled={controller.disabled}
+          isSubmitting={controller.isSubmitting}
+          onSubmit={controller.handleSubmit}
+          onWorkplaceChange={controller.handleWorkplaceChange}
+          onDateChange={controller.handleDateChange}
+          onShiftTypeChange={controller.handleShiftTypeChange}
+          onTimetableSetChange={controller.handleTimetableSetChange}
+          onStartPeriodChange={controller.handleStartPeriodChange}
+          onEndPeriodChange={controller.handleEndPeriodChange}
+          onStartTimeChange={controller.handleStartTimeChange}
+          onEndTimeChange={controller.handleEndTimeChange}
+          onBreakMinutesChange={controller.handleBreakMinutesChange}
+          onCommentChange={controller.handleCommentChange}
+          onCancel={controller.handleCancel}
+        />
+      </LoadingOverlay>
 
       {controller.mode === "create" ? (
         <ShiftPayrollPreviewFloating

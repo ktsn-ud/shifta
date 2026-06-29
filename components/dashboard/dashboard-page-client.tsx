@@ -11,6 +11,7 @@ import {
 import { toast } from "sonner";
 import { MonthCalendar } from "@/components/calendar/MonthCalendar";
 import { ShiftListModal } from "@/components/calendar/ShiftListModal";
+import { AsyncStateNotice } from "@/components/ui/async-state-notice";
 import { Button } from "@/components/ui/button";
 import {
   Card,
@@ -674,6 +675,8 @@ export function DashboardPageClient({
   const summary = summarizeShifts(shifts);
   const currentDate = dateFromDateKey(todayDate) ?? new Date();
   const currentMonth = startOfMonth(currentDate);
+  const requestedMonthLabel = formatCalendarMonthLabel(month, currentDate);
+  const displayMonthLabel = formatCalendarMonthLabel(displayMonth, currentDate);
   const summaryPeriodLabel = formatSummaryPeriodLabel(
     displayMonth,
     currentDate,
@@ -708,6 +711,13 @@ export function DashboardPageClient({
       : null);
   const isNextPaymentLoading =
     nextPaymentSummaryQuery.isLoading && nextPaymentAmount === null;
+  const isNextPaymentRefreshing =
+    nextPaymentSummaryQuery.isFetching && nextPaymentAmount !== null;
+  const isStaleCalendarView = isSameMonth(month, displayMonth) === false;
+  const isStaleNextPaymentView =
+    nextPaymentSummaryQuery.isPlaceholderData &&
+    nextPaymentSummaryQuery.data !== undefined &&
+    nextPaymentSummaryQuery.data.month !== nextPaymentMonthValue;
 
   const handleCreateShift = (date: Date) => {
     const params = new URLSearchParams({
@@ -782,6 +792,22 @@ export function DashboardPageClient({
         />
       ) : null}
 
+      {!isInitialLoading && isNextPaymentRefreshing ? (
+        <AsyncStateNotice
+          variant={isStaleNextPaymentView ? "stale" : "refresh"}
+          title={
+            isStaleNextPaymentView
+              ? `${nextPaymentMonthValue} の支給見込を読み込み中です。`
+              : "支給見込の最新データを確認中です。"
+          }
+          description={
+            isStaleNextPaymentView
+              ? `現在の表示は ${nextPaymentSummaryQuery.data?.month ?? nextPaymentMonthValue} のままです。新しい支給見込へ切り替わるまでこの内容を維持します。`
+              : "表示中の支給見込はまもなく最新化されます。"
+          }
+        />
+      ) : null}
+
       {errorMessage ? (
         <p className="rounded-lg border border-destructive/40 bg-destructive/5 px-3 py-2 text-sm text-destructive">
           {errorMessage}
@@ -789,27 +815,44 @@ export function DashboardPageClient({
       ) : null}
 
       {!isInitialLoading ? (
-        <DashboardCalendarSection
-          displayMonth={displayMonth}
-          shifts={shifts}
-          todayDate={todayDate}
-          isRefreshing={isRefreshing}
-          onNavigatePrev={() => {
-            setMonth((current) => addMonths(current, -1));
-          }}
-          onNavigateNext={() => {
-            setMonth((current) => addMonths(current, 1));
-          }}
-          onDateClick={(date) => {
-            setSelectedDate(date);
-            const dayShifts = shiftsByDate.get(toDateKey(date)) ?? [];
-            if (dayShifts.length === 0) {
-              handleCreateShift(date);
-              return;
-            }
-            setModalOpen(true);
-          }}
-        />
+        <div className="space-y-4">
+          {isRefreshing ? (
+            <AsyncStateNotice
+              variant={isStaleCalendarView ? "stale" : "refresh"}
+              title={
+                isStaleCalendarView
+                  ? `${requestedMonthLabel} のシフトを読み込み中です。`
+                  : "カレンダーの最新データを確認中です。"
+              }
+              description={
+                isStaleCalendarView
+                  ? `現在の表示は ${displayMonthLabel} のままです。新しい月のシフトへ切り替わるまでこの内容を維持します。`
+                  : "表示中のシフト一覧と集計はまもなく最新化されます。"
+              }
+            />
+          ) : null}
+          <DashboardCalendarSection
+            displayMonth={displayMonth}
+            shifts={shifts}
+            todayDate={todayDate}
+            isRefreshing={isRefreshing}
+            onNavigatePrev={() => {
+              setMonth((current) => addMonths(current, -1));
+            }}
+            onNavigateNext={() => {
+              setMonth((current) => addMonths(current, 1));
+            }}
+            onDateClick={(date) => {
+              setSelectedDate(date);
+              const dayShifts = shiftsByDate.get(toDateKey(date)) ?? [];
+              if (dayShifts.length === 0) {
+                handleCreateShift(date);
+                return;
+              }
+              setModalOpen(true);
+            }}
+          />
+        </div>
       ) : null}
 
       <ShiftListModal

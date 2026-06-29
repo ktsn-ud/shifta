@@ -13,6 +13,7 @@ import {
   CardTitle,
 } from "@/components/ui/card";
 import { TableLoadingSkeleton } from "@/components/ui/loading-skeletons";
+import { LoadingOverlay } from "@/components/ui/loading-overlay";
 import {
   Dialog,
   DialogContent,
@@ -81,6 +82,8 @@ type WorkplaceListMessagesProps = {
 type WorkplaceTableCardProps = {
   workplaces: Workplace[];
   isLoading: boolean;
+  isRefreshing: boolean;
+  isDeleting: boolean;
   onRequestDelete: (workplaceId: string) => void;
 };
 
@@ -211,8 +214,14 @@ function WorkplaceListMessages({
 function WorkplaceTableCard({
   workplaces,
   isLoading,
+  isRefreshing,
+  isDeleting,
   onRequestDelete,
 }: WorkplaceTableCardProps) {
+  const overlayLabel = isDeleting
+    ? "勤務先を削除中です..."
+    : "勤務先一覧を更新中です。表示中の内容は前回取得分です。";
+
   return (
     <Card className="border-border/80 bg-card/95 shadow-sm">
       <CardHeader className="border-b border-border/70">
@@ -225,65 +234,71 @@ function WorkplaceTableCard({
         {isLoading ? (
           <TableLoadingSkeleton rows={6} columns={5} />
         ) : (
-          <div className="overflow-hidden rounded-lg border border-border/70">
-            <Table>
-              <TableHeader className="bg-muted/35">
-                <TableRow>
-                  <TableHead>勤務先名</TableHead>
-                  <TableHead>タイプ</TableHead>
-                  <TableHead>色</TableHead>
-                  <TableHead>関連データ</TableHead>
-                  <TableHead className="text-right">操作</TableHead>
-                </TableRow>
-              </TableHeader>
-              <TableBody>
-                {workplaces.length === 0 ? (
+          <LoadingOverlay
+            isLoading={isRefreshing || isDeleting}
+            label={overlayLabel}
+            className="rounded-lg"
+          >
+            <div className="overflow-hidden rounded-lg border border-border/70">
+              <Table>
+                <TableHeader className="bg-muted/35">
                   <TableRow>
-                    <TableCell
-                      colSpan={5}
-                      className="h-24 text-center text-muted-foreground"
-                    >
-                      勤務先がありません。
-                    </TableCell>
+                    <TableHead>勤務先名</TableHead>
+                    <TableHead>タイプ</TableHead>
+                    <TableHead>色</TableHead>
+                    <TableHead>関連データ</TableHead>
+                    <TableHead className="text-right">操作</TableHead>
                   </TableRow>
-                ) : (
-                  workplaces.map((workplace) => (
-                    <TableRow key={workplace.id}>
-                      <TableCell className="font-medium">
-                        {workplace.name}
-                      </TableCell>
-                      <TableCell>
-                        {formatWorkplaceType(workplace.type)}
-                      </TableCell>
-                      <TableCell>
-                        <div className="flex items-center gap-2">
-                          <span
-                            className="inline-block size-4 rounded-full border"
-                            style={{ backgroundColor: workplace.color }}
-                            aria-label={`カラー ${workplace.color}`}
-                          />
-                          <span className="text-sm text-muted-foreground">
-                            {workplace.color}
-                          </span>
-                        </div>
-                      </TableCell>
-                      <TableCell className="text-sm text-muted-foreground">
-                        シフト {workplace._count.shifts} / 給与ルール{" "}
-                        {workplace._count.payrollRules} / 時間割{" "}
-                        {workplace._count.timetableSets}
-                      </TableCell>
-                      <TableCell>
-                        <WorkplaceTableRowActions
-                          workplace={workplace}
-                          onRequestDelete={onRequestDelete}
-                        />
+                </TableHeader>
+                <TableBody>
+                  {workplaces.length === 0 ? (
+                    <TableRow>
+                      <TableCell
+                        colSpan={5}
+                        className="h-24 text-center text-muted-foreground"
+                      >
+                        勤務先がありません。
                       </TableCell>
                     </TableRow>
-                  ))
-                )}
-              </TableBody>
-            </Table>
-          </div>
+                  ) : (
+                    workplaces.map((workplace) => (
+                      <TableRow key={workplace.id}>
+                        <TableCell className="font-medium">
+                          {workplace.name}
+                        </TableCell>
+                        <TableCell>
+                          {formatWorkplaceType(workplace.type)}
+                        </TableCell>
+                        <TableCell>
+                          <div className="flex items-center gap-2">
+                            <span
+                              className="inline-block size-4 rounded-full border"
+                              style={{ backgroundColor: workplace.color }}
+                              aria-label={`カラー ${workplace.color}`}
+                            />
+                            <span className="text-sm text-muted-foreground">
+                              {workplace.color}
+                            </span>
+                          </div>
+                        </TableCell>
+                        <TableCell className="text-sm text-muted-foreground">
+                          シフト {workplace._count.shifts} / 給与ルール{" "}
+                          {workplace._count.payrollRules} / 時間割{" "}
+                          {workplace._count.timetableSets}
+                        </TableCell>
+                        <TableCell>
+                          <WorkplaceTableRowActions
+                            workplace={workplace}
+                            onRequestDelete={onRequestDelete}
+                          />
+                        </TableCell>
+                      </TableRow>
+                    ))
+                  )}
+                </TableBody>
+              </Table>
+            </div>
+          </LoadingOverlay>
         )}
       </CardContent>
     </Card>
@@ -416,6 +431,7 @@ export function WorkplaceList({
     [workplacesQuery.data],
   );
   const isLoading = workplacesQuery.isLoading;
+  const isRefreshing = workplacesQuery.isFetching && !workplacesQuery.isLoading;
   const errorMessage = workplacesQuery.error
     ? toErrorMessage(workplacesQuery.error, "勤務先一覧の取得に失敗しました。")
     : null;
@@ -506,9 +522,16 @@ export function WorkplaceList({
         infoMessage={infoMessage}
         errorMessage={errorMessage}
       />
+      {isRefreshing ? (
+        <p className="rounded-lg border border-amber-700/30 bg-amber-700/5 px-3 py-2 text-sm text-amber-800">
+          勤務先一覧を更新中です。表示中の内容は前回取得分の可能性があります。
+        </p>
+      ) : null}
       <WorkplaceTableCard
         workplaces={workplaces}
         isLoading={isLoading}
+        isRefreshing={isRefreshing}
+        isDeleting={isDeleting}
         onRequestDelete={(workplaceId) => {
           setDeleteError(null);
           setDeletingId(workplaceId);

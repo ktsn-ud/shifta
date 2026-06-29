@@ -998,20 +998,30 @@ function useBulkShiftFormController({
   const { markForResetOnRouteHidden } = useResetOnRouteHidden(resetFormState);
   const loadQueryUserId = "self";
   const todayKey = todayDateKey;
+  const requestedWorkplaceId = state.selectedWorkplaceId || null;
 
   const {
     data: bootstrapData,
     error: workplacesError,
     isPending: isWorkplacePending,
+    isFetching: isWorkplaceFetching,
+    isPlaceholderData: isBootstrapPlaceholderData,
   } = useWorkplaceShiftFormBootstrapQuery({
     userId: loadQueryUserId,
-    selectedWorkplaceId: state.selectedWorkplaceId || null,
+    selectedWorkplaceId: requestedWorkplaceId,
   });
 
   const workplaces = useMemo(
     () => bootstrapData?.workplaces ?? [],
     [bootstrapData],
   );
+  const isWorkplaceRefreshing =
+    isWorkplaceFetching && bootstrapData !== undefined;
+  const isStaleWorkplaceContext =
+    Boolean(requestedWorkplaceId) &&
+    isBootstrapPlaceholderData &&
+    bootstrapData?.selectedWorkplace?.id !== undefined &&
+    bootstrapData.selectedWorkplace.id !== requestedWorkplaceId;
   const isWorkplaceLoading = isWorkplacePending;
   const selectedWorkplaceId = useMemo(
     () =>
@@ -1847,6 +1857,8 @@ function useBulkShiftFormController({
     todayKey,
     workplaces,
     isWorkplaceLoading,
+    isWorkplaceRefreshing,
+    isStaleWorkplaceContext,
     selectedWorkplace,
     selectedWorkplaceId,
     selectedDateKeys: state.selectedDateKeys,

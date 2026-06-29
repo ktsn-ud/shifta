@@ -21,6 +21,7 @@ import {
   Form,
 } from "@/components/ui/form";
 import { Input } from "@/components/ui/input";
+import { LoadingOverlay } from "@/components/ui/loading-overlay";
 import { SpinnerPanel } from "@/components/ui/spinner";
 import { useResetOnRouteHidden } from "@/hooks/use-reset-on-route-hidden";
 import { parseGoogleSyncStateFromPayload } from "@/lib/google-calendar/clientSync";
@@ -125,6 +126,7 @@ type TimetableEditorFormProps = {
   initialValues: FormValues | null;
   listHref: string;
   externalFormError?: string | null;
+  isRefreshing?: boolean;
 };
 
 type TimetableItemsSectionProps = {
@@ -997,6 +999,7 @@ function TimetableEditorForm({
   initialValues,
   listHref,
   externalFormError,
+  isRefreshing = false,
 }: TimetableEditorFormProps) {
   const controller = useTimetableEditorController({
     mode,
@@ -1023,70 +1026,96 @@ function TimetableEditorForm({
         </p>
       </header>
 
+      {isRefreshing ? (
+        <p className="rounded-md border border-amber-700/30 bg-amber-700/5 px-3 py-2 text-sm text-amber-800">
+          サーバー上の最新状態を確認中です。編集中の入力内容はそのまま保持し、自動では上書きしません。
+        </p>
+      ) : null}
+
+      {controller.isSubmitting ? (
+        <p className="rounded-md border border-primary/20 bg-primary/5 px-3 py-2 text-sm text-primary">
+          保存中です。反映が完了するまでお待ちください。
+        </p>
+      ) : null}
+
       {controller.formErrorMessage ? (
         <p className="rounded-md border border-destructive/40 bg-destructive/5 px-3 py-2 text-sm text-destructive">
           {controller.formErrorMessage}
         </p>
       ) : null}
 
-      <Form className="space-y-6" onSubmit={controller.submit}>
-        <FieldGroup className="grid gap-4">
-          <Field data-invalid={Boolean(controller.errors.name)}>
-            <FieldLabel htmlFor="timetable-set-name">時間割セット名</FieldLabel>
-            <FieldContent>
-              <Input
-                id="timetable-set-name"
-                value={controller.values.name}
-                onChange={(event) =>
-                  controller.updateName(event.currentTarget.value)
-                }
-                disabled={controller.isSubmitting}
-                maxLength={50}
-              />
-              <FormErrorMessage message={controller.errors.name} />
-            </FieldContent>
-          </Field>
-        </FieldGroup>
+      <LoadingOverlay
+        isLoading={controller.isSubmitting}
+        label={
+          controller.isSubmitting
+            ? controller.isEdit
+              ? "時間割セットを更新中です..."
+              : "時間割セットを作成中です..."
+            : "時間割セットを更新中です..."
+        }
+        className="rounded-xl"
+      >
+        <Form className="space-y-6" onSubmit={controller.submit}>
+          <FieldGroup className="grid gap-4">
+            <Field data-invalid={Boolean(controller.errors.name)}>
+              <FieldLabel htmlFor="timetable-set-name">
+                時間割セット名
+              </FieldLabel>
+              <FieldContent>
+                <Input
+                  id="timetable-set-name"
+                  value={controller.values.name}
+                  onChange={(event) =>
+                    controller.updateName(event.currentTarget.value)
+                  }
+                  disabled={controller.isSubmitting}
+                  maxLength={50}
+                />
+                <FormErrorMessage message={controller.errors.name} />
+              </FieldContent>
+            </Field>
+          </FieldGroup>
 
-        <TimetableItemsSection
-          items={controller.values.items}
-          rowErrors={controller.rowErrors}
-          isSubmitting={controller.isSubmitting}
-          isEdit={controller.isEdit}
-          onUpdateItem={controller.updateItem}
-          onRemoveItem={controller.removeItem}
-          onAppendItem={controller.appendItem}
-          onQueueCurrentSet={controller.queueCurrentSet}
-        />
-
-        {!controller.isEdit ? (
-          <QueuedSetsSection
-            queuedSets={controller.queuedSets}
+          <TimetableItemsSection
+            items={controller.values.items}
+            rowErrors={controller.rowErrors}
             isSubmitting={controller.isSubmitting}
-            onRemoveQueuedSet={controller.removeQueuedSet}
+            isEdit={controller.isEdit}
+            onUpdateItem={controller.updateItem}
+            onRemoveItem={controller.removeItem}
+            onAppendItem={controller.appendItem}
+            onQueueCurrentSet={controller.queueCurrentSet}
           />
-        ) : null}
 
-        <div className="flex gap-2">
-          <Button type="submit" disabled={controller.isSubmitting}>
-            {controller.isSubmitting
-              ? controller.isEdit
-                ? "更新中..."
-                : "作成中..."
-              : controller.isEdit
-                ? "更新"
-                : "まとめて作成"}
-          </Button>
-          <Button
-            type="button"
-            variant="outline"
-            onClick={controller.cancel}
-            disabled={controller.isSubmitting}
-          >
-            キャンセル
-          </Button>
-        </div>
-      </Form>
+          {!controller.isEdit ? (
+            <QueuedSetsSection
+              queuedSets={controller.queuedSets}
+              isSubmitting={controller.isSubmitting}
+              onRemoveQueuedSet={controller.removeQueuedSet}
+            />
+          ) : null}
+
+          <div className="flex gap-2">
+            <Button type="submit" disabled={controller.isSubmitting}>
+              {controller.isSubmitting
+                ? controller.isEdit
+                  ? "更新中..."
+                  : "作成中..."
+                : controller.isEdit
+                  ? "更新"
+                  : "まとめて作成"}
+            </Button>
+            <Button
+              type="button"
+              variant="outline"
+              onClick={controller.cancel}
+              disabled={controller.isSubmitting}
+            >
+              キャンセル
+            </Button>
+          </div>
+        </Form>
+      </LoadingOverlay>
     </section>
   );
 }
@@ -1104,6 +1133,7 @@ export function TimetableForm({
     data: workplaceData,
     error: workplaceError,
     isPending: isWorkplacePending,
+    isFetching: isWorkplaceFetching,
   } = useQuery({
     queryKey: queryKeys.workplaces.detailSummary({
       workplaceId,
@@ -1130,6 +1160,7 @@ export function TimetableForm({
     data: timetableData,
     error: timetableError,
     isPending: isTimetablePending,
+    isFetching: isTimetableFetching,
   } = useQuery({
     queryKey: queryKeys.workplaces.timetables({
       workplaceId,
@@ -1163,6 +1194,13 @@ export function TimetableForm({
       Boolean(timetableId) &&
       workplace?.type === "CRAM_SCHOOL" &&
       isTimetablePending);
+  const isRefreshing =
+    (isWorkplaceFetching && !isWorkplacePending) ||
+    (isEdit &&
+      Boolean(timetableId) &&
+      workplace?.type === "CRAM_SCHOOL" &&
+      isTimetableFetching &&
+      !isTimetablePending);
   const externalFormError =
     isEdit && !timetableId
       ? "編集対象の時間割セットIDが指定されていません。"
@@ -1237,6 +1275,7 @@ export function TimetableForm({
       }
       listHref={listHref}
       externalFormError={externalFormError}
+      isRefreshing={isRefreshing}
     />
   );
 }

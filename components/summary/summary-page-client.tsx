@@ -10,6 +10,7 @@ import {
   CardHeader,
   CardTitle,
 } from "@/components/ui/card";
+import { AsyncStateNotice } from "@/components/ui/async-state-notice";
 import { Input } from "@/components/ui/input";
 import { LoadingOverlay } from "@/components/ui/loading-overlay";
 import { SpinnerPanel } from "@/components/ui/spinner";
@@ -488,6 +489,11 @@ export function SummaryPageClient({
     isValidRequestedMonth && summaryQuery.isLoading && summary === null;
   const isRefreshing =
     isValidRequestedMonth && summaryQuery.isFetching && summary !== null;
+  const isStaleView =
+    isValidRequestedMonth &&
+    summaryQuery.isPlaceholderData &&
+    summary !== null &&
+    displayMonthValue !== requestedMonthValue;
   const errorMessage = !isValidRequestedMonth
     ? "月は YYYY-MM 形式で指定してください。"
     : summaryQuery.error
@@ -534,8 +540,23 @@ export function SummaryPageClient({
           label="給与サマリーを読み込み中..."
         />
       ) : summary ? (
-        <LoadingOverlay isLoading={isRefreshing} className="rounded-xl">
-          <div className="space-y-4">
+        <div className="space-y-4">
+          {isRefreshing ? (
+            <AsyncStateNotice
+              variant={isStaleView ? "stale" : "refresh"}
+              title={
+                isStaleView
+                  ? `${requestedMonthValue} の給与サマリーを読み込み中です。`
+                  : "給与サマリーの最新データを確認中です。"
+              }
+              description={
+                isStaleView
+                  ? `現在の表示は ${displayMonthValue} のままです。新しい月の集計へ切り替わるまでこの内容を維持します。`
+                  : "表示中の内容はまもなく最新化されます。"
+              }
+            />
+          ) : null}
+          <LoadingOverlay isLoading={isRefreshing} className="rounded-xl">
             <SummaryPrimaryMetrics
               summary={summary}
               selectedMonthLabel={selectedMonthLabel}
@@ -548,8 +569,8 @@ export function SummaryPageClient({
               <SummaryWorkplaceChartCard byWorkplace={summary.byWorkplace} />
               <SummaryWorkplaceTableCard byWorkplace={summary.byWorkplace} />
             </div>
-          </div>
-        </LoadingOverlay>
+          </LoadingOverlay>
+        </div>
       ) : null}
     </section>
   );

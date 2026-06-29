@@ -3,6 +3,7 @@
 import { useMemo, useState } from "react";
 import { Input } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
+import { AsyncStateNotice } from "@/components/ui/async-state-notice";
 import {
   Card,
   CardContent,
@@ -445,6 +446,11 @@ export function PayrollDetailsMonthlyPageClient({
     isValidRequestedMonth && detailsQuery.isLoading && details === null;
   const isRefreshing =
     isValidRequestedMonth && detailsQuery.isFetching && details !== null;
+  const isStaleView =
+    isValidRequestedMonth &&
+    detailsQuery.isPlaceholderData &&
+    details !== null &&
+    displayMonthValue !== requestedMonthValue;
   const errorMessage = !isValidRequestedMonth
     ? "月は YYYY-MM 形式で指定してください。"
     : detailsQuery.error
@@ -486,8 +492,23 @@ export function PayrollDetailsMonthlyPageClient({
           label="給与詳細を読み込み中..."
         />
       ) : details ? (
-        <LoadingOverlay isLoading={isRefreshing} className="rounded-xl">
-          <div className="space-y-4">
+        <div className="space-y-4">
+          {isRefreshing ? (
+            <AsyncStateNotice
+              variant={isStaleView ? "stale" : "refresh"}
+              title={
+                isStaleView
+                  ? `${requestedMonthValue} の給与詳細を読み込み中です。`
+                  : "給与詳細の最新データを確認中です。"
+              }
+              description={
+                isStaleView
+                  ? `現在の表示は ${displayMonthValue} のままです。新しい月の詳細へ切り替わるまでこの内容を維持します。`
+                  : "表示中の勤務先別内訳はまもなく最新化されます。"
+              }
+            />
+          ) : null}
+          <LoadingOverlay isLoading={isRefreshing} className="rounded-xl">
             {!hasAnyShift ? (
               <p className="rounded-lg border border-border/70 bg-muted/30 px-3 py-2 text-sm text-muted-foreground">
                 対象月のシフトはありません
@@ -501,8 +522,8 @@ export function PayrollDetailsMonthlyPageClient({
             <PayrollDetailsMonthlyBreakdownCard
               workplaceItems={details.byWorkplace}
             />
-          </div>
-        </LoadingOverlay>
+          </LoadingOverlay>
+        </div>
       ) : null}
     </section>
   );
