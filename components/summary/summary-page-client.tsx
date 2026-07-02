@@ -36,6 +36,7 @@ import {
 type SummaryPageClientProps = {
   currentUserId: string;
   initialSummary: PayrollSummaryCoreResult;
+  initialSummaryYearContext: PayrollSummaryYearContextResult;
   initialMonth: string;
   currentMonthValue: string;
 };
@@ -447,6 +448,7 @@ export function SummaryPageLoadingSkeleton() {
 export function SummaryPageClient({
   currentUserId,
   initialSummary,
+  initialSummaryYearContext,
   initialMonth,
   currentMonthValue,
 }: SummaryPageClientProps) {
@@ -471,6 +473,10 @@ export function SummaryPageClient({
     userId: currentUserId,
     month: requestedMonthValue,
     enabled: isValidRequestedMonth,
+    initialData:
+      isValidRequestedMonth && requestedMonthValue === initialMonth
+        ? initialSummaryYearContext
+        : undefined,
   });
 
   const summary = summaryQuery.data ?? null;

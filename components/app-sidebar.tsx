@@ -1,7 +1,7 @@
 "use client";
 
 import Link from "next/link";
-import { usePathname } from "next/navigation";
+import { usePathname, useRouter } from "next/navigation";
 
 import { NavUser } from "@/components/nav-user";
 import {
@@ -175,18 +175,25 @@ export function AppSidebar({
   user: SidebarUser;
 }) {
   const pathname = usePathname();
+  const router = useRouter();
   const { isMobile, setOpenMobile } = useSidebar();
   const handleMenuItemClick = () => {
     if (isMobile) {
       setOpenMobile(false);
     }
   };
+  const createPrefetchHandlers = (href: string) => ({
+    onMouseEnter: () => router.prefetch(href),
+    onFocus: () => router.prefetch(href),
+  });
 
   return (
     <Sidebar collapsible="offcanvas" {...props}>
       <SidebarHeader className="gap-2 border-b border-sidebar-border/70 pb-4">
         <Link
           href="/my"
+          prefetch={false}
+          {...createPrefetchHandlers("/my")}
           onClick={handleMenuItemClick}
           className="flex h-12 items-center gap-3 rounded-xl px-3 text-sidebar-foreground"
         >
@@ -212,7 +219,8 @@ export function AppSidebar({
                       tooltip={item.title}
                       isActive={isItemActive(pathname, item)}
                       className="text-sidebar-foreground/90"
-                      render={<Link href={item.href} />}
+                      render={<Link href={item.href} prefetch={false} />}
+                      {...createPrefetchHandlers(item.href)}
                       onClick={handleMenuItemClick}
                     >
                       {item.icon}
@@ -235,7 +243,10 @@ export function AppSidebar({
                                 subItem.matchHrefs,
                               )}
                               className="text-sidebar-foreground/80"
-                              render={<Link href={subItem.href} />}
+                              render={
+                                <Link href={subItem.href} prefetch={false} />
+                              }
+                              {...createPrefetchHandlers(subItem.href)}
                               onClick={handleMenuItemClick}
                             >
                               <span>{subItem.title}</span>

@@ -47,6 +47,7 @@ export default function RootLayout({
   return (
     <html
       lang="ja"
+      data-scroll-behavior="smooth"
       suppressHydrationWarning
       className={cn("font-sans", inter.variable, geistMono.variable)}
     >
