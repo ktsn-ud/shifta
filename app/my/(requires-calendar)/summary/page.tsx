@@ -7,6 +7,7 @@ import {
 import { requireCurrentUser } from "@/lib/api/current-user";
 import { parseDateOnly } from "@/lib/api/date-time";
 import { startOfMonth, toMonthInputValue } from "@/lib/calendar/date";
+import { createRequestTiming } from "@/lib/perf/request-timing";
 import { getPayrollSummaryForUser } from "@/lib/payroll/summary";
 
 function SummaryPageFallback() {
@@ -14,17 +15,24 @@ function SummaryPageFallback() {
 }
 
 async function SummaryPageContent() {
-  const current = await requireCurrentUser();
+  const timing = createRequestTiming("GET /my/summary");
+  const current = await timing.measure("requireCurrentUser", () =>
+    requireCurrentUser(),
+  );
   if ("response" in current) {
+    timing.flushLog();
     redirect("/login");
   }
 
   const initialMonth = toMonthInputValue(startOfMonth(new Date()));
 
-  const initialSummary = await getPayrollSummaryForUser(
-    current.user.id,
-    parseDateOnly(`${initialMonth}-01`),
+  const initialSummary = await timing.measure("getPayrollSummaryForUser", () =>
+    getPayrollSummaryForUser(
+      current.user.id,
+      parseDateOnly(`${initialMonth}-01`),
+    ),
   );
+  timing.flushLog();
 
   return (
     <SummaryPageClient

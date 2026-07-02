@@ -9,7 +9,8 @@
     "start": "next start",
     "lint": "eslint",
     "format": "prettier --write .",
-    "test": "jest"
+    "test": "jest",
+    "perf:collect": "node scripts/performance/collect-server-timing.mjs"
   },
   "dependencies": {
     "@auth/prisma-adapter": "^2.11.2",

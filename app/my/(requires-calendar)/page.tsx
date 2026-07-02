@@ -13,6 +13,7 @@ import {
   toDateOnlyString,
 } from "@/lib/calendar/date";
 import { getPayrollSummaryAmountForUser } from "@/lib/payroll/summary";
+import { createRequestTiming } from "@/lib/perf/request-timing";
 import { getMonthShifts } from "@/lib/shifts/month-shifts";
 import { prisma } from "@/lib/prisma";
 
@@ -50,8 +51,12 @@ async function getUnconfirmedShiftCount(userId: string): Promise<number> {
 }
 
 async function DashboardPageContent({ month }: { month: Date }) {
-  const current = await requireCurrentUser();
+  const timing = createRequestTiming("GET /my");
+  const current = await timing.measure("requireCurrentUser", () =>
+    requireCurrentUser(),
+  );
   if ("response" in current) {
+    timing.flushLog();
     redirect("/login");
   }
 
@@ -63,16 +68,23 @@ async function DashboardPageContent({ month }: { month: Date }) {
     initialUnconfirmedShiftCount,
     initialNextPaymentAmount,
   ] = await Promise.all([
-    getMonthShifts({
-      userId: current.user.id,
-      startDate,
-      endDate,
-      includeEstimate: true,
-    }),
-    getUnconfirmedShiftCount(current.user.id),
-    getPayrollSummaryAmountForUser(current.user.id, nextPaymentMonth),
+    timing.measure("getMonthShifts", () =>
+      getMonthShifts({
+        userId: current.user.id,
+        startDate,
+        endDate,
+        includeEstimate: true,
+      }),
+    ),
+    timing.measure("getUnconfirmedShiftCount", () =>
+      getUnconfirmedShiftCount(current.user.id),
+    ),
+    timing.measure("getPayrollSummaryAmountForUser", () =>
+      getPayrollSummaryAmountForUser(current.user.id, nextPaymentMonth),
+    ),
   ]);
   const todayDate = toDateOnlyString(startOfUtcDay(new Date()));
+  timing.flushLog();
 
   return (
     <DashboardPageClient

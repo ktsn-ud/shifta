@@ -3,6 +3,7 @@ import { z } from "zod";
 import { requireCurrentUser } from "@/lib/api/current-user";
 import { jsonNoStore } from "@/lib/api/cache-control";
 import { jsonError } from "@/lib/api/http";
+import { createRequestTiming } from "@/lib/perf/request-timing";
 import { prisma } from "@/lib/prisma";
 
 const querySchema = z.strictObject({
@@ -52,12 +53,12 @@ function buildTimetableSetsResponse(
 }
 
 export async function GET(request: Request) {
-  await connection();
-
+  const timing = createRequestTiming("GET /api/shifts/form-bootstrap");
   try {
-    const current = await requireCurrentUser();
+    await timing.measure("connection", () => connection());
+    const current = await timing.measure("auth", () => requireCurrentUser());
     if ("response" in current) {
-      return current.response;
+      return timing.applyServerTiming(current.response);
     }
 
     const url = new URL(request.url);
@@ -67,30 +68,30 @@ export async function GET(request: Request) {
     });
 
     if (!query.success) {
-      return jsonError(
-        "クエリパラメータが不正です",
-        400,
-        query.error.flatten(),
+      return timing.applyServerTiming(
+        jsonError("クエリパラメータが不正です", 400, query.error.flatten()),
       );
     }
 
-    const workplaces = await prisma.workplace.findMany({
-      where: {
-        userId: current.user.id,
-      },
-      select: {
-        id: true,
-        name: true,
-        type: true,
-        color: true,
-        closingDayType: true,
-        closingDay: true,
-        payday: true,
-      },
-      orderBy: {
-        createdAt: "desc",
-      },
-    });
+    const workplaces = await timing.measure("workplaces", () =>
+      prisma.workplace.findMany({
+        where: {
+          userId: current.user.id,
+        },
+        select: {
+          id: true,
+          name: true,
+          type: true,
+          color: true,
+          closingDayType: true,
+          closingDay: true,
+          payday: true,
+        },
+        orderBy: {
+          createdAt: "desc",
+        },
+      }),
+    );
 
     const selectedWorkplace =
       workplaces.find(
@@ -100,13 +101,71 @@ export async function GET(request: Request) {
       null;
 
     if (!selectedWorkplace) {
-      return jsonNoStore(
+      return timing.applyServerTiming(
+        jsonNoStore(
+          {
+            data: {
+              workplaces: [],
+              selectedWorkplace: null,
+              payrollRules: [],
+              timetableSets: [],
+            },
+          },
+          {
+            headers: {
+              "Cache-Control": "private, no-store, no-cache, must-revalidate",
+            },
+          },
+        ),
+      );
+    }
+
+    const payrollRulesPromise = timing.measure("payrollRules", () =>
+      prisma.payrollRule.findMany({
+        where: {
+          workplaceId: selectedWorkplace.id,
+        },
+        orderBy: [{ startDate: "desc" }],
+      }),
+    );
+    const timetableSetsPromise: Promise<
+      Parameters<typeof buildTimetableSetsResponse>[0]
+    > =
+      selectedWorkplace.type === "CRAM_SCHOOL"
+        ? timing.measure("timetableSets", () =>
+            prisma.timetableSet.findMany({
+              where: {
+                workplaceId: selectedWorkplace.id,
+              },
+              include: {
+                timetables: {
+                  orderBy: {
+                    period: "asc",
+                  },
+                },
+              },
+              orderBy: [{ sortOrder: "asc" }, { createdAt: "asc" }],
+            }),
+          )
+        : Promise.resolve([]);
+    const [payrollRules, timetableSets] = await Promise.all([
+      payrollRulesPromise,
+      timetableSetsPromise,
+    ]);
+
+    return timing.applyServerTiming(
+      jsonNoStore(
         {
           data: {
-            workplaces: [],
-            selectedWorkplace: null,
-            payrollRules: [],
-            timetableSets: [],
+            workplaces: workplaces.map((workplace) => ({
+              id: workplace.id,
+              name: workplace.name,
+              type: workplace.type,
+              color: workplace.color,
+            })),
+            selectedWorkplace,
+            payrollRules,
+            timetableSets: buildTimetableSetsResponse(timetableSets),
           },
         },
         {
@@ -114,55 +173,12 @@ export async function GET(request: Request) {
             "Cache-Control": "private, no-store, no-cache, must-revalidate",
           },
         },
-      );
-    }
-
-    const [payrollRules, timetableSets] = await Promise.all([
-      prisma.payrollRule.findMany({
-        where: {
-          workplaceId: selectedWorkplace.id,
-        },
-        orderBy: [{ startDate: "desc" }],
-      }),
-      selectedWorkplace.type === "CRAM_SCHOOL"
-        ? prisma.timetableSet.findMany({
-            where: {
-              workplaceId: selectedWorkplace.id,
-            },
-            include: {
-              timetables: {
-                orderBy: {
-                  period: "asc",
-                },
-              },
-            },
-            orderBy: [{ sortOrder: "asc" }, { createdAt: "asc" }],
-          })
-        : Promise.resolve([]),
-    ]);
-
-    return jsonNoStore(
-      {
-        data: {
-          workplaces: workplaces.map((workplace) => ({
-            id: workplace.id,
-            name: workplace.name,
-            type: workplace.type,
-            color: workplace.color,
-          })),
-          selectedWorkplace,
-          payrollRules,
-          timetableSets: buildTimetableSetsResponse(timetableSets),
-        },
-      },
-      {
-        headers: {
-          "Cache-Control": "private, no-store, no-cache, must-revalidate",
-        },
-      },
+      ),
     );
   } catch (error) {
     console.error("GET /api/shifts/form-bootstrap failed", error);
-    return jsonError("シフト入力の参照データ取得に失敗しました", 500);
+    return timing.applyServerTiming(
+      jsonError("シフト入力の参照データ取得に失敗しました", 500),
+    );
   }
 }

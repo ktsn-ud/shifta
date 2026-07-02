@@ -10,6 +10,7 @@ import { prisma } from "@/lib/prisma";
 import { jsonNoStore } from "@/lib/api/cache-control";
 import { buildSuccessSyncResponse } from "@/lib/google-calendar/sync-response";
 import { revalidateWorkplaceDomainTags } from "@/lib/cache/revalidate";
+import { createRequestTiming } from "@/lib/perf/request-timing";
 
 const colorRegex = /^#[0-9A-Fa-f]{6}$/;
 const PAYROLL_DAY_MIN = 1;
@@ -123,33 +124,45 @@ async function findOwnedWorkplaceWithCounts(
 }
 
 export async function GET(request: Request, context: Context) {
-  await connection();
+  const timing = createRequestTiming("GET /api/workplaces/:id");
   try {
-    const current = await requireCurrentUser();
+    await timing.measure("connection", () => connection());
+    const current = await timing.measure("auth", () => requireCurrentUser());
     if ("response" in current) {
-      return current.response;
+      return timing.applyServerTiming(current.response);
     }
 
-    const { workplaceId } = await context.params;
+    const { workplaceId } = await timing.measure(
+      "params",
+      () => context.params,
+    );
     const includeCounts = shouldIncludeCounts(request);
     const workplace = includeCounts
-      ? await findOwnedWorkplaceWithCounts(workplaceId, current.user.id)
-      : await findOwnedWorkplaceDetail(workplaceId, current.user.id);
+      ? await timing.measure("workplaceWithCounts", () =>
+          findOwnedWorkplaceWithCounts(workplaceId, current.user.id),
+        )
+      : await timing.measure("workplaceDetail", () =>
+          findOwnedWorkplaceDetail(workplaceId, current.user.id),
+        );
 
     if (!workplace) {
-      return jsonError("勤務先が見つかりません", 404);
+      return timing.applyServerTiming(jsonError("勤務先が見つかりません", 404));
     }
 
     if (!includeCounts) {
-      return jsonNoStore({ data: workplace });
+      return timing.applyServerTiming(jsonNoStore({ data: workplace }));
     }
 
-    return jsonNoStore({
-      data: workplace,
-    });
+    return timing.applyServerTiming(
+      jsonNoStore({
+        data: workplace,
+      }),
+    );
   } catch (error) {
     console.error("GET /api/workplaces/:id failed", error);
-    return jsonError("勤務先の取得に失敗しました", 500);
+    return timing.applyServerTiming(
+      jsonError("勤務先の取得に失敗しました", 500),
+    );
   }
 }
 
