@@ -1,4 +1,3 @@
-import { Suspense } from "react";
 import type { Metadata } from "next";
 import { redirect } from "next/navigation";
 import { TooltipProvider } from "@/components/ui/tooltip";
@@ -11,7 +10,7 @@ export const metadata: Metadata = {
   title: { absolute: "ホーム｜Shifta" },
 };
 
-async function AuthenticatedLayout({
+export default async function Layout({
   children,
 }: {
   children: React.ReactNode;
@@ -44,13 +43,5 @@ async function AuthenticatedLayout({
         </SidebarInset>
       </SidebarProvider>
     </TooltipProvider>
-  );
-}
-
-export default function Layout({ children }: { children: React.ReactNode }) {
-  return (
-    <Suspense fallback={null}>
-      <AuthenticatedLayout>{children}</AuthenticatedLayout>
-    </Suspense>
   );
 }
