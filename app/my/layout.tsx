@@ -1,3 +1,4 @@
+import { Suspense } from "react";
 import type { Metadata } from "next";
 import { redirect } from "next/navigation";
 import { TooltipProvider } from "@/components/ui/tooltip";
@@ -10,22 +11,21 @@ export const metadata: Metadata = {
   title: { absolute: "ホーム｜Shifta" },
 };
 
-export default async function Layout({
+function AuthenticatedLayoutFallback() {
+  return <div className="min-h-screen bg-background" aria-hidden="true" />;
+}
+
+function AuthenticatedLayoutShell({
   children,
+  user,
 }: {
   children: React.ReactNode;
-}) {
-  const current = await requireCurrentUser();
-  if ("response" in current) {
-    redirect("/login");
-  }
-
-  const user = {
-    name: current.user.name ?? "ユーザー",
-    email: current.user.email,
-    avatar: current.user.image,
+  user: {
+    name: string;
+    email: string;
+    avatar?: string | null;
   };
-
+}) {
   return (
     <TooltipProvider>
       <SidebarProvider
@@ -43,5 +43,34 @@ export default async function Layout({
         </SidebarInset>
       </SidebarProvider>
     </TooltipProvider>
+  );
+}
+
+async function AuthenticatedLayoutContent({
+  children,
+}: {
+  children: React.ReactNode;
+}) {
+  const current = await requireCurrentUser();
+  if ("response" in current) {
+    redirect("/login");
+  }
+
+  const user = {
+    name: current.user.name ?? "ユーザー",
+    email: current.user.email,
+    avatar: current.user.image,
+  };
+
+  return (
+    <AuthenticatedLayoutShell user={user}>{children}</AuthenticatedLayoutShell>
+  );
+}
+
+export default function Layout({ children }: { children: React.ReactNode }) {
+  return (
+    <Suspense fallback={<AuthenticatedLayoutFallback />}>
+      <AuthenticatedLayoutContent>{children}</AuthenticatedLayoutContent>
+    </Suspense>
   );
 }
