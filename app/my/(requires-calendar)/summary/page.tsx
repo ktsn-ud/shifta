@@ -7,7 +7,7 @@ import {
 import { requireCurrentUser } from "@/lib/api/current-user";
 import { parseDateOnly } from "@/lib/api/date-time";
 import { startOfMonth, toMonthInputValue } from "@/lib/calendar/date";
-import { getPayrollSummaryCoreForUser } from "@/lib/payroll/summary";
+import { getPayrollSummaryForUser } from "@/lib/payroll/summary";
 
 function SummaryPageFallback() {
   return <SummaryPageLoadingSkeleton />;
@@ -21,7 +21,7 @@ async function SummaryPageContent() {
 
   const initialMonth = toMonthInputValue(startOfMonth(new Date()));
 
-  const initialSummary = await getPayrollSummaryCoreForUser(
+  const initialSummary = await getPayrollSummaryForUser(
     current.user.id,
     parseDateOnly(`${initialMonth}-01`),
   );
@@ -30,6 +30,7 @@ async function SummaryPageContent() {
     <SummaryPageClient
       currentUserId={current.user.id}
       initialSummary={initialSummary}
+      initialSummaryYearContext={initialSummary}
       initialMonth={initialMonth}
       currentMonthValue={initialMonth}
     />
