@@ -118,7 +118,9 @@ describe("DashboardPageClient", () => {
       ),
     ).toBeInTheDocument();
     expect(
-      within(nextPaymentCard as HTMLElement).queryByText("internal server error"),
+      within(nextPaymentCard as HTMLElement).queryByText(
+        "internal server error",
+      ),
     ).not.toBeInTheDocument();
     expect(
       within(nextPaymentCard as HTMLElement).queryByText("読み込み中..."),

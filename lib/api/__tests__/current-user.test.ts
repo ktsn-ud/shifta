@@ -5,6 +5,34 @@
 const mockAuth = jest.fn();
 const mockFindUnique = jest.fn();
 
+jest.mock("react", () => {
+  const actualReact = jest.requireActual<typeof import("react")>("react");
+  const functionCaches = new WeakMap<object, Map<string, unknown>>();
+
+  return {
+    ...actualReact,
+    cache:
+      <TArgs extends unknown[], TResult>(fn: (...args: TArgs) => TResult) =>
+      (...args: TArgs) => {
+        const cacheKeyFn = fn as object;
+        let entries = functionCaches.get(cacheKeyFn);
+        if (!entries) {
+          entries = new Map();
+          functionCaches.set(cacheKeyFn, entries);
+        }
+
+        const key = JSON.stringify(args);
+        if (entries.has(key)) {
+          return entries.get(key) as TResult;
+        }
+
+        const result = fn(...args);
+        entries.set(key, result);
+        return result;
+      },
+  };
+});
+
 jest.mock("next/server", () => ({
   NextResponse: {
     json: (
@@ -171,6 +199,7 @@ describe("lib/api/current-user", () => {
       user,
     });
 
+    expect(mockAuth).toHaveBeenCalledTimes(1);
     expect(mockFindUnique).not.toHaveBeenCalled();
   });
 
@@ -189,12 +218,53 @@ describe("lib/api/current-user", () => {
       user,
     });
 
+    expect(mockAuth).toHaveBeenCalledTimes(1);
+    expect(mockFindUnique).toHaveBeenCalledTimes(1);
     expect(mockFindUnique).toHaveBeenCalledWith({
       where: { email: user.email },
     });
   });
 
-  it("SHIFTA_PERF=1 なら細分化した計測ログを出す", async () => {
+  it("session user が不完全でも同一 module で requireCurrentUser を 2 回呼べば auth と DB fallback を再利用する", async () => {
+    const user = createUserRecord();
+
+    mockAuth.mockResolvedValue({
+      user: {
+        email: user.email,
+      },
+    });
+    mockFindUnique.mockResolvedValue(user);
+
+    const { requireCurrentUser } = await loadCurrentUserModule();
+
+    await expect(requireCurrentUser()).resolves.toEqual({ user });
+    await expect(requireCurrentUser()).resolves.toEqual({ user });
+
+    expect(mockAuth).toHaveBeenCalledTimes(1);
+    expect(mockFindUnique).toHaveBeenCalledTimes(1);
+  });
+
+  it("getSessionEmail の後に requireCurrentUser を呼んでも同一 module なら auth と DB fallback を再利用する", async () => {
+    const user = createUserRecord();
+
+    mockAuth.mockResolvedValue({
+      user: {
+        email: user.email,
+      },
+    });
+    mockFindUnique.mockResolvedValue(user);
+
+    const { getSessionEmail, requireCurrentUser } =
+      await loadCurrentUserModule();
+
+    await expect(getSessionEmail()).resolves.toBe(user.email);
+    await expect(requireCurrentUser()).resolves.toEqual({ user });
+
+    expect(mockAuth).toHaveBeenCalledTimes(1);
+    expect(mockFindUnique).toHaveBeenCalledTimes(1);
+  });
+
+  it("SHIFTA_PERF=1 なら authState ベースの計測ログを出す", async () => {
     process.env.SHIFTA_PERF = "1";
     mockAuth.mockResolvedValue({
       user: {
@@ -231,14 +301,10 @@ describe("lib/api/current-user", () => {
           "current-user:getAuthState:auth",
           "current-user:getAuthState:extractSessionUser",
           "current-user:getAuthState:extractSessionEmail",
-          "current-user:getSessionEmail:getCachedAuthSession",
-          "current-user:getSessionEmail:extractSessionEmail",
-          "current-user:getCurrentUser:getCachedAuthSession",
-          "current-user:getCurrentUser:extractSessionUser",
-          "current-user:getCurrentUser:extractSessionEmail",
-          "current-user:getCurrentUser:findUserByEmailFallback",
-          "current-user:requireCurrentUser:getCachedSessionEmail",
-          "current-user:requireCurrentUser:getCachedCurrentUser",
+          "current-user:requireCurrentUser:getCachedAuthState",
+          "current-user:requireCurrentUser:extractSessionEmail",
+          "current-user:requireCurrentUser:extractSessionUser",
+          "current-user:requireCurrentUser:findUserByEmailFallback",
         ]),
       );
     } finally {

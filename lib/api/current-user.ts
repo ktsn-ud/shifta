@@ -62,6 +62,18 @@ const getCachedAuthState = cache(async (): Promise<AuthState> => {
   }
 });
 
+async function readSessionEmailFromAuthState(authState: AuthState) {
+  const timing = createRequestTiming("current-user:getSessionEmail");
+
+  try {
+    await timing.measure("getCachedAuthSession", () => authState.session);
+
+    return await timing.measure("extractSessionEmail", () => authState.email);
+  } finally {
+    timing.flushLog();
+  }
+}
+
 function getOptionalString(value: unknown): string | null {
   return typeof value === "string" ? value : null;
 }
@@ -116,56 +128,13 @@ function getSessionCurrentUser(session: AuthSession) {
 }
 
 const getCachedSessionEmail = cache(async (): Promise<string | null> => {
-  const timing = createRequestTiming("current-user:getSessionEmail");
-
-  try {
-    const authState = await getCachedAuthState();
-    await timing.measure("getCachedAuthSession", () => authState.session);
-
-    const email = await timing.measure(
-      "extractSessionEmail",
-      () => authState.email,
-    );
-
-    return email;
-  } finally {
-    timing.flushLog();
-  }
+  const authState = await getCachedAuthState();
+  return readSessionEmailFromAuthState(authState);
 });
 
-const getCachedCurrentUser = cache(async () => {
-  const timing = createRequestTiming("current-user:getCurrentUser");
-
-  try {
-    const authState = await getCachedAuthState();
-    await timing.measure("getCachedAuthSession", () => authState.session);
-
-    const sessionUser = await timing.measure(
-      "extractSessionUser",
-      () => authState.sessionUser,
-    );
-
-    if (sessionUser) {
-      return sessionUser;
-    }
-
-    const email = await timing.measure(
-      "extractSessionEmail",
-      () => authState.email,
-    );
-    if (!email) {
-      return null;
-    }
-
-    const user = await timing.measure("findUserByEmailFallback", () =>
-      prisma.user.findUnique({ where: { email } }),
-    );
-
-    return user;
-  } finally {
-    timing.flushLog();
-  }
-});
+const getCachedUserByEmail = cache(async (email: string) =>
+  prisma.user.findUnique({ where: { email } }),
+);
 
 export async function getSessionEmail(): Promise<string | null> {
   return getCachedSessionEmail();
@@ -175,14 +144,29 @@ export async function requireCurrentUser() {
   const timing = createRequestTiming("current-user:requireCurrentUser");
 
   try {
-    const [email, user] = await Promise.all([
-      timing.measure("getCachedSessionEmail", () => getCachedSessionEmail()),
-      timing.measure("getCachedCurrentUser", () => getCachedCurrentUser()),
-    ]);
+    const authState = await timing.measure("getCachedAuthState", () =>
+      getCachedAuthState(),
+    );
+    const email = await timing.measure(
+      "extractSessionEmail",
+      () => authState.email,
+    );
 
     if (!email) {
       return { response: jsonError("認証が必要です", 401) } as const;
     }
+
+    const sessionUser = await timing.measure(
+      "extractSessionUser",
+      () => authState.sessionUser,
+    );
+    if (sessionUser) {
+      return { user: sessionUser } as const;
+    }
+
+    const user = await timing.measure("findUserByEmailFallback", () =>
+      getCachedUserByEmail(email),
+    );
 
     if (!user) {
       return {
