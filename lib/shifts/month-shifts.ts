@@ -1,4 +1,7 @@
+import { cache } from "react";
+import { cacheLife, cacheTag } from "next/cache";
 import { parseDateOnly } from "@/lib/api/date-time";
+import { userShiftsTag, userWorkplacesTag } from "@/lib/cache/tags";
 import { type Prisma } from "@/lib/generated/prisma/client";
 import { calculateWorkedMinutes } from "@/lib/payroll/estimate";
 import {
@@ -134,25 +137,66 @@ function toMonthShiftDto(
 export async function getMonthShifts(
   params: MonthShiftQueryParams,
 ): Promise<MonthShiftDto[]> {
+  const normalizedWorkplaceIds = params.workplaceIds
+    ? Array.from(new Set(params.workplaceIds))
+    : null;
+
+  if (normalizedWorkplaceIds && normalizedWorkplaceIds.length === 0) {
+    return [];
+  }
+
+  return loadCachedMonthShifts(
+    params.userId,
+    params.startDate,
+    params.endDate,
+    params.includeEstimate,
+    normalizedWorkplaceIds?.join(",") ?? "",
+  );
+}
+
+const loadCachedMonthShifts = cache(
+  async (
+    userId: string,
+    startDate: string,
+    endDate: string,
+    includeEstimate: boolean,
+    workplaceIdsSignature: string,
+  ): Promise<MonthShiftDto[]> =>
+    loadCachedMonthShiftsEntry(
+      userId,
+      startDate,
+      endDate,
+      includeEstimate,
+      workplaceIdsSignature,
+    ),
+);
+
+async function loadCachedMonthShiftsEntry(
+  userId: string,
+  startDate: string,
+  endDate: string,
+  includeEstimate: boolean,
+  workplaceIdsSignature: string,
+): Promise<MonthShiftDto[]> {
+  "use cache";
+
+  cacheLife("minutes");
+  cacheTag(userShiftsTag(userId));
+  cacheTag(userWorkplacesTag(userId));
+
+  const workplaceIds =
+    workplaceIdsSignature.length > 0 ? workplaceIdsSignature.split(",") : null;
   const timing = createRequestTiming("shifts:getMonthShifts");
-  const { userId, startDate, endDate, includeEstimate, workplaceIds } = params;
 
   try {
-    const normalizedWorkplaceIds = workplaceIds
-      ? Array.from(new Set(workplaceIds))
-      : null;
-    if (normalizedWorkplaceIds && normalizedWorkplaceIds.length === 0) {
-      return [];
-    }
-
     const shifts = await timing.measure("dbRead", () =>
       prisma.shift.findMany({
         where: {
           workplace: { userId },
-          ...(normalizedWorkplaceIds
+          ...(workplaceIds
             ? {
                 workplaceId: {
-                  in: normalizedWorkplaceIds,
+                  in: workplaceIds,
                 },
               }
             : {}),

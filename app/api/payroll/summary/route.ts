@@ -5,7 +5,7 @@ import { parseDateOnly } from "@/lib/api/date-time";
 import { jsonNoStore } from "@/lib/api/cache-control";
 import { jsonError } from "@/lib/api/http";
 import { createRequestTiming } from "@/lib/perf/request-timing";
-import { getPayrollSummaryCoreForUser } from "@/lib/payroll/summary";
+import { getPayrollSummaryForUser } from "@/lib/payroll/summary";
 
 const MONTH_REGEX = /^\d{4}-(0[1-9]|1[0-2])$/;
 
@@ -40,9 +40,9 @@ export async function GET(request: Request) {
       );
     }
 
-    const summary = await timing.measure("getPayrollSummaryCoreForUser", () =>
+    const summary = await timing.measure("getPayrollSummaryForUser", () =>
       timing.measure("service", () =>
-        getPayrollSummaryCoreForUser(
+        getPayrollSummaryForUser(
           current.user.id,
           parseDateOnly(`${query.data.month}-01`),
         ),

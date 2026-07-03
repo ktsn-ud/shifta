@@ -1,6 +1,6 @@
 import { cache } from "react";
 import { cacheLife, cacheTag } from "next/cache";
-import type { PayrollRule, Prisma } from "@/lib/generated/prisma/client";
+import { Prisma, type PayrollRule } from "@/lib/generated/prisma/client";
 import {
   getActualPayrollMap,
   startOfMonthUtc,
@@ -16,6 +16,7 @@ import {
   groupPayrollRulesByWorkplace,
   type PayrollRulesByWorkplace,
 } from "@/lib/payroll/summarizeByPeriod";
+import { parseMonthKeyToDate } from "@/lib/payroll/month-key";
 import { createRequestTiming } from "@/lib/perf/request-timing";
 import { prisma } from "@/lib/prisma";
 import { userPayrollSnapshotTag } from "@/lib/cache/tags";
@@ -232,13 +233,11 @@ function fromSerializedPayrollRule(
     workplaceId: rule.workplaceId,
     startDate: new Date(rule.startDate),
     endDate: rule.endDate ? new Date(rule.endDate) : null,
-    baseHourlyWage: rule.baseHourlyWage as unknown as Prisma.Decimal,
-    holidayAllowanceHourly:
-      rule.holidayAllowanceHourly as unknown as Prisma.Decimal,
-    nightPremiumRate: rule.nightPremiumRate as unknown as Prisma.Decimal,
-    overtimePremiumRate: rule.overtimePremiumRate as unknown as Prisma.Decimal,
-    dailyOvertimeThreshold:
-      rule.dailyOvertimeThreshold as unknown as Prisma.Decimal,
+    baseHourlyWage: new Prisma.Decimal(rule.baseHourlyWage),
+    holidayAllowanceHourly: new Prisma.Decimal(rule.holidayAllowanceHourly),
+    nightPremiumRate: new Prisma.Decimal(rule.nightPremiumRate),
+    overtimePremiumRate: new Prisma.Decimal(rule.overtimePremiumRate),
+    dailyOvertimeThreshold: new Prisma.Decimal(rule.dailyOvertimeThreshold),
     holidayType: rule.holidayType,
   };
 }
@@ -254,14 +253,6 @@ function toMonthKeys(monthDates: Date[]): string[] {
   return Array.from(normalizedMonths.keys()).sort((left, right) =>
     left.localeCompare(right),
   );
-}
-
-function parseMonthKeyToDate(monthKey: string): Date {
-  const [yearText, monthText] = monthKey.split("-");
-  const year = Number(yearText);
-  const month = Number(monthText);
-
-  return new Date(Date.UTC(year, month - 1, 1));
 }
 
 function serializeSnapshot(

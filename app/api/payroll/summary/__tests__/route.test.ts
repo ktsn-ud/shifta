@@ -1,5 +1,5 @@
 import { requireCurrentUser } from "@/lib/api/current-user";
-import { getPayrollSummaryCoreForUser } from "@/lib/payroll/summary";
+import { getPayrollSummaryForUser } from "@/lib/payroll/summary";
 
 const connectionMock = jest.fn();
 
@@ -39,13 +39,59 @@ jest.mock("@/lib/api/current-user", () => ({
 }));
 
 jest.mock("@/lib/payroll/summary", () => ({
-  getPayrollSummaryCoreForUser: jest.fn(),
+  getPayrollSummaryForUser: jest.fn(),
 }));
 
 const requireCurrentUserMock = jest.mocked(requireCurrentUser);
-const getPayrollSummaryCoreForUserMock = jest.mocked(
-  getPayrollSummaryCoreForUser,
-);
+const getPayrollSummaryForUserMock = jest.mocked(getPayrollSummaryForUser);
+
+function createSummary() {
+  return {
+    month: "2026-08",
+    totalWage: 123456,
+    estimatedTotalWage: 123456,
+    displayValue: {
+      displayAmount: 123456,
+      estimatedAmount: 123456,
+      actualAmount: null,
+      differenceAmount: 0,
+      isActualApplied: false,
+    },
+    actualCoverage: {
+      registeredWorkplaceCount: 0,
+      totalWorkplaceCount: 0,
+      isPartial: false,
+      taxableAmount: 0,
+      nonTaxableAmount: 0,
+      totalAmount: 0,
+    },
+    totalWorkHours: 8,
+    totalNightHours: 0,
+    totalOvertimeHours: 0,
+    byWorkplace: [],
+    confirmedShiftWage: 0,
+    currentMonthCumulative: 123456,
+    yearlyTotal: 456789,
+    currentMonthActualCoverage: {
+      registeredWorkplaceCount: 0,
+      totalWorkplaceCount: 0,
+      isPartial: false,
+      taxableAmount: 0,
+      nonTaxableAmount: 0,
+      totalAmount: 0,
+    },
+    yearlyActualCoverage: {
+      registeredWorkplaceCount: 0,
+      totalWorkplaceCount: 0,
+      isPartial: false,
+      taxableAmount: 0,
+      nonTaxableAmount: 0,
+      totalAmount: 0,
+    },
+    estimatedCurrentMonthCumulative: 123456,
+    estimatedYearlyTotal: 456789,
+  };
+}
 
 function createRequest(url: string): Request {
   return { url } as Request;
@@ -107,31 +153,7 @@ describe("GET /api/payroll/summary", () => {
     requireCurrentUserMock.mockResolvedValue({
       user: { id: "user-1" },
     } as Awaited<ReturnType<typeof requireCurrentUser>>);
-    getPayrollSummaryCoreForUserMock.mockResolvedValue({
-      month: "2026-08",
-      totalWage: 123456,
-      estimatedTotalWage: 123456,
-      displayValue: {
-        displayAmount: 123456,
-        estimatedAmount: 123456,
-        actualAmount: null,
-        differenceAmount: 0,
-        isActualApplied: false,
-      },
-      actualCoverage: {
-        registeredWorkplaceCount: 0,
-        totalWorkplaceCount: 0,
-        isPartial: false,
-        taxableAmount: 0,
-        nonTaxableAmount: 0,
-        totalAmount: 0,
-      },
-      totalWorkHours: 8,
-      totalNightHours: 0,
-      totalOvertimeHours: 0,
-      byWorkplace: [],
-      confirmedShiftWage: 0,
-    });
+    getPayrollSummaryForUserMock.mockResolvedValue(createSummary());
 
     const GET = await loadGet();
     const response = await GET(
@@ -150,7 +172,7 @@ describe("GET /api/payroll/summary", () => {
       }),
     );
     expect(response.headers.get("server-timing")).toBeNull();
-    expect(getPayrollSummaryCoreForUserMock).toHaveBeenCalledWith(
+    expect(getPayrollSummaryForUserMock).toHaveBeenCalledWith(
       "user-1",
       new Date("2026-08-01T00:00:00.000Z"),
     );
@@ -161,31 +183,7 @@ describe("GET /api/payroll/summary", () => {
     requireCurrentUserMock.mockResolvedValue({
       user: { id: "user-1" },
     } as Awaited<ReturnType<typeof requireCurrentUser>>);
-    getPayrollSummaryCoreForUserMock.mockResolvedValue({
-      month: "2026-08",
-      totalWage: 123456,
-      estimatedTotalWage: 123456,
-      displayValue: {
-        displayAmount: 123456,
-        estimatedAmount: 123456,
-        actualAmount: null,
-        differenceAmount: 0,
-        isActualApplied: false,
-      },
-      actualCoverage: {
-        registeredWorkplaceCount: 0,
-        totalWorkplaceCount: 0,
-        isPartial: false,
-        taxableAmount: 0,
-        nonTaxableAmount: 0,
-        totalAmount: 0,
-      },
-      totalWorkHours: 8,
-      totalNightHours: 0,
-      totalOvertimeHours: 0,
-      byWorkplace: [],
-      confirmedShiftWage: 0,
-    });
+    getPayrollSummaryForUserMock.mockResolvedValue(createSummary());
     const infoSpy = jest.spyOn(console, "info").mockImplementation(() => {});
 
     try {
@@ -211,6 +209,9 @@ describe("GET /api/payroll/summary", () => {
         expect.stringContaining("service;dur="),
       );
       expect(response.headers.get("server-timing")).toEqual(
+        expect.stringContaining("getPayrollSummaryForUser;dur="),
+      );
+      expect(response.headers.get("server-timing")).toEqual(
         expect.stringContaining("total;dur="),
       );
       expect(extractPerfLabels(infoSpy, "GET /api/payroll/summary")).toEqual(
@@ -220,6 +221,7 @@ describe("GET /api/payroll/summary", () => {
           "GET /api/payroll/summary:requireCurrentUser",
           "GET /api/payroll/summary:queryParse",
           "GET /api/payroll/summary:service",
+          "GET /api/payroll/summary:getPayrollSummaryForUser",
           "GET /api/payroll/summary:total",
         ]),
       );

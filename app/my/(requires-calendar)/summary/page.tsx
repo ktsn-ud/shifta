@@ -16,33 +16,36 @@ function SummaryPageFallback() {
 
 async function SummaryPageContent() {
   const timing = createRequestTiming("GET /my/summary");
-  const current = await timing.measure("requireCurrentUser", () =>
-    requireCurrentUser(),
-  );
-  if ("response" in current) {
+  try {
+    const current = await timing.measure("requireCurrentUser", () =>
+      requireCurrentUser(),
+    );
+    if ("response" in current) {
+      redirect("/login");
+    }
+
+    const initialMonth = toMonthInputValue(startOfMonth(new Date()));
+
+    const initialSummary = await timing.measure(
+      "getPayrollSummaryForUser",
+      () =>
+        getPayrollSummaryForUser(
+          current.user.id,
+          parseDateOnly(`${initialMonth}-01`),
+        ),
+    );
+
+    return (
+      <SummaryPageClient
+        currentUserId={current.user.id}
+        initialSummary={initialSummary}
+        initialMonth={initialMonth}
+        currentMonthValue={initialMonth}
+      />
+    );
+  } finally {
     timing.flushLog();
-    redirect("/login");
   }
-
-  const initialMonth = toMonthInputValue(startOfMonth(new Date()));
-
-  const initialSummary = await timing.measure("getPayrollSummaryForUser", () =>
-    getPayrollSummaryForUser(
-      current.user.id,
-      parseDateOnly(`${initialMonth}-01`),
-    ),
-  );
-  timing.flushLog();
-
-  return (
-    <SummaryPageClient
-      currentUserId={current.user.id}
-      initialSummary={initialSummary}
-      initialSummaryYearContext={initialSummary}
-      initialMonth={initialMonth}
-      currentMonthValue={initialMonth}
-    />
-  );
 }
 
 export default function SummaryPage() {

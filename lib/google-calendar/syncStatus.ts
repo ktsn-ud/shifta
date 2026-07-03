@@ -4,6 +4,7 @@ import {
   resolvePayrollRuleDateRange,
 } from "@/lib/payroll/rule-query";
 import { prisma } from "@/lib/prisma";
+import { revalidateShiftDomainTags } from "@/lib/cache/revalidate";
 import {
   GoogleCalendarSyncError,
   GOOGLE_SYNC_ERROR_CODES,
@@ -395,14 +396,20 @@ async function clearCalendarIdForReinitialize(userId: string): Promise<void> {
 
 async function updateSyncStatus(
   shiftId: string,
+  userId: string,
   status: ShiftSyncStatus,
   options?: {
     error?: string | null;
     googleEventId?: string | null;
   },
-): Promise<void> {
-  await prisma.shift.update({
-    where: { id: shiftId },
+): Promise<boolean> {
+  const result = await prisma.shift.updateMany({
+    where: {
+      id: shiftId,
+      workplace: {
+        userId,
+      },
+    },
     data: {
       googleSyncStatus: status,
       googleSyncError: options?.error ?? null,
@@ -412,6 +419,13 @@ async function updateSyncStatus(
         : {}),
     },
   });
+
+  if (result.count === 0) {
+    return false;
+  }
+
+  revalidateShiftDomainTags({ userId });
+  return true;
 }
 
 async function findShiftForSync(shiftId: string, userId: string) {
@@ -526,10 +540,6 @@ async function runShiftSync(
 ): Promise<SyncResult> {
   const startedAt = Date.now();
 
-  await updateSyncStatus(shiftId, "PENDING", {
-    error: null,
-  });
-
   try {
     const [shift, user] = await Promise.all([
       findShiftForSync(shiftId, userId),
@@ -537,7 +547,48 @@ async function runShiftSync(
     ]);
 
     if (!shift || !user) {
-      throw new Error("同期対象のシフトまたはユーザーが見つかりません");
+      const errorMessage = "同期対象のシフトまたはユーザーが見つかりません";
+
+      logSyncEvent({
+        userId,
+        shiftId,
+        action,
+        status: "FAILED",
+        error: errorMessage,
+        durationMs: Date.now() - startedAt,
+      });
+
+      return {
+        ok: false,
+        errorMessage,
+        errorCode: null,
+        requiresCalendarSetup: false,
+        requiresSignOut: false,
+      };
+    }
+
+    const pendingUpdated = await updateSyncStatus(shiftId, userId, "PENDING", {
+      error: null,
+    });
+    if (!pendingUpdated) {
+      const errorMessage = "同期対象のシフトが見つかりません";
+
+      logSyncEvent({
+        userId,
+        shiftId,
+        action,
+        status: "FAILED",
+        error: errorMessage,
+        durationMs: Date.now() - startedAt,
+      });
+
+      return {
+        ok: false,
+        errorMessage,
+        errorCode: null,
+        requiresCalendarSetup: false,
+        requiresSignOut: false,
+      };
     }
 
     let googleEventId = shift.googleEventId;
@@ -562,7 +613,7 @@ async function runShiftSync(
       },
     );
 
-    await updateSyncStatus(shiftId, "SUCCESS", {
+    await updateSyncStatus(shiftId, userId, "SUCCESS", {
       googleEventId,
       error: null,
     });
@@ -593,7 +644,7 @@ async function runShiftSync(
       await clearCalendarIdForReinitialize(userId);
     }
 
-    await updateSyncStatus(shiftId, "FAILED", {
+    await updateSyncStatus(shiftId, userId, "FAILED", {
       error: syncError.message,
     });
 
@@ -654,6 +705,8 @@ export async function syncShiftsAfterBulkCreate(
         googleSyncedAt: new Date(),
       },
     });
+
+    revalidateShiftDomainTags({ userId });
   }
 
   let clearCalendarIdPromise: Promise<void> | null = null;
@@ -691,6 +744,8 @@ export async function syncShiftsAfterBulkCreate(
             googleSyncedAt: new Date(),
           },
         });
+
+        revalidateShiftDomainTags({ userId });
       }
 
       return mapWithConcurrency(
@@ -703,7 +758,7 @@ export async function syncShiftsAfterBulkCreate(
           if (!shift || !user) {
             const errorMessage =
               "同期対象のシフトまたはユーザーが見つかりません";
-            await updateSyncStatus(shiftId, "FAILED", {
+            await updateSyncStatus(shiftId, userId, "FAILED", {
               error: errorMessage,
             });
 
@@ -758,7 +813,7 @@ export async function syncShiftsAfterBulkCreate(
 
       if (!shift || !user) {
         const errorMessage = "同期対象のシフトまたはユーザーが見つかりません";
-        await updateSyncStatus(shiftId, "FAILED", {
+        await updateSyncStatus(shiftId, userId, "FAILED", {
           error: errorMessage,
         });
 
@@ -796,7 +851,7 @@ export async function syncShiftsAfterBulkCreate(
           },
         );
 
-        await updateSyncStatus(shiftId, "SUCCESS", {
+        await updateSyncStatus(shiftId, userId, "SUCCESS", {
           googleEventId,
           error: null,
         });
@@ -828,7 +883,7 @@ export async function syncShiftsAfterBulkCreate(
           await clearCalendarIdOnce();
         }
 
-        await updateSyncStatus(shiftId, "FAILED", {
+        await updateSyncStatus(shiftId, userId, "FAILED", {
           error: syncError.message,
         });
 

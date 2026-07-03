@@ -1,4 +1,5 @@
 import type { Prisma } from "@/lib/generated/prisma/client";
+import { parseMonthKeyToDate } from "@/lib/payroll/month-key";
 import {
   calculateShiftPayrollResult,
   type PayrollRulesByWorkplace,
@@ -33,14 +34,6 @@ type ShiftWithPreviewRelations = Prisma.ShiftGetPayload<{
     lessonRange: true;
   };
 }>;
-
-function parseMonthKeyToDate(monthKey: string): Date {
-  const [yearText, monthText] = monthKey.split("-");
-  const year = Number(yearText);
-  const month = Number(monthText);
-
-  return new Date(Date.UTC(year, month - 1, 1));
-}
 
 function toDateOnlyUtc(date: Date): string {
   const year = String(date.getUTCFullYear());

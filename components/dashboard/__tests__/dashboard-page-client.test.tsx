@@ -126,4 +126,29 @@ describe("DashboardPageClient", () => {
       within(nextPaymentCard as HTMLElement).queryByText("読み込み中..."),
     ).not.toBeInTheDocument();
   });
+
+  it("初期月の翌月支給額 query には SSR の initialData を引き継ぐ", () => {
+    const initialNextPaymentAmount = {
+      month: "2026-08",
+      totalWage: 123456,
+    };
+
+    render(
+      <DashboardPageClient
+        currentUserId="user-1"
+        initialMonthShifts={[]}
+        initialMonthStartDate="2026-07-01"
+        initialMonthEndDate="2026-07-31"
+        initialUnconfirmedShiftCount={0}
+        initialNextPaymentAmount={initialNextPaymentAmount}
+        todayDate="2026-07-15"
+      />,
+    );
+
+    expect(mockedUsePayrollSummaryAmountQuery).toHaveBeenCalledWith({
+      userId: "user-1",
+      month: "2026-08",
+      initialData: initialNextPaymentAmount,
+    });
+  });
 });
