@@ -40,6 +40,7 @@ import { invalidateAfterShiftMutation } from "@/lib/query/invalidation";
 import { buildMutationSuccessDescription } from "@/lib/query/mutation-toast";
 import { removeShiftsFromMonthCachesOptimistically } from "@/lib/query/optimistic-shifts";
 import { getBrowserQueryClient } from "@/lib/query/query-client";
+import { toUserFacingMessage } from "@/lib/user-facing-error";
 import { usePayrollSummaryAmountQuery } from "@/lib/query/queries/payroll";
 import { type PayrollSummaryAmountResult } from "@/lib/payroll/summary";
 import { useGoogleTokenExpiredSignOut } from "@/hooks/use-google-token-expired-signout";
@@ -83,6 +84,7 @@ type DashboardSummary = ReturnType<typeof summarizeShifts>;
 type DashboardSummaryCardsProps = {
   nextPaymentMonthDate: Date;
   currentDate: Date;
+  nextPaymentErrorMessage: string | null;
   isNextPaymentLoading: boolean;
   nextPaymentAmount: number | null;
   summaryPeriodLabel: string;
@@ -513,6 +515,7 @@ function SyncStatusBanner({
 function DashboardSummaryCards({
   nextPaymentMonthDate,
   currentDate,
+  nextPaymentErrorMessage,
   isNextPaymentLoading,
   nextPaymentAmount,
   summaryPeriodLabel,
@@ -531,10 +534,18 @@ function DashboardSummaryCards({
             に受け取る見込み額
           </CardDescription>
         </CardHeader>
-        <CardContent className="text-3xl font-semibold tracking-tight">
-          {isNextPaymentLoading || nextPaymentAmount === null
-            ? "読み込み中..."
-            : formatCurrency(nextPaymentAmount)}
+        <CardContent
+          className={
+            nextPaymentErrorMessage === null
+              ? "text-3xl font-semibold tracking-tight"
+              : "text-sm font-medium text-destructive"
+          }
+        >
+          {nextPaymentErrorMessage
+            ? nextPaymentErrorMessage
+            : isNextPaymentLoading || nextPaymentAmount === null
+              ? "読み込み中..."
+              : formatCurrency(nextPaymentAmount)}
         </CardContent>
       </Card>
 
@@ -709,6 +720,13 @@ export function DashboardPageClient({
     (isInitialDashboardMonth
       ? (initialNextPaymentAmount?.totalWage ?? null)
       : null);
+  const nextPaymentErrorMessage =
+    nextPaymentSummaryQuery.isError && nextPaymentAmount === null
+      ? toUserFacingMessage(
+          nextPaymentSummaryQuery.error,
+          "次回支給額の取得に失敗しました。",
+        )
+      : null;
   const isNextPaymentLoading =
     nextPaymentSummaryQuery.isLoading && nextPaymentAmount === null;
   const isNextPaymentRefreshing =
@@ -785,6 +803,7 @@ export function DashboardPageClient({
         <DashboardSummaryCards
           nextPaymentMonthDate={nextPaymentMonthDate}
           currentDate={currentDate}
+          nextPaymentErrorMessage={nextPaymentErrorMessage}
           isNextPaymentLoading={isNextPaymentLoading}
           nextPaymentAmount={nextPaymentAmount}
           summaryPeriodLabel={summaryPeriodLabel}
