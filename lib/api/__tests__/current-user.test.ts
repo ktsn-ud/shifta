@@ -68,6 +68,20 @@ function createUserRecord() {
   };
 }
 
+function createSessionUserWithIsoDates() {
+  return {
+    id: "user-1",
+    email: "user@example.com",
+    name: null,
+    emailVerified: "2026-01-02T00:00:00.000Z",
+    image: null,
+    calendarId: null,
+    googleTokenExpiresAt: "2026-01-03T00:00:00.000Z",
+    createdAt: "2026-01-01T00:00:00.000Z",
+    updatedAt: "2026-01-04T00:00:00.000Z",
+  };
+}
+
 describe("lib/api/current-user", () => {
   const originalPerf = process.env.SHIFTA_PERF;
 
@@ -138,7 +152,29 @@ describe("lib/api/current-user", () => {
     });
   });
 
-  it("user があれば user を返す", async () => {
+  it("session user に current user 情報が揃っていれば DB lookup を省略して user を返す", async () => {
+    const sessionUser = createSessionUserWithIsoDates();
+    const user = {
+      ...createUserRecord(),
+      emailVerified: new Date(sessionUser.emailVerified),
+      googleTokenExpiresAt: new Date(sessionUser.googleTokenExpiresAt),
+      createdAt: new Date(sessionUser.createdAt),
+      updatedAt: new Date(sessionUser.updatedAt),
+    };
+
+    mockAuth.mockResolvedValue({
+      user: sessionUser,
+    });
+
+    const { requireCurrentUser } = await loadCurrentUserModule();
+    await expect(requireCurrentUser()).resolves.toEqual({
+      user,
+    });
+
+    expect(mockFindUnique).not.toHaveBeenCalled();
+  });
+
+  it("session user に必要情報が足りなければ email fallback で DB lookup した user を返す", async () => {
     const user = createUserRecord();
 
     mockAuth.mockResolvedValue({
@@ -151,6 +187,10 @@ describe("lib/api/current-user", () => {
     const { requireCurrentUser } = await loadCurrentUserModule();
     await expect(requireCurrentUser()).resolves.toEqual({
       user,
+    });
+
+    expect(mockFindUnique).toHaveBeenCalledWith({
+      where: { email: user.email },
     });
   });
 
@@ -188,10 +228,15 @@ describe("lib/api/current-user", () => {
 
       expect(labels).toEqual(
         expect.arrayContaining([
-          "current-user:getSessionEmail:auth",
+          "current-user:getAuthState:auth",
+          "current-user:getAuthState:extractSessionUser",
+          "current-user:getAuthState:extractSessionEmail",
+          "current-user:getSessionEmail:getCachedAuthSession",
           "current-user:getSessionEmail:extractSessionEmail",
-          "current-user:getCurrentUser:getCachedSessionEmail",
-          "current-user:getCurrentUser:findUserByEmail",
+          "current-user:getCurrentUser:getCachedAuthSession",
+          "current-user:getCurrentUser:extractSessionUser",
+          "current-user:getCurrentUser:extractSessionEmail",
+          "current-user:getCurrentUser:findUserByEmailFallback",
           "current-user:requireCurrentUser:getCachedSessionEmail",
           "current-user:requireCurrentUser:getCachedCurrentUser",
         ]),

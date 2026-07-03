@@ -5,6 +5,18 @@ import { GOOGLE_CALENDAR_OAUTH_SCOPES } from "@/lib/google-calendar/constants";
 import { prisma } from "@/lib/prisma";
 import { encryptOAuthToken } from "@/lib/security/oauth-token-crypto";
 
+type SessionCallbackUser = {
+  id: string;
+  email: string;
+  name?: string | null;
+  image?: string | null;
+  emailVerified?: Date | null;
+  calendarId?: string | null;
+  googleTokenExpiresAt?: Date | null;
+  createdAt?: Date;
+  updatedAt?: Date;
+};
+
 const adapter = PrismaAdapter(prisma);
 const baseLinkAccount = adapter.linkAccount;
 
@@ -137,6 +149,24 @@ export const { handlers, auth, signIn, signOut } = NextAuth({
       }
 
       return true; // Allow access to the requested page
+    },
+    session: async ({ session, user }) => {
+      const sessionUser = user as SessionCallbackUser;
+
+      session.user = {
+        ...session.user,
+        id: sessionUser.id,
+        email: sessionUser.email,
+        name: sessionUser.name ?? null,
+        image: sessionUser.image ?? null,
+        emailVerified: sessionUser.emailVerified ?? null,
+        calendarId: sessionUser.calendarId ?? null,
+        googleTokenExpiresAt: sessionUser.googleTokenExpiresAt ?? null,
+        createdAt: sessionUser.createdAt,
+        updatedAt: sessionUser.updatedAt,
+      };
+
+      return session;
     },
   },
   pages: {
