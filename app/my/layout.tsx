@@ -8,11 +8,7 @@ export const metadata: Metadata = {
   title: { absolute: "ホーム｜Shifta" },
 };
 
-export default function Layout({
-  children,
-}: {
-  children: React.ReactNode;
-}) {
+export default function Layout({ children }: { children: React.ReactNode }) {
   return (
     <TooltipProvider>
       <SidebarProvider

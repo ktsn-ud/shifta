@@ -1,4 +1,5 @@
 import { connection } from "next/server";
+import { unstable_rethrow } from "next/navigation";
 import { z } from "zod";
 import { requireCurrentUser } from "@/lib/api/current-user";
 import { DATE_ONLY_REGEX, parseDateOnly } from "@/lib/api/date-time";
@@ -219,6 +220,7 @@ export async function POST(request: Request) {
       { status: 201 },
     );
   } catch (error) {
+    unstable_rethrow(error);
     console.error("POST /api/workplaces failed", error);
     return jsonError("勤務先の作成に失敗しました", 500);
   }
@@ -237,7 +239,12 @@ function shouldIncludeCounts(request: Request): boolean {
 export async function GET(request: Request) {
   const timing = createRequestTiming("GET /api/workplaces");
   try {
-    await timing.measure("connection", () => connection());
+    timing.startStep("connection");
+    try {
+      await connection();
+    } finally {
+      timing.endStep("connection");
+    }
     const current = await timing.measure("auth", () => requireCurrentUser());
     if ("response" in current) {
       return timing.applyServerTiming(current.response);
@@ -290,6 +297,7 @@ export async function GET(request: Request) {
       }),
     );
   } catch (error) {
+    unstable_rethrow(error);
     console.error("GET /api/workplaces failed", error);
     return timing.applyServerTiming(
       jsonError("勤務先一覧の取得に失敗しました", 500),

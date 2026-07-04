@@ -1,6 +1,6 @@
 "use client";
 
-import { Fragment } from "react";
+import { Fragment, Suspense } from "react";
 import Link from "next/link";
 import { usePathname } from "next/navigation";
 
@@ -159,11 +159,79 @@ function buildBreadcrumbs(pathname: string): Crumb[] {
   }
 }
 
-export function SiteHeader() {
-  const pathname = usePathname();
-  const breadcrumbs = buildBreadcrumbs(pathname);
+function SiteHeaderBreadcrumbContent({
+  breadcrumbs,
+}: {
+  breadcrumbs: Crumb[];
+}) {
   const shouldCollapseMiddle = breadcrumbs.length > 3;
 
+  return (
+    <BreadcrumbList className="inline-flex min-w-0 items-center rounded-full border border-border/70 bg-muted/40 px-3 py-1.5 text-sm">
+      {breadcrumbs.map((item, index) => {
+        const isLast = index === breadcrumbs.length - 1;
+        const isMiddleItem =
+          shouldCollapseMiddle && index > 0 && index < breadcrumbs.length - 1;
+        const key = `${item.title}-${index}`;
+        const separatorClassName = isMiddleItem
+          ? "hidden sm:inline-flex"
+          : shouldCollapseMiddle && isLast
+            ? "hidden sm:inline-flex"
+            : undefined;
+        const itemClassName = isMiddleItem
+          ? "hidden sm:inline-flex"
+          : undefined;
+
+        return (
+          <Fragment key={key}>
+            {index > 0 ? (
+              <BreadcrumbSeparator
+                key={`${key}-separator`}
+                className={separatorClassName}
+              />
+            ) : null}
+            {shouldCollapseMiddle && isLast ? (
+              <Fragment>
+                <BreadcrumbSeparator className="sm:hidden" />
+                <BreadcrumbItem className="sm:hidden">
+                  <BreadcrumbEllipsis />
+                </BreadcrumbItem>
+              </Fragment>
+            ) : null}
+            <BreadcrumbItem className={itemClassName}>
+              {isLast || item.href === undefined ? (
+                <BreadcrumbPage className="font-semibold text-foreground">
+                  {item.title}
+                </BreadcrumbPage>
+              ) : (
+                <BreadcrumbLink
+                  className={itemClassName}
+                  render={<Link href={item.href} />}
+                >
+                  {item.title}
+                </BreadcrumbLink>
+              )}
+            </BreadcrumbItem>
+          </Fragment>
+        );
+      })}
+    </BreadcrumbList>
+  );
+}
+
+function SiteHeaderBreadcrumbFallback() {
+  return <SiteHeaderBreadcrumbContent breadcrumbs={[{ title: "Shifta" }]} />;
+}
+
+function SiteHeaderBreadcrumbsResolved() {
+  const pathname = usePathname();
+
+  return (
+    <SiteHeaderBreadcrumbContent breadcrumbs={buildBreadcrumbs(pathname)} />
+  );
+}
+
+export function SiteHeader() {
   return (
     <header className="sticky top-0 z-20 flex h-(--header-height) shrink-0 items-center gap-2 border-b border-border/70 bg-background/90 transition-[width,height] ease-linear backdrop-blur supports-[backdrop-filter]:bg-background/75 group-has-data-[collapsible=icon]/sidebar-wrapper:h-(--header-height)">
       <div className="flex w-full items-center gap-3 px-4 lg:px-6">
@@ -173,57 +241,9 @@ export function SiteHeader() {
           className="mx-1 h-6 bg-border/80 data-vertical:self-auto"
         />
         <Breadcrumb className="min-w-0 flex-1">
-          <BreadcrumbList className="inline-flex min-w-0 items-center rounded-full border border-border/70 bg-muted/40 px-3 py-1.5 text-sm">
-            {breadcrumbs.map((item, index) => {
-              const isLast = index === breadcrumbs.length - 1;
-              const isMiddleItem =
-                shouldCollapseMiddle &&
-                index > 0 &&
-                index < breadcrumbs.length - 1;
-              const key = `${item.title}-${index}`;
-              const separatorClassName = isMiddleItem
-                ? "hidden sm:inline-flex"
-                : shouldCollapseMiddle && isLast
-                  ? "hidden sm:inline-flex"
-                  : undefined;
-              const itemClassName = isMiddleItem
-                ? "hidden sm:inline-flex"
-                : undefined;
-
-              return (
-                <Fragment key={key}>
-                  {index > 0 ? (
-                    <BreadcrumbSeparator
-                      key={`${key}-separator`}
-                      className={separatorClassName}
-                    />
-                  ) : null}
-                  {shouldCollapseMiddle && isLast ? (
-                    <Fragment>
-                      <BreadcrumbSeparator className="sm:hidden" />
-                      <BreadcrumbItem className="sm:hidden">
-                        <BreadcrumbEllipsis />
-                      </BreadcrumbItem>
-                    </Fragment>
-                  ) : null}
-                  <BreadcrumbItem className={itemClassName}>
-                    {isLast || item.href === undefined ? (
-                      <BreadcrumbPage className="font-semibold text-foreground">
-                        {item.title}
-                      </BreadcrumbPage>
-                    ) : (
-                      <BreadcrumbLink
-                        className={itemClassName}
-                        render={<Link href={item.href} />}
-                      >
-                        {item.title}
-                      </BreadcrumbLink>
-                    )}
-                  </BreadcrumbItem>
-                </Fragment>
-              );
-            })}
-          </BreadcrumbList>
+          <Suspense fallback={<SiteHeaderBreadcrumbFallback />}>
+            <SiteHeaderBreadcrumbsResolved />
+          </Suspense>
         </Breadcrumb>
       </div>
     </header>

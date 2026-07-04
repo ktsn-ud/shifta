@@ -14,7 +14,13 @@ jest.mock("next/navigation", () => ({
 const appSidebarMock = jest.fn<
   ReactElement,
   [ComponentProps<typeof AppSidebar>]
->(() => <div data-testid="app-sidebar" />);
+>(({ user }) => (
+  <div
+    data-testid="app-sidebar"
+    data-user-email={user?.email ?? ""}
+    data-user-name={user?.name ?? ""}
+  />
+));
 
 jest.mock("@/components/app-sidebar", () => ({
   AppSidebar: (props: ComponentProps<typeof AppSidebar>) =>
@@ -71,6 +77,21 @@ describe("app/my/layout", () => {
       }),
     );
     expect(props.user).toBeUndefined();
+  });
+
+  it("shell に user 固有値を注入しない", () => {
+    render(Layout({ children: <div>child</div> }));
+
+    expect(screen.getByTestId("app-sidebar")).toHaveAttribute(
+      "data-user-email",
+      "",
+    );
+    expect(screen.getByTestId("app-sidebar")).toHaveAttribute(
+      "data-user-name",
+      "",
+    );
+    expect(screen.queryByText("user@example.com")).not.toBeInTheDocument();
+    expect(requireCurrentUserMock).not.toHaveBeenCalled();
   });
 });
 
