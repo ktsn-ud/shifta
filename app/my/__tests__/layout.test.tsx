@@ -6,7 +6,6 @@ import RequiresCalendarLayout from "@/app/my/(requires-calendar)/layout";
 import type { AppSidebar } from "@/components/app-sidebar";
 import { requireCurrentUser } from "@/lib/api/current-user";
 import { redirectToCalendarSetupIfNeeded } from "@/lib/api/calendar-setup-guard";
-import { auth } from "@/lib/auth";
 
 jest.mock("next/navigation", () => ({
   redirect: jest.fn(),
@@ -41,10 +40,6 @@ jest.mock("@/components/ui/tooltip", () => ({
   ),
 }));
 
-jest.mock("@/lib/auth", () => ({
-  auth: jest.fn(),
-}));
-
 jest.mock("@/lib/api/current-user", () => ({
   requireCurrentUser: jest.fn(),
 }));
@@ -54,24 +49,20 @@ jest.mock("@/lib/api/calendar-setup-guard", () => ({
 }));
 
 describe("app/my/layout", () => {
-  const authMock = auth as unknown as jest.Mock;
-  const redirectMock = jest.mocked(redirect);
+  const requireCurrentUserMock = jest.mocked(requireCurrentUser);
 
   beforeEach(() => {
     jest.clearAllMocks();
   });
 
-  it("server-side requireCurrentUser() なしで auth() 後に shell を描画する", async () => {
-    authMock.mockResolvedValue({
-      user: {
-        email: "user@example.com",
-      },
-    });
-
-    render(await Layout({ children: <div>child</div> }));
+  it("requireCurrentUser() や auth() に依存せず shell を描画する", () => {
+    render(Layout({ children: <div>child</div> }));
 
     expect(screen.getByTestId("app-sidebar")).toBeInTheDocument();
+    expect(screen.getByTestId("site-header")).toBeInTheDocument();
+    expect(screen.getByText("child")).toBeInTheDocument();
     expect(appSidebarMock).toHaveBeenCalledTimes(1);
+    expect(requireCurrentUserMock).not.toHaveBeenCalled();
 
     const [props] = appSidebarMock.mock.calls[0] ?? [];
     expect(props).toEqual(
@@ -81,17 +72,10 @@ describe("app/my/layout", () => {
     );
     expect(props.user).toBeUndefined();
   });
-
-  it("未認証なら /login へ redirect する", async () => {
-    authMock.mockResolvedValue(null);
-
-    await Layout({ children: <div>child</div> });
-
-    expect(redirectMock).toHaveBeenCalledWith("/login");
-  });
 });
 
 describe("app/my/(requires-calendar)/layout", () => {
+  const redirectMock = jest.mocked(redirect);
   const requireCurrentUserMock = jest.mocked(requireCurrentUser);
   const redirectToCalendarSetupIfNeededMock = jest.mocked(
     redirectToCalendarSetupIfNeeded,
@@ -129,5 +113,21 @@ describe("app/my/(requires-calendar)/layout", () => {
     expect(redirectToCalendarSetupIfNeededMock).toHaveBeenCalledWith({
       calendarId: null,
     });
+  });
+
+  it("未認証なら /login へ redirect する", async () => {
+    redirectMock.mockImplementation(() => {
+      throw new Error("NEXT_REDIRECT");
+    });
+    requireCurrentUserMock.mockResolvedValue({
+      response: {} as Response,
+    } as Awaited<ReturnType<typeof requireCurrentUser>>);
+
+    await expect(
+      RequiresCalendarLayout({ children: <div>child</div> }),
+    ).rejects.toThrow("NEXT_REDIRECT");
+
+    expect(redirectMock).toHaveBeenCalledWith("/login");
+    expect(redirectToCalendarSetupIfNeededMock).not.toHaveBeenCalled();
   });
 });

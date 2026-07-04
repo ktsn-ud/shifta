@@ -1,25 +1,18 @@
 import type { Metadata } from "next";
-import { redirect } from "next/navigation";
 import { TooltipProvider } from "@/components/ui/tooltip";
 import { SidebarInset, SidebarProvider } from "@/components/ui/sidebar";
 import { AppSidebar } from "@/components/app-sidebar";
 import { SiteHeader } from "@/components/site-header";
-import { auth } from "@/lib/auth";
 
 export const metadata: Metadata = {
   title: { absolute: "ホーム｜Shifta" },
 };
 
-export default async function Layout({
+export default function Layout({
   children,
 }: {
   children: React.ReactNode;
 }) {
-  const session = await auth();
-  if (!session) {
-    redirect("/login");
-  }
-
   return (
     <TooltipProvider>
       <SidebarProvider

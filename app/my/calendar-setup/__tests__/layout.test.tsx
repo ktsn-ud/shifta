@@ -51,4 +51,24 @@ describe("app/my/calendar-setup/layout", () => {
     expect(redirectMock).not.toHaveBeenCalled();
     expect(result).toBeTruthy();
   });
+
+  it("未認証なら /login へ redirect する", async () => {
+    redirectMock.mockImplementation(() => {
+      throw new Error("NEXT_REDIRECT");
+    });
+    requireCurrentUserMock.mockResolvedValue({
+      response: {} as Response,
+    } as Awaited<ReturnType<typeof requireCurrentUser>>);
+
+    const { default: CalendarSetupLayout } =
+      await import("@/app/my/calendar-setup/layout");
+
+    await expect(
+      CalendarSetupLayout({
+        children: <div>child</div>,
+      }),
+    ).rejects.toThrow("NEXT_REDIRECT");
+
+    expect(redirectMock).toHaveBeenCalledWith("/login");
+  });
 });
