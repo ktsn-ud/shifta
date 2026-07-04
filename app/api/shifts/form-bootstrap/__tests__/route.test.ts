@@ -63,6 +63,24 @@ function createRequest(url: string): Request {
   return { url } as Request;
 }
 
+function createUnauthorizedResponse(): Response {
+  const headers = new Map<string, string>([
+    ["cache-control", "private, no-store, no-cache, must-revalidate"],
+    ["content-type", "application/json"],
+  ]);
+
+  return {
+    status: 401,
+    headers: {
+      get: (name: string) => headers.get(name.toLowerCase()) ?? null,
+      set: (name: string, value: string) => {
+        headers.set(name.toLowerCase(), value);
+      },
+    },
+    json: async () => ({ error: "認証が必要です" }),
+  } as unknown as Response;
+}
+
 async function loadGet() {
   let routeModule: typeof import("@/app/api/shifts/form-bootstrap/route");
 
@@ -73,12 +91,38 @@ async function loadGet() {
   return routeModule!.GET;
 }
 
+function extractPerfLabels(
+  infoSpy: jest.SpiedFunction<typeof console.info>,
+  scope: string,
+): string[] {
+  return infoSpy.mock.calls.flatMap((call) => {
+    const payload = call[1];
+    if (!Array.isArray(payload)) {
+      return [];
+    }
+
+    return payload
+      .map((entry) =>
+        typeof entry === "object" &&
+        entry !== null &&
+        "label" in entry &&
+        typeof entry.label === "string"
+          ? entry.label
+          : null,
+      )
+      .filter(
+        (label): label is string => label?.startsWith(`${scope}:`) ?? false,
+      );
+  });
+}
+
 describe("GET /api/shifts/form-bootstrap", () => {
   const originalPerf = process.env.SHIFTA_PERF;
 
   beforeEach(() => {
     jest.resetAllMocks();
     delete process.env.SHIFTA_PERF;
+    connectionMock.mockResolvedValue(undefined);
   });
 
   afterAll(() => {
@@ -139,6 +183,9 @@ describe("GET /api/shifts/form-bootstrap", () => {
     };
 
     expect(response.status).toBe(200);
+    expect(response.headers.get("cache-control")).toBe(
+      "private, no-store, no-cache, must-revalidate",
+    );
     expect(payload.data.selectedWorkplace?.id).toBe("workplace-1");
     expect(payload.data.timetableSets).toEqual([]);
     expect(prismaPayrollRuleFindManyMock).toHaveBeenCalledWith({
@@ -148,6 +195,24 @@ describe("GET /api/shifts/form-bootstrap", () => {
       orderBy: [{ startDate: "desc" }],
     });
     expect(prismaTimetableSetFindManyMock).not.toHaveBeenCalled();
+  });
+
+  it("未認証時は current-user の response をそのまま返す", async () => {
+    const unauthorizedResponse = createUnauthorizedResponse();
+    requireCurrentUserMock.mockResolvedValue({
+      response: unauthorizedResponse,
+    } as Awaited<ReturnType<typeof requireCurrentUser>>);
+
+    const GET = await loadGet();
+    const response = await GET(
+      createRequest("http://localhost/api/shifts/form-bootstrap"),
+    );
+
+    expect(response).toBe(unauthorizedResponse);
+    expect(prismaWorkplaceFindManyMock).not.toHaveBeenCalled();
+    expect(prismaPayrollRuleFindManyMock).not.toHaveBeenCalled();
+    expect(prismaTimetableSetFindManyMock).not.toHaveBeenCalled();
+    expect(connectionMock).toHaveBeenCalledTimes(1);
   });
 
   it("CRAM_SCHOOL 勤務先では timetableSets を変換して返す", async () => {
@@ -270,10 +335,24 @@ describe("GET /api/shifts/form-bootstrap", () => {
 
       expect(response.status).toBe(200);
       expect(response.headers.get("server-timing")).toEqual(
+        expect.stringContaining("connection;dur="),
+      );
+      expect(response.headers.get("server-timing")).toEqual(
         expect.stringContaining("total;dur="),
       );
       expect(response.headers.get("server-timing")).toEqual(
         expect.stringContaining("auth;dur="),
+      );
+      expect(
+        extractPerfLabels(infoSpy, "GET /api/shifts/form-bootstrap"),
+      ).toEqual(
+        expect.arrayContaining([
+          "GET /api/shifts/form-bootstrap:connection",
+          "GET /api/shifts/form-bootstrap:auth",
+          "GET /api/shifts/form-bootstrap:workplaces",
+          "GET /api/shifts/form-bootstrap:payrollRules",
+          "GET /api/shifts/form-bootstrap:total",
+        ]),
       );
     } finally {
       infoSpy.mockRestore();

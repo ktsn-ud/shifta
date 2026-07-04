@@ -1,4 +1,5 @@
 import { connection } from "next/server";
+import { unstable_rethrow } from "next/navigation";
 import { z } from "zod";
 import { requireCurrentUser } from "@/lib/api/current-user";
 import {
@@ -126,7 +127,12 @@ async function findOwnedWorkplaceWithCounts(
 export async function GET(request: Request, context: Context) {
   const timing = createRequestTiming("GET /api/workplaces/:id");
   try {
-    await timing.measure("connection", () => connection());
+    timing.startStep("connection");
+    try {
+      await connection();
+    } finally {
+      timing.endStep("connection");
+    }
     const current = await timing.measure("auth", () => requireCurrentUser());
     if ("response" in current) {
       return timing.applyServerTiming(current.response);
@@ -159,6 +165,7 @@ export async function GET(request: Request, context: Context) {
       }),
     );
   } catch (error) {
+    unstable_rethrow(error);
     console.error("GET /api/workplaces/:id failed", error);
     return timing.applyServerTiming(
       jsonError("勤務先の取得に失敗しました", 500),
@@ -238,6 +245,7 @@ export async function PUT(request: Request, context: Context) {
       sync: buildSuccessSyncResponse(),
     });
   } catch (error) {
+    unstable_rethrow(error);
     console.error("PUT /api/workplaces/:id failed", error);
     return jsonError("勤務先の更新に失敗しました", 500);
   }
@@ -293,6 +301,7 @@ export async function DELETE(request: Request, context: Context) {
           : null,
     });
   } catch (error) {
+    unstable_rethrow(error);
     console.error("DELETE /api/workplaces/:id failed", error);
     return jsonError("勤務先の削除に失敗しました", 500);
   }

@@ -144,6 +144,46 @@ Browser (React UI) → Next.js Routes → Prisma ORM → Neon DB
 - `useMonthShifts` は `staleTime` を設定し、hydration 直後の即時 refetch によるローディング退行を抑制する。
 - Google Calendar 予定参照 API（`/api/calendar/events`）は専用の短期メモリキャッシュを持ち、期限切れ時は stale fallback と警告表示を許容する（書き込み同期の正は DB）。
 
+## 2.3 認証導線と初期表示最適化（2026-07 更新）
+
+2026-07 の初期表示改善では、`/my` 配下の認証境界を維持したまま、共通レイアウトの待機と不要な自動 prefetch を削減した。
+
+### 認証の正本
+
+- `/my` 系の認証保護は `proxy.ts` ではなく、Server Component の page/layout と Route Handler 側で行う。
+- `/login` は server-side で `auth()` を評価し、認証済みなら `/my` へ即時 redirect する。
+- `requireCurrentUser()` / `requireSessionAndCurrentUser()` を認証済みユーザー解決の共通入口とし、page/layout/API ごとに独自 lookup を増やさない。
+
+### current user 解決方針
+
+- `auth()` の session には `id`、`email`、`calendarId`、`googleTokenExpiresAt`、`createdAt`、`updatedAt` を含め、`requireCurrentUser()` はまず session.user から current user を復元する。
+- DB lookup は、session に必要項目が欠ける場合の fallback に限定する。
+- fallback lookup を使う場合も request-scope cache で再利用し、同一リクエスト内の重複照会を避ける。
+
+### `/my` シェルの責務
+
+- `app/my/layout.tsx` はシェル描画を担当し、認証待機を持たない。
+- 未認証 redirect と `calendarId` 未設定時の `/my/calendar-setup` 誘導は、`app/my/(requires-calendar)/layout.tsx` と各 page 側で行う。
+- サイドバーのユーザー表示は `/api/users/me` を client fetch し、シェル初期描画を user hydrate 待ちでブロックしない。
+
+### 画面初期表示の待ち時間削減
+
+- `/my` は `getMonthShifts`、`getUnconfirmedShiftCount`、`getPayrollSummaryAmountForUser` を server-side で並列取得し、翌月支給額も SSR 初期データとして注入する。
+- `getMonthShifts` と `getUnconfirmedShiftCount` は user 単位の Server Cache を使い、初回表示と関連画面で再利用する。
+- `/my/summary` は初期表示時点で `getPayrollSummaryForUser` の 1 回だけを正本とし、月次集計と年内 context の二重初期取得を行わない。
+
+### ナビゲーションと blocking-route 回帰防止
+
+- サイドバーの link は `prefetch={false}` を基本とし、hover/focus 時のみ意図的 prefetch を行う。
+- pathname 依存 UI（パンくず、アクティブ表示など）は Suspense 配下の client component に分離し、共通 layout 全体を blocking-route 化しない。
+- Route Handler で計測のために `connection()` を扱う場合は、`measure(() => connection())` で包まず、直接 `await connection()` を `startStep/endStep` で囲む。
+
+### 計測方針
+
+- `SHIFTA_PERF=1` 時は `request-timing` と `auth-timing` を有効化し、サーバーログと `Server-Timing` ヘッダーの両方に同一ラベルで出力する。
+- auth 計測は少なくとも `auth`、`sessionResolve`、`sessionResolve:dbRead`、`sessionResolve:assemble`、`userHydrate` を比較可能に保つ。
+- `/my`、`/my/summary`、`/api/payroll/summary*`、`/api/workplaces*`、`/api/shifts/form-bootstrap` は、回帰時に同じ計測ラベルで再比較できることを優先する。
+
 ---
 
 # 3. ドメインモデル
@@ -2348,6 +2388,10 @@ GET /api/payroll/preview-baseline?months=YYYY-MM,YYYY-MM
 # 更新履歴（git log -p 確認済み）
 
 | 日時 | 変更概要 | 具体的な変更内容 |
+| 2026-07-05 00:39:54 +0900 | blocking-route 回帰防止と認証シェル分離を反映 | 2.3 を追加し、`/my` 共通 layout は shell 専用、認証/Calendar setup ガードは子 layout・page 側で扱う責務分離、pathname 依存 UI の Suspense 分離、`connection()` 計測時の実装制約を追記。 |
+| 2026-07-04 01:42:45 +0000 | current user 解決経路とサイドバー取得方針を更新 | session.user から current user を復元する fast path、DB fallback の request-scope cache、`/api/users/me` を使った sidebar user の client fetch 方針を 2.3 に追記。 |
+| 2026-07-03 23:54:38 +0000 | `/my` と `/my/summary` の初期取得最適化を反映 | ダッシュボードの翌月支給額 SSR 初期データ化、月次シフト/未確定件数の Server Cache 化、給与サマリー初期取得の単一路線化を 2.3 に追記。 |
+| 2026-07-02 15:31:23 +0000 | 初期表示の Server-Timing 計測基盤を追加 | `SHIFTA_PERF=1` による request/auth timing 計測、`Server-Timing` ヘッダー、比較ラベル維持方針を 2.3 に追記。 |
 | 2026-06-28 00:00:00 +0000 | シフトフォーム bootstrap API を追加 | `/api/shifts/form-bootstrap` で勤務先一覧・選択勤務先詳細・給与ルール・時間割セットを一括取得し、CRAM_SCHOOL 以外では `timetableSets=[]` を返す仕様を 2.2 に追記。 |
 | 2026-06-18 00:00:00 +0000 | 実給与登録と実績優先表示仕様を追加 | `ActualPayroll` ドメイン、SCR_017 実給与編集、給与サマリー/給与詳細での実績優先表示、年合計の実績優先積み上げルールを16章として追加。 |
 | 2026-06-27 00:00:00 +0000 | Google Calendar 初期化導線を専用画面へ復元 | `/my/calendar-setup` を再導入し、`calendarId` 未設定時は `/my` 系画面の前に SCR_018 へ強制誘導する仕様を追記。 |

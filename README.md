@@ -92,6 +92,7 @@ API の一覧は [API_REFERENCE.md](docs/API_REFERENCE.md) を参照してくだ
 - 支給月基準集計の仕様: `DESIGN_SPECIFICATION.md` の 13章
 - 給与詳細画面の仕様: `DESIGN_SPECIFICATION.md` の 14章
 - 給与計算ロジック正本: [PAYROLL_CALCULATION_SPEC_V2_20260430.md](docs/PAYROLL_CALCULATION_SPEC_V2_20260430.md)
+- 初期表示・認証待ち改善まとめ: [2026-07-04_initial-display-and-auth-optimizations.md](docs/performance/2026-07-04_initial-display-and-auth-optimizations.md)
 - 開発ガイド: [DEVELOPMENT_GUIDE.md](docs/DEVELOPMENT_GUIDE.md)
 - 初期実装タスク（アーカイブ）: [legacy_initial-implementation-tasks.md](docs/archive/implementation/legacy_initial-implementation-tasks.md)
 

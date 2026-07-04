@@ -6,6 +6,8 @@ import { AppSidebar } from "@/components/app-sidebar";
 const usePathnameMock = jest.fn();
 const prefetchMock = jest.fn();
 const fetchMock = jest.fn();
+const mockSetOpenMobile = jest.fn();
+let mockIsMobile = false;
 
 jest.mock("next/navigation", () => ({
   usePathname: () => usePathnameMock(),
@@ -56,21 +58,28 @@ jest.mock("@/components/nav-user", () => ({
 
 jest.mock("@/components/ui/sidebar", () => {
   const React = jest.requireActual("react") as typeof import("react");
+  type RenderElementProps = Record<string, unknown> & {
+    isActive?: boolean;
+    tooltip?: ReactNode;
+  };
 
   function renderElement(
     render: ReactElement | undefined,
-    props: Record<string, unknown>,
+    { isActive, tooltip, ...domProps }: RenderElementProps,
     children: ReactNode,
   ) {
-    const domProps = { ...props };
-    delete domProps.isActive;
-    delete domProps.tooltip;
+    void tooltip;
+
+    const resolvedDomProps = {
+      ...domProps,
+      "data-active": String(Boolean(isActive)),
+    };
 
     if (React.isValidElement(render)) {
-      return React.cloneElement(render, domProps, children);
+      return React.cloneElement(render, resolvedDomProps, children);
     }
 
-    return <button {...domProps}>{children}</button>;
+    return <button {...resolvedDomProps}>{children}</button>;
   }
 
   return {
@@ -122,8 +131,8 @@ jest.mock("@/components/ui/sidebar", () => {
       <li>{children}</li>
     ),
     useSidebar: () => ({
-      isMobile: false,
-      setOpenMobile: jest.fn(),
+      isMobile: mockIsMobile,
+      setOpenMobile: mockSetOpenMobile,
     }),
   };
 });
@@ -155,6 +164,8 @@ describe("AppSidebar", () => {
     usePathnameMock.mockReturnValue("/my/summary");
     prefetchMock.mockReset();
     fetchMock.mockReset();
+    mockSetOpenMobile.mockReset();
+    mockIsMobile = false;
   });
 
   it("主要リンクを prefetch=false で生成する", () => {
@@ -205,12 +216,60 @@ describe("AppSidebar", () => {
       />,
     );
 
-    fireEvent.mouseEnter(screen.getByRole("link", { name: "給与管理" }));
+    const payrollLink = screen.getByRole("link", { name: "給与管理" });
+    fireEvent.mouseEnter(payrollLink);
+    fireEvent.focus(payrollLink);
 
-    expect(prefetchMock).toHaveBeenCalledWith("/my/summary");
+    expect(prefetchMock).toHaveBeenNthCalledWith(1, "/my/summary");
+    expect(prefetchMock).toHaveBeenNthCalledWith(2, "/my/summary");
   });
 
-  it("user prop がない場合は placeholder を出してから /api/users/me の結果を描画する", async () => {
+  it("モバイル open 時に header の Shifta リンククリックで sidebar を閉じる", () => {
+    mockIsMobile = true;
+
+    renderWithQueryClient(
+      <AppSidebar
+        user={{
+          name: "Test User",
+          email: "test@example.com",
+        }}
+      />,
+    );
+
+    fireEvent.click(screen.getByRole("link", { name: /Shifta/i }));
+
+    expect(mockSetOpenMobile).toHaveBeenCalledWith(false);
+  });
+
+  it("fallback 中は静的 nav を表示し active と prefetch handler を持たない", () => {
+    const pendingPromise = new Promise<never>(() => {});
+    usePathnameMock.mockImplementation(() => {
+      throw pendingPromise;
+    });
+
+    renderWithQueryClient(
+      <AppSidebar
+        user={{
+          name: "Test User",
+          email: "test@example.com",
+        }}
+      />,
+    );
+
+    const payrollLink = screen.getByRole("link", { name: "給与管理" });
+
+    expect(
+      screen.getByRole("link", { name: "ダッシュボード" }),
+    ).toHaveAttribute("data-active", "false");
+    expect(payrollLink).toHaveAttribute("data-active", "false");
+
+    fireEvent.mouseEnter(payrollLink);
+    fireEvent.focus(payrollLink);
+
+    expect(prefetchMock).not.toHaveBeenCalled();
+  });
+
+  it("footer の current user query 結果を表示する", async () => {
     fetchMock.mockResolvedValue({
       ok: true,
       json: async () => ({
@@ -260,6 +319,8 @@ describe("AppSidebar", () => {
 
     expect(screen.getByText("ユーザー")).toBeInTheDocument();
     expect(screen.getByText("user@example.com")).toBeInTheDocument();
-    expect(screen.getByText("ユーザー情報を更新できません")).toBeInTheDocument();
+    expect(
+      screen.getByText("ユーザー情報を更新できません"),
+    ).toBeInTheDocument();
   });
 });

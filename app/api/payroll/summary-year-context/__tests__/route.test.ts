@@ -51,6 +51,24 @@ function createRequest(url: string): Request {
   return { url } as Request;
 }
 
+function createUnauthorizedResponse(): Response {
+  const headers = new Map<string, string>([
+    ["cache-control", "private, no-store, no-cache, must-revalidate"],
+    ["content-type", "application/json"],
+  ]);
+
+  return {
+    status: 401,
+    headers: {
+      get: (name: string) => headers.get(name.toLowerCase()) ?? null,
+      set: (name: string, value: string) => {
+        headers.set(name.toLowerCase(), value);
+      },
+    },
+    json: async () => ({ error: "認証が必要です" }),
+  } as unknown as Response;
+}
+
 async function loadGet() {
   let routeModule: typeof import("@/app/api/payroll/summary-year-context/route");
 
@@ -92,6 +110,7 @@ describe("GET /api/payroll/summary-year-context", () => {
   beforeEach(() => {
     jest.resetAllMocks();
     delete process.env.SHIFTA_PERF;
+    connectionMock.mockResolvedValue(undefined);
   });
 
   afterAll(() => {
@@ -142,6 +161,9 @@ describe("GET /api/payroll/summary-year-context", () => {
     }
 
     expect(response.status).toBe(200);
+    expect(response.headers.get("cache-control")).toBe(
+      "private, no-store, no-cache, must-revalidate",
+    );
     await expect(response.json()).resolves.toEqual(
       expect.objectContaining({
         month: "2026-08",
@@ -154,6 +176,25 @@ describe("GET /api/payroll/summary-year-context", () => {
       "user-1",
       new Date("2026-08-01T00:00:00.000Z"),
     );
+    expect(connectionMock).toHaveBeenCalledTimes(1);
+  });
+
+  it("未認証時は current-user の response をそのまま返す", async () => {
+    const unauthorizedResponse = createUnauthorizedResponse();
+    requireCurrentUserMock.mockResolvedValue({
+      response: unauthorizedResponse,
+    } as Awaited<ReturnType<typeof requireCurrentUser>>);
+
+    const GET = await loadGet();
+    const response = await GET(
+      createRequest(
+        "http://localhost/api/payroll/summary-year-context?month=2026-08",
+      ),
+    );
+
+    expect(response).toBe(unauthorizedResponse);
+    expect(getPayrollSummaryYearContextForUserMock).not.toHaveBeenCalled();
+    expect(connectionMock).toHaveBeenCalledTimes(1);
   });
 
   it("SHIFTA_PERF=1 なら expected labels を含む Server-Timing を返す", async () => {
@@ -198,6 +239,9 @@ describe("GET /api/payroll/summary-year-context", () => {
       }
 
       expect(response.status).toBe(200);
+      expect(response.headers.get("server-timing")).toEqual(
+        expect.stringContaining("connection;dur="),
+      );
       expect(response.headers.get("server-timing")).toEqual(
         expect.stringContaining("requireCurrentUser;dur="),
       );

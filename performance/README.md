@@ -1,5 +1,10 @@
 # Performance Measurement
 
+関連ドキュメント:
+
+- 現行の実装まとめ: `docs/performance/2026-07-04_initial-display-and-auth-optimizations.md`
+- 旧方針メモ: `docs/archive/performance/2026-07-03_perf-improvement-next-steps.md`
+
 ローカルでサーバー計測を有効化する:
 
 ```bash
@@ -21,3 +26,8 @@ pnpm perf:collect -- --base-url http://localhost:3000 --path /api/workplaces --r
 3. `Timing` または Header の `Server-Timing` を確認する
 
 `Server-Timing` は `auth;dur=4.1, workplaces;dur=18.7, total;dur=24.0` のように見える。`dur` はミリ秒で、各 named step と合計時間を表す。
+
+実装時の注意:
+
+- `connection()` のような request lifecycle primitive は `measure(() => ...)` に包まず、直接 `await` した前後を `startStep` / `endStep` で計測する。
+- 退行比較しやすさを優先し、既存ラベル名は不用意に変更しない。

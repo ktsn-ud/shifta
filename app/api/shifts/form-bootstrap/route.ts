@@ -1,4 +1,5 @@
 import { connection } from "next/server";
+import { unstable_rethrow } from "next/navigation";
 import { z } from "zod";
 import { requireCurrentUser } from "@/lib/api/current-user";
 import { jsonNoStore } from "@/lib/api/cache-control";
@@ -55,7 +56,12 @@ function buildTimetableSetsResponse(
 export async function GET(request: Request) {
   const timing = createRequestTiming("GET /api/shifts/form-bootstrap");
   try {
-    await timing.measure("connection", () => connection());
+    timing.startStep("connection");
+    try {
+      await connection();
+    } finally {
+      timing.endStep("connection");
+    }
     const current = await timing.measure("auth", () => requireCurrentUser());
     if ("response" in current) {
       return timing.applyServerTiming(current.response);
@@ -176,6 +182,7 @@ export async function GET(request: Request) {
       ),
     );
   } catch (error) {
+    unstable_rethrow(error);
     console.error("GET /api/shifts/form-bootstrap failed", error);
     return timing.applyServerTiming(
       jsonError("シフト入力の参照データ取得に失敗しました", 500),

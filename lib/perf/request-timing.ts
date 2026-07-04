@@ -49,6 +49,10 @@ export function createRequestTiming(scope: string) {
     });
   }
 
+  // `measure` is for ordinary callbacks only.
+  // Await Next.js request lifecycle primitives such as `connection()` directly
+  // and bracket them with `startStep` / `endStep` so control-flow exceptions and
+  // auth failures are not obscured by an extra callback layer.
   async function measure<T>(
     label: string,
     callback: () => Promise<T> | T,

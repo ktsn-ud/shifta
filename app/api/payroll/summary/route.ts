@@ -1,4 +1,5 @@
 import { connection } from "next/server";
+import { unstable_rethrow } from "next/navigation";
 import { z } from "zod";
 import { requireCurrentUser } from "@/lib/api/current-user";
 import { parseDateOnly } from "@/lib/api/date-time";
@@ -19,7 +20,12 @@ export async function GET(request: Request) {
   const timing = createRequestTiming("GET /api/payroll/summary");
 
   try {
-    await timing.measure("connection", () => connection());
+    timing.startStep("connection");
+    try {
+      await connection();
+    } finally {
+      timing.endStep("connection");
+    }
     const current = await timing.measure("auth", () =>
       timing.measure("requireCurrentUser", () => requireCurrentUser()),
     );
@@ -57,6 +63,7 @@ export async function GET(request: Request) {
       }),
     );
   } catch (error) {
+    unstable_rethrow(error);
     console.error("GET /api/payroll/summary failed", error);
     return timing.applyServerTiming(
       jsonError("給与集計の取得に失敗しました", 500),
