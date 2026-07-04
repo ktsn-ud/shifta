@@ -1,5 +1,6 @@
 import { notFound, redirect } from "next/navigation";
 import { TimetableList } from "@/components/workplaces/timetable-list";
+import { redirectToCalendarSetupIfNeeded } from "@/lib/api/calendar-setup-guard";
 import { requireCurrentUser } from "@/lib/api/current-user";
 import {
   getCachedTimetableSetsForWorkplace,
@@ -21,6 +22,7 @@ export default async function TimetableListPage({
   if ("response" in current) {
     redirect("/login");
   }
+  await redirectToCalendarSetupIfNeeded(current.user);
 
   const resolvedParams = await params;
   const workplace = await getCachedWorkplaceDetail(

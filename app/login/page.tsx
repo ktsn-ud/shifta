@@ -1,6 +1,8 @@
 import type { Metadata } from "next";
+import { redirect } from "next/navigation";
 import { Suspense } from "react";
 import { LogIn } from "@/components/auth/login-button";
+import { auth } from "@/lib/auth";
 import { GOOGLE_TOKEN_EXPIRED_REASON } from "@/lib/google-calendar/constants";
 import {
   Card,
@@ -31,7 +33,13 @@ export default function Page({ searchParams }: LoginPageProps) {
   );
 }
 
-async function LoginContent({ searchParams }: LoginPageProps) {
+export async function LoginContent({ searchParams }: LoginPageProps) {
+  const session = await auth();
+
+  if (session) {
+    redirect("/my");
+  }
+
   const resolvedSearchParams = searchParams ? await searchParams : undefined;
   const reason = resolvedSearchParams?.reason;
   const isTokenExpiredReason = reason === GOOGLE_TOKEN_EXPIRED_REASON;

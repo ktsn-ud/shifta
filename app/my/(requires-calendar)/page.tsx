@@ -4,17 +4,21 @@ import {
   DashboardPageClient,
   DashboardPageLoadingSkeleton,
 } from "@/components/dashboard/dashboard-page-client";
+import { redirectToCalendarSetupIfNeeded } from "@/lib/api/calendar-setup-guard";
 import { requireCurrentUser } from "@/lib/api/current-user";
+import { parseDateOnly } from "@/lib/api/date-time";
 import {
   addMonths,
   endOfMonth,
   fromMonthInputValue,
   startOfMonth,
+  toMonthInputValue,
   toDateOnlyString,
 } from "@/lib/calendar/date";
+import { createRequestTiming } from "@/lib/perf/request-timing";
 import { getPayrollSummaryAmountForUser } from "@/lib/payroll/summary";
 import { getMonthShifts } from "@/lib/shifts/month-shifts";
-import { prisma } from "@/lib/prisma";
+import { getUnconfirmedShiftCount } from "@/lib/shifts/unconfirmed-count";
 
 function startOfUtcDay(value: Date): Date {
   return new Date(
@@ -35,57 +39,62 @@ function resolveInitialMonth(monthParam: string | string[] | undefined): Date {
   return startOfMonth(parsedMonth ?? new Date());
 }
 
-async function getUnconfirmedShiftCount(userId: string): Promise<number> {
-  return prisma.shift.count({
-    where: {
-      workplace: {
-        userId,
-      },
-      date: {
-        lte: startOfUtcDay(new Date()),
-      },
-      isConfirmed: false,
-    },
-  });
-}
-
 async function DashboardPageContent({ month }: { month: Date }) {
-  const current = await requireCurrentUser();
-  if ("response" in current) {
-    redirect("/login");
+  const timing = createRequestTiming("GET /my");
+  try {
+    const current = await timing.measure("requireCurrentUser", () =>
+      requireCurrentUser(),
+    );
+    if ("response" in current) {
+      redirect("/login");
+    }
+    await redirectToCalendarSetupIfNeeded(current.user);
+
+    const startDate = toDateOnlyString(startOfMonth(month));
+    const endDate = toDateOnlyString(endOfMonth(month));
+    const nextPaymentMonth = toMonthInputValue(
+      addMonths(startOfMonth(month), 1),
+    );
+    const [
+      initialMonthShifts,
+      initialUnconfirmedShiftCount,
+      initialNextPaymentAmount,
+    ] = await Promise.all([
+      timing.measure("getMonthShifts", () =>
+        getMonthShifts({
+          userId: current.user.id,
+          startDate,
+          endDate,
+          includeEstimate: true,
+        }),
+      ),
+      timing.measure("getUnconfirmedShiftCount", () =>
+        getUnconfirmedShiftCount(current.user.id),
+      ),
+      timing.measure("getPayrollSummaryAmountForUser", () =>
+        getPayrollSummaryAmountForUser(
+          current.user.id,
+          parseDateOnly(`${nextPaymentMonth}-01`),
+        ),
+      ),
+    ]);
+    const todayDate = toDateOnlyString(startOfUtcDay(new Date()));
+
+    return (
+      <DashboardPageClient
+        key={startDate}
+        currentUserId={current.user.id}
+        initialMonthShifts={initialMonthShifts}
+        initialMonthStartDate={startDate}
+        initialMonthEndDate={endDate}
+        initialUnconfirmedShiftCount={initialUnconfirmedShiftCount}
+        initialNextPaymentAmount={initialNextPaymentAmount}
+        todayDate={todayDate}
+      />
+    );
+  } finally {
+    timing.flushLog();
   }
-
-  const startDate = toDateOnlyString(startOfMonth(month));
-  const endDate = toDateOnlyString(endOfMonth(month));
-  const nextPaymentMonth = addMonths(month, 1);
-  const [
-    initialMonthShifts,
-    initialUnconfirmedShiftCount,
-    initialNextPaymentAmount,
-  ] = await Promise.all([
-    getMonthShifts({
-      userId: current.user.id,
-      startDate,
-      endDate,
-      includeEstimate: true,
-    }),
-    getUnconfirmedShiftCount(current.user.id),
-    getPayrollSummaryAmountForUser(current.user.id, nextPaymentMonth),
-  ]);
-  const todayDate = toDateOnlyString(startOfUtcDay(new Date()));
-
-  return (
-    <DashboardPageClient
-      key={startDate}
-      currentUserId={current.user.id}
-      initialMonthShifts={initialMonthShifts}
-      initialMonthStartDate={startDate}
-      initialMonthEndDate={endDate}
-      initialUnconfirmedShiftCount={initialUnconfirmedShiftCount}
-      initialNextPaymentAmount={initialNextPaymentAmount}
-      todayDate={todayDate}
-    />
-  );
 }
 
 type DashboardPageSearchParams = {
@@ -97,9 +106,7 @@ type DashboardPageProps = {
 };
 
 export default async function Page({ searchParams }: DashboardPageProps) {
-  const resolvedSearchParams = searchParams
-    ? await searchParams
-    : ({} as DashboardPageSearchParams);
+  const resolvedSearchParams = searchParams ? await searchParams : {};
   const month = resolveInitialMonth(resolvedSearchParams.month);
 
   return (

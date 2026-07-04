@@ -7,6 +7,7 @@ import { prisma } from "@/lib/prisma";
 import { jsonNoStore } from "@/lib/api/cache-control";
 import { buildSuccessSyncResponse } from "@/lib/google-calendar/sync-response";
 import { revalidateWorkplaceDomainTags } from "@/lib/cache/revalidate";
+import { createRequestTiming } from "@/lib/perf/request-timing";
 
 const colorRegex = /^#[0-9A-Fa-f]{6}$/;
 const PAYROLL_DAY_MIN = 1;
@@ -234,55 +235,64 @@ function shouldIncludeCounts(request: Request): boolean {
 }
 
 export async function GET(request: Request) {
-  await connection();
+  const timing = createRequestTiming("GET /api/workplaces");
   try {
-    const current = await requireCurrentUser();
+    await timing.measure("connection", () => connection());
+    const current = await timing.measure("auth", () => requireCurrentUser());
     if ("response" in current) {
-      return current.response;
+      return timing.applyServerTiming(current.response);
     }
 
     const includeCounts = shouldIncludeCounts(request);
     if (includeCounts === false) {
-      const workplaces = await prisma.workplace.findMany({
-        where: { userId: current.user.id },
-        select: {
-          id: true,
-          name: true,
-          color: true,
-          type: true,
-        },
-        orderBy: { createdAt: "desc" },
-      });
+      const workplaces = await timing.measure("workplaces", () =>
+        prisma.workplace.findMany({
+          where: { userId: current.user.id },
+          select: {
+            id: true,
+            name: true,
+            color: true,
+            type: true,
+          },
+          orderBy: { createdAt: "desc" },
+        }),
+      );
 
-      return jsonNoStore({ data: workplaces });
+      return timing.applyServerTiming(jsonNoStore({ data: workplaces }));
     }
 
-    const workplaces = await prisma.workplace.findMany({
-      where: { userId: current.user.id },
-      include: {
-        _count: {
-          select: {
-            shifts: true,
-            payrollRules: true,
-            timetableSets: true,
+    const workplaces = await timing.measure("workplacesWithCounts", () =>
+      prisma.workplace.findMany({
+        where: { userId: current.user.id },
+        include: {
+          _count: {
+            select: {
+              shifts: true,
+              payrollRules: true,
+              timetableSets: true,
+            },
           },
         },
-      },
-      orderBy: { createdAt: "desc" },
-    });
+        orderBy: { createdAt: "desc" },
+      }),
+    );
 
-    return jsonNoStore({
-      data: workplaces.map((workplace) => ({
-        ...workplace,
-        _count: {
-          shifts: workplace._count.shifts,
-          payrollRules: workplace._count.payrollRules,
-          timetableSets: workplace._count.timetableSets,
-        },
-      })),
-    });
+    return timing.applyServerTiming(
+      jsonNoStore({
+        data: workplaces.map((workplace) => ({
+          ...workplace,
+          _count: {
+            shifts: workplace._count.shifts,
+            payrollRules: workplace._count.payrollRules,
+            timetableSets: workplace._count.timetableSets,
+          },
+        })),
+      }),
+    );
   } catch (error) {
     console.error("GET /api/workplaces failed", error);
-    return jsonError("勤務先一覧の取得に失敗しました", 500);
+    return timing.applyServerTiming(
+      jsonError("勤務先一覧の取得に失敗しました", 500),
+    );
   }
 }
