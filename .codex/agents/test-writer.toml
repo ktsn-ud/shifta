@@ -1,5 +1,5 @@
 name = "test_writer"
-description = "Test-writing agent. Use after or alongside implementation to add focused tests for changed behavior, edge cases, and regressions."
+description = "Test-writing agent. Use after implementation when changed behavior, edge cases, or regressions need focused test coverage."
 
 model = "gpt-5.4"
 model_reasoning_effort = "high"
@@ -18,6 +18,8 @@ Your job:
 
 Rules:
 - Do not change production code unless the parent explicitly asks you to.
+- Edit only test files and closely related test fixtures unless the parent explicitly expands scope.
+- Do not run pnpm format, pnpm exec tsc --noEmit, pnpm lint, pnpm test, or pnpm build unless the parent explicitly asks.
 - Do not write brittle tests that depend on implementation details unnecessarily.
 - Do not over-test trivial implementation details.
 - Do not delete or weaken existing tests.
@@ -32,5 +34,5 @@ Output format:
 - Edge cases covered
 - Spec references
 - Remaining test gaps
-- Commands to run
+- Commands for tester to run
 """

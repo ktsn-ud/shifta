@@ -4,7 +4,7 @@
 
 このリポジトリで作業するエージェントと人間が、同じ前提・制約・品質基準で開発できるようにする。
 
-詳細な実行責務は `.codex/agents/*.toml` に分けて管理する。このファイルには、全員が最初に共有すべき前提と運用ルールだけを置く。
+詳細な実行責務は `.codex/agents/*.toml` に分けて管理する。このファイルには、全員が最初に共有すべき前提と、司令塔を含む運用ルールだけを置く。
 
 ## プロジェクト前提
 
@@ -24,19 +24,43 @@
 - Prettier
 - Prisma
 
+## オーケストレーション原則
+
+- `Main` は司令塔であり、目的整理、Plan mode、委譲判断、結果統合、最終報告を担当する。
+- 非自明なタスクでは、`Main` が調査・実装・テスト追加・検証・レビューを自前で完結させない。
+- `Main` は必要なサブエージェントを選び、各役割の責務を混ぜない。
+- サブエージェントは単機能で動かし、担当外の作業は次工程へ handoff する。
+- 速度とコストは、まず不要なサブエージェント起動を減らすことで改善する。モデル変更や役割統合は、責務境界を崩さない範囲でのみ検討する。
+
 ## 標準フロー
 
-非自明な実装では、Plan mode で目的・関連ファイル・現在の挙動・実装方針・テスト方針・リスクを整理し、必要に応じて以下のサブエージェントを使う。
+非自明な実装では、Plan mode で目的・関連ファイル・現在の挙動・実装方針・テスト方針・リスクを整理し、原則として次の順で進める。
 
-- `code_researcher`: 実装前の既存コード調査。
-- `implementer`: Plan 確定後の最小差分実装。
-- `test_writer`: 振る舞い変更、バグ修正、境界値が重要な変更のテスト追加・更新。
-- `tester`: format / typecheck / lint / test などの検証。
-- `reviewer`: 実装後 diff の correctness / regression / maintainability レビュー。
-- `security_reviewer`: 認証・認可・API・DB・Google Calendar 連携・Cookie・Token・API key・環境変数・個人情報・勤務先情報・給与情報が絡む変更のセキュリティレビュー。
-- `docs_writer`: README、設計仕様、セットアップ手順などのドキュメント更新。
+1. `code_researcher`（`.codex/agents/code-researcher.toml`）で既存コードと仕様の調査
+2. `Main` で計画確定
+3. `implementer`（`.codex/agents/implementer.toml`）で最小差分実装
+4. `test_writer`（`.codex/agents/test-writer.toml`）で必要なテスト追加・更新
+5. `tester`（`.codex/agents/tester.toml`）で `format` / `typecheck` / `lint` / `test` などの検証
+6. `reviewer`（`.codex/agents/reviewer.toml`）で correctness / regression / maintainability レビュー
+7. 必要な場合のみ `security_reviewer`（`.codex/agents/security-reviewer.toml`）と `docs_writer`（`.codex/agents/docs-writer.toml`）
 
-軽微な typo、コメント修正、README の軽微な文言修正、明らかな import 整理、振る舞いを変えない小さな UI 文言修正では、Plan mode やサブエージェントを省略してよい。迷った場合は、実装前に `code_researcher`、実装後に `tester` と `reviewer` を使う。
+### サブエージェント起動基準
+
+| Agent               | 使う場面                                                                                                              | やらないこと                                                   |
+| ------------------- | --------------------------------------------------------------------------------------------------------------------- | -------------------------------------------------------------- |
+| `code_researcher`   | 非自明な既存挙動確認、関連ファイル特定、類似実装調査                                                                  | 実装、検証、レビュー確定                                       |
+| `implementer`       | Plan 確定後の本実装                                                                                                   | テスト実行、Lint/型チェック実行、レビュー、docs 判断の抱え込み |
+| `test_writer`       | 振る舞い変更、バグ修正、境界値、回帰防止が必要                                                                        | 本番コードの修正、検証コマンド実行                             |
+| `tester`            | 実装後の formatter / typecheck / lint / test / build 実行                                                             | 検証失敗の修正、設計変更、レビュー                             |
+| `reviewer`          | 実装と検証結果が揃った後の差分レビュー                                                                                | 実装、検証代行、進行管理                                       |
+| `security_reviewer` | 認証・認可・API・DB・Google Calendar 連携・Cookie・Token・API key・環境変数・個人情報・勤務先情報・給与情報が絡む変更 | 一般レビューの重複、実装                                       |
+| `docs_writer`       | README、設計仕様、セットアップ手順などの更新が必要                                                                    | アプリコード修正、不要な docs 作成                             |
+
+### 省略可能なケース
+
+- 軽微な typo、コメント修正、README の軽微な文言修正、明らかな import 整理、振る舞いを変えない小さな UI 文言修正では、Plan mode や一部サブエージェントを省略してよい。
+- 省略できるのは軽微ケースだけであり、非自明なタスクで `Main` が自前完結する理由にはしない。
+- 迷った場合は、実装前に `code_researcher`、実装後に `tester` と `reviewer` を使う。
 
 ## 作業ルール
 
@@ -78,7 +102,7 @@
 - Format: `pnpm format`
 - Test: `pnpm test`
 
-コードベースに触れる実装では、原則として `pnpm format`、`pnpm exec tsc --noEmit`、`pnpm lint`、`pnpm test` を実行する。ドキュメントのみの変更では型チェック・Lint・テストを省略してよいが、可能なら `pnpm format` を実行する。
+コードベースに触れる実装では、原則として `tester` が `pnpm format`、`pnpm exec tsc --noEmit`、`pnpm lint`、`pnpm test` を実行する。ドキュメントのみの変更では型チェック・Lint・テストを省略してよいが、可能なら `pnpm format` を実行する。
 
 ## Git 運用
 
