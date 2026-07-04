@@ -2,6 +2,7 @@ import { Suspense, type ReactElement } from "react";
 import Page from "@/app/my/(requires-calendar)/page";
 import { DashboardPageClient } from "@/components/dashboard/dashboard-page-client";
 import { requireCurrentUser } from "@/lib/api/current-user";
+import { redirectToCalendarSetupIfNeeded } from "@/lib/api/calendar-setup-guard";
 import { getPayrollSummaryAmountForUser } from "@/lib/payroll/summary";
 import { getMonthShifts } from "@/lib/shifts/month-shifts";
 import { getUnconfirmedShiftCount } from "@/lib/shifts/unconfirmed-count";
@@ -12,6 +13,10 @@ jest.mock("next/navigation", () => ({
 
 jest.mock("@/lib/api/current-user", () => ({
   requireCurrentUser: jest.fn(),
+}));
+
+jest.mock("@/lib/api/calendar-setup-guard", () => ({
+  redirectToCalendarSetupIfNeeded: jest.fn(),
 }));
 
 jest.mock("@/lib/shifts/month-shifts", () => ({
@@ -42,6 +47,9 @@ type DashboardPageContentElement = ReactElement<
 
 describe("app/my/(requires-calendar)/page", () => {
   const requireCurrentUserMock = jest.mocked(requireCurrentUser);
+  const redirectToCalendarSetupIfNeededMock = jest.mocked(
+    redirectToCalendarSetupIfNeeded,
+  );
   const getMonthShiftsMock = jest.mocked(getMonthShifts);
   const getPayrollSummaryAmountForUserMock = jest.mocked(
     getPayrollSummaryAmountForUser,
@@ -61,6 +69,7 @@ describe("app/my/(requires-calendar)/page", () => {
     requireCurrentUserMock.mockResolvedValue({
       user: {
         id: "user-1",
+        calendarId: "calendar-1",
       },
     } as Awaited<ReturnType<typeof requireCurrentUser>>);
     getMonthShiftsMock.mockResolvedValue(
@@ -86,6 +95,10 @@ describe("app/my/(requires-calendar)/page", () => {
       startDate: "2026-07-01",
       endDate: "2026-07-31",
       includeEstimate: true,
+    });
+    expect(redirectToCalendarSetupIfNeededMock).toHaveBeenCalledWith({
+      id: "user-1",
+      calendarId: "calendar-1",
     });
     expect(getUnconfirmedShiftCountMock).toHaveBeenCalledWith("user-1");
     expect(getPayrollSummaryAmountForUserMock).toHaveBeenCalledWith(
@@ -113,6 +126,7 @@ describe("app/my/(requires-calendar)/page", () => {
     requireCurrentUserMock.mockResolvedValue({
       user: {
         id: "user-1",
+        calendarId: "calendar-1",
       },
     } as Awaited<ReturnType<typeof requireCurrentUser>>);
     getMonthShiftsMock.mockResolvedValue(
@@ -137,5 +151,35 @@ describe("app/my/(requires-calendar)/page", () => {
       "user-1",
       new Date("2027-01-01T00:00:00.000Z"),
     );
+  });
+
+  it("calendarId が未設定なら calendar setup guard を通す", async () => {
+    requireCurrentUserMock.mockResolvedValue({
+      user: {
+        id: "user-1",
+        calendarId: null,
+      },
+    } as Awaited<ReturnType<typeof requireCurrentUser>>);
+    redirectToCalendarSetupIfNeededMock.mockImplementation(async () => {});
+    getMonthShiftsMock.mockResolvedValue(
+      [] as Awaited<ReturnType<typeof getMonthShifts>>,
+    );
+    getUnconfirmedShiftCountMock.mockResolvedValue(0);
+    getPayrollSummaryAmountForUserMock.mockResolvedValue({
+      month: "2026-08",
+      totalWage: 0,
+    });
+
+    const result = await Page({
+      searchParams: Promise.resolve({}),
+    });
+
+    const contentElement = result.props.children as DashboardPageContentElement;
+    await contentElement.type(contentElement.props);
+
+    expect(redirectToCalendarSetupIfNeededMock).toHaveBeenCalledWith({
+      id: "user-1",
+      calendarId: null,
+    });
   });
 });

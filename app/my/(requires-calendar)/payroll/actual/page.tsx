@@ -4,6 +4,7 @@ import {
   ActualPayrollPageClient,
   ActualPayrollPageLoadingSkeleton,
 } from "@/components/payroll/actual-payroll-page-client";
+import { redirectToCalendarSetupIfNeeded } from "@/lib/api/calendar-setup-guard";
 import { requireCurrentUser } from "@/lib/api/current-user";
 import { parseDateOnly } from "@/lib/api/date-time";
 import {
@@ -47,6 +48,7 @@ async function ActualPayrollPageContent({ month }: { month: string }) {
   if ("response" in current) {
     redirect("/login");
   }
+  await redirectToCalendarSetupIfNeeded(current.user);
 
   const initialData = await getActualPayrollEditorForUser(
     current.user.id,

@@ -51,6 +51,13 @@ type CapturedNextAuthConfig = {
       | ((...args: readonly unknown[]) => SessionAndUser | null);
   };
   callbacks: {
+    authorized: (params: {
+      auth: SessionPayload | null;
+      request: {
+        nextUrl: { pathname: string };
+        url: string;
+      };
+    }) => Promise<Response | boolean> | Response | boolean;
     session: (params: {
       session: SessionPayload;
       user: SessionUser;
@@ -168,6 +175,13 @@ function extractPerfEntries(infoSpy: jest.SpyInstance): PerfEntry[] {
 
     return payload.filter(isPerfEntry);
   });
+}
+
+function createAuthorizedRequest(pathname: string) {
+  return {
+    nextUrl: { pathname },
+    url: `https://example.com${pathname}`,
+  };
 }
 
 async function loadAuthModule() {
@@ -406,5 +420,39 @@ describe("lib/auth", () => {
     } finally {
       infoSpy.mockRestore();
     }
+  });
+
+  it("未認証は /login を許可し、それ以外は /login へ redirect する既存挙動を維持する", async () => {
+    await loadAuthModule();
+
+    await expect(
+      mockCapturedConfig?.callbacks.authorized({
+        auth: null,
+        request: createAuthorizedRequest("/login"),
+      }),
+    ).resolves.toBe(true);
+
+    const response = (await mockCapturedConfig?.callbacks.authorized({
+      auth: null,
+      request: createAuthorizedRequest("/my"),
+    })) as Response;
+
+    expect(response.headers.get("location")).toBe("https://example.com/login");
+  });
+
+  it("認証済み /login は /my へ redirect する既存挙動を維持する", async () => {
+    await loadAuthModule();
+
+    const response = (await mockCapturedConfig?.callbacks.authorized({
+      auth: {
+        user: {
+          email: "user@example.com",
+          calendarId: "calendar-1",
+        },
+      },
+      request: createAuthorizedRequest("/login"),
+    })) as Response;
+
+    expect(response.headers.get("location")).toBe("https://example.com/my");
   });
 });

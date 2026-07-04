@@ -39,6 +39,10 @@ type AuthState = {
   sessionUser: SessionCurrentUser | null;
 };
 
+type SessionAndCurrentUserResult =
+  | { session: Session; user: SessionCurrentUser | User }
+  | { response: ReturnType<typeof jsonError> };
+
 const getCachedAuthState = cache(async (): Promise<AuthState> => {
   const timing = createRequestTiming("current-user:getAuthState");
 
@@ -133,6 +137,34 @@ const getCachedUserByEmail = cache(async (email: string) =>
   prisma.user.findUnique({ where: { email } }),
 );
 
+const getCachedSessionAndCurrentUserResult = cache(
+  async (): Promise<SessionAndCurrentUserResult> => {
+    const authState = await getCachedAuthState();
+    const { email, session, sessionUser } = authState;
+
+    if (!email || !session) {
+      return { response: jsonError("認証が必要です", 401) };
+    }
+
+    if (sessionUser) {
+      return { session, user: sessionUser };
+    }
+
+    const user = await getCachedUserByEmail(email);
+
+    if (!user) {
+      return {
+        response: jsonError(
+          "ユーザーが見つかりません。POST /api/users で作成してください",
+          404,
+        ),
+      };
+    }
+
+    return { session, user };
+  },
+);
+
 export async function getSessionEmail(): Promise<string | null> {
   return getCachedSessionEmail();
 }
@@ -141,40 +173,30 @@ export async function requireCurrentUser() {
   const timing = createRequestTiming("current-user:requireCurrentUser");
 
   try {
-    const authState = await timing.measure("getCachedAuthState", () =>
-      getCachedAuthState(),
-    );
-    const email = await timing.measure(
-      "extractSessionEmail",
-      () => authState.email,
+    const result = await timing.measure(
+      "getCachedSessionAndCurrentUserResult",
+      () => getCachedSessionAndCurrentUserResult(),
     );
 
-    if (!email) {
-      return { response: jsonError("認証が必要です", 401) } as const;
+    if ("response" in result) {
+      return result;
     }
 
-    const sessionUser = await timing.measure(
-      "extractSessionUser",
-      () => authState.sessionUser,
+    return { user: result.user } as const;
+  } finally {
+    timing.flushLog();
+  }
+}
+
+export async function requireSessionAndCurrentUser() {
+  const timing = createRequestTiming(
+    "current-user:requireSessionAndCurrentUser",
+  );
+
+  try {
+    return await timing.measure("getCachedSessionAndCurrentUserResult", () =>
+      getCachedSessionAndCurrentUserResult(),
     );
-    if (sessionUser) {
-      return { user: sessionUser } as const;
-    }
-
-    const user = await timing.measure("findUserByEmailFallback", () =>
-      getCachedUserByEmail(email),
-    );
-
-    if (!user) {
-      return {
-        response: jsonError(
-          "ユーザーが見つかりません。POST /api/users で作成してください",
-          404,
-        ),
-      } as const;
-    }
-
-    return { user } as const;
   } finally {
     timing.flushLog();
   }

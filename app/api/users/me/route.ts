@@ -24,7 +24,13 @@ export async function GET() {
       return result.response;
     }
 
-    return jsonNoStore({ data: result.user });
+    return jsonNoStore({
+      data: {
+        name: result.user.name ?? null,
+        email: result.user.email,
+        image: result.user.image ?? null,
+      },
+    });
   } catch (error) {
     console.error("GET /api/users/me failed", error);
     return jsonError("ユーザー取得に失敗しました", 500);

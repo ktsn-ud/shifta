@@ -4,6 +4,7 @@ import {
   SummaryPageClient,
   SummaryPageLoadingSkeleton,
 } from "@/components/summary/summary-page-client";
+import { redirectToCalendarSetupIfNeeded } from "@/lib/api/calendar-setup-guard";
 import { requireCurrentUser } from "@/lib/api/current-user";
 import { parseDateOnly } from "@/lib/api/date-time";
 import { startOfMonth, toMonthInputValue } from "@/lib/calendar/date";
@@ -23,6 +24,7 @@ async function SummaryPageContent() {
     if ("response" in current) {
       redirect("/login");
     }
+    await redirectToCalendarSetupIfNeeded(current.user);
 
     const initialMonth = toMonthInputValue(startOfMonth(new Date()));
 

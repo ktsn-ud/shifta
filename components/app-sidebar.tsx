@@ -2,8 +2,8 @@
 
 import Link from "next/link";
 import { usePathname, useRouter } from "next/navigation";
-
 import { NavUser } from "@/components/nav-user";
+import { useCurrentUserQuery } from "@/lib/query/queries/user";
 import {
   Sidebar,
   SidebarContent,
@@ -168,11 +168,53 @@ function shouldShowTopLevelSubLabel(pathname: string, item: NavItem): boolean {
   );
 }
 
+function SidebarFooterContent({ user }: { user: SidebarUser }) {
+  return <NavUser user={user} />;
+}
+
+function SidebarFooterCurrentUser() {
+  const { data: currentUser, error } = useCurrentUserQuery();
+  const shouldShowPlaceholder = currentUser === undefined && !error;
+  const fallbackUser = {
+    name: currentUser?.name ?? "ユーザー",
+    email: currentUser?.email ?? "user@example.com",
+    avatar: currentUser?.image ?? null,
+  };
+
+  if (shouldShowPlaceholder) {
+    return (
+      <div
+        aria-label="ユーザー情報を読み込み中"
+        className="flex h-12 items-center gap-3 rounded-xl border border-sidebar-border/70 px-2.5"
+      >
+        <div className="size-8 rounded-md bg-sidebar-accent/50" />
+        <div className="grid flex-1 gap-1">
+          <div className="h-3 w-20 rounded bg-sidebar-accent/50" />
+          <div className="h-2.5 w-28 rounded bg-sidebar-accent/35" />
+        </div>
+      </div>
+    );
+  }
+
+  if (error) {
+    return (
+      <div className="space-y-2">
+        <SidebarFooterContent user={fallbackUser} />
+        <p className="px-2.5 text-xs text-sidebar-foreground/70">
+          ユーザー情報を更新できません
+        </p>
+      </div>
+    );
+  }
+
+  return <SidebarFooterContent user={fallbackUser} />;
+}
+
 export function AppSidebar({
   user,
   ...props
 }: React.ComponentProps<typeof Sidebar> & {
-  user: SidebarUser;
+  user?: SidebarUser;
 }) {
   const pathname = usePathname();
   const router = useRouter();
@@ -264,7 +306,11 @@ export function AppSidebar({
       </SidebarContent>
 
       <SidebarFooter className="border-t border-sidebar-border/70 pt-3">
-        <NavUser user={user} />
+        {user ? (
+          <SidebarFooterContent user={user} />
+        ) : (
+          <SidebarFooterCurrentUser />
+        )}
       </SidebarFooter>
     </Sidebar>
   );

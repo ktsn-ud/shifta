@@ -82,6 +82,51 @@ async function loadCurrentUserModule() {
   return currentUserModule!;
 }
 
+const combinedHelperNames = [
+  "requireSessionAndCurrentUser",
+  "requireSessionAndUser",
+  "requireCurrentSessionUser",
+  "requireCurrentSessionAndUser",
+  "requireAuthenticatedSessionAndUser",
+] as const;
+
+type CombinedCurrentUserResult = {
+  session: {
+    user?: {
+      email?: string | null;
+    };
+  };
+  user: ReturnType<typeof createUserRecord>;
+};
+
+function getCombinedCurrentUserHelper(
+  currentUserModule: typeof import("@/lib/api/current-user"),
+) {
+  const combinedHelper = combinedHelperNames
+    .map((name) => ({
+      name,
+      candidate: (currentUserModule as Record<string, unknown>)[
+        name
+      ] as unknown,
+    }))
+    .find(
+      (
+        entry,
+      ): entry is {
+        name: (typeof combinedHelperNames)[number];
+        candidate: () => Promise<CombinedCurrentUserResult>;
+      } => typeof entry.candidate === "function",
+    );
+
+  if (!combinedHelper) {
+    throw new Error(
+      `Combined current-user helper export not found. Checked: ${combinedHelperNames.join(", ")}`,
+    );
+  }
+
+  return combinedHelper.candidate;
+}
+
 function createUserRecord() {
   return {
     id: "user-1",
@@ -244,6 +289,69 @@ describe("lib/api/current-user", () => {
     expect(mockFindUnique).toHaveBeenCalledTimes(1);
   });
 
+  it("combined helper は session と normalized user をまとめて返し、session user が完全なら DB lookup を省略する", async () => {
+    const sessionUser = createSessionUserWithIsoDates();
+    const user = {
+      ...createUserRecord(),
+      emailVerified: new Date(sessionUser.emailVerified),
+      googleTokenExpiresAt: new Date(sessionUser.googleTokenExpiresAt),
+      createdAt: new Date(sessionUser.createdAt),
+      updatedAt: new Date(sessionUser.updatedAt),
+    };
+
+    mockAuth.mockResolvedValue({
+      user: sessionUser,
+    });
+
+    const currentUserModule = await loadCurrentUserModule();
+    const requireSessionAndUser =
+      getCombinedCurrentUserHelper(currentUserModule);
+
+    const result = await requireSessionAndUser();
+
+    expect(result).toEqual({
+      session: {
+        user: sessionUser,
+      },
+      user,
+    });
+    expect(mockAuth).toHaveBeenCalledTimes(1);
+    expect(mockFindUnique).not.toHaveBeenCalled();
+  });
+
+  it("combined helper の後に requireCurrentUser を呼んでも auth と DB fallback を共有再利用する", async () => {
+    const user = createUserRecord();
+
+    mockAuth.mockResolvedValue({
+      user: {
+        email: user.email,
+      },
+    });
+    mockFindUnique.mockResolvedValue(user);
+
+    const currentUserModule = await loadCurrentUserModule();
+    const requireSessionAndUser =
+      getCombinedCurrentUserHelper(currentUserModule);
+
+    await expect(requireSessionAndUser()).resolves.toEqual({
+      session: {
+        user: {
+          email: user.email,
+        },
+      },
+      user,
+    });
+    await expect(currentUserModule.requireCurrentUser()).resolves.toEqual({
+      user,
+    });
+
+    expect(mockAuth).toHaveBeenCalledTimes(1);
+    expect(mockFindUnique).toHaveBeenCalledTimes(1);
+    expect(mockFindUnique).toHaveBeenCalledWith({
+      where: { email: user.email },
+    });
+  });
+
   it("getSessionEmail の後に requireCurrentUser を呼んでも同一 module なら auth と DB fallback を再利用する", async () => {
     const user = createUserRecord();
 
@@ -343,10 +451,7 @@ describe("lib/api/current-user", () => {
           "current-user:getAuthState:auth",
           "current-user:getAuthState:extractSessionUser",
           "current-user:getAuthState:extractSessionEmail",
-          "current-user:requireCurrentUser:getCachedAuthState",
-          "current-user:requireCurrentUser:extractSessionEmail",
-          "current-user:requireCurrentUser:extractSessionUser",
-          "current-user:requireCurrentUser:findUserByEmailFallback",
+          "current-user:requireCurrentUser:getCachedSessionAndCurrentUserResult",
         ]),
       );
     } finally {

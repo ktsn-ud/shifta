@@ -4,6 +4,7 @@ import {
   DashboardPageClient,
   DashboardPageLoadingSkeleton,
 } from "@/components/dashboard/dashboard-page-client";
+import { redirectToCalendarSetupIfNeeded } from "@/lib/api/calendar-setup-guard";
 import { requireCurrentUser } from "@/lib/api/current-user";
 import { parseDateOnly } from "@/lib/api/date-time";
 import {
@@ -47,6 +48,7 @@ async function DashboardPageContent({ month }: { month: Date }) {
     if ("response" in current) {
       redirect("/login");
     }
+    await redirectToCalendarSetupIfNeeded(current.user);
 
     const startDate = toDateOnlyString(startOfMonth(month));
     const endDate = toDateOnlyString(endOfMonth(month));

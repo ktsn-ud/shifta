@@ -2,6 +2,7 @@ import { Suspense } from "react";
 import { redirect } from "next/navigation";
 import { ShiftConfirmPageLoadingSkeleton } from "@/components/shifts/ShiftConfirmLoadingSkeleton";
 import { ShiftConfirmPageClient } from "@/components/shifts/shift-confirm-page-client";
+import { redirectToCalendarSetupIfNeeded } from "@/lib/api/calendar-setup-guard";
 import { requireCurrentUser } from "@/lib/api/current-user";
 import { createRequestTiming } from "@/lib/perf/request-timing";
 import { getShiftConfirmationInitialData } from "@/lib/shifts/confirmation-data";
@@ -19,6 +20,7 @@ async function ShiftConfirmPageContent() {
     timing.flushLog();
     redirect("/login");
   }
+  await redirectToCalendarSetupIfNeeded(current.user);
 
   const initialData = await timing.measure(
     "getShiftConfirmationInitialData",
