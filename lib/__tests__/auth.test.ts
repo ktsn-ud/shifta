@@ -14,6 +14,12 @@ type SessionUser = {
   updatedAt: Date;
 };
 
+type AdapterSession = {
+  sessionToken: string;
+  userId: string;
+  expires: Date;
+};
+
 type SessionPayload = {
   user: {
     email?: string | null;
@@ -29,7 +35,11 @@ type SessionPayload = {
 };
 
 type SessionAndUser = {
-  session: SessionPayload;
+  session: AdapterSession;
+  user: SessionUser;
+};
+
+type SessionRecord = AdapterSession & {
   user: SessionUser;
 };
 
@@ -60,6 +70,7 @@ const mockNextAuthFactory = jest.fn();
 const mockGoogleProvider = jest.fn();
 const mockEncryptOAuthToken = jest.fn((value: string | null) => value);
 const mockPrismaAdapterFactory = jest.fn();
+const mockPrismaSessionFindUnique = jest.fn();
 
 let mockCapturedConfig: CapturedNextAuthConfig | undefined;
 
@@ -80,6 +91,10 @@ jest.mock("@auth/prisma-adapter", () => ({
 
 jest.mock("@/lib/prisma", () => ({
   prisma: {
+    session: {
+      findUnique: (...args: readonly unknown[]) =>
+        mockPrismaSessionFindUnique(...args),
+    },
     account: {
       updateMany: jest.fn(),
     },
@@ -115,6 +130,15 @@ function createSessionPayload(user: SessionUser): SessionPayload {
       name: user.name,
       image: user.image,
     },
+  };
+}
+
+function createSessionRecord(user: SessionUser): SessionRecord {
+  return {
+    sessionToken: "session-token",
+    userId: user.id,
+    expires: new Date("2026-01-05T00:00:00.000Z"),
+    user,
   };
 }
 
@@ -196,12 +220,9 @@ describe("lib/auth", () => {
 
   it("SHIFTA_PERF 未設定なら auth() no-arg でも追加計測ログを出さずに session を返す", async () => {
     const user = createSessionUser();
-    const sessionAndUser = {
-      session: createSessionPayload(user),
-      user,
-    };
+    const sessionRecord = createSessionRecord(user);
 
-    mockBaseGetSessionAndUser.mockResolvedValue(sessionAndUser);
+    mockPrismaSessionFindUnique.mockResolvedValue(sessionRecord);
     mockRawAuth.mockImplementation(async (...args) => {
       if (args.length > 0) {
         return { delegatedArgs: args };
@@ -214,7 +235,7 @@ describe("lib/auth", () => {
       }
 
       return mockCapturedConfig?.callbacks.session({
-        session: resolved.session,
+        session: createSessionPayload(resolved.user),
         user: resolved.user,
       });
     });
@@ -237,7 +258,10 @@ describe("lib/auth", () => {
           updatedAt: user.updatedAt,
         },
       });
-      expect(mockBaseGetSessionAndUser).toHaveBeenCalledWith("session-token");
+      expect(mockPrismaSessionFindUnique).toHaveBeenCalledWith({
+        where: { sessionToken: "session-token" },
+        include: { user: true },
+      });
       expect(infoSpy).not.toHaveBeenCalled();
     } finally {
       infoSpy.mockRestore();
@@ -248,12 +272,9 @@ describe("lib/auth", () => {
     process.env.SHIFTA_PERF = "1";
 
     const user = createSessionUser();
-    const sessionAndUser = {
-      session: createSessionPayload(user),
-      user,
-    };
+    const sessionRecord = createSessionRecord(user);
 
-    mockBaseGetSessionAndUser.mockResolvedValue(sessionAndUser);
+    mockPrismaSessionFindUnique.mockResolvedValue(sessionRecord);
     mockRawAuth.mockImplementation(async () => {
       const resolved =
         await mockCapturedConfig?.adapter.getSessionAndUser?.("session-token");
@@ -262,7 +283,7 @@ describe("lib/auth", () => {
       }
 
       return mockCapturedConfig?.callbacks.session({
-        session: resolved.session,
+        session: createSessionPayload(resolved.user),
         user: resolved.user,
       });
     });
@@ -286,9 +307,11 @@ describe("lib/auth", () => {
           updatedAt: user.updatedAt,
         },
       });
-      expect(mockBaseGetSessionAndUser).toHaveBeenCalledTimes(1);
+      expect(mockPrismaSessionFindUnique).toHaveBeenCalledTimes(1);
       expect(infoSpy).toHaveBeenCalledTimes(1);
       expect(perfEntries.map(({ label }) => label)).toEqual([
+        "auth:sessionResolve:dbRead",
+        "auth:sessionResolve:assemble",
         "auth:sessionResolve",
         "auth:userHydrate",
         "auth:total",
@@ -323,7 +346,7 @@ describe("lib/auth", () => {
         },
       });
       expect(mockRawAuth).toHaveBeenCalledWith(request);
-      expect(mockBaseGetSessionAndUser).not.toHaveBeenCalled();
+      expect(mockPrismaSessionFindUnique).not.toHaveBeenCalled();
       expect(infoSpy).not.toHaveBeenCalled();
     } finally {
       infoSpy.mockRestore();
@@ -346,7 +369,7 @@ describe("lib/auth", () => {
 
       expect(result).toBe(delegatedResult);
       expect(mockRawAuth).toHaveBeenCalledWith(middleware);
-      expect(mockBaseGetSessionAndUser).not.toHaveBeenCalled();
+      expect(mockPrismaSessionFindUnique).not.toHaveBeenCalled();
       expect(infoSpy).not.toHaveBeenCalled();
     } finally {
       infoSpy.mockRestore();
@@ -357,7 +380,7 @@ describe("lib/auth", () => {
     process.env.SHIFTA_PERF = "1";
     const expectedError = new Error("session lookup failed");
 
-    mockBaseGetSessionAndUser.mockRejectedValue(expectedError);
+    mockPrismaSessionFindUnique.mockRejectedValue(expectedError);
     mockRawAuth.mockImplementation(async () =>
       mockCapturedConfig?.adapter.getSessionAndUser?.("session-token"),
     );
@@ -370,9 +393,10 @@ describe("lib/auth", () => {
 
       const perfEntries = extractPerfEntries(infoSpy);
 
-      expect(mockBaseGetSessionAndUser).toHaveBeenCalledTimes(1);
+      expect(mockPrismaSessionFindUnique).toHaveBeenCalledTimes(1);
       expect(infoSpy).toHaveBeenCalledTimes(1);
       expect(perfEntries.map(({ label }) => label)).toEqual([
+        "auth:sessionResolve:dbRead",
         "auth:sessionResolve",
         "auth:total",
       ]);

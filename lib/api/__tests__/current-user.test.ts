@@ -264,6 +264,48 @@ describe("lib/api/current-user", () => {
     expect(mockFindUnique).toHaveBeenCalledTimes(1);
   });
 
+  it("SHIFTA_PERF=1 なら getSessionEmail 経由の計測ログを出す", async () => {
+    process.env.SHIFTA_PERF = "1";
+    mockAuth.mockResolvedValue({
+      user: {
+        email: "user@example.com",
+      },
+    });
+    const infoSpy = jest.spyOn(console, "info").mockImplementation(() => {});
+
+    try {
+      const { getSessionEmail } = await loadCurrentUserModule();
+      await expect(getSessionEmail()).resolves.toBe("user@example.com");
+
+      const labels = infoSpy.mock.calls.flatMap((call) => {
+        const payload = call[1];
+        if (!Array.isArray(payload)) {
+          return [];
+        }
+
+        return payload
+          .map((entry) =>
+            typeof entry === "object" &&
+            entry !== null &&
+            "label" in entry &&
+            typeof entry.label === "string"
+              ? entry.label
+              : null,
+          )
+          .filter((value): value is string => value !== null);
+      });
+
+      expect(labels).toEqual(
+        expect.arrayContaining([
+          "current-user:getSessionEmail:getCachedAuthState",
+          "current-user:getSessionEmail:extractSessionEmail",
+        ]),
+      );
+    } finally {
+      infoSpy.mockRestore();
+    }
+  });
+
   it("SHIFTA_PERF=1 なら authState ベースの計測ログを出す", async () => {
     process.env.SHIFTA_PERF = "1";
     mockAuth.mockResolvedValue({

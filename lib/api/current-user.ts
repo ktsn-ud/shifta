@@ -62,18 +62,6 @@ const getCachedAuthState = cache(async (): Promise<AuthState> => {
   }
 });
 
-async function readSessionEmailFromAuthState(authState: AuthState) {
-  const timing = createRequestTiming("current-user:getSessionEmail");
-
-  try {
-    await timing.measure("getCachedAuthSession", () => authState.session);
-
-    return await timing.measure("extractSessionEmail", () => authState.email);
-  } finally {
-    timing.flushLog();
-  }
-}
-
 function getOptionalString(value: unknown): string | null {
   return typeof value === "string" ? value : null;
 }
@@ -128,8 +116,17 @@ function getSessionCurrentUser(session: AuthSession) {
 }
 
 const getCachedSessionEmail = cache(async (): Promise<string | null> => {
-  const authState = await getCachedAuthState();
-  return readSessionEmailFromAuthState(authState);
+  const timing = createRequestTiming("current-user:getSessionEmail");
+
+  try {
+    const authState = await timing.measure("getCachedAuthState", () =>
+      getCachedAuthState(),
+    );
+
+    return await timing.measure("extractSessionEmail", () => authState.email);
+  } finally {
+    timing.flushLog();
+  }
 });
 
 const getCachedUserByEmail = cache(async (email: string) =>

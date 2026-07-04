@@ -52,10 +52,28 @@ adapter.linkAccount = (async (
 }) as NonNullable<typeof adapter.linkAccount>;
 
 if (baseGetSessionAndUser) {
-  adapter.getSessionAndUser = (async (...args) =>
-    measureAuthTiming("sessionResolve", () =>
-      Promise.resolve(baseGetSessionAndUser(...args)),
-    )) as typeof adapter.getSessionAndUser;
+  // Mirror the Prisma adapter's session lookup so we can split DB read time
+  // from the lightweight response assembly without changing auth behavior.
+  adapter.getSessionAndUser = (async (sessionToken) =>
+    measureAuthTiming("sessionResolve", async () => {
+      const userAndSession = await measureAuthTiming(
+        "sessionResolve:dbRead",
+        () =>
+          prisma.session.findUnique({
+            where: { sessionToken },
+            include: { user: true },
+          }),
+      );
+
+      return measureAuthTiming("sessionResolve:assemble", () => {
+        if (!userAndSession) {
+          return null;
+        }
+
+        const { user, ...session } = userAndSession;
+        return { user, session };
+      });
+    })) as typeof adapter.getSessionAndUser;
 }
 const nextAuthResult = NextAuth({
   adapter,
