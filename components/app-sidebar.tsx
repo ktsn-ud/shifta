@@ -1,5 +1,6 @@
 "use client";
 
+import { Suspense } from "react";
 import Link from "next/link";
 import { usePathname, useRouter } from "next/navigation";
 import { NavUser } from "@/components/nav-user";
@@ -26,6 +27,7 @@ import {
   LayoutDashboardIcon,
   ListIcon,
   WalletCardsIcon,
+  type LucideIcon,
 } from "lucide-react";
 
 type SidebarUser = {
@@ -37,7 +39,7 @@ type SidebarUser = {
 type NavItem = {
   title: string;
   href: string;
-  icon: React.ReactNode;
+  icon: LucideIcon;
   matchHrefs?: string[];
   subItems?: Array<{
     title: string;
@@ -58,12 +60,12 @@ const navSections: NavSection[] = [
       {
         title: "ダッシュボード",
         href: "/my",
-        icon: <LayoutDashboardIcon />,
+        icon: LayoutDashboardIcon,
       },
       {
         title: "シフト管理",
         href: "/my/shifts/list",
-        icon: <ListIcon />,
+        icon: ListIcon,
         matchHrefs: ["/my/shifts", "/my/bulk"],
         subItems: [
           { title: "シフト一覧", href: "/my/shifts/list" },
@@ -79,7 +81,7 @@ const navSections: NavSection[] = [
       {
         title: "給与管理",
         href: "/my/summary",
-        icon: <WalletCardsIcon />,
+        icon: WalletCardsIcon,
         matchHrefs: ["/my/payroll-details", "/my/payroll/actual"],
         subItems: [
           { title: "給与サマリー", href: "/my/summary" },
@@ -106,7 +108,7 @@ const navSections: NavSection[] = [
       {
         title: "勤務先・ルール",
         href: "/my/workplaces",
-        icon: <LandmarkIcon />,
+        icon: LandmarkIcon,
         matchHrefs: ["/my/workplace"],
       },
     ],
@@ -210,12 +212,104 @@ function SidebarFooterCurrentUser() {
   return <SidebarFooterContent user={fallbackUser} />;
 }
 
-export function AppSidebar({
-  user,
-  ...props
-}: React.ComponentProps<typeof Sidebar> & {
-  user?: SidebarUser;
+type PrefetchHandlers = {
+  onMouseEnter: () => void;
+  onFocus: () => void;
+};
+
+function SidebarNavigationRenderer({
+  pathname,
+  onNavigate,
+  createPrefetchHandlers,
+}: {
+  pathname?: string;
+  onNavigate?: () => void;
+  createPrefetchHandlers?: (href: string) => PrefetchHandlers;
 }) {
+  return (
+    <>
+      {navSections.map((section) => (
+        <SidebarGroup key={section.label}>
+          <SidebarGroupLabel>{section.label}</SidebarGroupLabel>
+          <SidebarGroupContent>
+            <SidebarMenu>
+              {section.items.map((item) => {
+                const isActive = pathname
+                  ? isItemActive(pathname, item)
+                  : false;
+                const subLabelVisible = pathname
+                  ? shouldShowTopLevelSubLabel(pathname, item)
+                  : false;
+                const topLevelHandlers = createPrefetchHandlers?.(item.href);
+
+                return (
+                  <SidebarMenuItem key={item.href}>
+                    <SidebarMenuButton
+                      tooltip={item.title}
+                      isActive={isActive}
+                      className="text-sidebar-foreground/90"
+                      render={<Link href={item.href} prefetch={false} />}
+                      {...topLevelHandlers}
+                      onClick={onNavigate}
+                    >
+                      <item.icon />
+                      <span>{item.title}</span>
+                    </SidebarMenuButton>
+                    {item.subItems && item.subItems.length > 0 ? (
+                      <SidebarMenuSub
+                        className={subLabelVisible ? "" : "opacity-90"}
+                      >
+                        {item.subItems.map((subItem) => {
+                          const subItemHandlers = createPrefetchHandlers?.(
+                            subItem.href,
+                          );
+
+                          return (
+                            <SidebarMenuSubItem key={subItem.href}>
+                              <SidebarMenuSubButton
+                                isActive={
+                                  pathname
+                                    ? isSubItemActive(
+                                        pathname,
+                                        subItem.href,
+                                        subItem.matchHrefs,
+                                      )
+                                    : false
+                                }
+                                className="text-sidebar-foreground/80"
+                                render={
+                                  <Link href={subItem.href} prefetch={false} />
+                                }
+                                {...subItemHandlers}
+                                onClick={onNavigate}
+                              >
+                                <span>{subItem.title}</span>
+                              </SidebarMenuSubButton>
+                            </SidebarMenuSubItem>
+                          );
+                        })}
+                      </SidebarMenuSub>
+                    ) : null}
+                  </SidebarMenuItem>
+                );
+              })}
+            </SidebarMenu>
+          </SidebarGroupContent>
+        </SidebarGroup>
+      ))}
+    </>
+  );
+}
+
+function SidebarNavigationFallback() {
+  return (
+    <SidebarContent className="pt-1">
+      <SidebarNavigationRenderer />
+    </SidebarContent>
+  );
+}
+
+function SidebarNavigationResolved() {
   const pathname = usePathname();
   const router = useRouter();
   const { isMobile, setOpenMobile } = useSidebar();
@@ -224,86 +318,64 @@ export function AppSidebar({
       setOpenMobile(false);
     }
   };
-  const createPrefetchHandlers = (href: string) => ({
+  const createPrefetchHandlers = (href: string): PrefetchHandlers => ({
     onMouseEnter: () => router.prefetch(href),
     onFocus: () => router.prefetch(href),
   });
 
   return (
+    <SidebarContent className="pt-1">
+      <SidebarNavigationRenderer
+        pathname={pathname}
+        onNavigate={handleMenuItemClick}
+        createPrefetchHandlers={createPrefetchHandlers}
+      />
+    </SidebarContent>
+  );
+}
+
+function SidebarHeaderLogo() {
+  const { isMobile, setOpenMobile } = useSidebar();
+
+  const handleClick = () => {
+    if (isMobile) {
+      setOpenMobile(false);
+    }
+  };
+
+  return (
+    <Link
+      href="/my"
+      prefetch={false}
+      className="flex h-12 items-center gap-3 rounded-xl px-3 text-sidebar-foreground"
+      onClick={handleClick}
+    >
+      <CommandIcon className="size-5" />
+      <div className="grid text-left leading-tight">
+        <span className="text-base font-semibold">Shifta</span>
+        <span className="text-xs text-sidebar-foreground/65">
+          Shift & Payroll
+        </span>
+      </div>
+    </Link>
+  );
+}
+
+export function AppSidebar({
+  user,
+  ...props
+}: React.ComponentProps<typeof Sidebar> & {
+  user?: SidebarUser;
+}) {
+  return (
     <Sidebar collapsible="offcanvas" {...props}>
       <SidebarHeader className="gap-2 border-b border-sidebar-border/70 pb-4">
-        <Link
-          href="/my"
-          prefetch={false}
-          {...createPrefetchHandlers("/my")}
-          onClick={handleMenuItemClick}
-          className="flex h-12 items-center gap-3 rounded-xl px-3 text-sidebar-foreground"
-        >
-          <CommandIcon className="size-5" />
-          <div className="grid text-left leading-tight">
-            <span className="text-base font-semibold">Shifta</span>
-            <span className="text-xs text-sidebar-foreground/65">
-              Shift & Payroll
-            </span>
-          </div>
-        </Link>
+        <SidebarHeaderLogo />
       </SidebarHeader>
 
-      <SidebarContent className="pt-1">
-        {navSections.map((section) => (
-          <SidebarGroup key={section.label}>
-            <SidebarGroupLabel>{section.label}</SidebarGroupLabel>
-            <SidebarGroupContent>
-              <SidebarMenu>
-                {section.items.map((item) => (
-                  <SidebarMenuItem key={item.href}>
-                    <SidebarMenuButton
-                      tooltip={item.title}
-                      isActive={isItemActive(pathname, item)}
-                      className="text-sidebar-foreground/90"
-                      render={<Link href={item.href} prefetch={false} />}
-                      {...createPrefetchHandlers(item.href)}
-                      onClick={handleMenuItemClick}
-                    >
-                      {item.icon}
-                      <span>{item.title}</span>
-                    </SidebarMenuButton>
-                    {item.subItems && item.subItems.length > 0 ? (
-                      <SidebarMenuSub
-                        className={
-                          shouldShowTopLevelSubLabel(pathname, item)
-                            ? ""
-                            : "opacity-90"
-                        }
-                      >
-                        {item.subItems.map((subItem) => (
-                          <SidebarMenuSubItem key={subItem.href}>
-                            <SidebarMenuSubButton
-                              isActive={isSubItemActive(
-                                pathname,
-                                subItem.href,
-                                subItem.matchHrefs,
-                              )}
-                              className="text-sidebar-foreground/80"
-                              render={
-                                <Link href={subItem.href} prefetch={false} />
-                              }
-                              {...createPrefetchHandlers(subItem.href)}
-                              onClick={handleMenuItemClick}
-                            >
-                              <span>{subItem.title}</span>
-                            </SidebarMenuSubButton>
-                          </SidebarMenuSubItem>
-                        ))}
-                      </SidebarMenuSub>
-                    ) : null}
-                  </SidebarMenuItem>
-                ))}
-              </SidebarMenu>
-            </SidebarGroupContent>
-          </SidebarGroup>
-        ))}
-      </SidebarContent>
+      <Suspense fallback={<SidebarNavigationFallback />}>
+        <SidebarNavigationResolved />
+      </Suspense>
 
       <SidebarFooter className="border-t border-sidebar-border/70 pt-3">
         {user ? (
