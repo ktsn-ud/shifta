@@ -1,6 +1,5 @@
 import { after } from "next/server";
-import { auth } from "@/lib/auth";
-import { requireCurrentUser } from "@/lib/api/current-user";
+import { requireSessionAndCurrentUser } from "@/lib/api/current-user";
 import { jsonError, verifyMutationRequest } from "@/lib/api/http";
 import {
   getGoogleAuthBySession,
@@ -35,12 +34,7 @@ export async function POST(request: Request) {
       return csrfError;
     }
 
-    const session = await auth();
-    if (!session) {
-      return jsonError("認証が必要です", 401);
-    }
-
-    const current = await requireCurrentUser();
+    const current = await requireSessionAndCurrentUser();
     if ("response" in current) {
       return current.response;
     }
@@ -49,7 +43,7 @@ export async function POST(request: Request) {
       return jsonError("カレンダーは既に設定済みです", 409);
     }
 
-    const { oauth2Client } = await getGoogleAuthBySession(session);
+    const { oauth2Client } = await getGoogleAuthBySession(current.session);
     const calendarId = await createShiftaCalendar(oauth2Client);
 
     const account = await prisma.account.findFirst({

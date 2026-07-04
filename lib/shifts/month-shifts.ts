@@ -1,4 +1,7 @@
+import { cache } from "react";
+import { cacheLife, cacheTag } from "next/cache";
 import { parseDateOnly } from "@/lib/api/date-time";
+import { userShiftsTag, userWorkplacesTag } from "@/lib/cache/tags";
 import { type Prisma } from "@/lib/generated/prisma/client";
 import { calculateWorkedMinutes } from "@/lib/payroll/estimate";
 import {
@@ -10,6 +13,7 @@ import {
   buildPayrollRuleWhereForDateRange,
   resolvePayrollRuleDateRange,
 } from "@/lib/payroll/rule-query";
+import { createRequestTiming } from "@/lib/perf/request-timing";
 import { prisma } from "@/lib/prisma";
 
 type ShiftWithRelations = Prisma.ShiftGetPayload<{
@@ -133,79 +137,146 @@ function toMonthShiftDto(
 export async function getMonthShifts(
   params: MonthShiftQueryParams,
 ): Promise<MonthShiftDto[]> {
-  const { userId, startDate, endDate, includeEstimate, workplaceIds } = params;
-
-  const normalizedWorkplaceIds = workplaceIds
-    ? Array.from(new Set(workplaceIds))
+  const normalizedWorkplaceIds = params.workplaceIds
+    ? Array.from(new Set(params.workplaceIds))
     : null;
+
   if (normalizedWorkplaceIds && normalizedWorkplaceIds.length === 0) {
     return [];
   }
 
-  const shifts = await prisma.shift.findMany({
-    where: {
-      workplace: { userId },
-      ...(normalizedWorkplaceIds
-        ? {
-            workplaceId: {
-              in: normalizedWorkplaceIds,
-            },
-          }
-        : {}),
-      date: {
-        gte: parseDateOnly(startDate),
-        lte: parseDateOnly(endDate),
-      },
-    },
-    include: {
-      lessonRange: true,
-      workplace: {
-        select: {
-          id: true,
-          name: true,
-          color: true,
-          type: true,
-        },
-      },
-    },
-    orderBy: [{ date: "desc" }, { startTime: "desc" }],
-  });
-
-  if (shifts.length === 0) {
-    return [];
-  }
-
-  if (!includeEstimate) {
-    return shifts.map((shift) => toMonthShiftDto(shift, null));
-  }
-
-  const relatedWorkplaceIds = Array.from(
-    new Set(shifts.map((shift) => shift.workplaceId)),
+  return loadCachedMonthShifts(
+    params.userId,
+    params.startDate,
+    params.endDate,
+    params.includeEstimate,
+    normalizedWorkplaceIds?.join(",") ?? "",
   );
-  const payrollRuleDateRange = resolvePayrollRuleDateRange(shifts);
-  if (!payrollRuleDateRange || relatedWorkplaceIds.length === 0) {
-    return shifts.map((shift) => toMonthShiftDto(shift, null));
-  }
+}
 
-  const payrollRules = await prisma.payrollRule.findMany({
-    where: buildPayrollRuleWhereForDateRange(
-      relatedWorkplaceIds,
-      payrollRuleDateRange,
+const loadCachedMonthShifts = cache(
+  async (
+    userId: string,
+    startDate: string,
+    endDate: string,
+    includeEstimate: boolean,
+    workplaceIdsSignature: string,
+  ): Promise<MonthShiftDto[]> =>
+    loadCachedMonthShiftsEntry(
+      userId,
+      startDate,
+      endDate,
+      includeEstimate,
+      workplaceIdsSignature,
     ),
-    orderBy: [{ workplaceId: "asc" }, { startDate: "desc" }],
-  });
-  const rulesByWorkplace = groupPayrollRulesByWorkplace(payrollRules);
+);
 
-  return shifts.map((shift) => {
-    const selectedRule = findApplicablePayrollRule(
-      rulesByWorkplace,
-      shift.workplaceId,
-      shift.date,
+async function loadCachedMonthShiftsEntry(
+  userId: string,
+  startDate: string,
+  endDate: string,
+  includeEstimate: boolean,
+  workplaceIdsSignature: string,
+): Promise<MonthShiftDto[]> {
+  "use cache";
+
+  cacheLife("minutes");
+  cacheTag(userShiftsTag(userId));
+  cacheTag(userWorkplacesTag(userId));
+
+  const workplaceIds =
+    workplaceIdsSignature.length > 0 ? workplaceIdsSignature.split(",") : null;
+  const timing = createRequestTiming("shifts:getMonthShifts");
+
+  try {
+    const shifts = await timing.measure("dbRead", () =>
+      prisma.shift.findMany({
+        where: {
+          workplace: { userId },
+          ...(workplaceIds
+            ? {
+                workplaceId: {
+                  in: workplaceIds,
+                },
+              }
+            : {}),
+          date: {
+            gte: parseDateOnly(startDate),
+            lte: parseDateOnly(endDate),
+          },
+        },
+        include: {
+          lessonRange: true,
+          workplace: {
+            select: {
+              id: true,
+              name: true,
+              color: true,
+              type: true,
+            },
+          },
+        },
+        orderBy: [{ date: "desc" }, { startTime: "desc" }],
+      }),
     );
-    const estimatedPay = selectedRule
-      ? calculateShiftPayrollResultByRule(shift, selectedRule).totalWage
-      : null;
 
-    return toMonthShiftDto(shift, estimatedPay);
-  });
+    if (shifts.length === 0) {
+      return [];
+    }
+
+    if (!includeEstimate) {
+      return timing.measure("dtoBuild", () =>
+        shifts.map((shift) => toMonthShiftDto(shift, null)),
+      );
+    }
+
+    const relatedWorkplaceIds = Array.from(
+      new Set(shifts.map((shift) => shift.workplaceId)),
+    );
+    const payrollRuleDateRange = resolvePayrollRuleDateRange(shifts);
+    if (!payrollRuleDateRange || relatedWorkplaceIds.length === 0) {
+      return timing.measure("dtoBuild", () =>
+        shifts.map((shift) => toMonthShiftDto(shift, null)),
+      );
+    }
+
+    const payrollRules = await timing.measure("rulesRead", () =>
+      prisma.payrollRule.findMany({
+        where: buildPayrollRuleWhereForDateRange(
+          relatedWorkplaceIds,
+          payrollRuleDateRange,
+        ),
+        orderBy: [{ workplaceId: "asc" }, { startDate: "desc" }],
+      }),
+    );
+    const rulesByWorkplace = groupPayrollRulesByWorkplace(payrollRules);
+
+    const estimatedPayByShiftId = await timing.measure("estimateCalc", () => {
+      const result = new Map<string, number | null>();
+
+      for (const shift of shifts) {
+        const selectedRule = findApplicablePayrollRule(
+          rulesByWorkplace,
+          shift.workplaceId,
+          shift.date,
+        );
+        result.set(
+          shift.id,
+          selectedRule
+            ? calculateShiftPayrollResultByRule(shift, selectedRule).totalWage
+            : null,
+        );
+      }
+
+      return result;
+    });
+
+    return timing.measure("dtoBuild", () =>
+      shifts.map((shift) =>
+        toMonthShiftDto(shift, estimatedPayByShiftId.get(shift.id) ?? null),
+      ),
+    );
+  } finally {
+    timing.flushLog();
+  }
 }

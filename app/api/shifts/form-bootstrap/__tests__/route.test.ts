@@ -1,8 +1,10 @@
 import { requireCurrentUser } from "@/lib/api/current-user";
 import { prisma } from "@/lib/prisma";
 
+const connectionMock = jest.fn();
+
 jest.mock("next/server", () => ({
-  connection: jest.fn(),
+  connection: () => connectionMock(),
   NextResponse: {
     json: (
       body: unknown,
@@ -22,6 +24,9 @@ jest.mock("next/server", () => ({
         status: init?.status ?? 200,
         headers: {
           get: (name: string) => headers.get(name.toLowerCase()) ?? null,
+          set: (name: string, value: string) => {
+            headers.set(name.toLowerCase(), value);
+          },
         },
         json: async () => body,
       };
@@ -47,8 +52,6 @@ jest.mock("@/lib/prisma", () => ({
   },
 }));
 
-import { GET } from "@/app/api/shifts/form-bootstrap/route";
-
 const requireCurrentUserMock = jest.mocked(requireCurrentUser);
 const prismaWorkplaceFindManyMock = jest.mocked(prisma.workplace.findMany);
 const prismaPayrollRuleFindManyMock = jest.mocked(prisma.payrollRule.findMany);
@@ -60,9 +63,31 @@ function createRequest(url: string): Request {
   return { url } as Request;
 }
 
+async function loadGet() {
+  let routeModule: typeof import("@/app/api/shifts/form-bootstrap/route");
+
+  await jest.isolateModulesAsync(async () => {
+    routeModule = await import("@/app/api/shifts/form-bootstrap/route");
+  });
+
+  return routeModule!.GET;
+}
+
 describe("GET /api/shifts/form-bootstrap", () => {
+  const originalPerf = process.env.SHIFTA_PERF;
+
   beforeEach(() => {
     jest.resetAllMocks();
+    delete process.env.SHIFTA_PERF;
+  });
+
+  afterAll(() => {
+    if (originalPerf === undefined) {
+      delete process.env.SHIFTA_PERF;
+      return;
+    }
+
+    process.env.SHIFTA_PERF = originalPerf;
   });
 
   it("GENERAL 勤務先では timetableSets を空配列で返す", async () => {
@@ -98,6 +123,7 @@ describe("GET /api/shifts/form-bootstrap", () => {
     ] as never);
     prismaTimetableSetFindManyMock.mockResolvedValue([]);
 
+    const GET = await loadGet();
     const response = await GET(
       createRequest("http://localhost/api/shifts/form-bootstrap"),
     );
@@ -162,6 +188,7 @@ describe("GET /api/shifts/form-bootstrap", () => {
       },
     ] as never);
 
+    const GET = await loadGet();
     const response = await GET(
       createRequest(
         "http://localhost/api/shifts/form-bootstrap?selectedWorkplaceId=workplace-2",
@@ -207,5 +234,49 @@ describe("GET /api/shifts/form-bootstrap", () => {
         ],
       },
     ]);
+  });
+
+  it("SHIFTA_PERF=1 のとき server-timing ヘッダーを返す", async () => {
+    process.env.SHIFTA_PERF = "1";
+    requireCurrentUserMock.mockResolvedValue({
+      user: { id: "user-1" },
+    } as Awaited<ReturnType<typeof requireCurrentUser>>);
+    prismaWorkplaceFindManyMock.mockResolvedValue([
+      {
+        id: "workplace-1",
+        userId: "user-1",
+        name: "勤務先A",
+        type: "GENERAL",
+        color: "#3366FF",
+        closingDayType: "DAY_OF_MONTH",
+        closingDay: 15,
+        payday: 25,
+        createdAt: new Date("2026-01-01T00:00:00.000Z"),
+      },
+    ]);
+    prismaPayrollRuleFindManyMock.mockResolvedValue([]);
+    prismaTimetableSetFindManyMock.mockResolvedValue([]);
+
+    const infoSpy = jest.spyOn(console, "info").mockImplementation(() => {});
+
+    try {
+      const GET = await loadGet();
+      const response = await GET(
+        createRequest("http://localhost/api/shifts/form-bootstrap"),
+      );
+      if (!response) {
+        throw new Error("response is undefined");
+      }
+
+      expect(response.status).toBe(200);
+      expect(response.headers.get("server-timing")).toEqual(
+        expect.stringContaining("total;dur="),
+      );
+      expect(response.headers.get("server-timing")).toEqual(
+        expect.stringContaining("auth;dur="),
+      );
+    } finally {
+      infoSpy.mockRestore();
+    }
   });
 });

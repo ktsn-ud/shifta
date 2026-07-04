@@ -1,5 +1,6 @@
 import { redirect } from "next/navigation";
 import { ShiftListPageClient } from "@/components/shifts/shift-list-page-client";
+import { redirectToCalendarSetupIfNeeded } from "@/lib/api/calendar-setup-guard";
 import { requireCurrentUser } from "@/lib/api/current-user";
 import {
   endOfMonth,
@@ -40,6 +41,7 @@ export default async function ShiftListPage({
   if ("response" in current) {
     redirect("/login");
   }
+  await redirectToCalendarSetupIfNeeded(current.user);
 
   const resolvedSearchParams = searchParams
     ? await searchParams

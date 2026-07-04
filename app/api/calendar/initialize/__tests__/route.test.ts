@@ -1,5 +1,4 @@
-import { auth } from "@/lib/auth";
-import { requireCurrentUser } from "@/lib/api/current-user";
+import { requireSessionAndCurrentUser } from "@/lib/api/current-user";
 import { verifyMutationRequest } from "@/lib/api/http";
 import { getGoogleAuthBySession } from "@/lib/google-calendar/auth";
 import { createShiftaCalendar } from "@/lib/google-calendar/client";
@@ -38,12 +37,8 @@ jest.mock("next/server", () => ({
   },
 }));
 
-jest.mock("@/lib/auth", () => ({
-  auth: jest.fn(),
-}));
-
 jest.mock("@/lib/api/current-user", () => ({
-  requireCurrentUser: jest.fn(),
+  requireSessionAndCurrentUser: jest.fn(),
 }));
 
 jest.mock("@/lib/api/http", () => ({
@@ -99,7 +94,9 @@ jest.mock("@/lib/prisma", () => ({
 
 import { POST } from "@/app/api/calendar/initialize/route";
 
-const requireCurrentUserMock = jest.mocked(requireCurrentUser);
+const requireSessionAndCurrentUserMock = jest.mocked(
+  requireSessionAndCurrentUser,
+);
 const verifyMutationRequestMock = jest.mocked(verifyMutationRequest);
 const getGoogleAuthBySessionMock = jest.mocked(getGoogleAuthBySession);
 const createShiftaCalendarMock = jest.mocked(createShiftaCalendar);
@@ -136,18 +133,18 @@ describe("POST /api/calendar/initialize", () => {
     jest.resetAllMocks();
     afterCallbacks.length = 0;
     verifyMutationRequestMock.mockReturnValue(null);
-    (auth as unknown as jest.Mock).mockResolvedValue({
-      user: {
-        email: "user@example.com",
+    requireSessionAndCurrentUserMock.mockResolvedValue({
+      session: {
+        user: {
+          email: "user@example.com",
+        },
       },
-    });
-    requireCurrentUserMock.mockResolvedValue({
       user: {
         id: "user-1",
         calendarId: null,
         googleTokenExpiresAt: null,
       },
-    } as Awaited<ReturnType<typeof requireCurrentUser>>);
+    } as Awaited<ReturnType<typeof requireSessionAndCurrentUser>>);
     getGoogleAuthBySessionMock.mockResolvedValue({
       oauth2Client: { credentials: {} },
     } as Awaited<ReturnType<typeof getGoogleAuthBySession>>);
@@ -188,6 +185,12 @@ describe("POST /api/calendar/initialize", () => {
         pending: true,
       },
     });
+    expect(requireSessionAndCurrentUserMock).toHaveBeenCalledTimes(1);
+    expect(getGoogleAuthBySessionMock).toHaveBeenCalledWith({
+      user: {
+        email: "user@example.com",
+      },
+    });
     expect(syncShiftsAfterBulkCreateMock).not.toHaveBeenCalled();
     expect(afterCallbacks).toHaveLength(1);
   });
@@ -214,5 +217,23 @@ describe("POST /api/calendar/initialize", () => {
       ["shift-1", "shift-2"],
       "user-1",
     );
+  });
+
+  it("combined helper が response を返したらそのまま返して Google auth を呼ばない", async () => {
+    const errorResponse = {
+      status: 401,
+      json: async () => ({ error: "認証が必要です" }),
+    } as Response;
+    requireSessionAndCurrentUserMock.mockResolvedValue({
+      response: errorResponse,
+    } as Awaited<ReturnType<typeof requireSessionAndCurrentUser>>);
+
+    const response = await POST(
+      buildMutationRequest("http://localhost/api/calendar/initialize"),
+    );
+
+    expect(response).toBe(errorResponse);
+    expect(getGoogleAuthBySessionMock).not.toHaveBeenCalled();
+    expect(createShiftaCalendarMock).not.toHaveBeenCalled();
   });
 });

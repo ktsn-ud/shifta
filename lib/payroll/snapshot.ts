@@ -1,6 +1,6 @@
 import { cache } from "react";
 import { cacheLife, cacheTag } from "next/cache";
-import type { PayrollRule, Prisma } from "@/lib/generated/prisma/client";
+import { Prisma, type PayrollRule } from "@/lib/generated/prisma/client";
 import {
   getActualPayrollMap,
   startOfMonthUtc,
@@ -16,6 +16,8 @@ import {
   groupPayrollRulesByWorkplace,
   type PayrollRulesByWorkplace,
 } from "@/lib/payroll/summarizeByPeriod";
+import { parseMonthKeyToDate } from "@/lib/payroll/month-key";
+import { createRequestTiming } from "@/lib/perf/request-timing";
 import { prisma } from "@/lib/prisma";
 import { userPayrollSnapshotTag } from "@/lib/cache/tags";
 
@@ -231,13 +233,11 @@ function fromSerializedPayrollRule(
     workplaceId: rule.workplaceId,
     startDate: new Date(rule.startDate),
     endDate: rule.endDate ? new Date(rule.endDate) : null,
-    baseHourlyWage: rule.baseHourlyWage as unknown as Prisma.Decimal,
-    holidayAllowanceHourly:
-      rule.holidayAllowanceHourly as unknown as Prisma.Decimal,
-    nightPremiumRate: rule.nightPremiumRate as unknown as Prisma.Decimal,
-    overtimePremiumRate: rule.overtimePremiumRate as unknown as Prisma.Decimal,
-    dailyOvertimeThreshold:
-      rule.dailyOvertimeThreshold as unknown as Prisma.Decimal,
+    baseHourlyWage: new Prisma.Decimal(rule.baseHourlyWage),
+    holidayAllowanceHourly: new Prisma.Decimal(rule.holidayAllowanceHourly),
+    nightPremiumRate: new Prisma.Decimal(rule.nightPremiumRate),
+    overtimePremiumRate: new Prisma.Decimal(rule.overtimePremiumRate),
+    dailyOvertimeThreshold: new Prisma.Decimal(rule.dailyOvertimeThreshold),
     holidayType: rule.holidayType,
   };
 }
@@ -253,14 +253,6 @@ function toMonthKeys(monthDates: Date[]): string[] {
   return Array.from(normalizedMonths.keys()).sort((left, right) =>
     left.localeCompare(right),
   );
-}
-
-function parseMonthKeyToDate(monthKey: string): Date {
-  const [yearText, monthText] = monthKey.split("-");
-  const year = Number(yearText);
-  const month = Number(monthText);
-
-  return new Date(Date.UTC(year, month - 1, 1));
 }
 
 function serializeSnapshot(
@@ -314,121 +306,142 @@ async function loadPayrollSnapshotSource(params: {
   monthKeys: string[];
   includeActualPayroll: boolean;
 }): Promise<SerializedPayrollSnapshot> {
-  const monthDates = params.monthKeys.map(parseMonthKeyToDate);
+  const timing = createRequestTiming("payroll:loadPayrollSnapshotSource");
 
-  const workplaces = await prisma.workplace.findMany({
-    where: { userId: params.userId },
-    select: {
-      id: true,
-      name: true,
-      color: true,
-      closingDayType: true,
-      closingDay: true,
-      payday: true,
-    },
-    orderBy: { createdAt: "asc" },
-  });
+  try {
+    const monthDates = params.monthKeys.map(parseMonthKeyToDate);
 
-  const workplaceIds = workplaces.map((workplace) => workplace.id);
-  if (workplaceIds.length === 0 || monthDates.length === 0) {
-    return {
-      workplaces,
-      workplaceIds,
-      monthKeys: params.monthKeys,
-      periodByWorkplaceMonthEntries: [],
-      shifts: [],
-      payrollRules: [],
-      actualPayrollByWorkplaceMonthEntries: [],
-    };
-  }
-
-  let fetchStartDate: Date | null = null;
-  let fetchEndDate: Date | null = null;
-  const periodByWorkplaceMonth = new Map<string, PayrollPeriod>();
-
-  for (const workplace of workplaces) {
-    for (const monthDate of monthDates) {
-      const monthKey = toMonthKeyUtc(monthDate);
-      const period = resolvePayrollPeriodForMonth(monthDate, {
-        closingDayType: workplace.closingDayType,
-        closingDay: workplace.closingDay,
-        payday: workplace.payday,
-      });
-
-      periodByWorkplaceMonth.set(
-        toPayrollPeriodMapKey(workplace.id, monthKey),
-        period,
-      );
-
-      if (!fetchStartDate || period.periodStartDate < fetchStartDate) {
-        fetchStartDate = period.periodStartDate;
-      }
-
-      if (!fetchEndDate || period.periodEndDate > fetchEndDate) {
-        fetchEndDate = period.periodEndDate;
-      }
-    }
-  }
-
-  if (!fetchStartDate || !fetchEndDate) {
-    throw new Error("PAYROLL_PERIOD_NOT_FOUND");
-  }
-
-  const [shifts, payrollRules, actualPayrollByWorkplaceMonth] =
-    await Promise.all([
-      prisma.shift.findMany({
-        where: {
-          workplaceId: {
-            in: workplaceIds,
-          },
-          date: {
-            gte: fetchStartDate,
-            lte: fetchEndDate,
-          },
+    const workplaces = await timing.measure("dbSource.workplaces", () =>
+      prisma.workplace.findMany({
+        where: { userId: params.userId },
+        select: {
+          id: true,
+          name: true,
+          color: true,
+          closingDayType: true,
+          closingDay: true,
+          payday: true,
         },
-        include: {
-          lessonRange: true,
-        },
-        orderBy: [{ date: "asc" }, { startTime: "asc" }],
+        orderBy: { createdAt: "asc" },
       }),
-      prisma.payrollRule.findMany({
-        where: {
-          workplaceId: {
-            in: workplaceIds,
-          },
-          startDate: {
-            lte: fetchEndDate,
-          },
-          OR: [
-            {
-              endDate: null,
-            },
-            {
-              endDate: {
-                gt: fetchStartDate,
+    );
+
+    const workplaceIds = workplaces.map((workplace) => workplace.id);
+    if (workplaceIds.length === 0 || monthDates.length === 0) {
+      return {
+        workplaces,
+        workplaceIds,
+        monthKeys: params.monthKeys,
+        periodByWorkplaceMonthEntries: [],
+        shifts: [],
+        payrollRules: [],
+        actualPayrollByWorkplaceMonthEntries: [],
+      };
+    }
+
+    let fetchStartDate: Date | null = null;
+    let fetchEndDate: Date | null = null;
+    const periodByWorkplaceMonth = new Map<string, PayrollPeriod>();
+
+    await timing.measure("periodBuild", () => {
+      for (const workplace of workplaces) {
+        for (const monthDate of monthDates) {
+          const monthKey = toMonthKeyUtc(monthDate);
+          const period = resolvePayrollPeriodForMonth(monthDate, {
+            closingDayType: workplace.closingDayType,
+            closingDay: workplace.closingDay,
+            payday: workplace.payday,
+          });
+
+          periodByWorkplaceMonth.set(
+            toPayrollPeriodMapKey(workplace.id, monthKey),
+            period,
+          );
+
+          if (!fetchStartDate || period.periodStartDate < fetchStartDate) {
+            fetchStartDate = period.periodStartDate;
+          }
+
+          if (!fetchEndDate || period.periodEndDate > fetchEndDate) {
+            fetchEndDate = period.periodEndDate;
+          }
+        }
+      }
+    });
+
+    if (!fetchStartDate || !fetchEndDate) {
+      throw new Error("PAYROLL_PERIOD_NOT_FOUND");
+    }
+
+    const resolvedFetchStartDate = fetchStartDate;
+    const resolvedFetchEndDate = fetchEndDate;
+
+    const [shifts, payrollRules, actualPayrollByWorkplaceMonth] =
+      await Promise.all([
+        timing.measure<PayrollSnapshotShift[]>("dbSource.shifts", () =>
+          prisma.shift.findMany({
+            where: {
+              workplaceId: {
+                in: workplaceIds,
+              },
+              date: {
+                gte: resolvedFetchStartDate,
+                lte: resolvedFetchEndDate,
               },
             },
-          ],
-        },
-        orderBy: [{ workplaceId: "asc" }, { startDate: "asc" }],
-      }),
-      params.includeActualPayroll
-        ? getActualPayrollMap({
-            workplaceIds,
-            monthKeys: params.monthKeys,
-          })
-        : Promise.resolve(new Map<string, ActualPayrollRecord>()),
-    ]);
+            include: {
+              lessonRange: true,
+            },
+            orderBy: [{ date: "asc" }, { startTime: "asc" }],
+          }),
+        ),
+        timing.measure("dbSource.payrollRules", () =>
+          prisma.payrollRule.findMany({
+            where: {
+              workplaceId: {
+                in: workplaceIds,
+              },
+              startDate: {
+                lte: resolvedFetchEndDate,
+              },
+              OR: [
+                {
+                  endDate: null,
+                },
+                {
+                  endDate: {
+                    gt: resolvedFetchStartDate,
+                  },
+                },
+              ],
+            },
+            orderBy: [{ workplaceId: "asc" }, { startDate: "asc" }],
+          }),
+        ),
+        timing.measure("dbSource.actualPayroll", () =>
+          params.includeActualPayroll
+            ? getActualPayrollMap({
+                workplaceIds,
+                monthKeys: params.monthKeys,
+              })
+            : Promise.resolve(new Map<string, ActualPayrollRecord>()),
+        ),
+      ]);
 
-  return serializeSnapshot({
-    workplaces,
-    workplaceIds,
-    monthKeys: params.monthKeys,
-    periodByWorkplaceMonth,
-    shifts,
-    payrollRules,
-    actualPayrollByWorkplaceMonth,
-  });
+    return timing.measure("dbSource.serialize", () =>
+      serializeSnapshot({
+        workplaces,
+        workplaceIds,
+        monthKeys: params.monthKeys,
+        periodByWorkplaceMonth,
+        shifts,
+        payrollRules,
+        actualPayrollByWorkplaceMonth,
+      }),
+    );
+  } finally {
+    timing.flushLog();
+  }
 }
 
 const loadCachedPayrollSnapshot = cache(
@@ -474,25 +487,35 @@ export function toPayrollPeriodMapKey(
 export async function loadPayrollSnapshot(
   params: LoadPayrollSnapshotParams,
 ): Promise<PayrollSnapshot> {
-  const monthKeys = toMonthKeys(params.monthDates);
+  const timing = createRequestTiming("payroll:loadPayrollSnapshot");
 
-  if (monthKeys.length === 0) {
-    return {
-      workplaces: [],
-      workplaceIds: [],
-      monthKeys: [],
-      periodByWorkplaceMonth: new Map(),
-      shiftsByWorkplace: new Map(),
-      rulesByWorkplace: new Map(),
-      actualPayrollByWorkplaceMonth: new Map(),
-    };
+  try {
+    const monthKeys = toMonthKeys(params.monthDates);
+
+    if (monthKeys.length === 0) {
+      return {
+        workplaces: [],
+        workplaceIds: [],
+        monthKeys: [],
+        periodByWorkplaceMonth: new Map(),
+        shiftsByWorkplace: new Map(),
+        rulesByWorkplace: new Map(),
+        actualPayrollByWorkplaceMonth: new Map(),
+      };
+    }
+
+    const serialized = await timing.measure("cacheRead", () =>
+      loadCachedPayrollSnapshot(
+        params.userId,
+        monthKeys.join(","),
+        params.includeActualPayroll ?? false,
+      ),
+    );
+
+    return timing.measure("deserializeBuild", () =>
+      deserializeSnapshot(serialized),
+    );
+  } finally {
+    timing.flushLog();
   }
-
-  const serialized = await loadCachedPayrollSnapshot(
-    params.userId,
-    monthKeys.join(","),
-    params.includeActualPayroll ?? false,
-  );
-
-  return deserializeSnapshot(serialized);
 }

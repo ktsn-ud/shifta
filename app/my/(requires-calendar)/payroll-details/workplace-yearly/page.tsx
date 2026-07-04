@@ -4,6 +4,7 @@ import {
   PayrollDetailsWorkplaceYearlyPageClient,
   PayrollDetailsWorkplaceYearlyPageLoadingSkeleton,
 } from "@/components/payroll-details/payroll-details-workplace-yearly-page-client";
+import { redirectToCalendarSetupIfNeeded } from "@/lib/api/calendar-setup-guard";
 import { requireCurrentUser } from "@/lib/api/current-user";
 import { getPayrollDetailsWorkplaceYearlyForUser } from "@/lib/payroll/details";
 
@@ -48,6 +49,7 @@ async function WorkplaceYearlyPageContent({ year }: { year: number }) {
   if ("response" in current) {
     redirect("/login");
   }
+  await redirectToCalendarSetupIfNeeded(current.user);
 
   const initialDetails = await getPayrollDetailsWorkplaceYearlyForUser(
     current.user.id,

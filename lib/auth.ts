@@ -2,11 +2,25 @@ import NextAuth from "next-auth";
 import Google from "next-auth/providers/google";
 import { PrismaAdapter } from "@auth/prisma-adapter";
 import { GOOGLE_CALENDAR_OAUTH_SCOPES } from "@/lib/google-calendar/constants";
+import { measureAuthTiming, withAuthTiming } from "@/lib/perf/auth-timing";
 import { prisma } from "@/lib/prisma";
 import { encryptOAuthToken } from "@/lib/security/oauth-token-crypto";
 
+type SessionCallbackUser = {
+  id: string;
+  email: string;
+  name?: string | null;
+  image?: string | null;
+  emailVerified?: Date | null;
+  calendarId?: string | null;
+  googleTokenExpiresAt?: Date | null;
+  createdAt?: Date;
+  updatedAt?: Date;
+};
+
 const adapter = PrismaAdapter(prisma);
 const baseLinkAccount = adapter.linkAccount;
+const baseGetSessionAndUser = adapter.getSessionAndUser;
 
 if (!baseLinkAccount) {
   throw new Error("Prisma adapter linkAccount is not available");
@@ -37,7 +51,31 @@ adapter.linkAccount = (async (
   }
 }) as NonNullable<typeof adapter.linkAccount>;
 
-export const { handlers, auth, signIn, signOut } = NextAuth({
+if (baseGetSessionAndUser) {
+  // Mirror the Prisma adapter's session lookup so we can split DB read time
+  // from the lightweight response assembly without changing auth behavior.
+  adapter.getSessionAndUser = (async (sessionToken) =>
+    measureAuthTiming("sessionResolve", async () => {
+      const userAndSession = await measureAuthTiming(
+        "sessionResolve:dbRead",
+        () =>
+          prisma.session.findUnique({
+            where: { sessionToken },
+            include: { user: true },
+          }),
+      );
+
+      return measureAuthTiming("sessionResolve:assemble", () => {
+        if (!userAndSession) {
+          return null;
+        }
+
+        const { user, ...session } = userAndSession;
+        return { user, session };
+      });
+    })) as typeof adapter.getSessionAndUser;
+}
+const nextAuthResult = NextAuth({
   adapter,
   providers: [
     Google({
@@ -138,8 +176,42 @@ export const { handlers, auth, signIn, signOut } = NextAuth({
 
       return true; // Allow access to the requested page
     },
+    session: async ({ session, user }) => {
+      return measureAuthTiming("userHydrate", async () => {
+        const sessionUser = user as SessionCallbackUser;
+
+        session.user = {
+          ...session.user,
+          id: sessionUser.id,
+          email: sessionUser.email,
+          name: sessionUser.name ?? null,
+          image: sessionUser.image ?? null,
+          emailVerified: sessionUser.emailVerified ?? null,
+          calendarId: sessionUser.calendarId ?? null,
+          googleTokenExpiresAt: sessionUser.googleTokenExpiresAt ?? null,
+          createdAt: sessionUser.createdAt,
+          updatedAt: sessionUser.updatedAt,
+        };
+
+        return session;
+      });
+    },
   },
   pages: {
     signIn: "/login",
   },
 });
+
+const rawAuth = nextAuthResult.auth;
+const rawAuthUntyped = rawAuth as (...args: unknown[]) => unknown;
+
+export const handlers = nextAuthResult.handlers;
+export const signIn = nextAuthResult.signIn;
+export const signOut = nextAuthResult.signOut;
+export const auth: typeof rawAuth = ((...args: unknown[]) => {
+  if (args.length > 0) {
+    return rawAuthUntyped(...args);
+  }
+
+  return withAuthTiming("auth", async () => rawAuth());
+}) as typeof rawAuth;

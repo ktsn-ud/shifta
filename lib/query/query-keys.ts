@@ -83,6 +83,9 @@ function normalizeMonths(months: string[]): string[] {
 }
 
 export const queryKeys = {
+  users: {
+    me: () => ["users", "me"] as const,
+  },
   shifts: {
     month: (input: MonthShiftsQueryInput) =>
       ["shifts", "month", input] as const,

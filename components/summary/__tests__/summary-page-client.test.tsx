@@ -1,14 +1,8 @@
 import { fireEvent, render, screen, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { SummaryPageClient } from "@/components/summary/summary-page-client";
-import type {
-  PayrollSummaryCoreResult,
-  PayrollSummaryYearContextResult,
-} from "@/lib/payroll/summary";
-import {
-  usePayrollSummaryQuery,
-  usePayrollSummaryYearContextQuery,
-} from "@/lib/query/queries/payroll";
+import type { PayrollSummaryResult } from "@/lib/payroll/summary";
+import { usePayrollSummaryQuery } from "@/lib/query/queries/payroll";
 
 jest.mock("next/dynamic", () => ({
   __esModule: true,
@@ -20,15 +14,10 @@ jest.mock("next/dynamic", () => ({
 
 jest.mock("@/lib/query/queries/payroll", () => ({
   usePayrollSummaryQuery: jest.fn(),
-  usePayrollSummaryYearContextQuery: jest.fn(),
 }));
 
 const mockedUsePayrollSummaryQuery =
   usePayrollSummaryQuery as jest.MockedFunction<typeof usePayrollSummaryQuery>;
-const mockedUsePayrollSummaryYearContextQuery =
-  usePayrollSummaryYearContextQuery as jest.MockedFunction<
-    typeof usePayrollSummaryYearContextQuery
-  >;
 
 function createActualCoverage() {
   return {
@@ -41,7 +30,7 @@ function createActualCoverage() {
   };
 }
 
-function createSummary(month: string): PayrollSummaryCoreResult {
+function createSummary(month: string): PayrollSummaryResult {
   return {
     month,
     totalWage: 120000,
@@ -90,14 +79,6 @@ function createSummary(month: string): PayrollSummaryCoreResult {
       },
     ],
     confirmedShiftWage: 120000,
-  };
-}
-
-function createSummaryYearContext(
-  month: string,
-): PayrollSummaryYearContextResult {
-  return {
-    month,
     currentMonthCumulative: 360000,
     yearlyTotal: 720000,
     currentMonthActualCoverage: createActualCoverage(),
@@ -109,13 +90,11 @@ function createSummaryYearContext(
 
 function renderSummaryPageClient() {
   const initialSummary = createSummary("2026-03");
-  const initialSummaryYearContext = createSummaryYearContext("2026-03");
 
   return render(
     <SummaryPageClient
       currentUserId="user-1"
       initialSummary={initialSummary}
-      initialSummaryYearContext={initialSummaryYearContext}
       initialMonth="2026-03"
       currentMonthValue="2026-03"
     />,
@@ -125,7 +104,6 @@ function renderSummaryPageClient() {
 describe("SummaryPageClient", () => {
   beforeEach(() => {
     mockedUsePayrollSummaryQuery.mockReset();
-    mockedUsePayrollSummaryYearContextQuery.mockReset();
 
     mockedUsePayrollSummaryQuery.mockImplementation((input) => {
       const data = input.initialData ?? createSummary(input.month);
@@ -138,49 +116,30 @@ describe("SummaryPageClient", () => {
         error: null,
       } as ReturnType<typeof usePayrollSummaryQuery>;
     });
-
-    mockedUsePayrollSummaryYearContextQuery.mockImplementation((input) => {
-      const data = input.initialData ?? createSummaryYearContext(input.month);
-
-      return {
-        data,
-        isLoading: false,
-        isFetching: false,
-        isPlaceholderData: false,
-        error: null,
-      } as ReturnType<typeof usePayrollSummaryYearContextQuery>;
-    });
   });
 
-  it("初期月では year context query に initialData を渡す", () => {
+  it("初期月では initialData 付きの usePayrollSummaryQuery だけで表示する", () => {
     const initialSummary = createSummary("2026-03");
-    const initialSummaryYearContext = createSummaryYearContext("2026-03");
 
     render(
       <SummaryPageClient
         currentUserId="user-1"
         initialSummary={initialSummary}
-        initialSummaryYearContext={initialSummaryYearContext}
         initialMonth="2026-03"
         currentMonthValue="2026-03"
       />,
     );
 
+    expect(mockedUsePayrollSummaryQuery).toHaveBeenCalledTimes(1);
     expect(mockedUsePayrollSummaryQuery).toHaveBeenCalledWith({
       userId: "user-1",
       month: "2026-03",
       enabled: true,
       initialData: initialSummary,
     });
-    expect(mockedUsePayrollSummaryYearContextQuery).toHaveBeenCalledWith({
-      userId: "user-1",
-      month: "2026-03",
-      enabled: true,
-      initialData: initialSummaryYearContext,
-    });
   });
 
-  it("非初期月へ変更した後は initialData なしで通常 query に切り替わる", async () => {
+  it("非初期月へ変更した後は同じ usePayrollSummaryQuery を initialData なしで再利用する", async () => {
     const user = userEvent.setup();
     const { container } = renderSummaryPageClient();
 
@@ -196,13 +155,7 @@ describe("SummaryPageClient", () => {
     await user.click(screen.getByRole("button", { name: "適用" }));
 
     await waitFor(() => {
-      expect(mockedUsePayrollSummaryQuery).toHaveBeenCalledWith({
-        userId: "user-1",
-        month: "2026-04",
-        enabled: true,
-        initialData: undefined,
-      });
-      expect(mockedUsePayrollSummaryYearContextQuery).toHaveBeenCalledWith({
+      expect(mockedUsePayrollSummaryQuery).toHaveBeenLastCalledWith({
         userId: "user-1",
         month: "2026-04",
         enabled: true,

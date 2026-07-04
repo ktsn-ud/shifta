@@ -7,26 +7,27 @@ import { type PayrollDetailsWorkplaceYearlyResult } from "@/lib/payroll/details"
 import { type PayrollPreviewBaselineResult } from "@/lib/payroll/preview-baseline";
 import {
   type PayrollSummaryAmountResult,
-  type PayrollSummaryCoreResult,
+  type PayrollSummaryResult,
   type PayrollSummaryYearContextResult,
 } from "@/lib/payroll/summary";
 
 const PAYROLL_STALE_TIME_MS = 2 * 60 * 1000;
 const PAYROLL_GC_TIME_MS = 10 * 60 * 1000;
 
-function parsePayrollSummaryPayload(
-  payload: unknown,
-): PayrollSummaryCoreResult {
+function parsePayrollSummaryPayload(payload: unknown): PayrollSummaryResult {
   if (
     typeof payload !== "object" ||
     payload === null ||
     typeof (payload as { totalWage?: unknown }).totalWage !== "number" ||
-    !Array.isArray((payload as { byWorkplace?: unknown[] }).byWorkplace)
+    !Array.isArray((payload as { byWorkplace?: unknown[] }).byWorkplace) ||
+    typeof (payload as { currentMonthCumulative?: unknown })
+      .currentMonthCumulative !== "number" ||
+    typeof (payload as { yearlyTotal?: unknown }).yearlyTotal !== "number"
   ) {
     throw new Error("PAYROLL_SUMMARY_RESPONSE_INVALID");
   }
 
-  return payload as PayrollSummaryCoreResult;
+  return payload as PayrollSummaryResult;
 }
 
 function parsePayrollSummaryYearContextPayload(
@@ -127,7 +128,7 @@ export function usePayrollSummaryQuery(input: {
   userId: string;
   month: string;
   enabled?: boolean;
-  initialData?: PayrollSummaryCoreResult;
+  initialData?: PayrollSummaryResult;
 }) {
   const { enabled = true, initialData, month, userId } = input;
 

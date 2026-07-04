@@ -18,6 +18,7 @@ import {
   toPayrollPeriodMapKey,
   type PayrollSnapshotWorkplace,
 } from "@/lib/payroll/snapshot";
+import { createRequestTiming } from "@/lib/perf/request-timing";
 
 type PayrollSummaryByWorkplace = {
   workplaceId: string;
@@ -539,151 +540,214 @@ export async function getPayrollSummaryCoreForUser(
   userId: string,
   month: Date,
 ): Promise<PayrollSummaryCoreResult> {
-  const selectedMonth = startOfMonth(month);
-  const selectedMonthKey = toMonthKey(selectedMonth);
-  const {
-    workplaces,
-    periodByWorkplaceMonth,
-    shiftsByWorkplace,
-    rulesByWorkplace,
-    actualPayrollByWorkplaceMonth,
-  } = await loadPayrollSnapshot({
-    userId,
-    monthDates: [selectedMonth],
-    includeActualPayroll: true,
-  });
+  const timing = createRequestTiming("payroll:getPayrollSummaryCoreForUser");
 
-  const getWorkplaceMonthSummary = createWorkplaceMonthSummaryGetter({
-    periodByWorkplaceMonth,
-    shiftsByWorkplace,
-    rulesByWorkplace,
-  });
+  try {
+    const selectedMonth = startOfMonth(month);
+    const selectedMonthKey = toMonthKey(selectedMonth);
+    const {
+      workplaces,
+      periodByWorkplaceMonth,
+      shiftsByWorkplace,
+      rulesByWorkplace,
+      actualPayrollByWorkplaceMonth,
+    } = await timing.measure("snapshot", () =>
+      loadPayrollSnapshot({
+        userId,
+        monthDates: [selectedMonth],
+        includeActualPayroll: true,
+      }),
+    );
 
-  return buildPayrollSummaryCore({
-    monthKey: selectedMonthKey,
-    workplaces,
-    periodByWorkplaceMonth,
-    actualPayrollByWorkplaceMonth,
-    getWorkplaceMonthSummary,
-  });
+    const getWorkplaceMonthSummary = await timing.measure(
+      "summaryGetterBuild",
+      () =>
+        createWorkplaceMonthSummaryGetter({
+          periodByWorkplaceMonth,
+          shiftsByWorkplace,
+          rulesByWorkplace,
+        }),
+    );
+
+    return timing.measure("summaryBuild", () =>
+      buildPayrollSummaryCore({
+        monthKey: selectedMonthKey,
+        workplaces,
+        periodByWorkplaceMonth,
+        actualPayrollByWorkplaceMonth,
+        getWorkplaceMonthSummary,
+      }),
+    );
+  } finally {
+    timing.flushLog();
+  }
 }
 
 export async function getPayrollSummaryYearContextForUser(
   userId: string,
   month: Date,
 ): Promise<PayrollSummaryYearContextResult> {
-  const selectedMonth = startOfMonth(month);
-  const selectedMonthKey = toMonthKey(selectedMonth);
-  const {
-    workplaces,
-    periodByWorkplaceMonth,
-    shiftsByWorkplace,
-    rulesByWorkplace,
-    actualPayrollByWorkplaceMonth,
-  } = await loadPayrollSnapshot({
-    userId,
-    monthDates: listMonthsInYear(selectedMonth),
-    includeActualPayroll: true,
-  });
+  const timing = createRequestTiming(
+    "payroll:getPayrollSummaryYearContextForUser",
+  );
 
-  if (workplaces.length === 0) {
-    return createEmptyPayrollSummaryYearContext(selectedMonthKey);
+  try {
+    const selectedMonth = startOfMonth(month);
+    const selectedMonthKey = toMonthKey(selectedMonth);
+    const {
+      workplaces,
+      periodByWorkplaceMonth,
+      shiftsByWorkplace,
+      rulesByWorkplace,
+      actualPayrollByWorkplaceMonth,
+    } = await timing.measure("snapshot", () =>
+      loadPayrollSnapshot({
+        userId,
+        monthDates: listMonthsInYear(selectedMonth),
+        includeActualPayroll: true,
+      }),
+    );
+
+    if (workplaces.length === 0) {
+      return createEmptyPayrollSummaryYearContext(selectedMonthKey);
+    }
+
+    const getWorkplaceMonthSummary = await timing.measure(
+      "summaryGetterBuild",
+      () =>
+        createWorkplaceMonthSummaryGetter({
+          periodByWorkplaceMonth,
+          shiftsByWorkplace,
+          rulesByWorkplace,
+        }),
+    );
+
+    return timing.measure("summaryBuild", () =>
+      buildPayrollSummaryYearContext({
+        selectedMonth,
+        workplaces,
+        actualPayrollByWorkplaceMonth,
+        getWorkplaceMonthSummary,
+      }),
+    );
+  } finally {
+    timing.flushLog();
   }
-
-  const getWorkplaceMonthSummary = createWorkplaceMonthSummaryGetter({
-    periodByWorkplaceMonth,
-    shiftsByWorkplace,
-    rulesByWorkplace,
-  });
-
-  return buildPayrollSummaryYearContext({
-    selectedMonth,
-    workplaces,
-    actualPayrollByWorkplaceMonth,
-    getWorkplaceMonthSummary,
-  });
 }
 
 export async function getPayrollSummaryAmountForUser(
   userId: string,
   month: Date,
 ): Promise<PayrollSummaryAmountResult> {
-  const selectedMonth = startOfMonth(month);
-  const selectedMonthKey = toMonthKey(selectedMonth);
-  const {
-    workplaces,
-    periodByWorkplaceMonth,
-    shiftsByWorkplace,
-    rulesByWorkplace,
-    actualPayrollByWorkplaceMonth,
-  } = await loadPayrollSnapshot({
-    userId,
-    monthDates: [selectedMonth],
-    includeActualPayroll: true,
-  });
+  const timing = createRequestTiming("payroll:getPayrollSummaryAmountForUser");
 
-  if (workplaces.length === 0) {
-    return createEmptyPayrollSummaryAmount(selectedMonthKey);
+  try {
+    const selectedMonth = startOfMonth(month);
+    const selectedMonthKey = toMonthKey(selectedMonth);
+    const {
+      workplaces,
+      periodByWorkplaceMonth,
+      shiftsByWorkplace,
+      rulesByWorkplace,
+      actualPayrollByWorkplaceMonth,
+    } = await timing.measure("snapshot", () =>
+      loadPayrollSnapshot({
+        userId,
+        monthDates: [selectedMonth],
+        includeActualPayroll: true,
+      }),
+    );
+
+    if (workplaces.length === 0) {
+      return createEmptyPayrollSummaryAmount(selectedMonthKey);
+    }
+
+    const getWorkplaceMonthSummary = await timing.measure(
+      "summaryGetterBuild",
+      () =>
+        createWorkplaceMonthSummaryGetter({
+          periodByWorkplaceMonth,
+          shiftsByWorkplace,
+          rulesByWorkplace,
+        }),
+    );
+
+    return timing.measure("summaryBuild", () =>
+      buildPayrollSummaryAmount({
+        monthKey: selectedMonthKey,
+        workplaces,
+        actualPayrollByWorkplaceMonth,
+        getWorkplaceMonthSummary,
+      }),
+    );
+  } finally {
+    timing.flushLog();
   }
-
-  const getWorkplaceMonthSummary = createWorkplaceMonthSummaryGetter({
-    periodByWorkplaceMonth,
-    shiftsByWorkplace,
-    rulesByWorkplace,
-  });
-
-  return buildPayrollSummaryAmount({
-    monthKey: selectedMonthKey,
-    workplaces,
-    actualPayrollByWorkplaceMonth,
-    getWorkplaceMonthSummary,
-  });
 }
 
 export async function getPayrollSummaryForUser(
   userId: string,
   month: Date,
 ): Promise<PayrollSummaryResult> {
-  const selectedMonth = startOfMonth(month);
-  const selectedMonthKey = toMonthKey(selectedMonth);
-  const {
-    workplaces,
-    periodByWorkplaceMonth,
-    shiftsByWorkplace,
-    rulesByWorkplace,
-    actualPayrollByWorkplaceMonth,
-  } = await loadPayrollSnapshot({
-    userId,
-    monthDates: listMonthsInYear(selectedMonth),
-    includeActualPayroll: true,
-  });
+  const timing = createRequestTiming("payroll:getPayrollSummaryForUser");
 
-  if (workplaces.length === 0) {
-    return {
-      ...createEmptyPayrollSummaryCore(selectedMonthKey),
-      ...createEmptyPayrollSummaryYearContext(selectedMonthKey),
-    };
-  }
-
-  const getWorkplaceMonthSummary = createWorkplaceMonthSummaryGetter({
-    periodByWorkplaceMonth,
-    shiftsByWorkplace,
-    rulesByWorkplace,
-  });
-
-  return {
-    ...buildPayrollSummaryCore({
-      monthKey: selectedMonthKey,
+  try {
+    const selectedMonth = startOfMonth(month);
+    const selectedMonthKey = toMonthKey(selectedMonth);
+    const {
       workplaces,
       periodByWorkplaceMonth,
+      shiftsByWorkplace,
+      rulesByWorkplace,
       actualPayrollByWorkplaceMonth,
-      getWorkplaceMonthSummary,
-    }),
-    ...buildPayrollSummaryYearContext({
-      selectedMonth,
-      workplaces,
-      actualPayrollByWorkplaceMonth,
-      getWorkplaceMonthSummary,
-    }),
-  };
+    } = await timing.measure("snapshot", () =>
+      loadPayrollSnapshot({
+        userId,
+        monthDates: listMonthsInYear(selectedMonth),
+        includeActualPayroll: true,
+      }),
+    );
+
+    if (workplaces.length === 0) {
+      return {
+        ...createEmptyPayrollSummaryCore(selectedMonthKey),
+        ...createEmptyPayrollSummaryYearContext(selectedMonthKey),
+      };
+    }
+
+    const getWorkplaceMonthSummary = await timing.measure(
+      "summaryGetterBuild",
+      () =>
+        createWorkplaceMonthSummaryGetter({
+          periodByWorkplaceMonth,
+          shiftsByWorkplace,
+          rulesByWorkplace,
+        }),
+    );
+
+    const core = await timing.measure("summaryCoreBuild", () =>
+      buildPayrollSummaryCore({
+        monthKey: selectedMonthKey,
+        workplaces,
+        periodByWorkplaceMonth,
+        actualPayrollByWorkplaceMonth,
+        getWorkplaceMonthSummary,
+      }),
+    );
+    const yearContext = await timing.measure("summaryYearContextBuild", () =>
+      buildPayrollSummaryYearContext({
+        selectedMonth,
+        workplaces,
+        actualPayrollByWorkplaceMonth,
+        getWorkplaceMonthSummary,
+      }),
+    );
+
+    return {
+      ...core,
+      ...yearContext,
+    };
+  } finally {
+    timing.flushLog();
+  }
 }

@@ -4,6 +4,7 @@ import {
   PayrollDetailsMonthlyPageClient,
   PayrollDetailsMonthlyPageLoadingSkeleton,
 } from "@/components/payroll-details/payroll-details-monthly-page-client";
+import { redirectToCalendarSetupIfNeeded } from "@/lib/api/calendar-setup-guard";
 import { requireCurrentUser } from "@/lib/api/current-user";
 import { parseDateOnly } from "@/lib/api/date-time";
 import {
@@ -47,6 +48,7 @@ async function MonthlyPageContent({ month }: { month: string }) {
   if ("response" in current) {
     redirect("/login");
   }
+  await redirectToCalendarSetupIfNeeded(current.user);
 
   const initialDetails = await getPayrollDetailsMonthlyForUser(
     current.user.id,
