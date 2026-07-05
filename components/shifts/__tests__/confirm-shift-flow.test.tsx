@@ -69,6 +69,51 @@ function createDeferred<T>() {
   return { promise, resolve };
 }
 
+function getDesktopLayoutElements() {
+  const pageSection = screen
+    .getByRole("heading", { name: "シフト確定" })
+    .closest("section");
+  const unconfirmedSection = screen
+    .getByRole("heading", { name: "未確定シフト" })
+    .closest("section");
+  const confirmedSection = screen
+    .getByRole("heading", { name: "今月の確定済みシフト" })
+    .closest("section");
+
+  if (
+    !(pageSection instanceof HTMLElement) ||
+    !(unconfirmedSection instanceof HTMLElement) ||
+    !(confirmedSection instanceof HTMLElement)
+  ) {
+    throw new Error("shift confirm layout elements were not found");
+  }
+
+  const unconfirmedListWrapper = unconfirmedSection.lastElementChild;
+  const confirmedListWrapper = confirmedSection.lastElementChild;
+  const gridWrapper = unconfirmedSection.parentElement;
+  const overlayContent = gridWrapper?.parentElement;
+  const overlayRoot = overlayContent?.parentElement;
+
+  if (
+    !(unconfirmedListWrapper instanceof HTMLElement) ||
+    !(confirmedListWrapper instanceof HTMLElement) ||
+    !(gridWrapper instanceof HTMLElement) ||
+    !(overlayContent instanceof HTMLElement) ||
+    !(overlayRoot instanceof HTMLElement)
+  ) {
+    throw new Error("shift confirm layout wrappers were not found");
+  }
+
+  return {
+    pageSection,
+    overlayRoot,
+    overlayContent,
+    gridWrapper,
+    unconfirmedListWrapper,
+    confirmedListWrapper,
+  };
+}
+
 describe("shift confirm page and card flow", () => {
   beforeEach(() => {
     pushMock.mockReset();
@@ -163,6 +208,117 @@ describe("shift confirm page and card flow", () => {
     expect(
       screen.getByText("18:00 ～ 翌01:00（実働6.0h）"),
     ).toBeInTheDocument();
+  });
+
+  it("uses a height-constrained desktop layout with independent scroll wrappers during refresh", async () => {
+    const user = userEvent.setup();
+    const fetchMock = globalThis.fetch as jest.Mock;
+    const unconfirmedReload = createDeferred<Response>();
+    const confirmedReload = createDeferred<Response>();
+
+    fetchMock.mockImplementation(
+      async (input: string, init?: { method?: string }) => {
+        if (
+          input === "/api/shifts/shift-1/confirm" &&
+          init?.method === "PATCH"
+        ) {
+          return jsonResponse({
+            id: "shift-1",
+            workplaceId: "workplace-1",
+            isConfirmed: true,
+            date: "2026-03-05",
+            startTime: "10:00",
+            endTime: "18:00",
+            breakMinutes: 60,
+            syncStatus: "pending",
+          });
+        }
+
+        if (input === "/api/shifts/unconfirmed") {
+          return unconfirmedReload.promise;
+        }
+
+        if (input === "/api/shifts/confirmed-current-month") {
+          return confirmedReload.promise;
+        }
+
+        throw new Error("Unexpected fetch: " + input);
+      },
+    );
+
+    renderWithQueryProvider(
+      <ShiftConfirmPageClient
+        currentUserId="user-test"
+        initialUnconfirmedShifts={[createUnconfirmedShift()]}
+        initialConfirmedShiftGroups={[]}
+      />,
+    );
+
+    const {
+      pageSection,
+      overlayRoot,
+      overlayContent,
+      gridWrapper,
+      unconfirmedListWrapper,
+      confirmedListWrapper,
+    } = getDesktopLayoutElements();
+
+    expect(pageSection).toHaveClass(
+      "md:h-[calc(100svh-var(--header-height))]",
+      "md:min-h-0",
+      "md:overflow-hidden",
+    );
+    expect(overlayRoot).toHaveClass("rounded-xl", "md:min-h-0", "md:flex-1");
+    expect(overlayContent).toHaveClass(
+      "md:flex",
+      "md:h-full",
+      "md:min-h-0",
+      "md:flex-col",
+    );
+    expect(gridWrapper).toHaveClass(
+      "md:grid",
+      "md:h-full",
+      "md:min-h-0",
+      "md:flex-1",
+      "md:grid-cols-[minmax(0,1fr)_1px_minmax(0,1fr)]",
+    );
+    expect(unconfirmedListWrapper).toHaveClass(
+      "md:min-h-0",
+      "md:flex-1",
+      "md:overflow-y-auto",
+    );
+    expect(confirmedListWrapper).toHaveClass(
+      "md:min-h-0",
+      "md:flex-1",
+      "md:overflow-y-auto",
+    );
+    expect(unconfirmedListWrapper).not.toBe(confirmedListWrapper);
+
+    await user.click(screen.getByRole("button", { name: "確定" }));
+
+    await waitFor(() => {
+      expect(overlayRoot).toHaveAttribute("aria-busy", "true");
+    });
+
+    const overlayPane = overlayRoot.lastElementChild;
+    if (!(overlayPane instanceof HTMLElement)) {
+      throw new Error("refresh overlay pane was not rendered");
+    }
+    expect(overlayPane).toHaveClass(
+      "absolute",
+      "inset-0",
+      "z-10",
+      "flex",
+      "items-center",
+      "justify-center",
+    );
+
+    unconfirmedReload.resolve(jsonResponse({ shifts: [] }));
+    confirmedReload.resolve(jsonResponse({ shifts: [] }));
+
+    await waitFor(() => {
+      expect(overlayRoot).not.toHaveAttribute("aria-busy");
+    });
   });
 
   it("confirms a shift with edited values", async () => {

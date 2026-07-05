@@ -157,7 +157,7 @@ export function ShiftConfirmPageClient({
   );
 
   return (
-    <section className="flex flex-col gap-6 p-4 md:h-[calc(100svh-var(--header-height))] md:overflow-hidden md:p-6">
+    <section className="flex flex-col gap-6 p-4 md:h-[calc(100svh-var(--header-height))] md:min-h-0 md:overflow-hidden md:p-6">
       <header className="space-y-2 rounded-xl border border-border/80 bg-card/95 p-5 shadow-sm">
         <p className="text-xs font-medium uppercase tracking-[0.12em] text-muted-foreground">
           Shift Confirm
@@ -176,15 +176,19 @@ export function ShiftConfirmPageClient({
 
       {isInitialLoading ? (
         <SpinnerPanel
-          className="min-h-[360px]"
+          className="min-h-[360px] md:min-h-0 md:flex-1"
           label="シフト確定情報を読み込み中..."
         />
       ) : (
-        <LoadingOverlay isLoading={isRefreshing} className="rounded-xl">
-          <div className="flex flex-col gap-6 md:min-h-0 md:flex-1 md:grid md:grid-cols-[minmax(0,1fr)_1px_minmax(0,1fr)] md:gap-6">
+        <LoadingOverlay
+          isLoading={isRefreshing}
+          className="rounded-xl md:min-h-0 md:flex-1"
+          contentClassName="md:flex md:h-full md:min-h-0 md:flex-col"
+        >
+          <div className="flex flex-col gap-6 md:grid md:h-full md:min-h-0 md:flex-1 md:grid-cols-[minmax(0,1fr)_1px_minmax(0,1fr)] md:gap-6">
             <section className="space-y-3 md:flex md:min-h-0 md:flex-col">
               <h3 className="text-lg font-semibold">未確定シフト</h3>
-              <div className="md:min-h-0 md:overflow-y-auto md:pr-2">
+              <div className="md:min-h-0 md:flex-1 md:overflow-y-auto md:pr-2">
                 {unconfirmedShifts.length === 0 ? (
                   <p className="text-sm text-muted-foreground">
                     未確定シフトはまだありません
@@ -212,7 +216,7 @@ export function ShiftConfirmPageClient({
 
             <section className="space-y-3 md:flex md:min-h-0 md:flex-col">
               <h3 className="text-lg font-semibold">今月の確定済みシフト</h3>
-              <div className="md:min-h-0 md:overflow-y-auto md:pr-2">
+              <div className="md:min-h-0 md:flex-1 md:overflow-y-auto md:pr-2">
                 {confirmedShiftGroups.length > 0 ? (
                   <ConfirmedShiftsList groups={confirmedShiftGroups} />
                 ) : (
