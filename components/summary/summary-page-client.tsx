@@ -68,6 +68,21 @@ const currencyFormatter = new Intl.NumberFormat("ja-JP", {
   maximumFractionDigits: 0,
 });
 
+const SUMMARY_MONTH_COLUMN_CLASS =
+  "sticky left-0 z-30 w-20 min-w-20 border-r-0 bg-muted shadow-[inset_-2px_0_0_0_rgba(148,163,184,0.95),10px_0_14px_-10px_rgba(15,23,42,0.45)]";
+const SUMMARY_MONTH_CELL_CLASS =
+  "sticky left-0 z-20 w-20 min-w-20 border-r-0 bg-card font-medium shadow-[inset_-2px_0_0_0_rgba(148,163,184,0.95),10px_0_14px_-10px_rgba(15,23,42,0.35)]";
+const SUMMARY_MONTH_TOTAL_CELL_CLASS =
+  "sticky left-0 z-20 w-20 min-w-20 border-r-0 bg-primary/10 font-semibold shadow-[inset_-2px_0_0_0_rgba(148,163,184,0.95),10px_0_14px_-10px_rgba(15,23,42,0.35)]";
+const SUMMARY_INCOME_VALUE_COLUMN_CLASS = "w-32 min-w-32 text-right";
+const SUMMARY_HOURS_VALUE_COLUMN_CLASS = "w-28 min-w-28 text-right";
+const SUMMARY_WORKPLACE_GROUP_CLASS = "w-96 min-w-96 text-center";
+const SUMMARY_WORKPLACE_HOURS_GROUP_CLASS = "w-28 min-w-28 text-center";
+
+function withGroupDivider(className: string): string {
+  return `${className} border-l border-border/70`;
+}
+
 function isValidYearInput(value: string): boolean {
   if (!/^\d{4}$/.test(value)) {
     return false;
@@ -198,17 +213,15 @@ function SummaryIncomeTable({ summary }: SummaryIncomeTableProps) {
       </CardHeader>
       <CardContent>
         <div className="overflow-x-auto rounded-lg border border-border/70">
-          <Table>
+          <Table className="min-w-max table-fixed">
             <TableHeader className="bg-muted/35">
               <TableRow>
-                <TableHead className="sticky left-0 z-20 border-r bg-muted/35">
-                  月
-                </TableHead>
+                <TableHead className={SUMMARY_MONTH_COLUMN_CLASS}>月</TableHead>
                 {summary.workplaces.map((workplace) => (
                   <TableHead
                     key={workplace.workplaceId}
                     colSpan={3}
-                    className="min-w-60 text-center"
+                    className={withGroupDivider(SUMMARY_WORKPLACE_GROUP_CLASS)}
                   >
                     <span className="inline-flex items-center justify-center gap-2">
                       <span
@@ -219,35 +232,50 @@ function SummaryIncomeTable({ summary }: SummaryIncomeTableProps) {
                     </span>
                   </TableHead>
                 ))}
-                <TableHead colSpan={3} className="min-w-60 text-center">
+                <TableHead
+                  colSpan={3}
+                  className={withGroupDivider(SUMMARY_WORKPLACE_GROUP_CLASS)}
+                >
                   全勤務先合計
                 </TableHead>
               </TableRow>
               <TableRow>
-                <TableHead className="sticky left-0 z-20 border-r bg-muted/35" />
+                <TableHead className={SUMMARY_MONTH_COLUMN_CLASS} />
                 {summary.workplaces.flatMap((workplace) => [
                   <TableHead
                     key={`${workplace.workplaceId}-taxable`}
-                    className="text-right"
+                    className={withGroupDivider(
+                      SUMMARY_INCOME_VALUE_COLUMN_CLASS,
+                    )}
                   >
                     課税所得
                   </TableHead>,
                   <TableHead
                     key={`${workplace.workplaceId}-non-taxable`}
-                    className="text-right"
+                    className={SUMMARY_INCOME_VALUE_COLUMN_CLASS}
                   >
                     非課税所得
                   </TableHead>,
                   <TableHead
                     key={`${workplace.workplaceId}-total`}
-                    className="text-right"
+                    className={SUMMARY_INCOME_VALUE_COLUMN_CLASS}
                   >
                     合計支給額
                   </TableHead>,
                 ])}
-                <TableHead className="text-right">課税所得</TableHead>
-                <TableHead className="text-right">非課税所得</TableHead>
-                <TableHead className="text-right">合計支給額</TableHead>
+                <TableHead
+                  className={withGroupDivider(
+                    SUMMARY_INCOME_VALUE_COLUMN_CLASS,
+                  )}
+                >
+                  課税所得
+                </TableHead>
+                <TableHead className={SUMMARY_INCOME_VALUE_COLUMN_CLASS}>
+                  非課税所得
+                </TableHead>
+                <TableHead className={SUMMARY_INCOME_VALUE_COLUMN_CLASS}>
+                  合計支給額
+                </TableHead>
               </TableRow>
             </TableHeader>
             <TableBody>
@@ -261,7 +289,7 @@ function SummaryIncomeTable({ summary }: SummaryIncomeTableProps) {
                 />
               ))}
               <TableRow className="bg-primary/5">
-                <TableCell className="sticky left-0 z-10 border-r bg-primary/5 font-semibold">
+                <TableCell className={SUMMARY_MONTH_TOTAL_CELL_CLASS}>
                   年合計
                 </TableCell>
                 {summary.workplaces.flatMap((workplace) => {
@@ -273,35 +301,45 @@ function SummaryIncomeTable({ summary }: SummaryIncomeTableProps) {
                   return [
                     <TableCell
                       key={`${workplace.workplaceId}-taxable`}
-                      className="text-right font-semibold"
+                      className={`${withGroupDivider(
+                        SUMMARY_INCOME_VALUE_COLUMN_CLASS,
+                      )} font-semibold`}
                     >
                       {formatCurrency(workplaceTotal?.taxableAmount ?? 0)}
                     </TableCell>,
                     <TableCell
                       key={`${workplace.workplaceId}-non-taxable`}
-                      className="text-right font-semibold"
+                      className={`${SUMMARY_INCOME_VALUE_COLUMN_CLASS} font-semibold`}
                     >
                       {formatCurrency(workplaceTotal?.nonTaxableAmount ?? 0)}
                     </TableCell>,
                     <TableCell
                       key={`${workplace.workplaceId}-total`}
-                      className="text-right font-semibold"
+                      className={`${SUMMARY_INCOME_VALUE_COLUMN_CLASS} font-semibold`}
                     >
                       {formatCurrency(workplaceTotal?.totalAmount ?? 0)}
                     </TableCell>,
                   ];
                 })}
-                <TableCell className="text-right font-semibold">
+                <TableCell
+                  className={`${withGroupDivider(
+                    SUMMARY_INCOME_VALUE_COLUMN_CLASS,
+                  )} font-semibold`}
+                >
                   {formatCurrency(
                     summary.yearlyTotals.grandTotals.taxableAmount,
                   )}
                 </TableCell>
-                <TableCell className="text-right font-semibold">
+                <TableCell
+                  className={`${SUMMARY_INCOME_VALUE_COLUMN_CLASS} font-semibold`}
+                >
                   {formatCurrency(
                     summary.yearlyTotals.grandTotals.nonTaxableAmount,
                   )}
                 </TableCell>
-                <TableCell className="text-right font-semibold">
+                <TableCell
+                  className={`${SUMMARY_INCOME_VALUE_COLUMN_CLASS} font-semibold`}
+                >
                   {formatCurrency(summary.yearlyTotals.grandTotals.totalAmount)}
                 </TableCell>
               </TableRow>
@@ -322,7 +360,7 @@ function SummaryIncomeTableRow({
 }) {
   return (
     <TableRow>
-      <TableCell className="sticky left-0 z-10 border-r bg-card font-medium">
+      <TableCell className={SUMMARY_MONTH_CELL_CLASS}>
         {month.month}月
       </TableCell>
       {workplaceIds.flatMap((workplaceId) => {
@@ -332,24 +370,35 @@ function SummaryIncomeTableRow({
         );
 
         return [
-          <TableCell key={`${workplaceId}-taxable`} className="text-right">
+          <TableCell
+            key={`${workplaceId}-taxable`}
+            className={withGroupDivider(SUMMARY_INCOME_VALUE_COLUMN_CLASS)}
+          >
             {formatCurrency(income?.taxableAmount ?? 0)}
           </TableCell>,
-          <TableCell key={`${workplaceId}-non-taxable`} className="text-right">
+          <TableCell
+            key={`${workplaceId}-non-taxable`}
+            className={SUMMARY_INCOME_VALUE_COLUMN_CLASS}
+          >
             {formatCurrency(income?.nonTaxableAmount ?? 0)}
           </TableCell>,
-          <TableCell key={`${workplaceId}-total`} className="text-right">
+          <TableCell
+            key={`${workplaceId}-total`}
+            className={SUMMARY_INCOME_VALUE_COLUMN_CLASS}
+          >
             {formatCurrency(income?.totalAmount ?? 0)}
           </TableCell>,
         ];
       })}
-      <TableCell className="text-right">
+      <TableCell
+        className={withGroupDivider(SUMMARY_INCOME_VALUE_COLUMN_CLASS)}
+      >
         {formatCurrency(month.totals.taxableAmount)}
       </TableCell>
-      <TableCell className="text-right">
+      <TableCell className={SUMMARY_INCOME_VALUE_COLUMN_CLASS}>
         {formatCurrency(month.totals.nonTaxableAmount)}
       </TableCell>
-      <TableCell className="text-right">
+      <TableCell className={SUMMARY_INCOME_VALUE_COLUMN_CLASS}>
         {formatCurrency(month.totals.totalAmount)}
       </TableCell>
     </TableRow>
@@ -367,16 +416,16 @@ function SummaryWorkHoursTable({ summary }: SummaryWorkHoursTableProps) {
       </CardHeader>
       <CardContent>
         <div className="overflow-x-auto rounded-lg border border-border/70">
-          <Table>
+          <Table className="min-w-max table-fixed">
             <TableHeader className="bg-muted/35">
               <TableRow>
-                <TableHead className="sticky left-0 z-20 border-r bg-muted/35">
-                  月
-                </TableHead>
+                <TableHead className={SUMMARY_MONTH_COLUMN_CLASS}>月</TableHead>
                 {summary.workplaces.map((workplace) => (
                   <TableHead
                     key={workplace.workplaceId}
-                    className="min-w-40 text-center"
+                    className={withGroupDivider(
+                      SUMMARY_WORKPLACE_HOURS_GROUP_CLASS,
+                    )}
                   >
                     <span className="inline-flex items-center justify-center gap-2">
                       <span
@@ -387,27 +436,37 @@ function SummaryWorkHoursTable({ summary }: SummaryWorkHoursTableProps) {
                     </span>
                   </TableHead>
                 ))}
-                <TableHead className="min-w-40 text-center">
+                <TableHead
+                  className={withGroupDivider(
+                    SUMMARY_WORKPLACE_HOURS_GROUP_CLASS,
+                  )}
+                >
                   全勤務先合計時間
                 </TableHead>
               </TableRow>
               <TableRow>
-                <TableHead className="sticky left-0 z-20 border-r bg-muted/35" />
+                <TableHead className={SUMMARY_MONTH_COLUMN_CLASS} />
                 {summary.workplaces.map((workplace) => (
                   <TableHead
                     key={`${workplace.workplaceId}-hours`}
-                    className="text-right"
+                    className={withGroupDivider(
+                      SUMMARY_HOURS_VALUE_COLUMN_CLASS,
+                    )}
                   >
                     総勤務時間
                   </TableHead>
                 ))}
-                <TableHead className="text-right">総勤務時間</TableHead>
+                <TableHead
+                  className={withGroupDivider(SUMMARY_HOURS_VALUE_COLUMN_CLASS)}
+                >
+                  総勤務時間
+                </TableHead>
               </TableRow>
             </TableHeader>
             <TableBody>
               {summary.months.map((month) => (
                 <TableRow key={month.monthKey}>
-                  <TableCell className="sticky left-0 z-10 border-r bg-card font-medium">
+                  <TableCell className={SUMMARY_MONTH_CELL_CLASS}>
                     {month.month}月
                   </TableCell>
                   {summary.workplaces.map((workplace) => {
@@ -419,19 +478,25 @@ function SummaryWorkHoursTable({ summary }: SummaryWorkHoursTableProps) {
                     return (
                       <TableCell
                         key={workplace.workplaceId}
-                        className="text-right"
+                        className={withGroupDivider(
+                          SUMMARY_HOURS_VALUE_COLUMN_CLASS,
+                        )}
                       >
                         {formatHours(hours?.totalWorkHours ?? 0)}
                       </TableCell>
                     );
                   })}
-                  <TableCell className="text-right">
+                  <TableCell
+                    className={withGroupDivider(
+                      SUMMARY_HOURS_VALUE_COLUMN_CLASS,
+                    )}
+                  >
                     {formatHours(month.totals.totalWorkHours)}
                   </TableCell>
                 </TableRow>
               ))}
               <TableRow className="bg-primary/5">
-                <TableCell className="sticky left-0 z-10 border-r bg-primary/5 font-semibold">
+                <TableCell className={SUMMARY_MONTH_TOTAL_CELL_CLASS}>
                   年合計
                 </TableCell>
                 {summary.workplaces.map((workplace) => {
@@ -443,13 +508,19 @@ function SummaryWorkHoursTable({ summary }: SummaryWorkHoursTableProps) {
                   return (
                     <TableCell
                       key={workplace.workplaceId}
-                      className="text-right font-semibold"
+                      className={`${withGroupDivider(
+                        SUMMARY_HOURS_VALUE_COLUMN_CLASS,
+                      )} font-semibold`}
                     >
                       {formatHours(workplaceTotal?.totalWorkHours ?? 0)}
                     </TableCell>
                   );
                 })}
-                <TableCell className="text-right font-semibold">
+                <TableCell
+                  className={`${withGroupDivider(
+                    SUMMARY_HOURS_VALUE_COLUMN_CLASS,
+                  )} font-semibold`}
+                >
                   {formatHours(summary.yearlyTotals.grandTotals.totalWorkHours)}
                 </TableCell>
               </TableRow>
