@@ -1,6 +1,5 @@
 "use client";
 
-import { useCallback } from "react";
 import { toast } from "sonner";
 import { ConfirmShiftCard } from "@/components/shifts/ConfirmShiftCard";
 import { ConfirmedShiftsList } from "@/components/shifts/ConfirmedShiftsList";
@@ -115,18 +114,17 @@ export function ShiftConfirmPageClient({
         )
       : null;
 
-  const loadShiftConfirmationData = useCallback(async () => {
+  const handleActionCompleted = (input: ConfirmActionCompletedInput) => {
     try {
-      await Promise.all([
-        queryClient.invalidateQueries({
-          queryKey: queryKeys.shifts.unconfirmed({ userId: currentUserId }),
-        }),
-        queryClient.invalidateQueries({
-          queryKey: queryKeys.shifts.confirmedCurrentMonth({
-            userId: currentUserId,
-          }),
-        }),
-      ]);
+      queryClient.setQueryData<UnconfirmedShiftItem[]>(
+        queryKeys.shifts.unconfirmed({ userId: currentUserId }),
+        (previous) =>
+          (previous ?? []).filter((shift) => shift.id !== input.shiftId),
+      );
+      queryClient.setQueryData<ConfirmedShiftWorkplaceGroup[]>(
+        queryKeys.shifts.confirmedCurrentMonth({ userId: currentUserId }),
+        (previous) => upsertProvisionalConfirmedShift(previous ?? [], input),
+      );
     } catch (error) {
       const message = toErrorMessage(
         error,
@@ -137,24 +135,7 @@ export function ShiftConfirmPageClient({
         duration: 6000,
       });
     }
-  }, [currentUserId, queryClient]);
-
-  const handleActionCompleted = useCallback(
-    (input: ConfirmActionCompletedInput) => {
-      queryClient.setQueryData<UnconfirmedShiftItem[]>(
-        queryKeys.shifts.unconfirmed({ userId: currentUserId }),
-        (previous) =>
-          (previous ?? []).filter((shift) => shift.id !== input.shiftId),
-      );
-      queryClient.setQueryData<ConfirmedShiftWorkplaceGroup[]>(
-        queryKeys.shifts.confirmedCurrentMonth({ userId: currentUserId }),
-        (previous) => upsertProvisionalConfirmedShift(previous ?? [], input),
-      );
-
-      void loadShiftConfirmationData();
-    },
-    [currentUserId, loadShiftConfirmationData, queryClient],
-  );
+  };
 
   return (
     <section className="flex flex-col gap-6 p-4 md:h-[calc(100svh-var(--header-height))] md:min-h-0 md:overflow-hidden md:p-6">
@@ -182,6 +163,7 @@ export function ShiftConfirmPageClient({
       ) : (
         <LoadingOverlay
           isLoading={isRefreshing}
+          blockInteraction={false}
           className="rounded-xl md:min-h-0 md:flex-1"
           contentClassName="md:flex md:h-full md:min-h-0 md:flex-col"
         >

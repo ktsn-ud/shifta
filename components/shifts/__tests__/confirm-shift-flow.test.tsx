@@ -1,4 +1,10 @@
-import { fireEvent, render, screen, waitFor } from "@testing-library/react";
+import {
+  fireEvent,
+  render,
+  screen,
+  waitFor,
+  within,
+} from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { QueryClientProvider } from "@tanstack/react-query";
 import type { ReactElement } from "react";
@@ -311,7 +317,9 @@ describe("shift confirm page and card flow", () => {
       "flex",
       "items-center",
       "justify-center",
+      "pointer-events-none",
     );
+    expect(overlayContent).not.toHaveClass("pointer-events-none");
 
     unconfirmedReload.resolve(jsonResponse({ shifts: [] }));
     confirmedReload.resolve(jsonResponse({ shifts: [] }));
@@ -557,6 +565,185 @@ describe("shift confirm page and card flow", () => {
         screen.getByText("10:00 ～ 18:00（実働7.0h）"),
       ).toBeInTheDocument();
       expect(screen.getByText(/8,400/)).toBeInTheDocument();
+    });
+  });
+
+  it("allows confirming another shift while the background refresh overlay is visible", async () => {
+    const user = userEvent.setup();
+    const fetchMock = globalThis.fetch as jest.Mock;
+    const unconfirmedReload = createDeferred<Response>();
+    const confirmedReload = createDeferred<Response>();
+
+    fetchMock.mockImplementation(
+      async (input: string, init?: { method?: string }) => {
+        if (
+          input === "/api/shifts/shift-1/confirm" &&
+          init?.method === "PATCH"
+        ) {
+          return jsonResponse({
+            id: "shift-1",
+            workplaceId: "workplace-1",
+            isConfirmed: true,
+            date: "2026-03-05",
+            startTime: "10:00",
+            endTime: "18:00",
+            breakMinutes: 60,
+            syncStatus: "pending",
+          });
+        }
+
+        if (
+          input === "/api/shifts/shift-2/confirm" &&
+          init?.method === "PATCH"
+        ) {
+          return jsonResponse({
+            id: "shift-2",
+            workplaceId: "workplace-1",
+            isConfirmed: true,
+            date: "2026-03-06",
+            startTime: "12:00",
+            endTime: "20:00",
+            breakMinutes: 45,
+            syncStatus: "pending",
+          });
+        }
+
+        if (input === "/api/shifts/unconfirmed") {
+          return unconfirmedReload.promise;
+        }
+
+        if (input === "/api/shifts/confirmed-current-month") {
+          return confirmedReload.promise;
+        }
+
+        throw new Error("Unexpected fetch: " + input);
+      },
+    );
+
+    renderWithQueryProvider(
+      <ShiftConfirmPageClient
+        currentUserId="user-test"
+        initialUnconfirmedShifts={[
+          createUnconfirmedShift(),
+          createUnconfirmedShift({
+            id: "shift-2",
+            date: "2026年3月6日(金)",
+            startTime: "12:00",
+            endTime: "20:00",
+            breakMinutes: 45,
+          }),
+        ]}
+        initialConfirmedShiftGroups={[]}
+      />,
+    );
+
+    await user.click(screen.getAllByRole("button", { name: "確定" })[0]);
+
+    await waitFor(() => {
+      expect(
+        fetchMock.mock.calls.some(
+          ([input, init]) =>
+            input === "/api/shifts/shift-1/confirm" && init?.method === "PATCH",
+        ),
+      ).toBe(true);
+    });
+
+    await waitFor(() => {
+      expect(
+        screen.getByText("10:00 ～ 18:00（実働計算中）"),
+      ).toBeInTheDocument();
+      expect(screen.getByText("2026年3月6日(金)")).toBeInTheDocument();
+    });
+
+    const refreshingRegion = screen
+      .getByRole("heading", { name: "シフト確定" })
+      .closest("section");
+    if (!(refreshingRegion instanceof HTMLElement)) {
+      throw new Error("shift confirm page section was not found");
+    }
+    expect(refreshingRegion).toContainElement(
+      screen.getByText("最新データを更新中..."),
+    );
+
+    const unconfirmedSection = screen
+      .getByRole("heading", { name: "未確定シフト" })
+      .closest("section");
+    if (!(unconfirmedSection instanceof HTMLElement)) {
+      throw new Error("unconfirmed shifts section was not found");
+    }
+
+    await user.click(
+      within(unconfirmedSection).getByRole("button", { name: "確定" }),
+    );
+
+    await waitFor(() => {
+      expect(
+        fetchMock.mock.calls.some(
+          ([input, init]) =>
+            input === "/api/shifts/shift-2/confirm" && init?.method === "PATCH",
+        ),
+      ).toBe(true);
+    });
+
+    await waitFor(() => {
+      expect(
+        screen.getByText("12:00 ～ 20:00（実働計算中）"),
+      ).toBeInTheDocument();
+      expect(screen.getAllByText("計算中")).toHaveLength(2);
+      expect(
+        screen.getByText("未確定シフトはまだありません"),
+      ).toBeInTheDocument();
+    });
+
+    unconfirmedReload.resolve(jsonResponse({ shifts: [] }));
+    confirmedReload.resolve(
+      jsonResponse({
+        shifts: [
+          {
+            id: "shift-1",
+            comment: null,
+            date: "2026-03-05",
+            startTime: "10:00",
+            endTime: "18:00",
+            breakMinutes: 60,
+            workDurationHours: 7,
+            wage: 8400,
+            isConfirmed: true,
+            workplace: {
+              id: "workplace-1",
+              name: "コンビニA",
+              color: "#FF5733",
+            },
+          },
+          {
+            id: "shift-2",
+            comment: null,
+            date: "2026-03-06",
+            startTime: "12:00",
+            endTime: "20:00",
+            breakMinutes: 45,
+            workDurationHours: 7.25,
+            wage: 9100,
+            isConfirmed: true,
+            workplace: {
+              id: "workplace-1",
+              name: "コンビニA",
+              color: "#FF5733",
+            },
+          },
+        ],
+      }),
+    );
+
+    await waitFor(() => {
+      expect(
+        screen.getByText("10:00 ～ 18:00（実働7.0h）"),
+      ).toBeInTheDocument();
+      expect(
+        screen.getByText("12:00 ～ 20:00（実働7.3h）"),
+      ).toBeInTheDocument();
+      expect(screen.getByText(/8,400/)).toBeInTheDocument();
+      expect(screen.getByText(/9,100/)).toBeInTheDocument();
     });
   });
 

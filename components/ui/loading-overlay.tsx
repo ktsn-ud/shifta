@@ -9,6 +9,7 @@ type LoadingOverlayProps = {
   className?: string;
   contentClassName?: string;
   overlayClassName?: string;
+  blockInteraction?: boolean;
 };
 
 export function LoadingOverlay({
@@ -18,19 +19,26 @@ export function LoadingOverlay({
   className,
   contentClassName,
   overlayClassName,
+  blockInteraction = true,
 }: LoadingOverlayProps) {
   return (
     <div
       aria-busy={isLoading || undefined}
       className={cn("relative", className)}
     >
-      <div className={cn(isLoading && "pointer-events-none", contentClassName)}>
+      <div
+        className={cn(
+          isLoading && blockInteraction && "pointer-events-none",
+          contentClassName,
+        )}
+      >
         {children}
       </div>
       {isLoading ? (
         <div
           className={cn(
             "absolute inset-0 z-10 flex items-center justify-center rounded-[inherit] bg-background/75 backdrop-blur-[1px]",
+            !blockInteraction && "pointer-events-none",
             overlayClassName,
           )}
         >
