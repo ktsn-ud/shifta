@@ -4,14 +4,6 @@ import { SummaryPageClient } from "@/components/summary/summary-page-client";
 import type { PayrollSummaryResult } from "@/lib/payroll/summary";
 import { usePayrollSummaryQuery } from "@/lib/query/queries/payroll";
 
-jest.mock("next/dynamic", () => ({
-  __esModule: true,
-  default: () =>
-    function MockDynamicComponent() {
-      return <div data-testid="workplace-wage-chart" />;
-    },
-}));
-
 jest.mock("@/lib/query/queries/payroll", () => ({
   usePayrollSummaryQuery: jest.fn(),
 }));
@@ -19,84 +11,89 @@ jest.mock("@/lib/query/queries/payroll", () => ({
 const mockedUsePayrollSummaryQuery =
   usePayrollSummaryQuery as jest.MockedFunction<typeof usePayrollSummaryQuery>;
 
-function createActualCoverage() {
+function createSummary(year: number): PayrollSummaryResult {
   return {
-    totalWorkplaceCount: 1,
-    registeredWorkplaceCount: 1,
-    isPartial: false,
-    taxableAmount: 120000,
-    nonTaxableAmount: 0,
-    totalAmount: 120000,
-  };
-}
-
-function createSummary(month: string): PayrollSummaryResult {
-  return {
-    month,
-    totalWage: 120000,
-    estimatedTotalWage: 118000,
-    displayValue: {
-      estimatedAmount: 118000,
-      actualAmount: {
-        taxableAmount: 120000,
-        nonTaxableAmount: 0,
-        totalAmount: 120000,
-      },
-      displayAmount: 120000,
-      differenceAmount: 2000,
-      isActualApplied: true,
-    },
-    actualCoverage: createActualCoverage(),
-    totalWorkHours: 80,
-    totalNightHours: 4,
-    totalOvertimeHours: 2,
-    byWorkplace: [
+    year,
+    workplaces: [
       {
         workplaceId: "workplace-1",
         workplaceName: "勤務先A",
         workplaceColor: "#3366FF",
-        periodStartDate: `${month}-01`,
-        periodEndDate: `${month}-31`,
-        wage: 120000,
-        workHours: 80,
-        displayValue: {
-          estimatedAmount: 118000,
-          actualAmount: {
-            taxableAmount: 120000,
-            nonTaxableAmount: 0,
-            totalAmount: 120000,
-          },
-          displayAmount: 120000,
-          differenceAmount: 2000,
-          isActualApplied: true,
-        },
-        actualPayroll: {
-          taxableAmount: 120000,
-          nonTaxableAmount: 0,
-          totalAmount: 120000,
-          note: null,
-        },
+      },
+      {
+        workplaceId: "workplace-2",
+        workplaceName: "勤務先B",
+        workplaceColor: "#FF6633",
       },
     ],
-    confirmedShiftWage: 120000,
-    currentMonthCumulative: 360000,
-    yearlyTotal: 720000,
-    currentMonthActualCoverage: createActualCoverage(),
-    yearlyActualCoverage: createActualCoverage(),
-    estimatedCurrentMonthCumulative: 354000,
-    estimatedYearlyTotal: 708000,
+    months: Array.from({ length: 12 }, (_, index) => ({
+      month: index + 1,
+      monthKey: `${year}-${String(index + 1).padStart(2, "0")}`,
+      incomeByWorkplace: [
+        {
+          workplaceId: "workplace-1",
+          taxableAmount: index === 0 ? 5000 : 0,
+          nonTaxableAmount: index === 0 ? 500 : 0,
+          totalAmount: index === 0 ? 5500 : 0,
+        },
+        {
+          workplaceId: "workplace-2",
+          taxableAmount: index === 0 ? 3000 : 0,
+          nonTaxableAmount: 0,
+          totalAmount: index === 0 ? 3000 : 0,
+        },
+      ],
+      hoursByWorkplace: [
+        {
+          workplaceId: "workplace-1",
+          totalWorkHours: index === 0 ? 5 : 0,
+        },
+        {
+          workplaceId: "workplace-2",
+          totalWorkHours: index === 0 ? 3 : 0,
+        },
+      ],
+      totals: {
+        taxableAmount: index === 0 ? 8000 : 0,
+        nonTaxableAmount: index === 0 ? 500 : 0,
+        totalAmount: index === 0 ? 8500 : 0,
+        totalWorkHours: index === 0 ? 8 : 0,
+      },
+    })),
+    yearlyTotals: {
+      byWorkplace: [
+        {
+          workplaceId: "workplace-1",
+          taxableAmount: 5000,
+          nonTaxableAmount: 500,
+          totalAmount: 5500,
+          totalWorkHours: 5,
+        },
+        {
+          workplaceId: "workplace-2",
+          taxableAmount: 3000,
+          nonTaxableAmount: 0,
+          totalAmount: 3000,
+          totalWorkHours: 3,
+        },
+      ],
+      grandTotals: {
+        taxableAmount: 8000,
+        nonTaxableAmount: 500,
+        totalAmount: 8500,
+        totalWorkHours: 8,
+      },
+    },
   };
 }
 
-function renderSummaryPageClient() {
-  const initialSummary = createSummary("2026-03");
-
+function renderSummaryPageClient(initialSummary = createSummary(2026)) {
   return render(
     <SummaryPageClient
       currentUserId="user-1"
       initialSummary={initialSummary}
-      initialMonth="2026-03"
-      currentMonthValue="2026-03"
+      initialYear={2026}
+      currentYearValue="2026"
     />,
   );
 }
@@ -106,7 +103,7 @@ describe("SummaryPageClient", () => {
     mockedUsePayrollSummaryQuery.mockReset();
 
     mockedUsePayrollSummaryQuery.mockImplementation((input) => {
-      const data = input.initialData ?? createSummary(input.month);
+      const data = input.initialData ?? createSummary(input.year);
 
       return {
         data,
@@ -118,38 +115,33 @@ describe("SummaryPageClient", () => {
     });
   });
 
-  it("初期月では initialData 付きの usePayrollSummaryQuery だけで表示する", () => {
-    const initialSummary = createSummary("2026-03");
+  it("初期年では initialData 付きの usePayrollSummaryQuery だけで表示する", () => {
+    const initialSummary = createSummary(2026);
 
-    render(
-      <SummaryPageClient
-        currentUserId="user-1"
-        initialSummary={initialSummary}
-        initialMonth="2026-03"
-        currentMonthValue="2026-03"
-      />,
-    );
+    renderSummaryPageClient(initialSummary);
 
     expect(mockedUsePayrollSummaryQuery).toHaveBeenCalledTimes(1);
     expect(mockedUsePayrollSummaryQuery).toHaveBeenCalledWith({
       userId: "user-1",
-      month: "2026-03",
+      year: 2026,
       enabled: true,
       initialData: initialSummary,
     });
+    expect(screen.getByText("所得テーブル")).toBeInTheDocument();
+    expect(screen.getByText("勤務時間テーブル")).toBeInTheDocument();
   });
 
-  it("非初期月へ変更した後は同じ usePayrollSummaryQuery を initialData なしで再利用する", async () => {
+  it("年を変更した後は initialData なしで再取得する", async () => {
     const user = userEvent.setup();
     const { container } = renderSummaryPageClient();
 
-    const monthInput = container.querySelector(
-      'input[type="month"]',
+    const yearInput = container.querySelector(
+      'input[type="number"]',
     ) as HTMLInputElement | null;
 
-    expect(monthInput).not.toBeNull();
-    fireEvent.change(monthInput!, {
-      target: { value: "2026-04" },
+    expect(yearInput).not.toBeNull();
+    fireEvent.change(yearInput!, {
+      target: { value: "2027" },
     });
 
     await user.click(screen.getByRole("button", { name: "適用" }));
@@ -157,10 +149,126 @@ describe("SummaryPageClient", () => {
     await waitFor(() => {
       expect(mockedUsePayrollSummaryQuery).toHaveBeenLastCalledWith({
         userId: "user-1",
-        month: "2026-04",
+        year: 2027,
         enabled: true,
         initialData: undefined,
       });
     });
+  });
+
+  it("勤務先グループ列と年合計行を2テーブルに表示する", () => {
+    renderSummaryPageClient();
+
+    expect(screen.getAllByText("勤務先A")).toHaveLength(2);
+    expect(screen.getAllByText("勤務先B")).toHaveLength(2);
+    expect(screen.getByText("全勤務先合計")).toBeInTheDocument();
+    expect(screen.getByText("全勤務先合計時間")).toBeInTheDocument();
+    expect(screen.getAllByText("年合計")).toHaveLength(2);
+    expect(screen.getAllByText("課税所得").length).toBeGreaterThan(0);
+    expect(screen.getAllByText("総勤務時間").length).toBeGreaterThan(0);
+  });
+
+  it("勤務先がない場合は 0件表示を出す", () => {
+    const emptySummary: PayrollSummaryResult = {
+      year: 2026,
+      workplaces: [],
+      months: Array.from({ length: 12 }, (_, index) => ({
+        month: index + 1,
+        monthKey: `2026-${String(index + 1).padStart(2, "0")}`,
+        incomeByWorkplace: [],
+        hoursByWorkplace: [],
+        totals: {
+          taxableAmount: 0,
+          nonTaxableAmount: 0,
+          totalAmount: 0,
+          totalWorkHours: 0,
+        },
+      })),
+      yearlyTotals: {
+        byWorkplace: [],
+        grandTotals: {
+          taxableAmount: 0,
+          nonTaxableAmount: 0,
+          totalAmount: 0,
+          totalWorkHours: 0,
+        },
+      },
+    };
+
+    renderSummaryPageClient(emptySummary);
+
+    expect(
+      screen.getByText("対象年の集計データはありません。"),
+    ).toBeInTheDocument();
+  });
+
+  it("勤務先があっても対象年データが全て0なら 0件表示を出す", () => {
+    const zeroSummary: PayrollSummaryResult = {
+      ...createSummary(2026),
+      months: Array.from({ length: 12 }, (_, index) => ({
+        month: index + 1,
+        monthKey: `2026-${String(index + 1).padStart(2, "0")}`,
+        incomeByWorkplace: [
+          {
+            workplaceId: "workplace-1",
+            taxableAmount: 0,
+            nonTaxableAmount: 0,
+            totalAmount: 0,
+          },
+          {
+            workplaceId: "workplace-2",
+            taxableAmount: 0,
+            nonTaxableAmount: 0,
+            totalAmount: 0,
+          },
+        ],
+        hoursByWorkplace: [
+          {
+            workplaceId: "workplace-1",
+            totalWorkHours: 0,
+          },
+          {
+            workplaceId: "workplace-2",
+            totalWorkHours: 0,
+          },
+        ],
+        totals: {
+          taxableAmount: 0,
+          nonTaxableAmount: 0,
+          totalAmount: 0,
+          totalWorkHours: 0,
+        },
+      })),
+      yearlyTotals: {
+        byWorkplace: [
+          {
+            workplaceId: "workplace-1",
+            taxableAmount: 0,
+            nonTaxableAmount: 0,
+            totalAmount: 0,
+            totalWorkHours: 0,
+          },
+          {
+            workplaceId: "workplace-2",
+            taxableAmount: 0,
+            nonTaxableAmount: 0,
+            totalAmount: 0,
+            totalWorkHours: 0,
+          },
+        ],
+        grandTotals: {
+          taxableAmount: 0,
+          nonTaxableAmount: 0,
+          totalAmount: 0,
+          totalWorkHours: 0,
+        },
+      },
+    };
+
+    renderSummaryPageClient(zeroSummary);
+
+    expect(
+      screen.getByText("対象年の集計データはありません。"),
+    ).toBeInTheDocument();
   });
 });

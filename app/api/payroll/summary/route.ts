@@ -2,18 +2,24 @@ import { connection } from "next/server";
 import { unstable_rethrow } from "next/navigation";
 import { z } from "zod";
 import { requireCurrentUser } from "@/lib/api/current-user";
-import { parseDateOnly } from "@/lib/api/date-time";
 import { jsonNoStore } from "@/lib/api/cache-control";
 import { jsonError } from "@/lib/api/http";
 import { createRequestTiming } from "@/lib/perf/request-timing";
 import { getPayrollSummaryForUser } from "@/lib/payroll/summary";
 
-const MONTH_REGEX = /^\d{4}-(0[1-9]|1[0-2])$/;
+const MIN_YEAR = 2000;
+const MAX_YEAR = 2100;
 
 const summaryQuerySchema = z.strictObject({
-  month: z
+  year: z
     .string()
-    .regex(MONTH_REGEX, "month は YYYY-MM形式で入力してください"),
+    .regex(/^\d{4}$/, "year は YYYY形式で入力してください")
+    .transform((value) => Number(value))
+    .refine(
+      (value) =>
+        Number.isInteger(value) && value >= MIN_YEAR && value <= MAX_YEAR,
+      `year は ${MIN_YEAR}〜${MAX_YEAR} の範囲で入力してください`,
+    ),
 });
 
 export async function GET(request: Request) {
@@ -36,7 +42,7 @@ export async function GET(request: Request) {
     const url = new URL(request.url);
     const query = await timing.measure("queryParse", () =>
       summaryQuerySchema.safeParse({
-        month: url.searchParams.get("month"),
+        year: url.searchParams.get("year"),
       }),
     );
 
@@ -48,10 +54,7 @@ export async function GET(request: Request) {
 
     const summary = await timing.measure("getPayrollSummaryForUser", () =>
       timing.measure("service", () =>
-        getPayrollSummaryForUser(
-          current.user.id,
-          parseDateOnly(`${query.data.month}-01`),
-        ),
+        getPayrollSummaryForUser(current.user.id, query.data.year),
       ),
     );
 

@@ -7,7 +7,7 @@ type MonthShiftsQueryInput = {
 
 type PayrollSummaryQueryInput = {
   userId: string;
-  month: string;
+  year: number;
 };
 
 type PayrollSummaryYearContextQueryInput = {
