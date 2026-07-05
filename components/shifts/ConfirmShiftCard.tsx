@@ -44,7 +44,7 @@ type ValidationResult = {
 };
 
 export function ConfirmShiftCard(props: ConfirmShiftCardProps) {
-  return <ConfirmShiftCardContent key={props.shift.id} {...props} />;
+  return <ConfirmShiftCardContent {...props} />;
 }
 
 const GOOGLE_TOKEN_EXPIRED_DESCRIPTION =

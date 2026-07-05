@@ -1149,7 +1149,10 @@ function useBulkShiftFormController({
 
       const response = await fetch(
         `/api/calendar/events?${searchParams.toString()}`,
-        { signal },
+        {
+          method: "POST",
+          signal,
+        },
       );
 
       if (response.ok === false) {

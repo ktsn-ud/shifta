@@ -183,6 +183,15 @@ function handleBulkPreviewFetch(input: string): Response | null {
   return null;
 }
 
+function isCalendarEventsRequest(
+  input: string,
+  init?: { method?: string },
+): boolean {
+  return (
+    input.startsWith("/api/calendar/events?month=") && init?.method === "POST"
+  );
+}
+
 function dateKeyFromDay(day: number): string {
   const year = 2026;
   const month = 3;
@@ -222,25 +231,27 @@ describe("bulk shift flow integration", () => {
   it("loads form reference data from the bootstrap endpoint", async () => {
     const fetchMock = globalThis.fetch as jest.Mock;
 
-    fetchMock.mockImplementation(async (input: string) => {
-      if (input.startsWith("/api/calendar/events?month=")) {
-        return jsonResponse({
-          data: {
-            month: "2026-03",
-            calendars: [],
-            selectedCalendarIds: [],
-            dates: [],
-          },
-        });
-      }
+    fetchMock.mockImplementation(
+      async (input: string, init?: { method?: string }) => {
+        if (isCalendarEventsRequest(input, init)) {
+          return jsonResponse({
+            data: {
+              month: "2026-03",
+              calendars: [],
+              selectedCalendarIds: [],
+              dates: [],
+            },
+          });
+        }
 
-      const previewResponse = handleBulkPreviewFetch(input);
-      if (previewResponse) {
-        return previewResponse;
-      }
+        const previewResponse = handleBulkPreviewFetch(input);
+        if (previewResponse) {
+          return previewResponse;
+        }
 
-      throw new Error("Unexpected fetch: " + input);
-    });
+        throw new Error("Unexpected fetch: " + input);
+      },
+    );
 
     renderBulkShiftForm();
 
@@ -269,6 +280,44 @@ describe("bulk shift flow integration", () => {
     ).toBe(false);
   });
 
+  it("loads google calendar events with POST", async () => {
+    const fetchMock = globalThis.fetch as jest.Mock;
+
+    fetchMock.mockImplementation(
+      async (input: string, init?: { method?: string }) => {
+        if (isCalendarEventsRequest(input, init)) {
+          return jsonResponse({
+            data: {
+              month: "2026-03",
+              calendars: [],
+              selectedCalendarIds: [],
+              dates: [],
+            },
+          });
+        }
+
+        const previewResponse = handleBulkPreviewFetch(input);
+        if (previewResponse) {
+          return previewResponse;
+        }
+
+        throw new Error("Unexpected fetch: " + input);
+      },
+    );
+
+    renderBulkShiftForm();
+
+    await waitFor(() => {
+      expect(
+        fetchMock.mock.calls.some(
+          ([url, options]) =>
+            String(url).startsWith("/api/calendar/events?month=") &&
+            (options as { method?: string } | undefined)?.method === "POST",
+        ),
+      ).toBe(true);
+    });
+  });
+
   it("selects multiple days, edits each row, and posts bulk payload", async () => {
     const user = userEvent.setup({
       advanceTimers: jest.advanceTimersByTime,
@@ -277,7 +326,7 @@ describe("bulk shift flow integration", () => {
 
     fetchMock.mockImplementation(
       async (input: string, init?: { method?: string }) => {
-        if (input.startsWith("/api/calendar/events?month=")) {
+        if (isCalendarEventsRequest(input, init)) {
           return jsonResponse({
             data: {
               month: "2026-03",
@@ -442,7 +491,7 @@ describe("bulk shift flow integration", () => {
 
     fetchMock.mockImplementation(
       async (input: string, init?: { method?: string }) => {
-        if (input.startsWith("/api/calendar/events?month=")) {
+        if (isCalendarEventsRequest(input, init)) {
           return jsonResponse({
             data: {
               month: "2026-03",
@@ -560,7 +609,7 @@ describe("bulk shift flow integration", () => {
 
     fetchMock.mockImplementation(
       async (input: string, init?: { method?: string }) => {
-        if (input.startsWith("/api/calendar/events?month=")) {
+        if (isCalendarEventsRequest(input, init)) {
           return jsonResponse({
             data: {
               month: "2026-03",
@@ -665,7 +714,7 @@ describe("bulk shift flow integration", () => {
 
     fetchMock.mockImplementation(
       async (input: string, init?: { method?: string }) => {
-        if (input.startsWith("/api/calendar/events?month=")) {
+        if (isCalendarEventsRequest(input, init)) {
           return jsonResponse({
             data: {
               month: "2026-03",
@@ -756,60 +805,62 @@ describe("bulk shift flow integration", () => {
     });
     const fetchMock = globalThis.fetch as jest.Mock;
 
-    fetchMock.mockImplementation(async (input: string) => {
-      if (input.startsWith("/api/calendar/events?month=")) {
-        return jsonResponse({
-          data: {
-            month: "2026-03",
-            calendars: [
-              {
-                id: "cal-1",
-                summary: "個人",
-                color: "#3366FF",
-              },
-            ],
-            selectedCalendarIds: ["cal-1"],
-            dates: [
-              {
-                date: "2026-03-20",
-                count: 1,
-                items: [
-                  {
-                    title: "研究室MTG",
-                    start: "10:00",
-                    end: "11:00",
-                    allDay: false,
-                    calendarId: "cal-1",
-                    calendarSummary: "個人",
-                    calendarColor: "#3366FF",
-                  },
-                ],
-              },
-            ],
-          },
-        });
-      }
-
-      if (input === WORKPLACE_LIST_URL) {
-        return jsonResponse({
-          data: [
-            {
-              id: "workplace-1",
-              name: "勤務先A",
-              color: "#3366FF",
-              type: "GENERAL",
+    fetchMock.mockImplementation(
+      async (input: string, init?: { method?: string }) => {
+        if (isCalendarEventsRequest(input, init)) {
+          return jsonResponse({
+            data: {
+              month: "2026-03",
+              calendars: [
+                {
+                  id: "cal-1",
+                  summary: "個人",
+                  color: "#3366FF",
+                },
+              ],
+              selectedCalendarIds: ["cal-1"],
+              dates: [
+                {
+                  date: "2026-03-20",
+                  count: 1,
+                  items: [
+                    {
+                      title: "研究室MTG",
+                      start: "10:00",
+                      end: "11:00",
+                      allDay: false,
+                      calendarId: "cal-1",
+                      calendarSummary: "個人",
+                      calendarColor: "#3366FF",
+                    },
+                  ],
+                },
+              ],
             },
-          ],
-        });
-      }
+          });
+        }
 
-      const previewResponse = handleBulkPreviewFetch(input);
-      if (previewResponse) {
-        return previewResponse;
-      }
+        if (input === WORKPLACE_LIST_URL) {
+          return jsonResponse({
+            data: [
+              {
+                id: "workplace-1",
+                name: "勤務先A",
+                color: "#3366FF",
+                type: "GENERAL",
+              },
+            ],
+          });
+        }
 
-      throw new Error("Unexpected fetch: " + input);
-    });
+        const previewResponse = handleBulkPreviewFetch(input);
+        if (previewResponse) {
+          return previewResponse;
+        }
+
+        throw new Error("Unexpected fetch: " + input);
+      },
+    );
 
     renderBulkShiftForm();
 
@@ -843,38 +894,40 @@ describe("bulk shift flow integration", () => {
   it("renders holiday in red and saturday in blue on bulk calendar", async () => {
     const fetchMock = globalThis.fetch as jest.Mock;
 
-    fetchMock.mockImplementation(async (input: string) => {
-      if (input.startsWith("/api/calendar/events?month=")) {
-        return jsonResponse({
-          data: {
-            month: "2026-03",
-            calendars: [],
-            selectedCalendarIds: [],
-            dates: [],
-          },
-        });
-      }
-
-      if (input === WORKPLACE_LIST_URL) {
-        return jsonResponse({
-          data: [
-            {
-              id: "workplace-1",
-              name: "勤務先A",
-              color: "#3366FF",
-              type: "GENERAL",
+    fetchMock.mockImplementation(
+      async (input: string, init?: { method?: string }) => {
+        if (isCalendarEventsRequest(input, init)) {
+          return jsonResponse({
+            data: {
+              month: "2026-03",
+              calendars: [],
+              selectedCalendarIds: [],
+              dates: [],
             },
-          ],
-        });
-      }
+          });
+        }
 
-      const previewResponse = handleBulkPreviewFetch(input);
-      if (previewResponse) {
-        return previewResponse;
-      }
+        if (input === WORKPLACE_LIST_URL) {
+          return jsonResponse({
+            data: [
+              {
+                id: "workplace-1",
+                name: "勤務先A",
+                color: "#3366FF",
+                type: "GENERAL",
+              },
+            ],
+          });
+        }
 
-      throw new Error("Unexpected fetch: " + input);
-    });
+        const previewResponse = handleBulkPreviewFetch(input);
+        if (previewResponse) {
+          return previewResponse;
+        }
+
+        throw new Error("Unexpected fetch: " + input);
+      },
+    );
 
     renderBulkShiftForm();
 
@@ -896,7 +949,7 @@ describe("bulk shift flow integration", () => {
       advanceTimers: jest.advanceTimersByTime,
     });
     const fetchMock = globalThis.fetch as jest.Mock;
-    const calendarRequests: string[] = [];
+    const calendarRequests: Array<{ url: string; method?: string }> = [];
 
     localStorage.setItem(
       BULK_CALENDAR_SELECTION_STORAGE_KEY,
@@ -907,57 +960,62 @@ describe("bulk shift flow integration", () => {
       }),
     );
 
-    fetchMock.mockImplementation(async (input: string) => {
-      if (input.startsWith("/api/calendar/events?month=")) {
-        calendarRequests.push(input);
+    fetchMock.mockImplementation(
+      async (input: string, init?: { method?: string }) => {
+        if (isCalendarEventsRequest(input, init)) {
+          calendarRequests.push({
+            url: input,
+            method: init?.method,
+          });
 
-        const requestUrl = new URL(input, "http://localhost");
-        const requestedCalendarIds =
-          requestUrl.searchParams.getAll("calendarId");
-        const selectedCalendarIds =
-          requestedCalendarIds.length > 0 ? requestedCalendarIds : ["cal-1"];
+          const requestUrl = new URL(input, "http://localhost");
+          const requestedCalendarIds =
+            requestUrl.searchParams.getAll("calendarId");
+          const selectedCalendarIds =
+            requestedCalendarIds.length > 0 ? requestedCalendarIds : ["cal-1"];
 
-        return jsonResponse({
-          data: {
-            month: "2026-03",
-            calendars: [
+          return jsonResponse({
+            data: {
+              month: "2026-03",
+              calendars: [
+                {
+                  id: "cal-1",
+                  summary: "個人",
+                  color: "#3366FF",
+                },
+                {
+                  id: "cal-2",
+                  summary: "バイト",
+                  color: "#0EA5E9",
+                },
+              ],
+              selectedCalendarIds,
+              dates: [],
+            },
+          });
+        }
+
+        if (input === WORKPLACE_LIST_URL) {
+          return jsonResponse({
+            data: [
               {
-                id: "cal-1",
-                summary: "個人",
+                id: "workplace-1",
+                name: "勤務先A",
                 color: "#3366FF",
-              },
-              {
-                id: "cal-2",
-                summary: "バイト",
-                color: "#0EA5E9",
+                type: "GENERAL",
               },
             ],
-            selectedCalendarIds,
-            dates: [],
-          },
-        });
-      }
+          });
+        }
 
-      if (input === WORKPLACE_LIST_URL) {
-        return jsonResponse({
-          data: [
-            {
-              id: "workplace-1",
-              name: "勤務先A",
-              color: "#3366FF",
-              type: "GENERAL",
-            },
-          ],
-        });
-      }
+        const previewResponse = handleBulkPreviewFetch(input);
+        if (previewResponse) {
+          return previewResponse;
+        }
 
-      const previewResponse = handleBulkPreviewFetch(input);
-      if (previewResponse) {
-        return previewResponse;
-      }
-
-      throw new Error("Unexpected fetch: " + input);
-    });
+        throw new Error("Unexpected fetch: " + input);
+      },
+    );
 
     renderBulkShiftForm();
 
@@ -965,7 +1023,9 @@ describe("bulk shift flow integration", () => {
       expect(calendarRequests.length).toBeGreaterThan(0);
     });
 
-    const firstRequest = new URL(calendarRequests[0], "http://localhost");
+    expect(calendarRequests[0]?.method).toBe("POST");
+
+    const firstRequest = new URL(calendarRequests[0].url, "http://localhost");
     expect(firstRequest.searchParams.getAll("calendarId")).toEqual(["cal-2"]);
 
     const resetButton = await screen.findByRole("button", {
@@ -986,38 +1046,40 @@ describe("bulk shift flow integration", () => {
     });
     const fetchMock = globalThis.fetch as jest.Mock;
 
-    fetchMock.mockImplementation(async (input: string) => {
-      if (input.startsWith("/api/calendar/events?month=")) {
-        return jsonResponse({
-          data: {
-            month: "2026-03",
-            calendars: [],
-            selectedCalendarIds: [],
-            dates: [],
-          },
-        });
-      }
-
-      if (input === WORKPLACE_LIST_URL) {
-        return jsonResponse({
-          data: [
-            {
-              id: "workplace-1",
-              name: "勤務先A",
-              color: "#3366FF",
-              type: "GENERAL",
+    fetchMock.mockImplementation(
+      async (input: string, init?: { method?: string }) => {
+        if (isCalendarEventsRequest(input, init)) {
+          return jsonResponse({
+            data: {
+              month: "2026-03",
+              calendars: [],
+              selectedCalendarIds: [],
+              dates: [],
             },
-          ],
-        });
-      }
+          });
+        }
 
-      const previewResponse = handleBulkPreviewFetch(input);
-      if (previewResponse) {
-        return previewResponse;
-      }
+        if (input === WORKPLACE_LIST_URL) {
+          return jsonResponse({
+            data: [
+              {
+                id: "workplace-1",
+                name: "勤務先A",
+                color: "#3366FF",
+                type: "GENERAL",
+              },
+            ],
+          });
+        }
 
-      throw new Error("Unexpected fetch: " + input);
-    });
+        const previewResponse = handleBulkPreviewFetch(input);
+        if (previewResponse) {
+          return previewResponse;
+        }
+
+        throw new Error("Unexpected fetch: " + input);
+      },
+    );
 
     renderBulkShiftForm();
 
@@ -1046,67 +1108,69 @@ describe("bulk shift flow integration", () => {
       resolveAprilResponse = resolve;
     });
 
-    fetchMock.mockImplementation((input: string) => {
-      if (input.startsWith("/api/calendar/events?month=")) {
-        const url = new URL(input, "http://localhost");
-        const month = url.searchParams.get("month");
+    fetchMock.mockImplementation(
+      (input: string, init?: { method?: string }) => {
+        if (isCalendarEventsRequest(input, init)) {
+          const url = new URL(input, "http://localhost");
+          const month = url.searchParams.get("month");
 
-        if (month === "2026-03") {
+          if (month === "2026-03") {
+            return Promise.resolve(
+              jsonResponse({
+                data: {
+                  month: "2026-03",
+                  calendars: [],
+                  selectedCalendarIds: [],
+                  dates: [
+                    {
+                      date: "2026-03-20",
+                      count: 1,
+                      items: [
+                        {
+                          title: "March Event",
+                          start: "09:00",
+                          end: "10:00",
+                          allDay: false,
+                          calendarId: "cal-1",
+                          calendarSummary: "Main",
+                          calendarColor: "#3366FF",
+                        },
+                      ],
+                    },
+                  ],
+                },
+              }),
+            );
+          }
+
+          if (month === "2026-04") {
+            return aprilResponse;
+          }
+        }
+
+        if (input === WORKPLACE_LIST_URL) {
           return Promise.resolve(
             jsonResponse({
-              data: {
-                month: "2026-03",
-                calendars: [],
-                selectedCalendarIds: [],
-                dates: [
-                  {
-                    date: "2026-03-20",
-                    count: 1,
-                    items: [
-                      {
-                        title: "March Event",
-                        start: "09:00",
-                        end: "10:00",
-                        allDay: false,
-                        calendarId: "cal-1",
-                        calendarSummary: "Main",
-                        calendarColor: "#3366FF",
-                      },
-                    ],
-                  },
-                ],
-              },
+              data: [
+                {
+                  id: "workplace-1",
+                  name: "勤務先A",
+                  color: "#3366FF",
+                  type: "GENERAL",
+                },
+              ],
             }),
           );
         }
 
-        if (month === "2026-04") {
-          return aprilResponse;
+        const previewResponse = handleBulkPreviewFetch(input);
+        if (previewResponse) {
+          return Promise.resolve(previewResponse);
         }
-      }
 
-      if (input === WORKPLACE_LIST_URL) {
-        return Promise.resolve(
-          jsonResponse({
-            data: [
-              {
-                id: "workplace-1",
-                name: "勤務先A",
-                color: "#3366FF",
-                type: "GENERAL",
-              },
-            ],
-          }),
-        );
-      }
-
-      const previewResponse = handleBulkPreviewFetch(input);
-      if (previewResponse) {
-        return Promise.resolve(previewResponse);
-      }
-
-      throw new Error("Unexpected fetch: " + input);
-    });
+        throw new Error("Unexpected fetch: " + input);
+      },
+    );
 
     renderBulkShiftForm();
 

@@ -2,7 +2,7 @@ import { after, connection } from "next/server";
 import { createHash } from "node:crypto";
 import { calendar_v3 } from "googleapis";
 import { requireCurrentUser } from "@/lib/api/current-user";
-import { jsonError } from "@/lib/api/http";
+import { jsonError, verifyMutationRequest } from "@/lib/api/http";
 import { GoogleCalendarAuthError } from "@/lib/google-calendar/auth";
 import { getReadCalendarClientByUserId } from "@/lib/google-calendar/client";
 import { SHIFTA_CALENDAR_TIMEZONE } from "@/lib/google-calendar/constants";
@@ -545,7 +545,7 @@ function aggregateEvent(
   pushAggregatedEvent(dayMap, dateKey, item);
 }
 
-export async function GET(request: Request) {
+async function handleCalendarEventsRequest(request: Request) {
   await connection();
   let cacheKey: string | null = null;
   let pendingCacheWrite: CalendarEventsResponseData | null = null;
@@ -684,7 +684,7 @@ export async function GET(request: Request) {
       if (cacheKey) {
         const staleData = readCalendarEventsCacheStale(cacheKey);
         if (staleData) {
-          console.warn("GET /api/calendar/events fallback to stale cache", {
+          console.warn("POST /api/calendar/events fallback to stale cache", {
             status: googleErrorStatus,
           });
 
@@ -699,7 +699,7 @@ export async function GET(request: Request) {
         }
       }
 
-      console.error("GET /api/calendar/events google api failed", {
+      console.error("POST /api/calendar/events google api failed", {
         status: googleErrorStatus,
         error,
       });
@@ -709,7 +709,29 @@ export async function GET(request: Request) {
       );
     }
 
-    console.error("GET /api/calendar/events failed", error);
+    console.error("POST /api/calendar/events failed", error);
     return jsonError("Google Calendar 予定の取得に失敗しました", 500);
   }
+}
+
+export function GET() {
+  return jsonError(
+    "このエンドポイントはPOSTのみ対応しています",
+    405,
+    undefined,
+    {
+      headers: {
+        Allow: "POST",
+      },
+    },
+  );
+}
+
+export async function POST(request: Request) {
+  const csrfError = verifyMutationRequest(request);
+  if (csrfError) {
+    return csrfError;
+  }
+
+  return handleCalendarEventsRequest(request);
 }

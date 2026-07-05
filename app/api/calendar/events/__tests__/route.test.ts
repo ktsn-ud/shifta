@@ -97,14 +97,30 @@ function createCalendarClientMock() {
   };
 }
 
-async function loadGet() {
+async function loadRouteModule() {
   let routeModule: typeof import("@/app/api/calendar/events/route");
 
   await jest.isolateModulesAsync(async () => {
     routeModule = await import("@/app/api/calendar/events/route");
   });
 
-  return routeModule!.GET;
+  return routeModule!;
+}
+
+function buildRequest(method: "GET" | "POST"): Request {
+  return {
+    method,
+    url: "http://localhost/api/calendar/events?month=2026-05",
+    headers: {
+      get: (name: string) => {
+        if (method === "POST" && name.toLowerCase() === "origin") {
+          return "http://localhost";
+        }
+
+        return null;
+      },
+    },
+  } as Request;
 }
 
 async function flushAfterCallbacks() {
@@ -115,7 +131,7 @@ async function flushAfterCallbacks() {
   }
 }
 
-describe("GET /api/calendar/events", () => {
+describe("POST /api/calendar/events", () => {
   beforeEach(() => {
     jest.resetAllMocks();
     connectionMock.mockResolvedValue(undefined);
@@ -130,19 +146,10 @@ describe("GET /api/calendar/events", () => {
     const calendarClient = createCalendarClientMock();
     getReadCalendarClientByUserIdMock.mockResolvedValue(calendarClient.client);
 
-    const GET = await loadGet();
-    const request = {
-      method: "GET",
-      url: "http://localhost/api/calendar/events?month=2026-05",
-      headers: {
-        get: (name: string) => {
-          void name;
-          return null;
-        },
-      },
-    } as Request;
+    const { POST } = await loadRouteModule();
+    const request = buildRequest("POST");
 
-    const firstResponse = await GET(request);
+    const firstResponse = await POST(request);
     if (!firstResponse) {
       throw new Error("firstResponse is undefined");
     }
@@ -150,7 +157,7 @@ describe("GET /api/calendar/events", () => {
       meta: { cacheStatus: string };
     };
 
-    const secondResponse = await GET(request);
+    const secondResponse = await POST(request);
     if (!secondResponse) {
       throw new Error("secondResponse is undefined");
     }
@@ -173,19 +180,10 @@ describe("GET /api/calendar/events", () => {
     const calendarClient = createCalendarClientMock();
     getReadCalendarClientByUserIdMock.mockResolvedValue(calendarClient.client);
 
-    const GET = await loadGet();
-    const request = {
-      method: "GET",
-      url: "http://localhost/api/calendar/events?month=2026-05",
-      headers: {
-        get: (name: string) => {
-          void name;
-          return null;
-        },
-      },
-    } as Request;
+    const { POST } = await loadRouteModule();
+    const request = buildRequest("POST");
 
-    const firstResponse = await GET(request);
+    const firstResponse = await POST(request);
     if (!firstResponse) {
       throw new Error("firstResponse is undefined");
     }
@@ -194,7 +192,7 @@ describe("GET /api/calendar/events", () => {
     };
     await flushAfterCallbacks();
 
-    const secondResponse = await GET(request);
+    const secondResponse = await POST(request);
     if (!secondResponse) {
       throw new Error("secondResponse is undefined");
     }
@@ -206,5 +204,30 @@ describe("GET /api/calendar/events", () => {
     expect(secondPayload.meta.cacheStatus).toBe("hit");
     expect(calendarClient.calendarListList).toHaveBeenCalledTimes(1);
     expect(calendarClient.eventsList).toHaveBeenCalledTimes(1);
+  });
+});
+
+describe("GET /api/calendar/events", () => {
+  beforeEach(() => {
+    jest.resetAllMocks();
+    connectionMock.mockResolvedValue(undefined);
+    afterCallbacks.length = 0;
+  });
+
+  it("405 と Allow: POST を返す", async () => {
+    const { GET } = await loadRouteModule();
+
+    const response = await GET();
+    if (!response) {
+      throw new Error("response is undefined");
+    }
+
+    const payload = (await response.json()) as {
+      error: string;
+    };
+
+    expect(response.status).toBe(405);
+    expect(response.headers.get("allow")).toBe("POST");
+    expect(payload.error).toBe("このエンドポイントはPOSTのみ対応しています");
   });
 });
