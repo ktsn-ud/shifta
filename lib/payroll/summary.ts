@@ -55,12 +55,62 @@ export type PayrollSummaryYearContextResult = {
   estimatedYearlyTotal: number;
 };
 
-export type PayrollSummaryResult = PayrollSummaryCoreResult &
-  PayrollSummaryYearContextResult;
-
 export type PayrollSummaryAmountResult = {
   month: string;
   totalWage: number;
+};
+
+export type PayrollSummaryWorkplaceItem = {
+  workplaceId: string;
+  workplaceName: string;
+  workplaceColor: string;
+};
+
+export type PayrollSummaryIncomeByWorkplaceItem = {
+  workplaceId: string;
+  taxableAmount: number;
+  nonTaxableAmount: number;
+  totalAmount: number;
+};
+
+export type PayrollSummaryHoursByWorkplaceItem = {
+  workplaceId: string;
+  totalWorkHours: number;
+};
+
+export type PayrollSummaryMonthTotals = {
+  taxableAmount: number;
+  nonTaxableAmount: number;
+  totalAmount: number;
+  totalWorkHours: number;
+};
+
+export type PayrollSummaryMonthItem = {
+  month: number;
+  monthKey: string;
+  incomeByWorkplace: PayrollSummaryIncomeByWorkplaceItem[];
+  hoursByWorkplace: PayrollSummaryHoursByWorkplaceItem[];
+  totals: PayrollSummaryMonthTotals;
+};
+
+export type PayrollSummaryYearlyWorkplaceTotal = {
+  workplaceId: string;
+  taxableAmount: number;
+  nonTaxableAmount: number;
+  totalAmount: number;
+  totalWorkHours: number;
+};
+
+export type PayrollSummaryYearlyTotals = {
+  byWorkplace: PayrollSummaryYearlyWorkplaceTotal[];
+  grandTotals: PayrollSummaryMonthTotals;
+};
+
+export type PayrollSummaryResult = {
+  year: number;
+  workplaces: PayrollSummaryWorkplaceItem[];
+  months: PayrollSummaryMonthItem[];
+  yearlyTotals: PayrollSummaryYearlyTotals;
 };
 
 type WorkplaceWithPayrollCycle = PayrollSnapshotWorkplace;
@@ -131,7 +181,10 @@ function mergeCoverageWithDisplayAmount(
 }
 
 function listMonthsInYear(month: Date): Date[] {
-  const year = month.getUTCFullYear();
+  return listMonthDatesInYear(month.getUTCFullYear());
+}
+
+function listMonthDatesInYear(year: number): Date[] {
   return Array.from(
     { length: 12 },
     (_, index) => new Date(Date.UTC(year, index, 1)),
@@ -219,6 +272,35 @@ function createEmptyPayrollSummaryAmount(
   return {
     month: monthKey,
     totalWage: 0,
+  };
+}
+
+function createEmptyPayrollSummaryMonthTotals(): PayrollSummaryMonthTotals {
+  return {
+    taxableAmount: 0,
+    nonTaxableAmount: 0,
+    totalAmount: 0,
+    totalWorkHours: 0,
+  };
+}
+
+function createEmptyPayrollSummaryResult(year: number): PayrollSummaryResult {
+  const months = listMonthDatesInYear(year).map((monthDate, index) => ({
+    month: index + 1,
+    monthKey: toMonthKey(monthDate),
+    incomeByWorkplace: [],
+    hoursByWorkplace: [],
+    totals: createEmptyPayrollSummaryMonthTotals(),
+  }));
+
+  return {
+    year,
+    workplaces: [],
+    months,
+    yearlyTotals: {
+      byWorkplace: [],
+      grandTotals: createEmptyPayrollSummaryMonthTotals(),
+    },
   };
 }
 
@@ -536,6 +618,189 @@ function buildPayrollSummaryYearContext(params: {
   };
 }
 
+function createYearlyWorkplaceAccumulator(
+  workplaceId: string,
+): PayrollSummaryYearlyWorkplaceTotal {
+  return {
+    workplaceId,
+    taxableAmount: 0,
+    nonTaxableAmount: 0,
+    totalAmount: 0,
+    totalWorkHours: 0,
+  };
+}
+
+function buildSummaryIncomeByWorkplaceItem(params: {
+  workplace: WorkplaceWithPayrollCycle;
+  monthKey: string;
+  actualPayrollByWorkplaceMonth: Map<string, ActualPayrollRecord>;
+  getWorkplaceMonthSummary: (
+    workplace: WorkplaceWithPayrollCycle,
+    monthKey: string,
+  ) => WorkplacePeriodSummary;
+}): PayrollSummaryIncomeByWorkplaceItem {
+  const summarized = params.getWorkplaceMonthSummary(
+    params.workplace,
+    params.monthKey,
+  );
+  const actualPayroll =
+    params.actualPayrollByWorkplaceMonth.get(
+      buildWorkplaceMonthKey(params.workplace.id, params.monthKey),
+    ) ?? null;
+  const estimatedAmount = roundCurrency(summarized.wage);
+  const taxableAmount = actualPayroll
+    ? roundCurrency(actualPayroll.taxableAmount)
+    : estimatedAmount;
+  const nonTaxableAmount = actualPayroll
+    ? roundCurrency(actualPayroll.nonTaxableAmount)
+    : 0;
+  const totalAmount = actualPayroll
+    ? roundCurrency(actualPayroll.totalAmount)
+    : estimatedAmount;
+
+  return {
+    workplaceId: params.workplace.id,
+    taxableAmount,
+    nonTaxableAmount,
+    totalAmount,
+  };
+}
+
+function buildSummaryHoursByWorkplaceItem(params: {
+  workplace: WorkplaceWithPayrollCycle;
+  monthKey: string;
+  getWorkplaceMonthSummary: (
+    workplace: WorkplaceWithPayrollCycle,
+    monthKey: string,
+  ) => WorkplacePeriodSummary;
+}): PayrollSummaryHoursByWorkplaceItem {
+  const summarized = params.getWorkplaceMonthSummary(
+    params.workplace,
+    params.monthKey,
+  );
+
+  return {
+    workplaceId: params.workplace.id,
+    totalWorkHours: roundHours(summarized.workHours),
+  };
+}
+
+function mergeIncomeTotals(
+  target: PayrollSummaryMonthTotals | PayrollSummaryYearlyWorkplaceTotal,
+  source: Omit<PayrollSummaryIncomeByWorkplaceItem, "workplaceId">,
+): void {
+  target.taxableAmount = roundCurrency(
+    target.taxableAmount + source.taxableAmount,
+  );
+  target.nonTaxableAmount = roundCurrency(
+    target.nonTaxableAmount + source.nonTaxableAmount,
+  );
+  target.totalAmount = roundCurrency(target.totalAmount + source.totalAmount);
+}
+
+function mergeHoursTotals(
+  target: PayrollSummaryMonthTotals | PayrollSummaryYearlyWorkplaceTotal,
+  source: Omit<PayrollSummaryHoursByWorkplaceItem, "workplaceId">,
+): void {
+  target.totalWorkHours = roundHours(
+    target.totalWorkHours + source.totalWorkHours,
+  );
+}
+
+function buildPayrollSummaryResult(params: {
+  year: number;
+  workplaces: WorkplaceWithPayrollCycle[];
+  actualPayrollByWorkplaceMonth: Map<string, ActualPayrollRecord>;
+  getWorkplaceMonthSummary: (
+    workplace: WorkplaceWithPayrollCycle,
+    monthKey: string,
+  ) => WorkplacePeriodSummary;
+}): PayrollSummaryResult {
+  if (params.workplaces.length === 0) {
+    return createEmptyPayrollSummaryResult(params.year);
+  }
+
+  const workplaceItems = params.workplaces.map((workplace) => ({
+    workplaceId: workplace.id,
+    workplaceName: workplace.name,
+    workplaceColor: workplace.color,
+  }));
+  const yearlyTotalsByWorkplace = new Map<
+    string,
+    PayrollSummaryYearlyWorkplaceTotal
+  >(
+    params.workplaces.map((workplace) => [
+      workplace.id,
+      createYearlyWorkplaceAccumulator(workplace.id),
+    ]),
+  );
+  const yearlyGrandTotals = createEmptyPayrollSummaryMonthTotals();
+
+  const months = listMonthDatesInYear(params.year).map((monthDate, index) => {
+    const monthKey = toMonthKey(monthDate);
+    const totals = createEmptyPayrollSummaryMonthTotals();
+    const incomeByWorkplace = params.workplaces.map((workplace) => {
+      const incomeItem = buildSummaryIncomeByWorkplaceItem({
+        workplace,
+        monthKey,
+        actualPayrollByWorkplaceMonth: params.actualPayrollByWorkplaceMonth,
+        getWorkplaceMonthSummary: params.getWorkplaceMonthSummary,
+      });
+      const hoursItem = buildSummaryHoursByWorkplaceItem({
+        workplace,
+        monthKey,
+        getWorkplaceMonthSummary: params.getWorkplaceMonthSummary,
+      });
+
+      mergeIncomeTotals(totals, incomeItem);
+      mergeHoursTotals(totals, hoursItem);
+      const yearlyWorkplaceTotal = yearlyTotalsByWorkplace.get(workplace.id);
+      if (!yearlyWorkplaceTotal) {
+        throw new Error(`PAYROLL_WORKPLACE_TOTAL_NOT_FOUND: ${workplace.id}`);
+      }
+      mergeIncomeTotals(yearlyWorkplaceTotal, incomeItem);
+      mergeHoursTotals(yearlyWorkplaceTotal, hoursItem);
+
+      return incomeItem;
+    });
+    const hoursByWorkplace = params.workplaces.map((workplace) =>
+      buildSummaryHoursByWorkplaceItem({
+        workplace,
+        monthKey,
+        getWorkplaceMonthSummary: params.getWorkplaceMonthSummary,
+      }),
+    );
+
+    mergeIncomeTotals(yearlyGrandTotals, totals);
+    mergeHoursTotals(yearlyGrandTotals, totals);
+
+    return {
+      month: index + 1,
+      monthKey,
+      incomeByWorkplace,
+      hoursByWorkplace,
+      totals,
+    };
+  });
+
+  return {
+    year: params.year,
+    workplaces: workplaceItems,
+    months,
+    yearlyTotals: {
+      byWorkplace: params.workplaces.map((workplace) => {
+        const total = yearlyTotalsByWorkplace.get(workplace.id);
+        if (!total) {
+          throw new Error(`PAYROLL_WORKPLACE_TOTAL_NOT_FOUND: ${workplace.id}`);
+        }
+
+        return total;
+      }),
+      grandTotals: yearlyGrandTotals,
+    },
+  };
+}
+
 export async function getPayrollSummaryCoreForUser(
   userId: string,
   month: Date,
@@ -687,13 +952,12 @@ export async function getPayrollSummaryAmountForUser(
 
 export async function getPayrollSummaryForUser(
   userId: string,
-  month: Date,
+  year: number,
 ): Promise<PayrollSummaryResult> {
   const timing = createRequestTiming("payroll:getPayrollSummaryForUser");
 
   try {
-    const selectedMonth = startOfMonth(month);
-    const selectedMonthKey = toMonthKey(selectedMonth);
+    const months = listMonthDatesInYear(year);
     const {
       workplaces,
       periodByWorkplaceMonth,
@@ -703,16 +967,13 @@ export async function getPayrollSummaryForUser(
     } = await timing.measure("snapshot", () =>
       loadPayrollSnapshot({
         userId,
-        monthDates: listMonthsInYear(selectedMonth),
+        monthDates: months,
         includeActualPayroll: true,
       }),
     );
 
     if (workplaces.length === 0) {
-      return {
-        ...createEmptyPayrollSummaryCore(selectedMonthKey),
-        ...createEmptyPayrollSummaryYearContext(selectedMonthKey),
-      };
+      return createEmptyPayrollSummaryResult(year);
     }
 
     const getWorkplaceMonthSummary = await timing.measure(
@@ -725,28 +986,14 @@ export async function getPayrollSummaryForUser(
         }),
     );
 
-    const core = await timing.measure("summaryCoreBuild", () =>
-      buildPayrollSummaryCore({
-        monthKey: selectedMonthKey,
-        workplaces,
-        periodByWorkplaceMonth,
-        actualPayrollByWorkplaceMonth,
-        getWorkplaceMonthSummary,
-      }),
-    );
-    const yearContext = await timing.measure("summaryYearContextBuild", () =>
-      buildPayrollSummaryYearContext({
-        selectedMonth,
+    return timing.measure("summaryBuild", () =>
+      buildPayrollSummaryResult({
+        year,
         workplaces,
         actualPayrollByWorkplaceMonth,
         getWorkplaceMonthSummary,
       }),
     );
-
-    return {
-      ...core,
-      ...yearContext,
-    };
   } finally {
     timing.flushLog();
   }

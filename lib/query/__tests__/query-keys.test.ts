@@ -21,7 +21,11 @@ describe("queryKeys", () => {
     ]);
   });
 
-  it("給与詳細（月次・勤務先年次）でキーが衝突しない", () => {
+  it("給与サマリーは年単位キーでも他の給与キーと衝突しない", () => {
+    const summary = queryKeys.payroll.summary({
+      userId: "user-1",
+      year: 2026,
+    });
     const monthly = queryKeys.payroll.detailsMonthly({
       userId: "user-1",
       month: "2026-05",
@@ -40,6 +44,17 @@ describe("queryKeys", () => {
       year: 2026,
     });
 
+    expect(summary).toEqual([
+      "payroll",
+      "summary",
+      {
+        userId: "user-1",
+        year: 2026,
+      },
+    ]);
+    expect(summary).not.toEqual(monthly);
+    expect(summary).not.toEqual(summaryAmount);
+    expect(summary).not.toEqual(summaryYearContext);
     expect(monthly).not.toEqual(yearly);
     expect(summaryYearContext).not.toEqual(monthly);
     expect(summaryAmount).not.toEqual(summaryYearContext);

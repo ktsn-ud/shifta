@@ -47,49 +47,57 @@ const getPayrollSummaryForUserMock = jest.mocked(getPayrollSummaryForUser);
 
 function createSummary() {
   return {
-    month: "2026-08",
-    totalWage: 123456,
-    estimatedTotalWage: 123456,
-    displayValue: {
-      displayAmount: 123456,
-      estimatedAmount: 123456,
-      actualAmount: null,
-      differenceAmount: 0,
-      isActualApplied: false,
+    year: 2026,
+    workplaces: [
+      {
+        workplaceId: "workplace-1",
+        workplaceName: "勤務先A",
+        workplaceColor: "#3366FF",
+      },
+    ],
+    months: [
+      {
+        month: 1,
+        monthKey: "2026-01",
+        incomeByWorkplace: [
+          {
+            workplaceId: "workplace-1",
+            taxableAmount: 120000,
+            nonTaxableAmount: 5000,
+            totalAmount: 125000,
+          },
+        ],
+        hoursByWorkplace: [
+          {
+            workplaceId: "workplace-1",
+            totalWorkHours: 80,
+          },
+        ],
+        totals: {
+          taxableAmount: 120000,
+          nonTaxableAmount: 5000,
+          totalAmount: 125000,
+          totalWorkHours: 80,
+        },
+      },
+    ],
+    yearlyTotals: {
+      byWorkplace: [
+        {
+          workplaceId: "workplace-1",
+          taxableAmount: 120000,
+          nonTaxableAmount: 5000,
+          totalAmount: 125000,
+          totalWorkHours: 80,
+        },
+      ],
+      grandTotals: {
+        taxableAmount: 120000,
+        nonTaxableAmount: 5000,
+        totalAmount: 125000,
+        totalWorkHours: 80,
+      },
     },
-    actualCoverage: {
-      registeredWorkplaceCount: 0,
-      totalWorkplaceCount: 0,
-      isPartial: false,
-      taxableAmount: 0,
-      nonTaxableAmount: 0,
-      totalAmount: 0,
-    },
-    totalWorkHours: 8,
-    totalNightHours: 0,
-    totalOvertimeHours: 0,
-    byWorkplace: [],
-    confirmedShiftWage: 0,
-    currentMonthCumulative: 123456,
-    yearlyTotal: 456789,
-    currentMonthActualCoverage: {
-      registeredWorkplaceCount: 0,
-      totalWorkplaceCount: 0,
-      isPartial: false,
-      taxableAmount: 0,
-      nonTaxableAmount: 0,
-      totalAmount: 0,
-    },
-    yearlyActualCoverage: {
-      registeredWorkplaceCount: 0,
-      totalWorkplaceCount: 0,
-      isPartial: false,
-      taxableAmount: 0,
-      nonTaxableAmount: 0,
-      totalAmount: 0,
-    },
-    estimatedCurrentMonthCumulative: 123456,
-    estimatedYearlyTotal: 456789,
   };
 }
 
@@ -168,7 +176,7 @@ describe("GET /api/payroll/summary", () => {
     process.env.SHIFTA_PERF = originalPerf;
   });
 
-  it("SHIFTA_PERF 未設定なら既存レスポンスを返し Server-Timing を付けない", async () => {
+  it("year 指定で年次サマリーを返す", async () => {
     requireCurrentUserMock.mockResolvedValue({
       user: { id: "user-1" },
     } as Awaited<ReturnType<typeof requireCurrentUser>>);
@@ -176,7 +184,7 @@ describe("GET /api/payroll/summary", () => {
 
     const GET = await loadGet();
     const response = await GET(
-      createRequest("http://localhost/api/payroll/summary?month=2026-08"),
+      createRequest("http://localhost/api/payroll/summary?year=2026"),
     );
     if (!response) {
       throw new Error("response is undefined");
@@ -188,17 +196,36 @@ describe("GET /api/payroll/summary", () => {
     );
     await expect(response.json()).resolves.toEqual(
       expect.objectContaining({
-        month: "2026-08",
-        totalWage: 123456,
-        estimatedTotalWage: 123456,
+        year: 2026,
+        workplaces: expect.any(Array),
+        months: expect.any(Array),
       }),
     );
     expect(response.headers.get("server-timing")).toBeNull();
-    expect(getPayrollSummaryForUserMock).toHaveBeenCalledWith(
-      "user-1",
-      new Date("2026-08-01T00:00:00.000Z"),
-    );
+    expect(getPayrollSummaryForUserMock).toHaveBeenCalledWith("user-1", 2026);
     expect(connectionMock).toHaveBeenCalledTimes(1);
+  });
+
+  it("不正な year は 400 を返し service を呼ばない", async () => {
+    requireCurrentUserMock.mockResolvedValue({
+      user: { id: "user-1" },
+    } as Awaited<ReturnType<typeof requireCurrentUser>>);
+
+    const GET = await loadGet();
+    const response = await GET(
+      createRequest("http://localhost/api/payroll/summary?year=1999"),
+    );
+    if (!response) {
+      throw new Error("response is undefined");
+    }
+
+    expect(response.status).toBe(400);
+    await expect(response.json()).resolves.toEqual(
+      expect.objectContaining({
+        error: "クエリパラメータが不正です",
+      }),
+    );
+    expect(getPayrollSummaryForUserMock).not.toHaveBeenCalled();
   });
 
   it("未認証時は current-user の response をそのまま返す", async () => {
@@ -209,7 +236,7 @@ describe("GET /api/payroll/summary", () => {
 
     const GET = await loadGet();
     const response = await GET(
-      createRequest("http://localhost/api/payroll/summary?month=2026-08"),
+      createRequest("http://localhost/api/payroll/summary?year=2026"),
     );
 
     expect(response).toBe(unauthorizedResponse);
@@ -228,7 +255,7 @@ describe("GET /api/payroll/summary", () => {
     try {
       const GET = await loadGet();
       const response = await GET(
-        createRequest("http://localhost/api/payroll/summary?month=2026-08"),
+        createRequest("http://localhost/api/payroll/summary?year=2026"),
       );
       if (!response) {
         throw new Error("response is undefined");

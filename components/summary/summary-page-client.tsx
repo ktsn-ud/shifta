@@ -1,7 +1,6 @@
 "use client";
 
-import dynamic from "next/dynamic";
-import { useState } from "react";
+import { startTransition, useState } from "react";
 import { Button } from "@/components/ui/button";
 import {
   Card,
@@ -22,46 +21,46 @@ import {
   TableHeader,
   TableRow,
 } from "@/components/ui/table";
-import { formatMonthLabel, fromMonthInputValue } from "@/lib/calendar/date";
 import { toErrorMessage } from "@/lib/messages";
-import { type PayrollSummaryResult } from "@/lib/payroll/summary";
+import {
+  type PayrollSummaryHoursByWorkplaceItem,
+  type PayrollSummaryIncomeByWorkplaceItem,
+  type PayrollSummaryMonthItem,
+  type PayrollSummaryResult,
+  type PayrollSummaryYearlyWorkplaceTotal,
+} from "@/lib/payroll/summary";
 import { usePayrollSummaryQuery } from "@/lib/query/queries/payroll";
 
 type SummaryPageClientProps = {
   currentUserId: string;
   initialSummary: PayrollSummaryResult;
-  initialMonth: string;
-  currentMonthValue: string;
+  initialYear: number;
+  currentYearValue: string;
 };
 
 type SummaryHeaderProps = {
-  draftMonthValue: string;
-  currentMonthValue: string;
-  requestedMonthValue: string;
-  canApplyMonth: boolean;
+  displayYearValue: string;
+  draftYearValue: string;
+  currentYearValue: string;
+  requestedYearValue: string;
+  canApplyYear: boolean;
   isInitialLoading: boolean;
   isRefreshing: boolean;
-  onDraftMonthValueChange: (value: string) => void;
-  onApplyMonth: () => void;
-  onBackToCurrentMonth: () => void;
+  onDraftYearValueChange: (value: string) => void;
+  onApplyYearValue: (value: string) => void;
+  onBackToCurrentYear: () => void;
 };
 
-type SummaryPrimaryMetricsProps = {
-  summary: PayrollSummaryResult;
-  selectedMonthLabel: string;
-};
-
-type SummarySecondaryMetricsProps = {
+type SummaryIncomeTableProps = {
   summary: PayrollSummaryResult;
 };
 
-type SummaryWorkplaceChartCardProps = {
-  byWorkplace: PayrollSummaryResult["byWorkplace"];
+type SummaryWorkHoursTableProps = {
+  summary: PayrollSummaryResult;
 };
 
-type SummaryWorkplaceTableCardProps = {
-  byWorkplace: PayrollSummaryResult["byWorkplace"];
-};
+const MIN_YEAR = 2000;
+const MAX_YEAR = 2100;
 
 const currencyFormatter = new Intl.NumberFormat("ja-JP", {
   style: "currency",
@@ -69,18 +68,37 @@ const currencyFormatter = new Intl.NumberFormat("ja-JP", {
   maximumFractionDigits: 0,
 });
 
-const WorkplaceWageChart = dynamic(
-  () =>
-    import("@/components/summary/workplace-wage-chart").then(
-      (mod) => mod.WorkplaceWageChart,
-    ),
-  {
-    ssr: false,
-    loading: () => (
-      <SpinnerPanel className="h-[280px]" label="グラフを読み込み中..." />
-    ),
-  },
-);
+const SUMMARY_MONTH_COLUMN_CLASS =
+  "sticky left-0 z-30 w-20 min-w-20 border-r-0 bg-muted shadow-[inset_-2px_0_0_0_rgba(148,163,184,0.95),10px_0_14px_-10px_rgba(15,23,42,0.45)]";
+const SUMMARY_MONTH_CELL_CLASS =
+  "sticky left-0 z-20 w-20 min-w-20 border-r-0 bg-card font-medium shadow-[inset_-2px_0_0_0_rgba(148,163,184,0.95),10px_0_14px_-10px_rgba(15,23,42,0.35)]";
+const SUMMARY_MONTH_TOTAL_CELL_CLASS =
+  "sticky left-0 z-20 w-20 min-w-20 border-r-0 bg-primary/10 font-semibold shadow-[inset_-2px_0_0_0_rgba(148,163,184,0.95),10px_0_14px_-10px_rgba(15,23,42,0.35)]";
+const SUMMARY_INCOME_VALUE_COLUMN_CLASS = "w-32 min-w-32 text-right";
+const SUMMARY_HOURS_VALUE_COLUMN_CLASS = "w-28 min-w-28 text-right";
+const SUMMARY_WORKPLACE_GROUP_CLASS = "w-96 min-w-96 text-center";
+const SUMMARY_WORKPLACE_HOURS_GROUP_CLASS = "w-28 min-w-28 text-center";
+
+function withGroupDivider(className: string): string {
+  return `${className} border-l border-border/70`;
+}
+
+function isValidYearInput(value: string): boolean {
+  if (!/^\d{4}$/.test(value)) {
+    return false;
+  }
+
+  const year = Number(value);
+  return Number.isInteger(year) && year >= MIN_YEAR && year <= MAX_YEAR;
+}
+
+function toYearNumber(value: string): number | null {
+  if (!isValidYearInput(value)) {
+    return null;
+  }
+
+  return Number(value);
+}
 
 function formatCurrency(value: number): string {
   return currencyFormatter.format(value);
@@ -90,25 +108,44 @@ function formatHours(value: number): string {
   return `${value.toFixed(2)} 時間`;
 }
 
-function toWorkplaceChartData(
-  byWorkplace: PayrollSummaryResult["byWorkplace"],
-) {
-  return byWorkplace.map((item) => ({
-    workplaceName: item.workplaceName,
-    displayWage: item.displayValue.displayAmount,
-  }));
+function findIncomeByWorkplace(
+  items: PayrollSummaryIncomeByWorkplaceItem[],
+  workplaceId: string,
+): PayrollSummaryIncomeByWorkplaceItem | null {
+  return items.find((item) => item.workplaceId === workplaceId) ?? null;
+}
+
+function findHoursByWorkplace(
+  items: PayrollSummaryHoursByWorkplaceItem[],
+  workplaceId: string,
+): PayrollSummaryHoursByWorkplaceItem | null {
+  return items.find((item) => item.workplaceId === workplaceId) ?? null;
+}
+
+function findYearlyTotalByWorkplace(
+  items: PayrollSummaryYearlyWorkplaceTotal[],
+  workplaceId: string,
+): PayrollSummaryYearlyWorkplaceTotal | null {
+  return items.find((item) => item.workplaceId === workplaceId) ?? null;
+}
+
+function hasAnySummaryRows(summary: PayrollSummaryResult): boolean {
+  return summary.months.some(
+    (month) => month.totals.totalAmount > 0 || month.totals.totalWorkHours > 0,
+  );
 }
 
 function SummaryHeader({
-  draftMonthValue,
-  currentMonthValue,
-  requestedMonthValue,
-  canApplyMonth,
+  displayYearValue,
+  draftYearValue,
+  currentYearValue,
+  requestedYearValue,
+  canApplyYear,
   isInitialLoading,
   isRefreshing,
-  onDraftMonthValueChange,
-  onApplyMonth,
-  onBackToCurrentMonth,
+  onDraftYearValueChange,
+  onApplyYearValue,
+  onBackToCurrentYear,
 }: SummaryHeaderProps) {
   return (
     <header className="space-y-4 rounded-xl border border-border/80 bg-card/95 p-5 shadow-sm">
@@ -118,7 +155,7 @@ function SummaryHeader({
         </p>
         <h2 className="text-2xl font-semibold tracking-tight">給与サマリー</h2>
         <p className="text-sm text-muted-foreground">
-          支給月別の実績優先給与と勤務時間を確認できます。
+          {displayYearValue}年受取分の所得と勤務時間を年次表で確認できます。
         </p>
       </div>
 
@@ -128,30 +165,34 @@ function SummaryHeader({
             type="button"
             variant="outline"
             size="sm"
-            onClick={onBackToCurrentMonth}
-            disabled={requestedMonthValue === currentMonthValue || isRefreshing}
+            onClick={onBackToCurrentYear}
+            disabled={requestedYearValue === currentYearValue || isRefreshing}
           >
-            今月に戻る
+            今年に戻る
           </Button>
           <Input
-            type="month"
-            value={draftMonthValue}
+            type="number"
+            inputMode="numeric"
+            min={MIN_YEAR}
+            max={MAX_YEAR}
+            step={1}
+            value={draftYearValue}
             disabled={isRefreshing}
             onKeyDown={(event) => {
               if (event.key === "Enter") {
-                onApplyMonth();
+                onApplyYearValue(draftYearValue);
               }
             }}
             onChange={(event) => {
-              onDraftMonthValueChange(event.currentTarget.value);
+              onDraftYearValueChange(event.currentTarget.value);
             }}
-            className="w-44"
+            className="w-32"
           />
           <Button
             type="button"
             size="sm"
-            onClick={onApplyMonth}
-            disabled={!canApplyMonth || isRefreshing}
+            onClick={() => onApplyYearValue(draftYearValue)}
+            disabled={!canApplyYear || isRefreshing}
           >
             適用
           </Button>
@@ -161,205 +202,328 @@ function SummaryHeader({
   );
 }
 
-function SummaryPrimaryMetrics({
-  summary,
-  selectedMonthLabel,
-}: SummaryPrimaryMetricsProps) {
-  return (
-    <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4 my-4">
-      <Card size="sm" className="border-primary/30 bg-primary/5">
-        <CardHeader>
-          <CardTitle>実績支給額</CardTitle>
-          <CardDescription>{selectedMonthLabel}支給分</CardDescription>
-        </CardHeader>
-        <CardContent className="space-y-1">
-          <p className="text-3xl font-semibold tracking-tight">
-            {formatCurrency(summary.totalWage)}
-          </p>
-          <p className="text-xs text-muted-foreground">
-            課税 {formatCurrency(summary.actualCoverage.taxableAmount)} / 非課税{" "}
-            {formatCurrency(summary.actualCoverage.nonTaxableAmount)}
-          </p>
-          <p className="text-xs text-muted-foreground">
-            {summary.actualCoverage.registeredWorkplaceCount === 0
-              ? "実給与は未登録です"
-              : summary.actualCoverage.isPartial
-                ? `実給与登録済み ${summary.actualCoverage.registeredWorkplaceCount}/${summary.actualCoverage.totalWorkplaceCount} 勤務先`
-                : "全勤務先で実給与登録済み"}
-          </p>
-        </CardContent>
-      </Card>
-      <Card size="sm">
-        <CardHeader>
-          <CardTitle>概算給与</CardTitle>
-          <CardDescription>シフトから算出した見込額</CardDescription>
-        </CardHeader>
-        <CardContent className="text-2xl font-semibold">
-          {formatCurrency(summary.estimatedTotalWage)}
-        </CardContent>
-      </Card>
-      <Card size="sm">
-        <CardHeader>
-          <CardTitle>総勤務時間</CardTitle>
-          <CardDescription>休憩控除後の合計</CardDescription>
-        </CardHeader>
-        <CardContent className="text-2xl font-semibold">
-          {formatHours(summary.totalWorkHours)}
-        </CardContent>
-      </Card>
-      <Card size="sm">
-        <CardHeader>
-          <CardTitle>深夜勤務</CardTitle>
-          <CardDescription>深夜帯の合計時間</CardDescription>
-        </CardHeader>
-        <CardContent className="text-2xl font-semibold">
-          {formatHours(summary.totalNightHours)}
-        </CardContent>
-      </Card>
-    </div>
-  );
-}
-
-function SummarySecondaryMetrics({ summary }: SummarySecondaryMetricsProps) {
-  return (
-    <div className="grid gap-4 lg:grid-cols-4 my-4">
-      <Card size="sm">
-        <CardHeader>
-          <CardTitle>確定済み支給額</CardTitle>
-          <CardDescription>当月支給分のうち確定済みシフト分</CardDescription>
-        </CardHeader>
-        <CardContent className="text-2xl font-semibold">
-          {formatCurrency(summary.confirmedShiftWage)}
-        </CardContent>
-      </Card>
-      <Card size="sm">
-        <CardHeader>
-          <CardTitle>年内受取累計（選択月まで）</CardTitle>
-          <CardDescription>実績優先の累計表示</CardDescription>
-        </CardHeader>
-        <CardContent className="space-y-1">
-          <p className="text-2xl font-semibold">
-            {formatCurrency(summary.currentMonthCumulative)}
-          </p>
-          <p className="text-xs text-muted-foreground">
-            課税{" "}
-            {formatCurrency(summary.currentMonthActualCoverage.taxableAmount)} /
-            非課税{" "}
-            {formatCurrency(
-              summary.currentMonthActualCoverage.nonTaxableAmount,
-            )}
-          </p>
-          <p className="text-xs text-muted-foreground">
-            概算 {formatCurrency(summary.estimatedCurrentMonthCumulative)}
-          </p>
-        </CardContent>
-      </Card>
-      <Card size="sm">
-        <CardHeader>
-          <CardTitle>年間受取見込（1月〜12月）</CardTitle>
-          <CardDescription>実績優先の年間表示</CardDescription>
-        </CardHeader>
-        <CardContent className="space-y-1">
-          <p className="text-2xl font-semibold">
-            {formatCurrency(summary.yearlyTotal)}
-          </p>
-          <p className="text-xs text-muted-foreground">
-            課税 {formatCurrency(summary.yearlyActualCoverage.taxableAmount)} /
-            非課税{" "}
-            {formatCurrency(summary.yearlyActualCoverage.nonTaxableAmount)}
-          </p>
-          <p className="text-xs text-muted-foreground">
-            概算 {formatCurrency(summary.estimatedYearlyTotal)}
-          </p>
-        </CardContent>
-      </Card>
-      <Card size="sm">
-        <CardHeader>
-          <CardTitle>残業時間</CardTitle>
-          <CardDescription>所定時間超過分</CardDescription>
-        </CardHeader>
-        <CardContent className="text-2xl font-semibold">
-          {formatHours(summary.totalOvertimeHours)}
-        </CardContent>
-      </Card>
-    </div>
-  );
-}
-
-function SummaryWorkplaceChartCard({
-  byWorkplace,
-}: SummaryWorkplaceChartCardProps) {
+function SummaryIncomeTable({ summary }: SummaryIncomeTableProps) {
   return (
     <Card className="border-border/80 bg-card/95 shadow-sm">
       <CardHeader>
-        <CardTitle>勤務先別給与</CardTitle>
-        <CardDescription>選択月支給分の実績支給額グラフ</CardDescription>
+        <CardTitle>所得テーブル</CardTitle>
+        <CardDescription>
+          実給与がある月は実績、未登録月は概算を課税所得として表示します。
+        </CardDescription>
       </CardHeader>
       <CardContent>
-        <WorkplaceWageChart byWorkplace={toWorkplaceChartData(byWorkplace)} />
+        <div className="overflow-x-auto rounded-lg border border-border/70">
+          <Table className="min-w-max table-fixed">
+            <TableHeader className="bg-muted/35">
+              <TableRow>
+                <TableHead className={SUMMARY_MONTH_COLUMN_CLASS}>月</TableHead>
+                {summary.workplaces.map((workplace) => (
+                  <TableHead
+                    key={workplace.workplaceId}
+                    colSpan={3}
+                    className={withGroupDivider(SUMMARY_WORKPLACE_GROUP_CLASS)}
+                  >
+                    <span className="inline-flex items-center justify-center gap-2">
+                      <span
+                        className="h-2.5 w-2.5 rounded-full"
+                        style={{ backgroundColor: workplace.workplaceColor }}
+                      />
+                      {workplace.workplaceName}
+                    </span>
+                  </TableHead>
+                ))}
+                <TableHead
+                  colSpan={3}
+                  className={withGroupDivider(SUMMARY_WORKPLACE_GROUP_CLASS)}
+                >
+                  全勤務先合計
+                </TableHead>
+              </TableRow>
+              <TableRow>
+                <TableHead className={SUMMARY_MONTH_COLUMN_CLASS} />
+                {summary.workplaces.flatMap((workplace) => [
+                  <TableHead
+                    key={`${workplace.workplaceId}-taxable`}
+                    className={withGroupDivider(
+                      SUMMARY_INCOME_VALUE_COLUMN_CLASS,
+                    )}
+                  >
+                    課税所得
+                  </TableHead>,
+                  <TableHead
+                    key={`${workplace.workplaceId}-non-taxable`}
+                    className={SUMMARY_INCOME_VALUE_COLUMN_CLASS}
+                  >
+                    非課税所得
+                  </TableHead>,
+                  <TableHead
+                    key={`${workplace.workplaceId}-total`}
+                    className={SUMMARY_INCOME_VALUE_COLUMN_CLASS}
+                  >
+                    合計支給額
+                  </TableHead>,
+                ])}
+                <TableHead
+                  className={withGroupDivider(
+                    SUMMARY_INCOME_VALUE_COLUMN_CLASS,
+                  )}
+                >
+                  課税所得
+                </TableHead>
+                <TableHead className={SUMMARY_INCOME_VALUE_COLUMN_CLASS}>
+                  非課税所得
+                </TableHead>
+                <TableHead className={SUMMARY_INCOME_VALUE_COLUMN_CLASS}>
+                  合計支給額
+                </TableHead>
+              </TableRow>
+            </TableHeader>
+            <TableBody>
+              {summary.months.map((month) => (
+                <SummaryIncomeTableRow
+                  key={month.monthKey}
+                  month={month}
+                  workplaceIds={summary.workplaces.map(
+                    (workplace) => workplace.workplaceId,
+                  )}
+                />
+              ))}
+              <TableRow className="bg-primary/5">
+                <TableCell className={SUMMARY_MONTH_TOTAL_CELL_CLASS}>
+                  年合計
+                </TableCell>
+                {summary.workplaces.flatMap((workplace) => {
+                  const workplaceTotal = findYearlyTotalByWorkplace(
+                    summary.yearlyTotals.byWorkplace,
+                    workplace.workplaceId,
+                  );
+
+                  return [
+                    <TableCell
+                      key={`${workplace.workplaceId}-taxable`}
+                      className={`${withGroupDivider(
+                        SUMMARY_INCOME_VALUE_COLUMN_CLASS,
+                      )} font-semibold`}
+                    >
+                      {formatCurrency(workplaceTotal?.taxableAmount ?? 0)}
+                    </TableCell>,
+                    <TableCell
+                      key={`${workplace.workplaceId}-non-taxable`}
+                      className={`${SUMMARY_INCOME_VALUE_COLUMN_CLASS} font-semibold`}
+                    >
+                      {formatCurrency(workplaceTotal?.nonTaxableAmount ?? 0)}
+                    </TableCell>,
+                    <TableCell
+                      key={`${workplace.workplaceId}-total`}
+                      className={`${SUMMARY_INCOME_VALUE_COLUMN_CLASS} font-semibold`}
+                    >
+                      {formatCurrency(workplaceTotal?.totalAmount ?? 0)}
+                    </TableCell>,
+                  ];
+                })}
+                <TableCell
+                  className={`${withGroupDivider(
+                    SUMMARY_INCOME_VALUE_COLUMN_CLASS,
+                  )} font-semibold`}
+                >
+                  {formatCurrency(
+                    summary.yearlyTotals.grandTotals.taxableAmount,
+                  )}
+                </TableCell>
+                <TableCell
+                  className={`${SUMMARY_INCOME_VALUE_COLUMN_CLASS} font-semibold`}
+                >
+                  {formatCurrency(
+                    summary.yearlyTotals.grandTotals.nonTaxableAmount,
+                  )}
+                </TableCell>
+                <TableCell
+                  className={`${SUMMARY_INCOME_VALUE_COLUMN_CLASS} font-semibold`}
+                >
+                  {formatCurrency(summary.yearlyTotals.grandTotals.totalAmount)}
+                </TableCell>
+              </TableRow>
+            </TableBody>
+          </Table>
+        </div>
       </CardContent>
     </Card>
   );
 }
 
-function SummaryWorkplaceTableCard({
-  byWorkplace,
-}: SummaryWorkplaceTableCardProps) {
+function SummaryIncomeTableRow({
+  month,
+  workplaceIds,
+}: {
+  month: PayrollSummaryMonthItem;
+  workplaceIds: string[];
+}) {
+  return (
+    <TableRow>
+      <TableCell className={SUMMARY_MONTH_CELL_CLASS}>
+        {month.month}月
+      </TableCell>
+      {workplaceIds.flatMap((workplaceId) => {
+        const income = findIncomeByWorkplace(
+          month.incomeByWorkplace,
+          workplaceId,
+        );
+
+        return [
+          <TableCell
+            key={`${workplaceId}-taxable`}
+            className={withGroupDivider(SUMMARY_INCOME_VALUE_COLUMN_CLASS)}
+          >
+            {formatCurrency(income?.taxableAmount ?? 0)}
+          </TableCell>,
+          <TableCell
+            key={`${workplaceId}-non-taxable`}
+            className={SUMMARY_INCOME_VALUE_COLUMN_CLASS}
+          >
+            {formatCurrency(income?.nonTaxableAmount ?? 0)}
+          </TableCell>,
+          <TableCell
+            key={`${workplaceId}-total`}
+            className={SUMMARY_INCOME_VALUE_COLUMN_CLASS}
+          >
+            {formatCurrency(income?.totalAmount ?? 0)}
+          </TableCell>,
+        ];
+      })}
+      <TableCell
+        className={withGroupDivider(SUMMARY_INCOME_VALUE_COLUMN_CLASS)}
+      >
+        {formatCurrency(month.totals.taxableAmount)}
+      </TableCell>
+      <TableCell className={SUMMARY_INCOME_VALUE_COLUMN_CLASS}>
+        {formatCurrency(month.totals.nonTaxableAmount)}
+      </TableCell>
+      <TableCell className={SUMMARY_INCOME_VALUE_COLUMN_CLASS}>
+        {formatCurrency(month.totals.totalAmount)}
+      </TableCell>
+    </TableRow>
+  );
+}
+
+function SummaryWorkHoursTable({ summary }: SummaryWorkHoursTableProps) {
   return (
     <Card className="border-border/80 bg-card/95 shadow-sm">
       <CardHeader>
-        <CardTitle>勤務先別内訳</CardTitle>
-        <CardDescription>勤務時間と給与の明細</CardDescription>
+        <CardTitle>勤務時間テーブル</CardTitle>
+        <CardDescription>
+          勤務時間は常にシフト実績から集計し、実給与登録では上書きしません。
+        </CardDescription>
       </CardHeader>
       <CardContent>
-        <div className="overflow-hidden rounded-lg border border-border/70">
-          <Table>
+        <div className="overflow-x-auto rounded-lg border border-border/70">
+          <Table className="min-w-max table-fixed">
             <TableHeader className="bg-muted/35">
               <TableRow>
-                <TableHead>勤務先</TableHead>
-                <TableHead>対象期間</TableHead>
-                <TableHead className="text-right">勤務時間</TableHead>
-                <TableHead className="text-right">実績支給額</TableHead>
-                <TableHead className="text-right">概算</TableHead>
+                <TableHead className={SUMMARY_MONTH_COLUMN_CLASS}>月</TableHead>
+                {summary.workplaces.map((workplace) => (
+                  <TableHead
+                    key={workplace.workplaceId}
+                    className={withGroupDivider(
+                      SUMMARY_WORKPLACE_HOURS_GROUP_CLASS,
+                    )}
+                  >
+                    <span className="inline-flex items-center justify-center gap-2">
+                      <span
+                        className="h-2.5 w-2.5 rounded-full"
+                        style={{ backgroundColor: workplace.workplaceColor }}
+                      />
+                      {workplace.workplaceName}
+                    </span>
+                  </TableHead>
+                ))}
+                <TableHead
+                  className={withGroupDivider(
+                    SUMMARY_WORKPLACE_HOURS_GROUP_CLASS,
+                  )}
+                >
+                  全勤務先合計時間
+                </TableHead>
+              </TableRow>
+              <TableRow>
+                <TableHead className={SUMMARY_MONTH_COLUMN_CLASS} />
+                {summary.workplaces.map((workplace) => (
+                  <TableHead
+                    key={`${workplace.workplaceId}-hours`}
+                    className={withGroupDivider(
+                      SUMMARY_HOURS_VALUE_COLUMN_CLASS,
+                    )}
+                  >
+                    総勤務時間
+                  </TableHead>
+                ))}
+                <TableHead
+                  className={withGroupDivider(SUMMARY_HOURS_VALUE_COLUMN_CLASS)}
+                >
+                  総勤務時間
+                </TableHead>
               </TableRow>
             </TableHeader>
             <TableBody>
-              {byWorkplace.length > 0 ? (
-                byWorkplace.map((item) => (
-                  <TableRow key={item.workplaceId}>
-                    <TableCell>
-                      <span className="inline-flex items-center gap-2">
-                        <span
-                          className="h-2.5 w-2.5 rounded-full"
-                          style={{ backgroundColor: item.workplaceColor }}
-                        />
-                        {item.workplaceName}
-                      </span>
-                    </TableCell>
-                    <TableCell>
-                      {item.periodStartDate} 〜 {item.periodEndDate}
-                    </TableCell>
-                    <TableCell className="text-right">
-                      {formatHours(item.workHours)}
-                    </TableCell>
-                    <TableCell className="text-right font-medium">
-                      {formatCurrency(item.displayValue.displayAmount)}
-                    </TableCell>
-                    <TableCell className="text-right text-muted-foreground">
-                      {formatCurrency(item.wage)}
-                    </TableCell>
-                  </TableRow>
-                ))
-              ) : (
-                <TableRow>
+              {summary.months.map((month) => (
+                <TableRow key={month.monthKey}>
+                  <TableCell className={SUMMARY_MONTH_CELL_CLASS}>
+                    {month.month}月
+                  </TableCell>
+                  {summary.workplaces.map((workplace) => {
+                    const hours = findHoursByWorkplace(
+                      month.hoursByWorkplace,
+                      workplace.workplaceId,
+                    );
+
+                    return (
+                      <TableCell
+                        key={workplace.workplaceId}
+                        className={withGroupDivider(
+                          SUMMARY_HOURS_VALUE_COLUMN_CLASS,
+                        )}
+                      >
+                        {formatHours(hours?.totalWorkHours ?? 0)}
+                      </TableCell>
+                    );
+                  })}
                   <TableCell
-                    colSpan={5}
-                    className="h-24 text-center text-muted-foreground"
+                    className={withGroupDivider(
+                      SUMMARY_HOURS_VALUE_COLUMN_CLASS,
+                    )}
                   >
-                    対象期間のシフトはありません
+                    {formatHours(month.totals.totalWorkHours)}
                   </TableCell>
                 </TableRow>
-              )}
+              ))}
+              <TableRow className="bg-primary/5">
+                <TableCell className={SUMMARY_MONTH_TOTAL_CELL_CLASS}>
+                  年合計
+                </TableCell>
+                {summary.workplaces.map((workplace) => {
+                  const workplaceTotal = findYearlyTotalByWorkplace(
+                    summary.yearlyTotals.byWorkplace,
+                    workplace.workplaceId,
+                  );
+
+                  return (
+                    <TableCell
+                      key={workplace.workplaceId}
+                      className={`${withGroupDivider(
+                        SUMMARY_HOURS_VALUE_COLUMN_CLASS,
+                      )} font-semibold`}
+                    >
+                      {formatHours(workplaceTotal?.totalWorkHours ?? 0)}
+                    </TableCell>
+                  );
+                })}
+                <TableCell
+                  className={`${withGroupDivider(
+                    SUMMARY_HOURS_VALUE_COLUMN_CLASS,
+                  )} font-semibold`}
+                >
+                  {formatHours(summary.yearlyTotals.grandTotals.totalWorkHours)}
+                </TableCell>
+              </TableRow>
             </TableBody>
           </Table>
         </div>
@@ -379,7 +543,7 @@ export function SummaryPageLoadingSkeleton() {
           給与サマリー
         </h2>
         <p className="mt-2 text-sm text-muted-foreground">
-          支給月別の実績優先給与と勤務時間を確認できます。
+          年次給与サマリーを読み込み中です。
         </p>
       </header>
 
@@ -394,70 +558,78 @@ export function SummaryPageLoadingSkeleton() {
 export function SummaryPageClient({
   currentUserId,
   initialSummary,
-  initialMonth,
-  currentMonthValue,
+  initialYear,
+  currentYearValue,
 }: SummaryPageClientProps) {
-  const [draftMonthValue, setDraftMonthValue] = useState(initialMonth);
-  const [requestedMonthValue, setRequestedMonthValue] = useState(initialMonth);
-  const isValidRequestedMonth =
-    fromMonthInputValue(requestedMonthValue) !== null;
-  const canApplyMonth =
-    fromMonthInputValue(draftMonthValue) !== null &&
-    draftMonthValue !== requestedMonthValue;
+  const [draftYearValue, setDraftYearValue] = useState(String(initialYear));
+  const [requestedYearValue, setRequestedYearValue] = useState(
+    String(initialYear),
+  );
+
+  const requestedYearNumber = toYearNumber(requestedYearValue);
+  const canApplyYear =
+    isValidYearInput(draftYearValue) && draftYearValue !== requestedYearValue;
 
   const summaryQuery = usePayrollSummaryQuery({
     userId: currentUserId,
-    month: requestedMonthValue,
-    enabled: isValidRequestedMonth,
+    year: requestedYearNumber ?? initialYear,
+    enabled: requestedYearNumber !== null,
     initialData:
-      isValidRequestedMonth && requestedMonthValue === initialMonth
+      requestedYearNumber !== null && requestedYearNumber === initialYear
         ? initialSummary
         : undefined,
   });
 
   const summary = summaryQuery.data ?? null;
-  const displayMonthValue = summary?.month ?? requestedMonthValue;
-  const selectedMonth =
-    fromMonthInputValue(displayMonthValue) ??
-    fromMonthInputValue(currentMonthValue);
-  const selectedMonthLabel = selectedMonth
-    ? formatMonthLabel(selectedMonth)
-    : displayMonthValue;
+  const displayYearNumber = summary?.year ?? requestedYearNumber;
+  const displayYearValue = String(displayYearNumber ?? requestedYearValue);
   const isInitialLoading =
-    isValidRequestedMonth && summaryQuery.isLoading && summary === null;
+    requestedYearNumber !== null && summaryQuery.isLoading && summary === null;
   const isRefreshing =
-    isValidRequestedMonth && summaryQuery.isFetching && summary !== null;
+    requestedYearNumber !== null && summaryQuery.isFetching && summary !== null;
   const isStaleView =
-    isValidRequestedMonth &&
+    requestedYearNumber !== null &&
     summaryQuery.isPlaceholderData &&
     summary !== null &&
-    displayMonthValue !== requestedMonthValue;
-  const errorMessage = !isValidRequestedMonth
-    ? "月は YYYY-MM 形式で指定してください。"
-    : summaryQuery.error
-      ? toErrorMessage(summaryQuery.error, "給与集計の取得に失敗しました。")
-      : null;
+    displayYearNumber !== requestedYearNumber;
+  const errorMessage =
+    requestedYearNumber === null
+      ? "年は YYYY 形式（2000〜2100）で指定してください。"
+      : summaryQuery.error
+        ? toErrorMessage(summaryQuery.error, "給与集計の取得に失敗しました。")
+        : null;
+  const hasSummaryRows = summary ? hasAnySummaryRows(summary) : false;
+
+  const applyYearValue = (nextValue: string) => {
+    if (!isValidYearInput(nextValue)) {
+      return;
+    }
+
+    startTransition(() => {
+      setRequestedYearValue(nextValue);
+      window.history.replaceState(
+        {},
+        "",
+        `${window.location.pathname}?year=${nextValue}`,
+      );
+    });
+  };
 
   return (
     <section className="space-y-6 p-4 md:p-6">
       <SummaryHeader
-        draftMonthValue={draftMonthValue}
-        currentMonthValue={currentMonthValue}
-        requestedMonthValue={requestedMonthValue}
-        canApplyMonth={canApplyMonth}
+        displayYearValue={displayYearValue}
+        draftYearValue={draftYearValue}
+        currentYearValue={currentYearValue}
+        requestedYearValue={requestedYearValue}
+        canApplyYear={canApplyYear}
         isInitialLoading={isInitialLoading}
         isRefreshing={isRefreshing}
-        onDraftMonthValueChange={setDraftMonthValue}
-        onApplyMonth={() => {
-          if (fromMonthInputValue(draftMonthValue) === null) {
-            return;
-          }
-
-          setRequestedMonthValue(draftMonthValue);
-        }}
-        onBackToCurrentMonth={() => {
-          setDraftMonthValue(currentMonthValue);
-          setRequestedMonthValue(currentMonthValue);
+        onDraftYearValueChange={setDraftYearValue}
+        onApplyYearValue={applyYearValue}
+        onBackToCurrentYear={() => {
+          setDraftYearValue(currentYearValue);
+          applyYearValue(currentYearValue);
         }}
       />
 
@@ -479,26 +651,27 @@ export function SummaryPageClient({
               variant={isStaleView ? "stale" : "refresh"}
               title={
                 isStaleView
-                  ? `${requestedMonthValue} の給与サマリーを読み込み中です。`
+                  ? `${requestedYearValue}年の給与サマリーを読み込み中です。`
                   : "給与サマリーの最新データを確認中です。"
               }
               description={
                 isStaleView
-                  ? `現在の表示は ${displayMonthValue} のままです。新しい月の集計へ切り替わるまでこの内容を維持します。`
-                  : "表示中の内容はまもなく最新化されます。"
+                  ? `現在の表示は ${displayYearValue}年のままです。新しい年の集計へ切り替わるまでこの内容を維持します。`
+                  : "表示中の年次表はまもなく最新化されます。"
               }
             />
           ) : null}
           <LoadingOverlay isLoading={isRefreshing} className="rounded-xl">
-            <SummaryPrimaryMetrics
-              summary={summary}
-              selectedMonthLabel={selectedMonthLabel}
-            />
-            <SummarySecondaryMetrics summary={summary} />
-            <div className="grid gap-4 xl:grid-cols-2">
-              <SummaryWorkplaceChartCard byWorkplace={summary.byWorkplace} />
-              <SummaryWorkplaceTableCard byWorkplace={summary.byWorkplace} />
-            </div>
+            {!hasSummaryRows ? (
+              <p className="rounded-lg border border-border/70 bg-muted/30 px-3 py-2 text-sm text-muted-foreground">
+                対象年の集計データはありません。
+              </p>
+            ) : (
+              <div className="space-y-6">
+                <SummaryIncomeTable summary={summary} />
+                <SummaryWorkHoursTable summary={summary} />
+              </div>
+            )}
           </LoadingOverlay>
         </div>
       ) : null}

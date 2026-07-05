@@ -18,11 +18,19 @@ function parsePayrollSummaryPayload(payload: unknown): PayrollSummaryResult {
   if (
     typeof payload !== "object" ||
     payload === null ||
-    typeof (payload as { totalWage?: unknown }).totalWage !== "number" ||
-    !Array.isArray((payload as { byWorkplace?: unknown[] }).byWorkplace) ||
-    typeof (payload as { currentMonthCumulative?: unknown })
-      .currentMonthCumulative !== "number" ||
-    typeof (payload as { yearlyTotal?: unknown }).yearlyTotal !== "number"
+    typeof (payload as { year?: unknown }).year !== "number" ||
+    !Array.isArray((payload as { workplaces?: unknown[] }).workplaces) ||
+    !Array.isArray((payload as { months?: unknown[] }).months) ||
+    typeof (payload as { yearlyTotals?: unknown }).yearlyTotals !== "object" ||
+    (payload as { yearlyTotals?: unknown }).yearlyTotals === null ||
+    !Array.isArray(
+      (payload as { yearlyTotals?: { byWorkplace?: unknown[] } }).yearlyTotals
+        ?.byWorkplace,
+    ) ||
+    typeof (payload as { yearlyTotals?: { grandTotals?: unknown } })
+      .yearlyTotals?.grandTotals !== "object" ||
+    (payload as { yearlyTotals?: { grandTotals?: unknown } }).yearlyTotals
+      ?.grandTotals === null
   ) {
     throw new Error("PAYROLL_SUMMARY_RESPONSE_INVALID");
   }
@@ -126,16 +134,16 @@ function parsePayrollPreviewBaselinePayload(
 
 export function usePayrollSummaryQuery(input: {
   userId: string;
-  month: string;
+  year: number;
   enabled?: boolean;
   initialData?: PayrollSummaryResult;
 }) {
-  const { enabled = true, initialData, month, userId } = input;
+  const { enabled = true, initialData, year, userId } = input;
 
   return useQuery({
-    queryKey: queryKeys.payroll.summary({ userId, month }),
+    queryKey: queryKeys.payroll.summary({ userId, year }),
     queryFn: ({ signal }) => {
-      const params = new URLSearchParams({ month });
+      const params = new URLSearchParams({ year: String(year) });
       return fetchJson(`/api/payroll/summary?${params.toString()}`, {
         init: {
           signal,
