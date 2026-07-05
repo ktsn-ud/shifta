@@ -2558,5 +2558,22 @@ function ShiftFormScreen(props: ShiftFormProps) {
 
 export function ShiftForm(props: ShiftFormProps) {
   const resetKey = props.mode === "create" ? props.initialDate : props.shiftId;
-  return <ShiftFormScreen key={resetKey} {...props} />;
+
+  return props.mode === "create" ? (
+    <ShiftFormScreen
+      key={resetKey}
+      mode="create"
+      initialDate={props.initialDate}
+      returnMonth={props.returnMonth}
+      returnTo={props.returnTo}
+    />
+  ) : (
+    <ShiftFormScreen
+      key={resetKey}
+      mode="edit"
+      shiftId={props.shiftId}
+      returnMonth={props.returnMonth}
+      returnTo={props.returnTo}
+    />
+  );
 }

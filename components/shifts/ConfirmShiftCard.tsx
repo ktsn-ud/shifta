@@ -44,7 +44,7 @@ type ValidationResult = {
 };
 
 export function ConfirmShiftCard(props: ConfirmShiftCardProps) {
-  return <ConfirmShiftCardContent key={props.shift.id} {...props} />;
+  return <ConfirmShiftCardContent {...props} />;
 }
 
 const GOOGLE_TOKEN_EXPIRED_DESCRIPTION =
@@ -163,14 +163,6 @@ function ConfirmShiftCardContent({
       );
       const syncFailure = syncState.failure;
 
-      void invalidateAfterShiftMutation(queryClient, {
-        mode: "background",
-      }).catch((error) => {
-        console.error("failed to invalidate queries after shift confirmation", {
-          shiftId: shift.id,
-          error,
-        });
-      });
       void Promise.resolve(
         onActionCompleted?.({
           shiftId: shift.id,
@@ -184,6 +176,14 @@ function ConfirmShiftCardContent({
         }),
       ).catch((error) => {
         console.error("failed to refresh shift confirmation data", {
+          shiftId: shift.id,
+          error,
+        });
+      });
+      void invalidateAfterShiftMutation(queryClient, {
+        mode: "background",
+      }).catch((error) => {
+        console.error("failed to invalidate queries after shift confirmation", {
           shiftId: shift.id,
           error,
         });

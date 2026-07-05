@@ -2,7 +2,7 @@ import { SpinnerPanel } from "@/components/ui/spinner";
 
 export function ShiftConfirmPageLoadingSkeleton() {
   return (
-    <section className="flex flex-col gap-6 p-4 md:h-[calc(100svh-var(--header-height))] md:overflow-hidden md:p-6">
+    <section className="flex flex-col gap-6 p-4 md:h-[calc(100svh-var(--header-height))] md:min-h-0 md:overflow-hidden md:p-6">
       <header className="space-y-2 rounded-xl border border-border/80 bg-card/95 p-5 shadow-sm">
         <p className="text-xs font-medium uppercase tracking-[0.12em] text-muted-foreground">
           Shift Confirm
@@ -14,7 +14,7 @@ export function ShiftConfirmPageLoadingSkeleton() {
       </header>
 
       <SpinnerPanel
-        className="min-h-[360px]"
+        className="min-h-[360px] md:min-h-0 md:flex-1"
         label="シフト確定情報を読み込み中..."
       />
     </section>
