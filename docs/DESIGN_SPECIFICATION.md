@@ -52,7 +52,7 @@
 
 **認証**
 
-- NextAuth.js を使用したメール認証
+- NextAuth.js を使用した Google OAuth 認証
 - 単一ユーザー対応
 
 **通信フロー**
@@ -69,18 +69,17 @@ Browser (React UI) → Next.js Routes → Prisma ORM → Neon DB
 
 **ルート定義**
 
-| パス                 | 画面 ID | 画面名           | 説明                                            | 認証要件 |
-| -------------------- | ------- | ---------------- | ----------------------------------------------- | -------- |
-| `/login`             | SCR_001 | ログイン         | メールログイン                                  | 不要     |
-| `/my/calendar-setup` | SCR_018 | カレンダー初期化 | Google Calendar 初期化専用画面                  | 必須     |
-| `/my`                | SCR_002 | ダッシュボード   | ホーム画面（カレンダー表示を含む）              | 必須     |
-| `/my/shifts/confirm` | SCR_015 | シフト確定       | シフト確定ページ                                | 必須     |
-| `/my/summary`        | SCR_007 | 給与集計         | 給与集計表示                                    | 必須     |
-| `/my/payroll/actual` | SCR_017 | 実給与編集       | 支給月別の実給与入力                            | 必須     |
-| `/my/workplaces`     | SCR_008 | 勤務先管理       | 勤務先CRUD（一覧）                              | 必須     |
-| `/my/workplace`      | SCR_008 | 勤務先管理       | 旧URL（`/my/workplaces` へリダイレクト）        | 必須     |
-| `/my/payroll`        | SCR_010 | 給与ルール管理   | 勤務先選択（給与ルール管理画面への入口）        | 必須     |
-| `/my/timetable`      | SCR_012 | 塾時間割設定     | 勤務先選択（CRAM_SCHOOL時間割管理画面への入口） | 必須     |
+| パス                  | 画面 ID | 画面名           | 説明                                     | 認証要件 |
+| --------------------- | ------- | ---------------- | ---------------------------------------- | -------- |
+| `/login`              | SCR_001 | ログイン         | Google サインイン                        | 不要     |
+| `/my/calendar-setup`  | SCR_018 | カレンダー初期化 | Google Calendar 初期化専用画面           | 必須     |
+| `/my`                 | SCR_002 | ダッシュボード   | ホーム画面（カレンダー表示を含む）       | 必須     |
+| `/my/shifts/confirm`  | SCR_015 | シフト確定       | シフト確定ページ                         | 必須     |
+| `/my/summary`         | SCR_007 | 給与集計         | 給与集計表示                             | 必須     |
+| `/my/payroll-details` | SCR_016 | 給与詳細         | 給与詳細表示の入口                       | 必須     |
+| `/my/payroll/actual`  | SCR_017 | 実給与編集       | 支給月別の実給与入力                     | 必須     |
+| `/my/workplaces`      | SCR_008 | 勤務先管理       | 勤務先CRUD（一覧）                       | 必須     |
+| `/my/workplace`       | SCR_008 | 勤務先管理       | 旧URL（`/my/workplaces` へリダイレクト） | 必須     |
 
 **設定管理の詳細ルート（Phase 9 実装反映）**
 
@@ -95,6 +94,7 @@ Browser (React UI) → Next.js Routes → Prisma ORM → Neon DB
   - `/my/workplaces/:workplaceId/timetables`（SCR_012 一覧）
   - `/my/workplaces/:workplaceId/timetables/new`（SCR_013 作成）
   - `/my/workplaces/:workplaceId/timetables/:id/edit`（SCR_013 編集）
+- 給与ルール・時間割の一覧/作成/編集は `/my/workplaces` の各勤務先行から遷移し、専用のトップレベル入口ルートは持たない。
 
 **ホームページ仕様**
 
@@ -264,28 +264,26 @@ Browser (React UI) → Next.js Routes → Prisma ORM → Neon DB
 
 **説明**: 勤務先ごとの時給・割増ルールを時系列管理。同一勤務先で複数ルールが存在し、シフト日に該当する有効なルールを自動選択する。
 
-**ルール選択ロジック**: `startDate ≤ shift.date < endDate` を満たすルール中、`startDate` が最新（最大）のものを選択。同一勤務先内では適用期間の重複を許さない。
+**ルール選択ロジック**: `startDate ≤ shift.date < endDate` を満たすルール中、`startDate` が最新（最大）のものを選択する。該当期間のルールが複数保存されている場合も、`startDate` 降順で最初に見つかった 1 件を採用する。作成・更新時に重複候補がある場合、API は保存を継続したうえで warning を返す。
 
-| 属性                   | 型      | 説明                                          |
-| ---------------------- | ------- | --------------------------------------------- |
-| id                     | UUID    | ルールの一意識別子                            |
-| workplaceId            | UUID    | 勤務先ID（外部キー）                          |
-| startDate              | date    | ルール適用開始日                              |
-| endDate                | date?   | ルール適用終了日（NULLの場合は現在有効）      |
-| baseHourlyWage         | number  | 基本時給（円、小数2位まで。NORMAL/OTHER型用） |
-| perLessonWage          | number? | コマ給（円、小数2位まで。LESSON型用）         |
-| holidayAllowanceHourly | number  | 休日手当（円/時の加算手当。デフォルト0）      |
-| nightPremiumRate       | number  | 深夜割増率（例：0.25 = 25%）                  |
-| dailyOvertimeThreshold | number  | 1日の所定時間（超過分が残業対象）             |
-| overtimePremiumRate    | number  | 残業割増率（将来拡張。例：0.25 = 25%）        |
-| holidayType            | enum    | 休日判定タイプ                                |
+| 属性                   | 型     | 説明                                           |
+| ---------------------- | ------ | ---------------------------------------------- |
+| id                     | UUID   | ルールの一意識別子                             |
+| workplaceId            | UUID   | 勤務先ID（外部キー）                           |
+| startDate              | date   | ルール適用開始日                               |
+| endDate                | date?  | ルール適用終了日（NULLの場合は現在有効）       |
+| baseHourlyWage         | number | 基本時給（円、小数2位まで。NORMAL/LESSON型用） |
+| holidayAllowanceHourly | number | 休日手当（円/時の加算手当。デフォルト0）       |
+| nightPremiumRate       | number | 深夜割増率（例：0.25 = 25%）                   |
+| dailyOvertimeThreshold | number | 1日の所定時間（超過分が残業対象）              |
+| overtimePremiumRate    | number | 残業割増率（将来拡張。例：0.25 = 25%）         |
+| holidayType            | enum   | 休日判定タイプ                                 |
 
 **制約条件**
 
-- startDate と endDate が重複しない（同一勤務先内で）
+- 適用期間の重複は保存可能だが、重複候補がある場合は API warning で通知する
 - endDate は NULLか startDate より後
 - baseHourlyWage > 0
-- perLessonWage > 0
 - nightPremiumRate ≥ 0
 - overtimePremiumRate ≥ 0
 - dailyOvertimeThreshold > 0（時間、実数可）
@@ -306,8 +304,8 @@ Browser (React UI) → Next.js Routes → Prisma ORM → Neon DB
 
 勤務先「塾B」（CRAM_SCHOOL）:
 
-- Rule 1: 2026-01-01 ～ 2026-03-31、perLessonWage=2000、nightPremiumRate=0.0
-- Rule 2: 2026-04-01 ～ NULL、perLessonWage=2500、nightPremiumRate=0.0
+- Rule 1: 2026-01-01 ～ 2026-03-31、baseHourlyWage=1100、nightPremiumRate=0.0
+- Rule 2: 2026-04-01 ～ NULL、baseHourlyWage=1200、nightPremiumRate=0.0
 
 ---
 
@@ -337,51 +335,57 @@ Browser (React UI) → Next.js Routes → Prisma ORM → Neon DB
 
 ---
 
-## 3.4 Timetable
+## 3.4 TimetableSet / Timetable
 
 塾の時間割（CRAM_SCHOOL タイプの勤務先のみ使用）
 
-**説明**: 塾の授業コマごとの開始・終了時刻を定義。通常期間と講習期間など複数のセットを管理可能。シフト登録（LESSON型）時に、選択したコマ範囲から`startTime/endTime`を自動計算する際に使用。
+**説明**: 塾の授業コマごとの開始・終了時刻を、勤務先ごとの `時間割セット` として管理する。シフト登録（LESSON型）時は `時間割セット + 開始コマ + 終了コマ` を選択し、`startTime/endTime` を自動計算する。
 
 **用途**：
 
-- LESSON型シフト時：「5限～7限」のように選択すると、該当コマの時刻を自動取得
+- LESSON型シフト時：「通常期」「夏期講習」などの時間割セットと「5限～7限」のようなコマ範囲を選択すると、該当コマの時刻を自動取得
 - NORMAL型の場合も塾に登録可能（手入力、会議や事務作業など授業以外の業務を記録時に使用）
 
-| 属性        | 型   | 説明                                                                    |
-| ----------- | ---- | ----------------------------------------------------------------------- |
-| id          | UUID | 時間割の一意識別子                                                      |
-| workplaceId | UUID | 勤務先ID（CRAM_SCHOOL のみ、外部キー）                                  |
-| type        | enum | 授業タイプ（NORMAL または INTENSIVE）                                   |
-| period      | int  | コマ番号（1, 2, 3, ... など。typeごとに独立、例：通常期1限、講習期1限） |
-| startTime   | time | コマの開始時刻（HH:MM）                                                 |
-| endTime     | time | コマの終了時刻（HH:MM）                                                 |
+**TimetableSet 属性**
+
+| 属性        | 型       | 説明                                       |
+| ----------- | -------- | ------------------------------------------ |
+| id          | UUID     | 時間割セットの一意識別子                   |
+| workplaceId | UUID     | 勤務先ID（CRAM_SCHOOL のみ、外部キー）     |
+| name        | string   | 時間割セット名（例: `通常期`, `夏期講習`） |
+| sortOrder   | int      | 一覧表示順。小さいほど先に表示される       |
+| createdAt   | datetime | 作成日時                                   |
+| updatedAt   | datetime | 更新日時                                   |
+
+**Timetable 属性**
+
+| 属性           | 型   | 説明                     |
+| -------------- | ---- | ------------------------ |
+| id             | UUID | コマ行の一意識別子       |
+| timetableSetId | UUID | 所属する時間割セットID   |
+| period         | int  | コマ番号（1, 2, 3, ...） |
+| startTime      | time | コマの開始時刻（HH:MM）  |
+| endTime        | time | コマの終了時刻（HH:MM）  |
 
 **制約条件**
 
-- workplaceId は type が CRAM_SCHOOL
-- (workplaceId, type, period) は一意（type ごとに独立した period 番号体系を持つ）
+- workplaceId は `CRAM_SCHOOL`
+- `(workplaceId, name)` は一意
+- `(timetableSetId, period)` は一意
 - startTime と endTime は同時刻不可
-- endTime < startTime の場合、翌日終了のコマとして扱う（例：23:50 ～ 翌00:30）
-
-**type の説明**
-
-- **NORMAL**: 通常期間の授業
-- **INTENSIVE**: 講習期間（集中講座・特別授業等）
-
-同一勤務先・同一period内で、両typeのコマを登録可能（時期に応じて使い分け）。
+- endTime は startTime より後でなければならない
 
 **使用例**
 
-塾「英語塾」の時間割（通常期と講習期で時間帯が異なる場合の例）:
+塾「英語塾」の時間割:
 
-通常期（type=NORMAL）:
+時間割セット `通常期`:
 
 - Period 1: 16:30 ～ 17:30
 - Period 2: 17:40 ～ 18:40
 - Period 3: 18:50 ～ 19:50
 
-講習期（type=INTENSIVE）:
+時間割セット `夏期講習`:
 
 - Period 1: 15:00 ～ 16:20
 - Period 2: 16:30 ～ 17:50
@@ -415,7 +419,7 @@ Browser (React UI) → Next.js Routes → Prisma ORM → Neon DB
 | startTime     | time     | シフト開始時刻（HH:MM）                          |
 | endTime       | time     | シフト終了時刻（HH:MM）                          |
 | breakMinutes  | int      | 休憩時間（分単位、デフォルト0）                  |
-| shiftType     | enum     | シフトのタイプ（NORMAL, LESSON, OTHER）          |
+| shiftType     | enum     | シフトのタイプ（NORMAL, LESSON）                 |
 | comment       | string?  | 表示・Google Calendar イベント名用の任意コメント |
 | isConfirmed   | boolean  | シフト確定フラグ（デフォルト false）             |
 | googleEventId | string?  | Google Calendar のイベントID（同期用）           |
@@ -442,7 +446,6 @@ Browser (React UI) → Next.js Routes → Prisma ORM → Neon DB
 
 - **NORMAL**: 通常勤務（手入力。勤務先がCRAM_SCHOOLの場合は会議や事務作業など授業以外の業務も含む。時給で給与計算）
 - **LESSON**: 塾の授業（CRAM_SCHOOL のみ。ShiftLessonRange で「何コマ目から何コマ目まで」を定義。時刻は Timetable から自動計算）
-- **OTHER**: その他（自由入力）
 
 **使用例**
 
@@ -457,20 +460,22 @@ Browser (React UI) → Next.js Routes → Prisma ORM → Neon DB
 
 **説明**: LESSON タイプのシフトが どのコマから どのコマまでをカバーするかを記録。Timetable のコマに対応する。複数コマの授業を1シフトで記録可能。
 
-**注記**：`startPeriod ≤ endPeriod` の同じ `type`（NORMAL or INTENSIVE）のコマ範囲を指す。異なる `type` のコマを混在させることはできない。
+**注記**：`startPeriod ≤ endPeriod` の同じ `timetableSetId` に属するコマ範囲を指す。
 
-| 属性        | 型   | 説明                                         |
-| ----------- | ---- | -------------------------------------------- |
-| id          | UUID | レコードの一意識別子                         |
-| shiftId     | UUID | シフトID（外部キー）                         |
-| startPeriod | int  | 開始コマ番号                                 |
-| endPeriod   | int  | 終了コマ番号（startPeriodと同じ場合は1コマ） |
+| 属性           | 型   | 説明                                         |
+| -------------- | ---- | -------------------------------------------- |
+| id             | UUID | レコードの一意識別子                         |
+| shiftId        | UUID | シフトID（外部キー）                         |
+| timetableSetId | UUID | 参照する時間割セットID                       |
+| startPeriod    | int  | 開始コマ番号                                 |
+| endPeriod      | int  | 終了コマ番号（startPeriodと同じ場合は1コマ） |
 
 **制約条件**
 
 - shiftId の Shift.shiftType = LESSON
+- timetableSetId は Shift の勤務先に紐づく TimetableSet を参照する
 - startPeriod ≤ endPeriod
-- startPeriod, endPeriod は Timetable のコマの period に存在し、かつ同一 `type`（NORMAL or INTENSIVE）
+- startPeriod, endPeriod は `timetableSetId` で指定した Timetable の period に存在する
 - 1シフトあたり1件（複数コマの授業を1つのシフトで表現）
 
 **使用例**
@@ -502,7 +507,7 @@ Browser (React UI) → Next.js Routes → Prisma ORM → Neon DB
    - **NORMAL型の場合**：開始時刻・終了時刻を手入力
    - **LESSON型の場合**：コマ範囲（e.g. Period 1～3）を選択 → サーバー側で Timetable から時刻を自動計算
 4. クライアント側でバリデーション（必須項目、時刻の妥当性など）
-5. NORMAL/OTHER型で終了時刻 < 開始時刻の場合、翌日終了として扱う確認ダイアログを表示
+5. NORMAL型で終了時刻 < 開始時刻の場合、翌日終了として扱う確認ダイアログを表示
 6. バリデーション OK → POST /api/shifts（Shift + ShiftLessonRange を作成）
 7. サーバー側で：
    - LESSON型の場合、Timetable から `startTime/endTime` を自動計算
@@ -687,8 +692,8 @@ Google Calendar 側で シフトのイベントを編集しても、アプリに
 
 **対象**
 
-- **NORMAL/OTHER型**: 基本給、休日手当（時間あたり加算）、深夜割増
-- **LESSON型**: コマ給（perLessonWage）
+- **NORMAL型**: 基本給、休日手当（時間あたり加算）、深夜割増
+- **LESSON型**: 基本給、休日手当（時間あたり加算）、深夜割増。時刻は時間割から自動解決し、コマ数は表示用に保持する
 
 **非対象（MVP では未対応）**
 
@@ -704,8 +709,8 @@ Google Calendar 側で シフトのイベントを編集しても、アプリに
 1. 対象期間内のすべての Shift を取得
 2. Shift ごとに該当する PayrollRule を時系列で確定
 3. Shift ごとに以下を計算：
-   - **NORMAL/OTHER型**: 実勤務時間、深夜帯勤務時間、休日時間を分類し、給与を計算
-   - **LESSON型**: コマ数（endPeriod - startPeriod + 1）と perLessonWage を用いて給与を計算
+   - **NORMAL型**: 実勤務時間、深夜帯勤務時間、休日時間を分類し、給与を計算
+   - **LESSON型**: 時間割から解決した `startTime/endTime` を使って NORMAL型と同じ時給計算を行い、あわせてコマ数（`endPeriod - startPeriod + 1`）を記録する
 4. 期間合計を集計
 
 ---
@@ -743,7 +748,7 @@ H_holiday = 休日判定に合致する日の場合 H_total、それ以外は 0
 
 ### 8.3.2 給与計算
 
-**NORMAL/OTHER型のシフト（1シフト分）**
+**NORMAL型のシフト（1シフト分）**
 
 基本前提
 
@@ -768,11 +773,12 @@ H_holiday = 休日判定に合致する日の場合 H_total、それ以外は 0
 ```
 コマ数 = endPeriod - startPeriod + 1
 
-シフト合計給 = コマ数 × perLessonWage
+シフト合計給 = NORMAL型と同じ式で計算
 ```
 
 **補足**
 
+- LESSON型も給与計算は `baseHourlyWage` ベースで行う
 - 休日時間は基本時間・深夜時間とは独立に扱う（休日夜勤では深夜支給と休日支給の両方が発生）
 - 詳細なルールは実装時に業務ロジックで定義
 
@@ -836,20 +842,21 @@ H_holiday = 6.5 時間
 
 - 勤務先：塾B（CRAM_SCHOOL）
 - 日付：2026-03-22（日）
-- シフトタイプ：LESSON（Period 1～3、type=NORMAL）
-- Timetable（通常期間）：
-  - Period 1 (NORMAL): 16:30 ～ 17:30
-  - Period 2 (NORMAL): 17:40 ～ 18:40
-  - Period 3 (NORMAL): 18:50 ～ 19:50
+- シフトタイプ：LESSON（時間割セット `通常期` の Period 1～3）
+- Timetable（時間割セット `通常期`）：
+  - Period 1: 16:30 ～ 17:30
+  - Period 2: 17:40 ～ 18:40
+  - Period 3: 18:50 ～ 19:50
 - 自動計算：startTime=16:30、endTime=19:50、コマ数=3
-- PayrollRule：perLessonWage=2000
+- PayrollRule：baseHourlyWage=1100, holidayAllowanceHourly=1200, nightPremiumRate=1.0
 
 **計算**
 
 ```
+H_total = (19:50 - 16:30) = 3時間20分 = 3.33時間
 コマ数 = 3 - 1 + 1 = 3 コマ
 
-給与 = 3 × 2000 = 6,000 円
+給与 = round(3.33 × 1100) = 3,667 円
 ```
 
 ---
@@ -891,7 +898,7 @@ H_holiday = 6.5 時間
 
 | 画面 ID | 画面名               | 概要                       | 権限           | 備考                |
 | ------- | -------------------- | -------------------------- | -------------- | ------------------- |
-| SCR_001 | ログイン             | メールアドレス入力         | 未認証ユーザー | NextAuth.js 統合    |
+| SCR_001 | ログイン             | Google サインイン          | 未認証ユーザー | NextAuth.js 統合    |
 | SCR_002 | ダッシュボード       | 月・給与締め期間表示       | 認証ユーザー   | ホーム画面          |
 | SCR_003 | カレンダー           | 月間シフト一覧             | 認証ユーザー   | `/my` 内に統合      |
 | SCR_004 | シフト入力           | シフト登録フォーム         | 認証ユーザー   | モーダル/ページ     |
@@ -948,19 +955,19 @@ H_holiday = 6.5 時間
 
 ### SCR_001: ログイン
 
-**目的**: NextAuth.js を使用したメールログイン画面。ユーザーの認証を行う。
+**目的**: NextAuth.js を使用した Google ログイン画面。ユーザーの認証を行う。
 
 **フォーム定義**
 
-| フィールド     | 型    | 必須 | 仕様                                 |
-| -------------- | ----- | ---- | ------------------------------------ |
-| メールアドレス | EMAIL | ○    | 有効なメール形式; 大小文字区別しない |
+| フィールド        | 型     | 必須 | 仕様                                                   |
+| ----------------- | ------ | ---- | ------------------------------------------------------ |
+| Google サインイン | BUTTON | ○    | Google アカウントで認証する。成功時は `/my` へ遷移する |
 
 **バリデーション**
 
-1. **必須チェック**: メールアドレスが空でない
-2. **メール形式**: RFC 5322 に準拠
-3. **DB確認**: 登録済みメール or 新規登録者
+1. **認証開始**: Google OAuth フローを開始する
+2. **認証成功**: セッションを確立して `/my` へ遷移する
+3. **認証済み再訪**: 既に認証済みの場合は `/my` へリダイレクトする
 
 ---
 
@@ -1037,23 +1044,24 @@ H_holiday = 6.5 時間
 
 **フォーム定義**
 
-| フィールド   | 型     | 必須 | 仕様                                                                                                 |
-| ------------ | ------ | ---- | ---------------------------------------------------------------------------------------------------- |
-| 勤務先       | SELECT | ○    | 登録済み勤務先から選択; デフォルト = 前回選択した勤務先                                              |
-| 日付         | DATE   | ○    | カレンダーピッカー or 手入力; デフォルト = クリック日                                                |
-| シフトタイプ | RADIO  | ○    | NORMAL / LESSON / OTHER; デフォルト = NORMAL                                                         |
-| 開始時刻     | TIME   | ◆    | NORMAL/OTHER型のみ表示; HH:MM 形式; バリデーション: 00:00 ～ 23:59                                   |
-| 終了時刻     | TIME   | ◆    | NORMAL/OTHER型のみ表示; HH:MM 形式; 開始時刻と同時刻は不可。開始時刻より早い場合は翌日終了として扱う |
-| 休憩時間     | NUMBER | ○    | 分単位; デフォルト = 0; 0 ～ 240                                                                     |
-| コマ種別     | RADIO  | ◆    | LESSON型のみ表示; NORMAL（通常期）/ INTENSIVE（講習期）                                              |
-| コマ範囲     | SELECT | ◆    | LESSON型のみ表示; Period 1～N; startPeriod ≤ endPeriod を確認                                        |
-| コメント     | TEXT   | ー   | 任意; 最大100文字; 改行不可; 空文字・空白のみは NULL として保存                                      |
+| フィールド   | 型     | 必須 | 仕様                                                                                           |
+| ------------ | ------ | ---- | ---------------------------------------------------------------------------------------------- |
+| 勤務先       | SELECT | ○    | 登録済み勤務先から選択; デフォルト = 前回選択した勤務先                                        |
+| 日付         | DATE   | ○    | カレンダーピッカー or 手入力; デフォルト = クリック日                                          |
+| シフトタイプ | RADIO  | ○    | NORMAL / LESSON; デフォルト = NORMAL                                                           |
+| 開始時刻     | TIME   | ◆    | NORMAL型のみ表示; HH:MM 形式; バリデーション: 00:00 ～ 23:59                                   |
+| 終了時刻     | TIME   | ◆    | NORMAL型のみ表示; HH:MM 形式; 開始時刻と同時刻は不可。開始時刻より早い場合は翌日終了として扱う |
+| 休憩時間     | NUMBER | ○    | 分単位; デフォルト = 0; 0 ～ 240                                                               |
+| 時間割セット | SELECT | ◆    | LESSON型のみ表示; 勤務先に紐づく時間割セットから選択                                           |
+| 開始コマ     | SELECT | ◆    | LESSON型のみ表示; 選択した時間割セットに存在するコマ番号から選択                               |
+| 終了コマ     | SELECT | ◆    | LESSON型のみ表示; `開始コマ` 以上で、選択した時間割セットに存在するコマ番号から選択            |
+| コメント     | TEXT   | ー   | 任意; 最大100文字; 改行不可; 空文字・空白のみは NULL として保存                                |
 
 **説明**
 
 - **◆ 条件付き必須**: シフトタイプに応じて表示・必須が変わる
-  - NORMAL/OTHER型: `開始時刻`、`終了時刻` は必須。`コマ種別`、`コマ範囲` は非表示
-  - LESSON型: `コマ種別`、`コマ範囲` は必須。`開始時刻`、`終了時刻` は非表示（Timetableから自動計算）
+  - NORMAL型: `開始時刻`、`終了時刻` は必須。`時間割セット`、`開始コマ`、`終了コマ` は非表示
+  - LESSON型: `時間割セット`、`開始コマ`、`終了コマ` は必須。`開始時刻`、`終了時刻` は非表示（Timetableから自動計算）
 - コメント入力欄の下に Google Calendar のイベント名登録イメージをリアルタイム表示する。
   - comment 入力あり: `イベント名プレビュー「勤務先名 (コメント)」`
   - comment 未入力: `イベント名プレビュー「勤務先名」`
@@ -1063,15 +1071,15 @@ H_holiday = 6.5 時間
 
 1. **必須チェック**: 条件付き必須項目を確認
 2. **時刻バリデーション**:
-   - NORMAL/OTHER型: 開始時刻と終了時刻は同時刻不可
-   - NORMAL/OTHER型で終了時刻 < 開始時刻の場合、翌日終了として扱い、保存前に確認ダイアログを表示する
+   - NORMAL型: 開始時刻と終了時刻は同時刻不可
+   - NORMAL型で終了時刻 < 開始時刻の場合、翌日終了として扱い、保存前に確認ダイアログを表示する
    - （警告）日跨ぎ解釈後の時間帯が既存シフトと重複している場合の警告
 3. **コマ範囲**: LESSON型選択時、有効なコマが存在するか確認
 4. **コメント**: 最大100文字、改行不可。空文字・空白のみは NULL
 
 **日跨ぎ確認ダイアログ**
 
-- 対象: NORMAL/OTHER型で終了時刻 < 開始時刻の場合
+- 対象: NORMAL型で終了時刻 < 開始時刻の場合
 - 表示タイミング: 登録送信前
 - 表示内容: 開始日時、終了日時、翌日終了として登録する旨
 - アクション: `キャンセル` / `翌日終了として保存`
@@ -1164,24 +1172,23 @@ H_holiday = 6.5 時間
 
 **フォーム定義**
 
-| フィールド      | 型     | 必須 | 仕様                                                       |
-| --------------- | ------ | ---- | ---------------------------------------------------------- |
-| 開始日          | DATE   | ○    | YYYY-MM-DD 形式                                            |
-| 終了日          | DATE   | ~    | 空白 = 現在有効; NULLの場合、開始日より後                  |
-| 基本時給        | NUMBER | ◆    | GENERAL型のみ; 正の実数; 小数2位まで                       |
-| コマ給          | NUMBER | ◆    | CRAM_SCHOOL型のみ; 正の実数; 小数2位まで                   |
-| 休日手当(円/時) | NUMBER | ◆    | GENERAL型のみ; 0以上; デフォルト0                          |
-| 深夜割増率      | NUMBER | ◆    | GENERAL型のみ; 0以上; 例：0.25                             |
-| 残業割増率      | NUMBER | ~    | GENERAL型のみ; 0以上; 将来拡張（現時点の給与計算では保留） |
-| 1日所定時間     | NUMBER | ◆    | GENERAL型のみ; 正の実数; 例：8.0                           |
-| 休日判定        | RADIO  | ◆    | GENERAL型のみ; NONE / WEEKEND / HOLIDAY / WEEKEND_HOLIDAY  |
+| フィールド      | 型     | 必須 | 仕様                                                      |
+| --------------- | ------ | ---- | --------------------------------------------------------- |
+| 開始日          | DATE   | ○    | YYYY-MM-DD 形式                                           |
+| 終了日          | DATE   | ~    | 空白 = 現在有効; NULLの場合、開始日より後                 |
+| 基本時給        | NUMBER | ○    | 全勤務先共通; 正の実数; 小数2位まで                       |
+| 休日手当(円/時) | NUMBER | ~    | 全勤務先共通; 0以上; 未入力時は 0                         |
+| 深夜割増率      | NUMBER | ○    | 全勤務先共通; 0以上; 例：0.25                             |
+| 残業割増率      | NUMBER | ○    | 全勤務先共通; 0以上; 将来拡張（現時点の給与計算では保留） |
+| 1日所定時間     | NUMBER | ○    | 全勤務先共通; 正の実数; 例：8.0                           |
+| 休日判定        | RADIO  | ○    | 全勤務先共通; NONE / WEEKEND / HOLIDAY / WEEKEND_HOLIDAY  |
 
 **説明**
 
-- **◆ 条件付き必須**: 勤務先の種類（type）に応じて表示・必須が変わる
-  - **GENERAL型**: `基本時給`、`休日手当(円/時)`、`深夜割増率`、`1日所定時間`、`休日判定` は必須。`コマ給` は非表示
+- **勤務先タイプに関わらず同じ入力項目を使用する**
+  - `基本時給`、`休日手当(円/時)`、`深夜割増率`、`残業割増率`、`1日所定時間`、`休日判定` を共通で入力する
   - 深夜時間帯は `22:00-05:00` 固定のため入力項目は持たない
-  - **CRAM_SCHOOL型**: `コマ給` は必須。その他時給関連フィールドは非表示（施設内でLESSON型のため）
+  - CRAM_SCHOOL型でも通常シフトと同様に時給・割増設定を使用する
 
 ---
 
@@ -1191,19 +1198,20 @@ H_holiday = 6.5 時間
 
 **フォーム定義**
 
-| フィールド | 型     | 必須 | 仕様                                                                         |
-| ---------- | ------ | ---- | ---------------------------------------------------------------------------- |
-| コマ種別   | RADIO  | ○    | NORMAL(通常期) or INTENSIVE(講習期)                                          |
-| コマ番号   | NUMBER | ○    | 正の整数; type内で一意（e.g. 通常期1限、講習期1限）                          |
-| 開始時刻   | TIME   | ○    | HH:MM 形式                                                                   |
-| 終了時刻   | TIME   | ○    | HH:MM 形式; 開始時刻と同時刻は不可。開始時刻より早い場合は翌日終了として扱う |
+| フィールド | 型     | 必須 | 仕様                                                                 |
+| ---------- | ------ | ---- | -------------------------------------------------------------------- |
+| セット名   | TEXT   | ○    | 1〜50文字。同一勤務先内で一意                                        |
+| コマ番号   | NUMBER | ○    | 正の整数; 同一セット内で一意                                         |
+| 開始時刻   | TIME   | ○    | HH:MM 形式                                                           |
+| 終了時刻   | TIME   | ○    | HH:MM 形式; 開始時刻と同時刻は不可。開始時刻より後でなければならない |
 
 **複数コマ入力（作成時）**
 
 - 作成画面では `コマを追加する` ボタンで入力行を増やし、複数コマを一括登録できる。
-- 各行で `コマ種別 / コマ番号 / 開始時刻 / 終了時刻` を個別に入力する。
+- 各行で `コマ番号 / 開始時刻 / 終了時刻` を個別に入力する。
 - 各行の削除が可能（最低1行は維持）。
-- 同一リクエスト内で `(type, period)` の重複がある場合はエラー表示する。
+- 作成画面では `セットを追加` により複数の時間割セットをキューに積み、まとめて保存できる。
+- 同一セット内で `period` の重複がある場合はエラー表示する。
 
 ---
 
@@ -1231,15 +1239,16 @@ H_holiday = 6.5 時間
 
 頻繁に使う設定値をあらかじめ定義し、選択日に一括適用できます。
 
-| フィールド             | 型     | 必須 | 仕様                                          |
-| ---------------------- | ------ | ---- | --------------------------------------------- |
-| デフォルトシフトタイプ | RADIO  | ○    | NORMAL / LESSON / OTHER; 適用時のプリセット値 |
-| デフォルト開始時刻     | TIME   | ◆    | NORMAL/OTHER型のみ表示; HH:MM 形式            |
-| デフォルト終了時刻     | TIME   | ◆    | NORMAL/OTHER型のみ表示; HH:MM 形式            |
-| デフォルト休憩時間     | NUMBER | ○    | 分単位; 0 ～ 240                              |
-| デフォルトコマ種別     | RADIO  | ◆    | LESSON型のみ表示; NORMAL / INTENSIVE          |
-| デフォルトコマ範囲     | SELECT | ◆    | LESSON型のみ表示; Period 1～N                 |
-| デフォルトコメント     | TEXT   | ー   | 任意; 最大100文字; 改行不可                   |
+| フィールド             | 型     | 必須 | 仕様                                                 |
+| ---------------------- | ------ | ---- | ---------------------------------------------------- |
+| デフォルトシフトタイプ | RADIO  | ○    | NORMAL / LESSON; 適用時のプリセット値                |
+| デフォルト開始時刻     | TIME   | ◆    | NORMAL型のみ表示; HH:MM 形式                         |
+| デフォルト終了時刻     | TIME   | ◆    | NORMAL型のみ表示; HH:MM 形式                         |
+| デフォルト休憩時間     | NUMBER | ○    | 分単位; 0 ～ 240                                     |
+| デフォルト時間割セット | SELECT | ◆    | LESSON型のみ表示; 勤務先に紐づく時間割セットから選択 |
+| デフォルト開始コマ     | SELECT | ◆    | LESSON型のみ表示; 選択した時間割セットのコマ番号     |
+| デフォルト終了コマ     | SELECT | ◆    | LESSON型のみ表示; 選択した時間割セットのコマ番号     |
+| デフォルトコメント     | TEXT   | ー   | 任意; 最大100文字; 改行不可                          |
 
 **デフォルトコメントのプレビュー**
 
@@ -1258,16 +1267,17 @@ H_holiday = 6.5 時間
 
 選択した各日付について、スクロール可能な縦長レイアウトで、常時展開された状態で入力項目を表示：
 
-| フィールド   | 型     | 必須 | 仕様                                                                                                 |
-| ------------ | ------ | ---- | ---------------------------------------------------------------------------------------------------- |
-| 日付表示     | TEXT   | ー   | 「2026年3月5日（木）」など読み取り専用                                                               |
-| シフトタイプ | RADIO  | ○    | NORMAL / LESSON / OTHER; デフォルト = NORMAL                                                         |
-| 開始時刻     | TIME   | ◆    | NORMAL/OTHER型のみ表示; HH:MM 形式                                                                   |
-| 終了時刻     | TIME   | ◆    | NORMAL/OTHER型のみ表示; HH:MM 形式; 開始時刻と同時刻は不可。開始時刻より早い場合は翌日終了として扱う |
-| 休憩時間     | NUMBER | ○    | 分単位; デフォルト = 0; 0 ～ 240                                                                     |
-| コマ種別     | RADIO  | ◆    | LESSON型のみ表示; NORMAL（通常期）/ INTENSIVE（講習期）                                              |
-| コマ範囲     | SELECT | ◆    | LESSON型のみ表示; Period 1～N; startPeriod ≤ endPeriod を確認                                        |
-| コメント     | TEXT   | ー   | 任意; 最大100文字; 改行不可; 空文字・空白のみは NULL として保存                                      |
+| フィールド   | 型     | 必須 | 仕様                                                                                           |
+| ------------ | ------ | ---- | ---------------------------------------------------------------------------------------------- |
+| 日付表示     | TEXT   | ー   | 「2026年3月5日（木）」など読み取り専用                                                         |
+| シフトタイプ | RADIO  | ○    | NORMAL / LESSON; デフォルト = NORMAL                                                           |
+| 開始時刻     | TIME   | ◆    | NORMAL型のみ表示; HH:MM 形式                                                                   |
+| 終了時刻     | TIME   | ◆    | NORMAL型のみ表示; HH:MM 形式; 開始時刻と同時刻は不可。開始時刻より早い場合は翌日終了として扱う |
+| 休憩時間     | NUMBER | ○    | 分単位; デフォルト = 0; 0 ～ 240                                                               |
+| 時間割セット | SELECT | ◆    | LESSON型のみ表示; 勤務先に紐づく時間割セットから選択                                           |
+| 開始コマ     | SELECT | ◆    | LESSON型のみ表示; 選択した時間割セットに存在するコマ番号から選択                               |
+| 終了コマ     | SELECT | ◆    | LESSON型のみ表示; `開始コマ` 以上で、選択した時間割セットに存在するコマ番号から選択            |
+| コメント     | TEXT   | ー   | 任意; 最大100文字; 改行不可; 空文字・空白のみは NULL として保存                                |
 
 **UI実装の詳細**
 
@@ -1296,7 +1306,7 @@ H_holiday = 6.5 時間
 **バリデーション**
 
 1. **選択日必須**: 1日以上選択されているか確認
-2. **時間バリデーション**: NORMAL/OTHER型で開始時刻と終了時刻が同時刻でないことを確認。終了時刻 < 開始時刻の場合は翌日終了として扱う
+2. **時間バリデーション**: NORMAL型で開始時刻と終了時刻が同時刻でないことを確認。終了時刻 < 開始時刻の場合は翌日終了として扱う
 3. **条件付き必須**: シフトタイプに応じて必須フィールド確認
 4. **コマ範囲**: LESSON型選択時、有効なコマが存在するか確認
 5. **コメント**: 最大100文字、改行不可。空文字・空白のみは NULL
@@ -1492,7 +1502,7 @@ H_holiday = 6.5 時間
 
 ### 認証
 
-- NextAuth.js でメール認証
+- NextAuth.js で Google OAuth 認証
 - セッションベース管理
 - CSRF トークン自動付加
 
@@ -2408,6 +2418,7 @@ GET /api/payroll/preview-baseline?months=YYYY-MM,YYYY-MM
 
 | 日時 | 変更概要 | 具体的な変更内容 |
 | 2026-07-05 00:00:00 +0000 | `/my/summary` を年次表へ再設計 | SCR_007 と 13章を年指定の年次ページへ更新し、所得テーブルと勤務時間テーブルの 2 テーブル構成、`/api/payroll/summary?year=YYYY` 契約、旧カード類の廃止を反映。 |
+| 2026-07-13 00:00:00 +0000 | 設計書を現行実装へ同期 | 認証方式を Google OAuth に更新し、主要ルート表を `/my/payroll-details` 正本へ整理、PayrollRule の重複期間・Timetable の翌日跨ぎ・ShiftType の `OTHER` 記述を実装に合わせて修正。 |
 | 2026-07-05 00:00:00 +0000 | シフト確定後の即時反映と背景再取得中の継続操作を明文化 | SCR_015 の確定成功時に未確定一覧から即時除去し、確定済み一覧へ provisional 行を残したまま背景再取得へ移る挙動と、再取得中でも他の未確定シフトを続けて確定できる UI 方針を追記。 |
 | 2026-07-05 00:39:54 +0900 | blocking-route 回帰防止と認証シェル分離を反映 | 2.3 を追加し、`/my` 共通 layout は shell 専用、認証/Calendar setup ガードは子 layout・page 側で扱う責務分離、pathname 依存 UI の Suspense 分離、`connection()` 計測時の実装制約を追記。 |
 | 2026-07-04 01:42:45 +0000 | current user 解決経路とサイドバー取得方針を更新 | session.user から current user を復元する fast path、DB fallback の request-scope cache、`/api/users/me` を使った sidebar user の client fetch 方針を 2.3 に追記。 |

@@ -3,7 +3,7 @@ import { z } from "zod";
 import { requireCurrentUser } from "@/lib/api/current-user";
 import { parseDateOnly } from "@/lib/api/date-time";
 import { jsonNoStore } from "@/lib/api/cache-control";
-import { jsonError } from "@/lib/api/http";
+import { jsonError, parseJsonBody } from "@/lib/api/http";
 import { revalidateActualPayrollDomainTags } from "@/lib/cache/revalidate";
 import { getActualPayrollEditorForUser } from "@/lib/payroll/actual-editor";
 import { prisma } from "@/lib/prisma";
@@ -90,13 +90,9 @@ export async function PUT(request: Request) {
       );
     }
 
-    const payload = actualPayrollBodySchema.safeParse(await request.json());
+    const payload = await parseJsonBody(request, actualPayrollBodySchema);
     if (!payload.success) {
-      return jsonError(
-        "リクエストボディが不正です",
-        400,
-        payload.error.flatten(),
-      );
+      return payload.response;
     }
 
     const paymentMonth = parseDateOnly(`${query.data.month}-01`);
