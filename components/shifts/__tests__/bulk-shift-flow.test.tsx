@@ -258,10 +258,15 @@ function dateKeyFromDay(day: number): string {
 }
 
 function findEnabledDayButton(day: number): HTMLButtonElement {
-  const buttons = screen.getAllByRole("button", { name: String(day) });
-  const target = buttons.find((button) => {
-    return button.hasAttribute("disabled") === false;
+  const calendarGrid = document.getElementById("bulk-calendar-grid");
+  if (!calendarGrid) {
+    throw new Error("Bulk calendar grid not found");
+  }
+
+  const buttons = within(calendarGrid).getAllByRole("button", {
+    name: String(day),
   });
+  const target = buttons.find((button) => !button.hasAttribute("disabled"));
 
   if (!target) {
     throw new Error(`Enabled day button not found: ${day}`);
@@ -338,6 +343,57 @@ describe("bulk shift flow integration", () => {
         ),
       ),
     ).toBe(false);
+  });
+
+  it("shows the selected date count and disables applying defaults until a date is selected", async () => {
+    const user = userEvent.setup({
+      advanceTimers: jest.advanceTimersByTime,
+    });
+    const fetchMock = globalThis.fetch as jest.Mock;
+
+    fetchMock.mockImplementation(
+      async (input: string, init?: { method?: string }) => {
+        if (isCalendarEventsRequest(input, init)) {
+          return jsonResponse({
+            data: {
+              month: "2026-03",
+              calendars: [],
+              selectedCalendarIds: [],
+              dates: [],
+            },
+          });
+        }
+
+        const previewResponse = handleBulkPreviewFetch(input);
+        if (previewResponse) {
+          return previewResponse;
+        }
+
+        throw new Error("Unexpected fetch: " + input);
+      },
+    );
+
+    renderBulkShiftForm();
+
+    const applyDefaultsButton = await screen.findByRole("button", {
+      name: "選択中の0日分に適用",
+    });
+    expect(applyDefaultsButton).toBeDisabled();
+    expect(
+      screen.getByText("選択中の0日分へデフォルト値を反映します。"),
+    ).toBeInTheDocument();
+
+    await screen.findByRole("button", { name: "20" });
+    await user.click(findEnabledDayButton(20));
+
+    await waitFor(() => {
+      expect(
+        screen.getByRole("button", { name: "選択中の1日分に適用" }),
+      ).toBeEnabled();
+    });
+    expect(
+      screen.getByText("選択中の1日分へデフォルト値を反映します。"),
+    ).toBeInTheDocument();
   });
 
   it("loads google calendar events with POST", async () => {

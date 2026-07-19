@@ -1065,11 +1065,11 @@ function validateShiftForm(params: {
   const nextErrors: FormErrors = {};
 
   if (!form.workplaceId) {
-    nextErrors.workplaceId = "ERR_001: 勤務先は必須項目です";
+    nextErrors.workplaceId = "勤務先を選択してください。";
   }
 
   if (!form.date) {
-    nextErrors.date = "ERR_001: 日付は必須項目です";
+    nextErrors.date = "日付を選択してください。";
   }
 
   if (form.comment.length > 100) {
@@ -1086,15 +1086,15 @@ function validateShiftForm(params: {
     }
 
     if (!form.timetableSetId) {
-      nextErrors.timetableSetId = "ERR_001: 時間割セットは必須項目です";
+      nextErrors.timetableSetId = "時間割セットを選択してください。";
     }
 
     if (!form.startPeriod) {
-      nextErrors.startPeriod = "ERR_001: 開始コマは必須項目です";
+      nextErrors.startPeriod = "開始コマを選択してください。";
     }
 
     if (!form.endPeriod) {
-      nextErrors.endPeriod = "ERR_001: 終了コマは必須項目です";
+      nextErrors.endPeriod = "終了コマを選択してください。";
     }
 
     const startPeriod = Number(form.startPeriod);
@@ -1111,10 +1111,9 @@ function validateShiftForm(params: {
     if (!timetableSet) {
       if (timetableSets.length === 0) {
         nextErrors.timetableSetId =
-          "ERR_004: 塾の授業は時間割セットが登録されていません";
+          "塾の授業用の時間割セットが登録されていません。";
       } else if (!nextErrors.timetableSetId) {
-        nextErrors.timetableSetId =
-          "ERR_004: 選択した時間割セットが見つかりません";
+        nextErrors.timetableSetId = "選択した時間割セットが見つかりません。";
       }
     }
 
@@ -1125,8 +1124,7 @@ function validateShiftForm(params: {
         ? resolveLessonTimeRange(timetableSet, startPeriod, endPeriod)
         : null;
     if (!resolved && timetableSet && !nextErrors.endPeriod) {
-      nextErrors.endPeriod =
-        "ERR_004: 選択したコマ範囲の時間割が登録されていません";
+      nextErrors.endPeriod = "選択したコマ範囲の時間割が登録されていません。";
     }
 
     return {
@@ -1145,11 +1143,11 @@ function validateShiftForm(params: {
   }
 
   if (!form.startTime) {
-    nextErrors.startTime = "ERR_001: 開始時刻は必須項目です";
+    nextErrors.startTime = "開始時刻を入力してください。";
   }
 
   if (!form.endTime) {
-    nextErrors.endTime = "ERR_001: 終了時刻は必須項目です";
+    nextErrors.endTime = "終了時刻を入力してください。";
   }
 
   if (
@@ -1157,7 +1155,7 @@ function validateShiftForm(params: {
     form.endTime &&
     isSameTimeShift(form.startTime, form.endTime)
   ) {
-    nextErrors.endTime = "ERR_002: 開始時刻と終了時刻は同じ時刻にできません";
+    nextErrors.endTime = "開始時刻と終了時刻は同じ時刻にできません。";
   }
 
   if (Object.keys(nextErrors).length > 0) {
@@ -1231,9 +1229,7 @@ async function checkShiftOverlapWarning(params: {
       );
     });
 
-    return overlapped
-      ? "ERR_003: この日付にはすでにシフトが登録されています"
-      : null;
+    return overlapped ? "この日付にはすでにシフトが登録されています。" : null;
   } catch (error) {
     console.error("failed to check overlap", error);
     return null;
@@ -1297,6 +1293,32 @@ function buildShiftPayload(
   }
 
   return payload;
+}
+
+const formErrorFieldIds: Record<Exclude<FormErrorKey, "form">, string> = {
+  workplaceId: "shift-workplace",
+  date: "shift-date",
+  shiftType: "shift-type-lesson",
+  comment: "shift-comment",
+  startTime: "shift-start-time",
+  endTime: "shift-end-time",
+  breakMinutes: "shift-break-minutes",
+  timetableSetId: "shift-timetable-set",
+  startPeriod: "shift-start-period",
+  endPeriod: "shift-end-period",
+};
+
+function focusFirstInvalidShiftFormField(errors: FormErrors) {
+  const firstErrorKey = (
+    Object.keys(formErrorFieldIds) as Array<Exclude<FormErrorKey, "form">>
+  ).find((key) => Boolean(errors[key]));
+  if (!firstErrorKey) {
+    return;
+  }
+
+  window.setTimeout(() => {
+    document.getElementById(formErrorFieldIds[firstErrorKey])?.focus();
+  }, 0);
 }
 
 function getFormErrorMessage(params: {
@@ -1372,7 +1394,11 @@ function ShiftFormPrimaryFields(props: {
             onValueChange={(value) => onWorkplaceChange(value ?? "")}
             disabled={disabled}
           >
-            <SelectTrigger aria-label="勤務先" className="w-full max-w-50">
+            <SelectTrigger
+              id="shift-workplace"
+              aria-label="勤務先"
+              className="w-full max-w-50"
+            >
               <SelectValue placeholder="勤務先を選択">
                 {selectedWorkplace?.name}
               </SelectValue>
@@ -1484,7 +1510,11 @@ function ShiftFormLessonFields(props: {
             onValueChange={(value) => onTimetableSetChange(value ?? "")}
             disabled={disabled || isTimetableLoading}
           >
-            <SelectTrigger aria-label="時間割セット" className="w-full">
+            <SelectTrigger
+              id="shift-timetable-set"
+              aria-label="時間割セット"
+              className="w-full"
+            >
               <SelectValue placeholder="時間割セットを選択">
                 {selectedSet?.name}
               </SelectValue>
@@ -1514,7 +1544,10 @@ function ShiftFormLessonFields(props: {
                 disabled || isTimetableLoading || lessonPeriods.length === 0
               }
             >
-              <SelectTrigger className="w-full max-w-20">
+              <SelectTrigger
+                id="shift-start-period"
+                className="w-full max-w-20"
+              >
                 <SelectValue placeholder="開始コマを選択">
                   {form.startPeriod ? `${form.startPeriod}限` : null}
                 </SelectValue>
@@ -1552,7 +1585,7 @@ function ShiftFormLessonFields(props: {
                 disabled || isTimetableLoading || lessonPeriods.length === 0
               }
             >
-              <SelectTrigger className="w-full max-w-20">
+              <SelectTrigger id="shift-end-period" className="w-full max-w-20">
                 <SelectValue placeholder="終了コマを選択">
                   {form.endPeriod ? `${form.endPeriod}限` : null}
                 </SelectValue>
@@ -2333,6 +2366,7 @@ function useShiftFormController(
           description: firstValidationMessage,
           duration: 6000,
         });
+        focusFirstInvalidShiftFormField(validation.errors);
         return;
       }
 

@@ -8,6 +8,7 @@ import {
   ArrowUpIcon,
   ChevronLeftIcon,
   ChevronRightIcon,
+  PencilIcon,
   Trash2Icon,
 } from "lucide-react";
 import { toast } from "sonner";
@@ -263,6 +264,7 @@ function shiftListReducer(
       return {
         ...state,
         month: action.month,
+        selectedShiftIds: [],
       };
     case "toggleSort":
       if (!state.sortState || state.sortState.column !== action.column) {
@@ -576,7 +578,7 @@ function ShiftListTableCard({
                 {sortedShifts.length === 0 ? (
                   <TableRow>
                     <TableCell
-                      colSpan={6}
+                      colSpan={7}
                       className="h-24 text-center text-muted-foreground"
                     >
                       表示対象のシフトがありません。
@@ -665,6 +667,7 @@ function ShiftListTableHeaderRow({
           onToggle={onToggleSort}
         />
       </TableHead>
+      <TableHead className="w-20 text-right">操作</TableHead>
     </TableRow>
   );
 }
@@ -716,18 +719,23 @@ function ShiftListTableItemRow({
               backgroundColor: shift.workplace.color,
             }}
           />
-          <button
-            type="button"
-            className="text-left hover:underline"
-            onClick={() => onEditShift(shift.id)}
-          >
-            {workplaceLabel}
-          </button>
+          <span>{workplaceLabel}</span>
         </div>
       </TableCell>
       <TableCell>{shift.breakMinutes}分</TableCell>
       <TableCell className="text-right font-medium">
         {formatCurrency(shift.estimatedPay)}
+      </TableCell>
+      <TableCell className="w-20 text-right">
+        <Button
+          type="button"
+          variant="ghost"
+          size="sm"
+          onClick={() => onEditShift(shift.id)}
+        >
+          <PencilIcon data-icon="inline-start" />
+          編集
+        </Button>
       </TableCell>
     </TableRow>
   );
@@ -910,11 +918,18 @@ export function ShiftListPageClient({
   }
 
   function handleMonthChange(nextMonth: Date) {
+    const clearedSelectionCount = selectedShiftIds.length;
     dispatch({
       type: "setMonth",
       month: nextMonth,
     });
     router.replace(`/my/shifts/list?month=${toMonthInputValue(nextMonth)}`);
+
+    if (clearedSelectionCount > 0) {
+      toast.info("月を変更したため選択を解除しました。", {
+        description: `${clearedSelectionCount}件の選択を解除しました。`,
+      });
+    }
   }
 
   async function handleBulkDelete() {

@@ -613,7 +613,7 @@ describe("shift flow integration", () => {
     await user.click(screen.getByRole("button", { name: "登録" }));
 
     expect(
-      screen.getByText("ERR_002: 開始時刻と終了時刻は同じ時刻にできません"),
+      screen.getByText("開始時刻と終了時刻は同じ時刻にできません。"),
     ).toBeInTheDocument();
 
     rerender(
@@ -627,7 +627,7 @@ describe("shift flow integration", () => {
     });
 
     expect(
-      screen.queryByText("ERR_002: 開始時刻と終了時刻は同じ時刻にできません"),
+      screen.queryByText("開始時刻と終了時刻は同じ時刻にできません。"),
     ).not.toBeInTheDocument();
     expect(screen.getByLabelText("開始時刻")).toHaveValue("");
     expect(screen.getByLabelText("終了時刻")).toHaveValue("");
@@ -807,8 +807,11 @@ describe("shift flow integration", () => {
     await user.click(screen.getByRole("button", { name: "登録" }));
 
     expect(
-      screen.getByText("ERR_002: 開始時刻と終了時刻は同じ時刻にできません"),
+      screen.getByText("開始時刻と終了時刻は同じ時刻にできません。"),
     ).toBeInTheDocument();
+    await waitFor(() => {
+      expect(screen.getByLabelText("終了時刻")).toHaveFocus();
+    });
     expect(fetchMock).toHaveBeenCalled();
   });
 

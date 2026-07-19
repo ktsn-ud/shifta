@@ -16,6 +16,7 @@ const pushMock = jest.fn();
 const replaceMock = jest.fn();
 const toastSuccessMock = jest.fn();
 const toastErrorMock = jest.fn();
+const toastInfoMock = jest.fn();
 
 jest.mock("next/navigation", () => ({
   useRouter: () => ({ push: pushMock, replace: replaceMock }),
@@ -25,6 +26,7 @@ jest.mock("sonner", () => ({
   toast: {
     success: (...args: unknown[]) => toastSuccessMock(...args),
     error: (...args: unknown[]) => toastErrorMock(...args),
+    info: (...args: unknown[]) => toastInfoMock(...args),
   },
 }));
 
@@ -105,6 +107,7 @@ describe("ShiftListPageClient", () => {
     replaceMock.mockReset();
     toastSuccessMock.mockReset();
     toastErrorMock.mockReset();
+    toastInfoMock.mockReset();
     clearMonthShiftsCache();
 
     Object.defineProperty(globalThis, "fetch", {
@@ -201,7 +204,7 @@ describe("ShiftListPageClient", () => {
       expect(screen.getByText("勤務先A (研修)")).toBeInTheDocument();
     });
 
-    fireEvent.click(screen.getByText("勤務先A (研修)"));
+    fireEvent.click(screen.getByRole("button", { name: "編集" }));
 
     expect(pushMock).toHaveBeenCalledWith(
       "/my/shifts/shift-1/edit?month=2026-03&returnTo=list",
@@ -388,5 +391,42 @@ describe("ShiftListPageClient", () => {
     });
     expect(screen.getByText("2026年4月")).toBeInTheDocument();
     expect(screen.queryByText("勤務先A")).not.toBeInTheDocument();
+  });
+
+  it("clears the selected shifts and announces the count when changing month", async () => {
+    const user = userEvent.setup();
+    const fetchMock = globalThis.fetch as jest.Mock;
+
+    fetchMock.mockImplementation(async (input: string) => {
+      if (input.startsWith("/api/shifts?")) {
+        return jsonResponse({
+          data: [
+            createShift({
+              id: "shift-1",
+              date: "2026-03-10T00:00:00.000Z",
+              startTime: "1970-01-01T09:00:00.000Z",
+              endTime: "1970-01-01T17:00:00.000Z",
+              workplaceName: "勤務先A",
+            }),
+          ],
+        });
+      }
+
+      throw new Error(`Unexpected fetch: ${input}`);
+    });
+
+    renderShiftListPage();
+
+    await waitFor(() => {
+      expect(screen.getByText("勤務先A")).toBeInTheDocument();
+    });
+
+    await user.click(screen.getAllByRole("checkbox")[1]);
+    await user.click(screen.getByRole("button", { name: "次月" }));
+
+    expect(toastInfoMock).toHaveBeenCalledWith(
+      "月を変更したため選択を解除しました。",
+      { description: "1件の選択を解除しました。" },
+    );
   });
 });

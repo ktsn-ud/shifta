@@ -1998,6 +1998,7 @@ function useBulkShiftFormController({
     timetableSetOptions,
     timetableSetNameById,
     selectedRows,
+    selectedDateCount: state.selectedDateKeys.length,
     formErrorMessage,
     previewMonths: shiftPayrollPreview.months,
     previewUnresolvedCount: shiftPayrollPreview.unresolvedCount,

@@ -35,6 +35,7 @@ export function BulkShiftDefaultsSection(
     BulkShiftFormController,
     | "defaults"
     | "selectedWorkplace"
+    | "selectedDateCount"
     | "lessonPeriodsBySetId"
     | "timetableSetOptions"
     | "timetableSetNameById"
@@ -47,6 +48,7 @@ export function BulkShiftDefaultsSection(
   const {
     defaults,
     selectedWorkplace,
+    selectedDateCount,
     lessonPeriodsBySetId,
     timetableSetOptions,
     timetableSetNameById,
@@ -298,12 +300,16 @@ export function BulkShiftDefaultsSection(
       )}
 
       <div className="flex flex-wrap gap-2">
+        <p className="w-full text-sm text-muted-foreground">
+          選択中の{selectedDateCount}日分へデフォルト値を反映します。
+        </p>
         <Button
           type="button"
           variant="outline"
           onClick={handleApplyDefaultsToRows}
+          disabled={selectedDateCount === 0}
         >
-          デフォルト値を適用
+          選択中の{selectedDateCount}日分に適用
         </Button>
         <Button type="button" variant="ghost" onClick={handleResetDefaults}>
           リセット
