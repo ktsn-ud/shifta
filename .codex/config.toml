@@ -3,7 +3,7 @@ projects = { "/workspace" = { trust_level = "trusted" } }
 model = "gpt-5.6-terra"
 model_reasoning_effort = "medium"
 personality = "pragmatic"
-approval_reviewer = "auto_review"
+approvals_reviewer = "auto_review"
 
 [agents]
 max_threads = 10
