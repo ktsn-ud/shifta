@@ -16,6 +16,7 @@ import {
 import { Input } from "@/components/ui/input";
 import { FormLoadingSkeleton } from "@/components/ui/loading-skeletons";
 import { LoadingOverlay } from "@/components/ui/loading-overlay";
+import { WorkplaceContextBreadcrumb } from "@/components/workplaces/workplace-context-breadcrumb";
 import { RadioGroup, RadioGroupItem } from "@/components/ui/radio-group";
 import { useResetOnRouteHidden } from "@/hooks/use-reset-on-route-hidden";
 import { dateKeyFromApiDate } from "@/lib/calendar/date";
@@ -930,6 +931,11 @@ function PayrollRuleEditorForm({
   return (
     <section className="space-y-6 p-4 md:p-6">
       <header className="space-y-1">
+        <WorkplaceContextBreadcrumb
+          workplaceId={workplaceId}
+          workplaceName={workplace?.name}
+          currentPage="給与ルール"
+        />
         <h2 className="text-xl font-semibold">{controller.pageTitle}</h2>
         <p className="text-sm text-muted-foreground">
           {workplace
@@ -1104,6 +1110,10 @@ export function PayrollRuleForm({
     return (
       <section className="space-y-6 p-4 md:p-6">
         <header className="space-y-1">
+          <WorkplaceContextBreadcrumb
+            workplaceId={workplaceId}
+            currentPage="給与ルール"
+          />
           <h2 className="text-xl font-semibold">{pageTitle}</h2>
           <p className="text-sm text-muted-foreground">
             勤務先ごとの給与ルールを設定します。

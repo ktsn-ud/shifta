@@ -22,6 +22,7 @@ import {
 } from "@/components/ui/form";
 import { Input } from "@/components/ui/input";
 import { LoadingOverlay } from "@/components/ui/loading-overlay";
+import { WorkplaceContextBreadcrumb } from "@/components/workplaces/workplace-context-breadcrumb";
 import { SpinnerPanel } from "@/components/ui/spinner";
 import { useResetOnRouteHidden } from "@/hooks/use-reset-on-route-hidden";
 import { parseGoogleSyncStateFromPayload } from "@/lib/google-calendar/clientSync";
@@ -1014,6 +1015,11 @@ function TimetableEditorForm({
   return (
     <section className="space-y-6 p-4 md:p-6">
       <header className="space-y-1">
+        <WorkplaceContextBreadcrumb
+          workplaceId={workplaceId}
+          workplaceName={workplaceName}
+          currentPage="時間割"
+        />
         <h2 className="text-xl font-semibold">{controller.pageTitle}</h2>
         <p className="text-sm text-muted-foreground">
           {workplaceName
@@ -1226,6 +1232,10 @@ export function TimetableForm({
     return (
       <section className="space-y-4 p-4 md:p-6">
         <header>
+          <WorkplaceContextBreadcrumb
+            workplaceId={workplaceId}
+            currentPage="時間割"
+          />
           <h2 className="text-xl font-semibold">{pageTitle}</h2>
         </header>
         <SpinnerPanel
@@ -1240,6 +1250,11 @@ export function TimetableForm({
     return (
       <section className="space-y-4 p-4 md:p-6">
         <header>
+          <WorkplaceContextBreadcrumb
+            workplaceId={workplaceId}
+            workplaceName={workplace?.name}
+            currentPage="時間割"
+          />
           <h2 className="text-xl font-semibold">{pageTitle}</h2>
         </header>
         <Card>

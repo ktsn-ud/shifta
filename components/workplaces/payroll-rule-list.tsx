@@ -14,6 +14,7 @@ import {
 } from "@/components/ui/card";
 import { TableLoadingSkeleton } from "@/components/ui/loading-skeletons";
 import { LoadingOverlay } from "@/components/ui/loading-overlay";
+import { WorkplaceContextBreadcrumb } from "@/components/workplaces/workplace-context-breadcrumb";
 import {
   Dialog,
   DialogContent,
@@ -241,6 +242,11 @@ export function PayrollRuleList({
     <section className="space-y-6 p-4 md:p-6">
       <header className="flex flex-wrap items-start justify-between gap-4 rounded-xl border border-border/80 bg-card/95 p-5 shadow-sm">
         <div className="space-y-2">
+          <WorkplaceContextBreadcrumb
+            workplaceId={workplaceId}
+            workplaceName={workplace?.name}
+            currentPage="給与ルール"
+          />
           <p className="text-xs font-medium uppercase tracking-[0.12em] text-muted-foreground">
             Payroll Rules
           </p>
