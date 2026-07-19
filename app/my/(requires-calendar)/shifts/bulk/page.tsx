@@ -29,10 +29,12 @@ export default async function ShiftBulkPage({
     typeof resolvedSearchParams.month === "string"
       ? fromMonthInputValue(resolvedSearchParams.month)
       : null;
+  const monthValue = toMonthInputValue(requestedMonth ?? today);
 
   return (
     <BulkShiftFormLazy
-      initialMonthInputValue={toMonthInputValue(requestedMonth ?? today)}
+      key={monthValue}
+      initialMonthInputValue={monthValue}
       todayDateKey={toDateKey(today)}
     />
   );

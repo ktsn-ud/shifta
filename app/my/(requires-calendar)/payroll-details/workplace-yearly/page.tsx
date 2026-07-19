@@ -62,6 +62,7 @@ async function WorkplaceYearlyPageContent({ year }: { year: number }) {
 
   return (
     <PayrollDetailsWorkplaceYearlyPageClient
+      key={String(year)}
       currentUserId={current.user.id}
       initialYear={year}
       currentMonthValue={currentMonthValue}
