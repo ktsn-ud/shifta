@@ -57,6 +57,9 @@ describe("app/login/page", () => {
       screen.getByRole("button", { name: "Google でログイン" }),
     ).toBeInTheDocument();
     expect(
+      screen.getByText("初回は Google Calendar の初期設定があります。"),
+    ).toBeInTheDocument();
+    expect(
       screen.queryByText("Google 連携の再ログインが必要です"),
     ).not.toBeInTheDocument();
   });

@@ -97,9 +97,14 @@ export default function CalendarSetupPage() {
               {errorMessage}
             </p>
           ) : (
-            <p className="text-sm text-muted-foreground">
-              設定後は、シフト登録時に Google Calendar へ自動同期されます。
-            </p>
+            <div className="space-y-2 text-sm text-muted-foreground">
+              <p>
+                設定後は、シフト登録時に Google Calendar へ自動同期されます。
+              </p>
+              <p>
+                完了後はホームへ移動します。まずは「新規シフト登録」から始められます。
+              </p>
+            </div>
           )}
         </CardContent>
 
