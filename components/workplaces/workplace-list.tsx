@@ -256,11 +256,19 @@ function WorkplaceTableCard({
                 <TableBody>
                   {workplaces.length === 0 ? (
                     <TableRow>
-                      <TableCell
-                        colSpan={5}
-                        className="h-24 text-center text-muted-foreground"
-                      >
-                        勤務先がありません。
+                      <TableCell colSpan={5} className="py-8 text-center">
+                        <div className="mx-auto flex max-w-md flex-col items-center gap-3">
+                          <p className="font-medium">勤務先がありません</p>
+                          <p className="text-sm text-muted-foreground">
+                            勤務先を登録すると、シフトと給与の管理を始められます。
+                          </p>
+                          <Link
+                            href="/my/workplaces/new"
+                            className={buttonVariants({ size: "sm" })}
+                          >
+                            最初の勤務先を追加
+                          </Link>
+                        </div>
                       </TableCell>
                     </TableRow>
                   ) : (
@@ -343,9 +351,9 @@ function WorkplaceTableRowActions({
           時間割
         </Link>
       ) : (
-        <Button size="sm" variant="outline" disabled>
-          時間割
-        </Button>
+        <span className="self-center text-xs text-muted-foreground">
+          一般勤務先では時間割を設定できません
+        </span>
       )}
       <Button
         size="sm"

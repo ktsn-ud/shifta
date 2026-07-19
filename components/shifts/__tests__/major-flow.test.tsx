@@ -226,7 +226,9 @@ describe("major flow integration", () => {
     await user.click(screen.getByRole("button", { name: "作成" }));
 
     await waitFor(() => {
-      expect(pushMock).toHaveBeenCalledWith("/my/workplaces");
+      expect(pushMock).toHaveBeenCalledWith(
+        "/my/workplaces/workplace-1/payroll-rules/new",
+      );
     });
 
     const postCall = fetchMock.mock.calls.find(
@@ -243,14 +245,12 @@ describe("major flow integration", () => {
     ) as {
       name: string;
       type: string;
-      initialPayrollRule?: {
-        startDate: string;
-      };
+      initialPayrollRule?: unknown;
     };
 
     expect(body.name).toBe("店舗A");
     expect(body.type).toBe("GENERAL");
-    expect(body.initialPayrollRule?.startDate).toBe("2026-03-15");
+    expect(body.initialPayrollRule).toBeUndefined();
   });
 
   it("creates a LESSON shift", async () => {

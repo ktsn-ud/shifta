@@ -328,8 +328,19 @@ export function PayrollRuleList({
                 <TableBody>
                   {rules.length === 0 ? (
                     <TableRow>
-                      <TableCell colSpan={6} className="h-16 text-center">
-                        給与ルールがありません。
+                      <TableCell colSpan={6} className="py-8 text-center">
+                        <div className="mx-auto flex max-w-md flex-col items-center gap-3">
+                          <p className="font-medium">給与ルールがありません</p>
+                          <p className="text-sm text-muted-foreground">
+                            給与を計算するには、適用する給与ルールの登録が必要です。
+                          </p>
+                          <Link
+                            href={`/my/workplaces/${workplaceId}/payroll-rules/new`}
+                            className={buttonVariants({ size: "sm" })}
+                          >
+                            給与ルールを追加
+                          </Link>
+                        </div>
                       </TableCell>
                     </TableRow>
                   ) : (

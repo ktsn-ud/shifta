@@ -199,7 +199,7 @@ function createCreateWorkplaceFormSeed(
 ): WorkplaceFormSeed {
   return {
     values: createInitialWorkplaceValues(),
-    createInitialRule: true,
+    createInitialRule: false,
     initialRuleValues: createInitialRuleValues(initialRuleStartDate),
   };
 }
@@ -654,7 +654,7 @@ function InitialPayrollRuleToggleSection({
           初期給与ルールを同時に作成する
         </FieldLabel>
         <FieldDescription>
-          勤務先作成と同時に、最初の給与ルールを作成します。
+          必要な場合のみ、勤務先作成と同時に最初の給与ルールを設定します。
         </FieldDescription>
       </FieldContent>
     </Field>
@@ -782,31 +782,42 @@ function InitialPayrollRuleFieldsSection({
         </FieldContent>
       </Field>
 
-      <Field data-invalid={Boolean(errors.overtimePremiumRate)}>
-        <FieldLabel htmlFor="initial-rule-overtime-multiplier">
-          所定時間外割増率（保留）
-        </FieldLabel>
-        <FieldContent>
-          <div className="flex items-center gap-2">
-            <Input
-              id="initial-rule-overtime-multiplier"
-              type="number"
-              min="0"
-              step="0.01"
-              value={values.overtimePremiumRate}
-              onChange={(event) => {
-                onChange({ overtimePremiumRate: event.currentTarget.value });
-              }}
-              className="max-w-20"
-            />
-            <span className="shrink-0 text-sm text-muted-foreground">率</span>
-          </div>
-          <FieldDescription>
-            将来拡張のため保持します（現時点の計算では未使用）。
-          </FieldDescription>
-          <FormErrorMessage message={errors.overtimePremiumRate} />
-        </FieldContent>
-      </Field>
+      <details className="rounded-md border border-border/70 px-3 py-2">
+        <summary className="cursor-pointer text-sm font-medium">
+          高度な設定
+        </summary>
+        <div className="pt-4">
+          <Field data-invalid={Boolean(errors.overtimePremiumRate)}>
+            <FieldLabel htmlFor="initial-rule-overtime-multiplier">
+              所定時間外割増率（保留）
+            </FieldLabel>
+            <FieldContent>
+              <div className="flex items-center gap-2">
+                <Input
+                  id="initial-rule-overtime-multiplier"
+                  type="number"
+                  min="0"
+                  step="0.01"
+                  value={values.overtimePremiumRate}
+                  onChange={(event) => {
+                    onChange({
+                      overtimePremiumRate: event.currentTarget.value,
+                    });
+                  }}
+                  className="max-w-20"
+                />
+                <span className="shrink-0 text-sm text-muted-foreground">
+                  率
+                </span>
+              </div>
+              <FieldDescription>
+                将来拡張のため保持します（現時点の計算では未使用）。
+              </FieldDescription>
+              <FormErrorMessage message={errors.overtimePremiumRate} />
+            </FieldContent>
+          </Field>
+        </div>
+      </details>
 
       <Field data-invalid={Boolean(errors.dailyOvertimeThreshold)}>
         <FieldLabel htmlFor="initial-rule-daily-threshold">
@@ -1054,11 +1065,7 @@ function WorkplaceEditorForm({
       );
       await invalidateAfterWorkplaceMutation(queryClient);
 
-      if (
-        !isEdit &&
-        responsePayload.data?.type === "CRAM_SCHOOL" &&
-        responsePayload.data.id
-      ) {
+      if (!isEdit && responsePayload.data?.id) {
         toast.success(messages.success.workplaceCreated, {
           id: loadingToastId,
           description: buildMutationSuccessDescription({
@@ -1067,7 +1074,13 @@ function WorkplaceEditorForm({
           }),
         });
         markForResetOnRouteHidden();
-        router.push(`/my/workplaces/${responsePayload.data.id}/timetables/new`);
+        router.push(
+          createInitialRule
+            ? responsePayload.data.type === "CRAM_SCHOOL"
+              ? `/my/workplaces/${responsePayload.data.id}/timetables/new`
+              : "/my/workplaces"
+            : `/my/workplaces/${responsePayload.data.id}/payroll-rules/new`,
+        );
       } else {
         toast.success(
           isEdit

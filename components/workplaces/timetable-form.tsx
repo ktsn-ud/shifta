@@ -686,7 +686,7 @@ function TimetableItemsSection({
               onClick={onQueueCurrentSet}
               disabled={isSubmitting}
             >
-              時間割セットを確定
+              追加して続ける
             </Button>
           ) : null}
         </div>
@@ -703,12 +703,12 @@ function QueuedSetsSection({
   return (
     <div className="space-y-3">
       <h3 className="text-sm font-semibold">
-        作成予定セット ({queuedSets.length})
+        保存待ちの時間割セット ({queuedSets.length})
       </h3>
 
       {queuedSets.length === 0 ? (
         <p className="rounded-md border px-3 py-2 text-sm text-muted-foreground">
-          追加済みのセットはありません。入力中のセットを「時間割セットを確定」で作成予定に積めます。
+          まだ保存待ちのセットはありません。「追加して続ける」で入力中のセットを追加できます。
         </p>
       ) : (
         <div className="space-y-2">
@@ -1109,7 +1109,7 @@ function TimetableEditorForm({
                   : "作成中..."
                 : controller.isEdit
                   ? "更新"
-                  : "まとめて作成"}
+                  : "保存して完了"}
             </Button>
             <Button
               type="button"

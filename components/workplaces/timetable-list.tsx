@@ -228,7 +228,9 @@ export function TimetableList({
               新規時間割セット追加
             </Link>
           ) : (
-            <Button disabled>新規時間割セット追加</Button>
+            <p className="self-center text-sm text-muted-foreground">
+              一般勤務先では時間割を設定できません
+            </p>
           )}
         </div>
       </header>
