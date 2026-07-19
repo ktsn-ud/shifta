@@ -1,7 +1,7 @@
 name = "test_writer"
 description = "Test-writing agent. Use after implementation when changed behavior, edge cases, or regressions need focused test coverage."
 
-model = "gpt-5.4"
+model = "gpt-5.6-terra"
 model_reasoning_effort = "high"
 sandbox_mode = "workspace-write"
 
