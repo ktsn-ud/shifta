@@ -3,6 +3,10 @@ import { PayrollDetailsWorkplaceYearlyPageClient } from "@/components/payroll-de
 import { usePayrollDetailsWorkplaceYearlyQuery } from "@/lib/query/queries/payroll";
 import type { PayrollDetailsWorkplaceYearlyResult } from "@/lib/payroll/details";
 
+jest.mock("next/navigation", () => ({
+  useRouter: () => ({ replace: jest.fn() }),
+}));
+
 jest.mock("@/lib/query/queries/payroll", () => ({
   usePayrollDetailsWorkplaceYearlyQuery: jest.fn(),
 }));

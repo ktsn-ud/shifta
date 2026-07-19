@@ -2,6 +2,7 @@
 
 import { useState } from "react";
 import Link from "next/link";
+import { useRouter } from "next/navigation";
 import { Input } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
 import { buttonVariants } from "@/components/ui/button-variants";
@@ -404,6 +405,7 @@ export function PayrollDetailsWorkplaceYearlyPageClient({
   currentYearValue,
   initialDetails,
 }: PayrollDetailsWorkplaceYearlyPageClientProps) {
+  const router = useRouter();
   const [draftYearValue, setDraftYearValue] = useState(String(initialYear));
   const [requestedYearValue, setRequestedYearValue] = useState(
     String(initialYear),
@@ -421,16 +423,22 @@ export function PayrollDetailsWorkplaceYearlyPageClient({
   const monthlyHref = `/my/payroll-details/monthly?month=${monthlyMonthValue}`;
 
   const applyYearValue = (nextValue: string) => {
-    if (!isValidYearInput(nextValue)) {
+    const year = toYearNumber(nextValue);
+    if (year === null) {
       return;
     }
 
-    setRequestedYearValue(nextValue);
+    const yearValue = String(year);
+    setRequestedYearValue(yearValue);
+    router.replace(`/my/payroll-details/workplace-yearly?year=${yearValue}`);
   };
 
   const handleBackToCurrentYear = () => {
     setDraftYearValue(currentYearValue);
     setRequestedYearValue(currentYearValue);
+    router.replace(
+      `/my/payroll-details/workplace-yearly?year=${currentYearValue}`,
+    );
   };
 
   const detailsQuery = usePayrollDetailsWorkplaceYearlyQuery({

@@ -2,6 +2,7 @@
 
 import { useMemo, useState } from "react";
 import Link from "next/link";
+import { useRouter } from "next/navigation";
 import { Input } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
 import { buttonVariants } from "@/components/ui/button-variants";
@@ -18,7 +19,11 @@ import { SpinnerPanel } from "@/components/ui/spinner";
 import { PayrollDetailsViewSwitch } from "@/components/payroll-details/payroll-details-view-switch";
 import { ValueFrame } from "@/components/payroll-details/value-frame";
 import { formatCurrency } from "@/components/payroll-details/format";
-import { formatMonthLabel, fromMonthInputValue } from "@/lib/calendar/date";
+import {
+  formatMonthLabel,
+  fromMonthInputValue,
+  toMonthInputValue,
+} from "@/lib/calendar/date";
 import { toErrorMessage } from "@/lib/messages";
 import { usePayrollDetailsMonthlyQuery } from "@/lib/query/queries/payroll";
 import { type PayrollDetailsMonthlyResult } from "@/lib/payroll/details";
@@ -433,6 +438,7 @@ export function PayrollDetailsMonthlyPageClient({
   currentMonthValue,
   initialDetails,
 }: PayrollDetailsMonthlyPageClientProps) {
+  const router = useRouter();
   const [draftMonthValue, setDraftMonthValue] = useState(initialMonth);
   const [requestedMonthValue, setRequestedMonthValue] = useState(initialMonth);
 
@@ -445,16 +451,20 @@ export function PayrollDetailsMonthlyPageClient({
   const workplaceYearlyHref = `/my/payroll-details/workplace-yearly?year=${requestedMonthValue.slice(0, 4)}`;
 
   const applyMonthValue = (nextValue: string) => {
-    if (fromMonthInputValue(nextValue) === null) {
+    const parsedMonth = fromMonthInputValue(nextValue);
+    if (parsedMonth === null) {
       return;
     }
 
-    setRequestedMonthValue(nextValue);
+    const monthValue = toMonthInputValue(parsedMonth);
+    setRequestedMonthValue(monthValue);
+    router.replace(`/my/payroll-details/monthly?month=${monthValue}`);
   };
 
   const handleBackToCurrentMonth = () => {
     setDraftMonthValue(currentMonthValue);
     setRequestedMonthValue(currentMonthValue);
+    router.replace(`/my/payroll-details/monthly?month=${currentMonthValue}`);
   };
 
   const detailsQuery = usePayrollDetailsMonthlyQuery({

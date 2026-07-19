@@ -10,6 +10,10 @@ import type {
   PayrollDetailsWorkplaceYearlyResult,
 } from "@/lib/payroll/details";
 
+jest.mock("next/navigation", () => ({
+  useRouter: () => ({ replace: jest.fn() }),
+}));
+
 jest.mock("@/lib/query/queries/payroll", () => ({
   usePayrollDetailsMonthlyQuery: jest.fn(),
   usePayrollDetailsWorkplaceYearlyQuery: jest.fn(),
