@@ -311,6 +311,9 @@ export function PayrollRuleList({
               }
               className="rounded-lg"
             >
+              <p className="text-xs text-muted-foreground">
+                表は横にスクロールして確認できます。
+              </p>
               <Table>
                 <TableHeader>
                   <TableRow>

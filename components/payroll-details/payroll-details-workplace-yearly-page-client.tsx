@@ -296,7 +296,10 @@ function PayrollDetailsYearlyTable({
   workplace,
 }: PayrollDetailsYearlyTableProps) {
   return (
-    <div className="overflow-hidden rounded-lg border border-border/70">
+    <div className="space-y-2">
+      <p className="text-xs text-muted-foreground">
+        表は横にスクロールして確認できます。
+      </p>
       <Table>
         <TableHeader className="bg-muted/35">
           <TableRow>
