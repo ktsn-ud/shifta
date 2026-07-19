@@ -59,7 +59,7 @@ export function BulkShiftRowLessonFields(props: {
               }
             }}
           >
-            <SelectTrigger>
+            <SelectTrigger id={`${row.date}-timetable-set`}>
               <SelectValue placeholder="時間割セットを選択">
                 {timetableSetNameById[row.timetableSetId]}
               </SelectValue>
@@ -91,7 +91,7 @@ export function BulkShiftRowLessonFields(props: {
               }
             }}
           >
-            <SelectTrigger>
+            <SelectTrigger id={`${row.date}-start-period`}>
               <SelectValue placeholder="開始コマ" />
             </SelectTrigger>
             <SelectContent>
@@ -124,7 +124,7 @@ export function BulkShiftRowLessonFields(props: {
               }
             }}
           >
-            <SelectTrigger>
+            <SelectTrigger id={`${row.date}-end-period`}>
               <SelectValue placeholder="終了コマ" />
             </SelectTrigger>
             <SelectContent>

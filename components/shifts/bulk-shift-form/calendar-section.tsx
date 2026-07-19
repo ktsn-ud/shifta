@@ -136,7 +136,14 @@ export function BulkShiftCalendarSection(
               </div>
             ) : null}
 
-            <div className="rounded-lg border">
+            <div
+              id="bulk-calendar-grid"
+              tabIndex={-1}
+              className="rounded-lg border"
+              aria-describedby={
+                errors.selectedDates ? "bulk-selected-dates-error" : undefined
+              }
+            >
               <div className="flex items-center justify-between border-b px-3 py-2 md:px-4">
                 <Button
                   type="button"
@@ -259,7 +266,10 @@ export function BulkShiftCalendarSection(
       {googleEventsWarning ? (
         <p className="text-xs text-muted-foreground">{googleEventsWarning}</p>
       ) : null}
-      <FormErrorMessage message={errors.selectedDates} />
+      <FormErrorMessage
+        id="bulk-selected-dates-error"
+        message={errors.selectedDates}
+      />
     </section>
   );
 }

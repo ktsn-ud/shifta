@@ -1,6 +1,9 @@
 "use client";
 
-import type { BulkShiftFormController } from "@/components/shifts/BulkShiftForm";
+import {
+  getBulkShiftValidationErrorSummary,
+  type BulkShiftFormController,
+} from "@/components/shifts/BulkShiftForm";
 import { ShiftPayrollPreviewFloating } from "@/components/shifts/ShiftPayrollPreviewFloating";
 import { AsyncStateNotice } from "@/components/ui/async-state-notice";
 import { Form } from "@/components/ui/form";
@@ -17,6 +20,9 @@ export function BulkShiftFormScreen(props: {
   controller: BulkShiftFormController;
 }) {
   const { controller } = props;
+  const validationErrorSummary = getBulkShiftValidationErrorSummary(
+    controller.errors,
+  );
 
   return (
     <section className="space-y-6 p-4 pb-32 md:p-6 md:pb-6">
@@ -49,6 +55,26 @@ export function BulkShiftFormScreen(props: {
             void controller.handleSubmit();
           }}
         >
+          {validationErrorSummary ? (
+            <section
+              className="rounded-lg border border-destructive/50 bg-destructive/5 p-4 text-sm"
+              role="alert"
+              aria-labelledby="bulk-validation-summary-title"
+            >
+              <h2 id="bulk-validation-summary-title" className="font-semibold">
+                {validationErrorSummary.errorCount}件の入力エラーがあります
+              </h2>
+              {validationErrorSummary.failedDateKeys.length > 0 ? (
+                <p className="mt-1 text-muted-foreground">
+                  修正が必要な日付:{" "}
+                  {validationErrorSummary.failedDateKeys.join("、")}
+                </p>
+              ) : null}
+              <p className="mt-2">
+                最初の修正対象: {validationErrorSummary.firstErrorMessage}
+              </p>
+            </section>
+          ) : null}
           <BulkShiftWorkplaceSection {...controller} />
           <BulkShiftCalendarSection {...controller} />
           <BulkShiftDefaultsSection {...controller} />

@@ -123,6 +123,63 @@ function createShiftFormBootstrapResponse(): Response {
   });
 }
 
+function createCramSchoolShiftFormBootstrapResponse(): Response {
+  return jsonResponse({
+    data: {
+      workplaces: [
+        {
+          id: "workplace-1",
+          name: "英語塾A",
+          type: "CRAM_SCHOOL",
+          color: "#3366FF",
+        },
+      ],
+      selectedWorkplace: {
+        id: "workplace-1",
+        name: "英語塾A",
+        type: "CRAM_SCHOOL",
+        color: "#3366FF",
+        closingDayType: "DAY_OF_MONTH",
+        closingDay: 15,
+        payday: 25,
+      },
+      payrollRules: [
+        {
+          id: "rule-1",
+          workplaceId: "workplace-1",
+          startDate: "2026-01-01",
+          endDate: null,
+          baseHourlyWage: 1200,
+          holidayAllowanceHourly: 0,
+          nightPremiumRate: 0.25,
+          overtimePremiumRate: 0.25,
+          dailyOvertimeThreshold: 8,
+          holidayType: "NONE",
+        },
+      ],
+      timetableSets: [
+        {
+          id: "set-1",
+          workplaceId: "workplace-1",
+          name: "通常授業",
+          sortOrder: 0,
+          createdAt: "2026-03-01T00:00:00.000Z",
+          updatedAt: "2026-03-01T00:00:00.000Z",
+          items: [
+            {
+              id: "timetable-1",
+              timetableSetId: "set-1",
+              period: 1,
+              startTime: "1970-01-01T16:30:00.000Z",
+              endTime: "1970-01-01T17:30:00.000Z",
+            },
+          ],
+        },
+      ],
+    },
+  });
+}
+
 function handleBulkPreviewFetch(input: string): Response | null {
   if (input.startsWith(SHIFT_FORM_BOOTSTRAP_URL)) {
     return createShiftFormBootstrapResponse();
@@ -1221,5 +1278,150 @@ describe("bulk shift flow integration", () => {
     expect(
       screen.queryByText("09:00-10:00 March Event"),
     ).not.toBeInTheDocument();
+  });
+  it("summarizes invalid rows and focuses the first invalid field", async () => {
+    const user = userEvent.setup({
+      advanceTimers: jest.advanceTimersByTime,
+    });
+    const fetchMock = globalThis.fetch as jest.Mock;
+
+    fetchMock.mockImplementation(
+      async (input: string, init?: { method?: string }) => {
+        if (isCalendarEventsRequest(input, init)) {
+          return jsonResponse({
+            data: {
+              month: "2026-03",
+              calendars: [],
+              selectedCalendarIds: [],
+              dates: [],
+            },
+          });
+        }
+
+        if (input.startsWith(SHIFT_FORM_BOOTSTRAP_URL)) {
+          return createCramSchoolShiftFormBootstrapResponse();
+        }
+
+        const previewResponse = handleBulkPreviewFetch(input);
+        if (previewResponse) {
+          return previewResponse;
+        }
+
+        throw new Error("Unexpected fetch: " + input);
+      },
+    );
+
+    renderBulkShiftForm();
+
+    await waitFor(() => {
+      expect(
+        screen.getByRole("combobox", { name: "勤務先" }),
+      ).toHaveTextContent("英語塾A");
+    });
+
+    await user.click(findEnabledDayButton(20));
+    await user.click(findEnabledDayButton(21));
+
+    const firstDateKey = dateKeyFromDay(20);
+    const secondDateKey = dateKeyFromDay(21);
+    const lessonRadio = document.getElementById(`${firstDateKey}-shift-lesson`);
+    if (!lessonRadio) {
+      throw new Error("LESSON radio input not found");
+    }
+    fireEvent.click(lessonRadio);
+
+    await waitFor(() => {
+      expect(
+        document.getElementById(`${firstDateKey}-timetable-set`),
+      ).toBeInTheDocument();
+    });
+    expect(
+      document.getElementById(`${firstDateKey}-start-period`),
+    ).toBeInTheDocument();
+    expect(
+      document.getElementById(`${firstDateKey}-end-period`),
+    ).toBeInTheDocument();
+
+    const firstNormalRadio = document.getElementById(
+      `${firstDateKey}-shift-normal`,
+    );
+    if (!firstNormalRadio) {
+      throw new Error("first NORMAL radio input not found");
+    }
+    fireEvent.click(firstNormalRadio);
+
+    const firstEnd = document.getElementById(`${firstDateKey}-end-time`);
+    if (!(firstEnd instanceof HTMLInputElement)) {
+      throw new Error("first row end time input not found");
+    }
+    const scrollIntoView = jest.fn();
+    firstEnd.scrollIntoView = scrollIntoView;
+    fireEvent.change(firstEnd, { target: { value: "09:00" } });
+
+    const secondNormalRadio = document.getElementById(
+      `${secondDateKey}-shift-normal`,
+    );
+    if (!secondNormalRadio) {
+      throw new Error("second NORMAL radio input not found");
+    }
+    fireEvent.click(secondNormalRadio);
+
+    const secondEnd = document.getElementById(`${secondDateKey}-end-time`);
+    if (!(secondEnd instanceof HTMLInputElement)) {
+      throw new Error("second row end time input not found");
+    }
+    fireEvent.change(secondEnd, { target: { value: "09:00" } });
+
+    await user.click(screen.getByRole("button", { name: "確定" }));
+
+    await waitFor(() => {
+      expect(
+        screen.getByRole("heading", { name: "2件の入力エラーがあります" }),
+      ).toBeInTheDocument();
+    });
+    expect(
+      screen.getByText(`修正が必要な日付: ${firstDateKey}、${secondDateKey}`),
+    ).toBeInTheDocument();
+    expect(
+      screen.getByText(
+        "最初の修正対象: 2026年3月20日(金)の終了時刻: 開始時刻と終了時刻は同じ時刻にできません。",
+      ),
+    ).toBeInTheDocument();
+
+    await waitFor(() => {
+      expect(scrollIntoView).toHaveBeenCalledWith({
+        behavior: "smooth",
+        block: "center",
+      });
+      expect(document.activeElement).toBe(firstEnd);
+    });
+    fireEvent.change(firstEnd, { target: { value: "18:00" } });
+    await waitFor(() => {
+      expect(
+        screen.getByRole("heading", { name: "1件の入力エラーがあります" }),
+      ).toBeInTheDocument();
+    });
+    expect(
+      screen.getByText(`修正が必要な日付: ${secondDateKey}`),
+    ).toBeInTheDocument();
+
+    await user.click(screen.getByRole("button", { name: "確定" }));
+
+    await waitFor(() => {
+      expect(
+        screen.getByRole("heading", { name: "1件の入力エラーがあります" }),
+      ).toBeInTheDocument();
+    });
+    expect(
+      screen.getByText(`修正が必要な日付: ${secondDateKey}`),
+    ).toBeInTheDocument();
+
+    expect(
+      fetchMock.mock.calls.some(
+        ([url, options]) =>
+          url === "/api/shifts/bulk" &&
+          (options as { method?: string } | undefined)?.method === "POST",
+      ),
+    ).toBe(false);
   });
 });

@@ -296,6 +296,98 @@ export type FormErrors = {
   rows?: Record<string, RowErrors>;
 };
 
+export type BulkShiftValidationErrorSummary = {
+  errorCount: number;
+  failedDateKeys: string[];
+  firstErrorMessage: string;
+};
+
+const ROW_ERROR_FIELD_LABELS: Record<RowErrorKey, string> = {
+  shiftType: "シフトタイプ",
+  comment: "コメント",
+  startTime: "開始時刻",
+  endTime: "終了時刻",
+  breakMinutes: "休憩時間",
+  timetableSetId: "時間割セット",
+  startPeriod: "開始コマ",
+  endPeriod: "終了コマ",
+};
+
+function getRowFieldId(dateKey: string, field: RowErrorKey) {
+  const suffixByField: Record<RowErrorKey, string> = {
+    shiftType: "shift-normal",
+    comment: "comment",
+    startTime: "start-time",
+    endTime: "end-time",
+    breakMinutes: "break",
+    timetableSetId: "timetable-set",
+    startPeriod: "start-period",
+    endPeriod: "end-period",
+  };
+
+  return dateKey + "-" + suffixByField[field];
+}
+
+function getFirstInvalidFieldId(errors: FormErrors) {
+  if (errors.workplaceId) return "bulk-workplace";
+  if (errors.selectedDates) return "bulk-calendar-grid";
+
+  for (const [dateKey, rowErrors] of Object.entries(errors.rows ?? {})) {
+    const field = (Object.keys(rowErrors) as RowErrorKey[]).find((key) =>
+      Boolean(rowErrors[key]),
+    );
+    if (field) return getRowFieldId(dateKey, field);
+  }
+
+  return null;
+}
+
+export function getBulkShiftValidationErrorSummary(
+  errors: FormErrors,
+): BulkShiftValidationErrorSummary | null {
+  const rowErrorEntries = Object.entries(errors.rows ?? {}).filter(
+    ([, rowErrors]) => Object.values(rowErrors).some(Boolean),
+  );
+  const rowErrorCount = rowErrorEntries.reduce(
+    (count, [, rowErrors]) =>
+      count + Object.values(rowErrors).filter(Boolean).length,
+    0,
+  );
+  const errorCount =
+    rowErrorCount +
+    Number(Boolean(errors.workplaceId)) +
+    Number(Boolean(errors.selectedDates));
+
+  if (errorCount === 0) return null;
+
+  const firstRowError = rowErrorEntries
+    .flatMap(([dateKey, rowErrors]) =>
+      (Object.keys(rowErrors) as RowErrorKey[]).flatMap((field) => {
+        const message = rowErrors[field];
+        return message
+          ? [
+              formatSelectedDate(dateKey) +
+                "の" +
+                ROW_ERROR_FIELD_LABELS[field] +
+                ": " +
+                message,
+            ]
+          : [];
+      }),
+    )
+    .at(0);
+
+  return {
+    errorCount,
+    failedDateKeys: rowErrorEntries.map(([dateKey]) => dateKey),
+    firstErrorMessage:
+      errors.workplaceId ??
+      errors.selectedDates ??
+      firstRowError ??
+      "入力内容を確認してください。",
+  };
+}
+
 type CalendarCell = {
   date: Date;
   key: string;
@@ -1786,6 +1878,22 @@ function useBulkShiftFormController({
         type: "setErrors",
         errors: validated.errors,
       });
+      const firstInvalidFieldId = getFirstInvalidFieldId(validated.errors);
+      if (firstInvalidFieldId) {
+        const focusInvalidField = () => {
+          const invalidField = document.getElementById(firstInvalidFieldId);
+          invalidField?.scrollIntoView?.({
+            behavior: "smooth",
+            block: "center",
+          });
+          invalidField?.focus({ preventScroll: true });
+        };
+        if (typeof requestAnimationFrame === "function") {
+          requestAnimationFrame(focusInvalidField);
+        } else {
+          setTimeout(focusInvalidField, 0);
+        }
+      }
       const firstRowError = Object.values(validated.errors.rows ?? {})
         .flatMap((rowError) => Object.values(rowError))
         .find((message): message is string => Boolean(message));
