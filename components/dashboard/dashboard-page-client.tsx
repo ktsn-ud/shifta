@@ -745,18 +745,26 @@ export function DashboardPageClient({
     router.push(`/my/shifts/new?${params.toString()}`);
   };
 
+  const handleMonthChange = (nextMonth: Date) => {
+    const monthValue = toMonthInputValue(nextMonth);
+    setMonth(nextMonth);
+    router.replace(`/my?month=${monthValue}`);
+  };
+
   return (
     <section className="space-y-6 p-4 md:p-6 lg:p-8">
       <DashboardHeader
         isCurrentMonth={isCurrentMonth}
         onBackToCurrentMonth={() => {
-          setMonth(currentMonth);
+          handleMonthChange(currentMonth);
         }}
         onCreateShift={() => {
           handleCreateShift(currentDate);
         }}
         onOpenBulkRegistration={() => {
-          router.push("/my/shifts/bulk");
+          router.push(
+            `/my/shifts/bulk?month=${toMonthInputValue(displayMonth)}`,
+          );
         }}
       />
 
@@ -856,10 +864,10 @@ export function DashboardPageClient({
             todayDate={todayDate}
             isRefreshing={isRefreshing}
             onNavigatePrev={() => {
-              setMonth((current) => addMonths(current, -1));
+              handleMonthChange(addMonths(month, -1));
             }}
             onNavigateNext={() => {
-              setMonth((current) => addMonths(current, 1));
+              handleMonthChange(addMonths(month, 1));
             }}
             onDateClick={(date) => {
               setSelectedDate(date);

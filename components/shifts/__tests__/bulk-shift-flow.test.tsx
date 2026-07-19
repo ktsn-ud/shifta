@@ -15,6 +15,7 @@ import { getBrowserQueryClient } from "@/lib/query/query-client";
 import { queryKeys } from "@/lib/query/query-keys";
 
 const pushMock = jest.fn();
+const replaceMock = jest.fn();
 const refreshMock = jest.fn();
 const BULK_CALENDAR_SELECTION_STORAGE_KEY = "shifta:bulk-calendar-selection";
 const WORKPLACE_LIST_URL = "/api/workplaces?includeCounts=false";
@@ -27,6 +28,7 @@ const BULK_SHIFT_FORM_PROPS = {
 jest.mock("next/navigation", () => ({
   useRouter: () => ({
     push: pushMock,
+    replace: replaceMock,
     refresh: refreshMock,
   }),
 }));
@@ -215,6 +217,7 @@ describe("bulk shift flow integration", () => {
   beforeEach(() => {
     jest.useFakeTimers().setSystemTime(new Date("2026-03-15T09:00:00.000Z"));
     pushMock.mockReset();
+    replaceMock.mockReset();
     refreshMock.mockReset();
     localStorage.clear();
 
@@ -436,7 +439,7 @@ describe("bulk shift flow integration", () => {
     await user.click(screen.getByRole("button", { name: "確定" }));
 
     await waitFor(() => {
-      expect(pushMock).toHaveBeenCalledWith("/my");
+      expect(pushMock).toHaveBeenCalledWith("/my?month=2026-03");
     });
 
     const postCall = fetchMock.mock.calls.find(
@@ -578,7 +581,7 @@ describe("bulk shift flow integration", () => {
     await user.click(screen.getByRole("button", { name: "確定" }));
 
     await waitFor(() => {
-      expect(pushMock).toHaveBeenCalledWith("/my");
+      expect(pushMock).toHaveBeenCalledWith("/my?month=2026-03");
     });
 
     expect(
@@ -702,7 +705,7 @@ describe("bulk shift flow integration", () => {
     );
 
     await waitFor(() => {
-      expect(pushMock).toHaveBeenCalledWith("/my");
+      expect(pushMock).toHaveBeenCalledWith("/my?month=2026-03");
     });
   });
 
@@ -1179,6 +1182,8 @@ describe("bulk shift flow integration", () => {
     });
 
     await user.click(screen.getByRole("button", { name: "次月" }));
+
+    expect(replaceMock).toHaveBeenCalledWith("/my/shifts/bulk?month=2026-04");
 
     expect(screen.getByText("09:00-10:00 March Event")).toBeInTheDocument();
     expect(screen.getByText("最新データを更新中...")).toBeInTheDocument();

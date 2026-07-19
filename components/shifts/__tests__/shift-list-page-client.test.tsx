@@ -13,11 +13,12 @@ import { clearMonthShiftsCache } from "@/hooks/use-month-shifts";
 import { createQueryClient } from "@/lib/query/query-client";
 
 const pushMock = jest.fn();
+const replaceMock = jest.fn();
 const toastSuccessMock = jest.fn();
 const toastErrorMock = jest.fn();
 
 jest.mock("next/navigation", () => ({
-  useRouter: () => ({ push: pushMock }),
+  useRouter: () => ({ push: pushMock, replace: replaceMock }),
 }));
 
 jest.mock("sonner", () => ({
@@ -101,6 +102,7 @@ function renderShiftListPage(
 describe("ShiftListPageClient", () => {
   beforeEach(() => {
     pushMock.mockReset();
+    replaceMock.mockReset();
     toastSuccessMock.mockReset();
     toastErrorMock.mockReset();
     clearMonthShiftsCache();
@@ -360,6 +362,8 @@ describe("ShiftListPageClient", () => {
     expect(screen.getByText("勤務先A")).toBeInTheDocument();
 
     await user.click(screen.getByRole("button", { name: "次月" }));
+
+    expect(replaceMock).toHaveBeenCalledWith("/my/shifts/list?month=2026-04");
 
     expect(screen.getByText("勤務先A")).toBeInTheDocument();
     expect(screen.getByText("2026年3月")).toBeInTheDocument();

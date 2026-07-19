@@ -1321,10 +1321,14 @@ function useBulkShiftFormController({
   };
 
   const handleRequestedMonthChange = (offset: number) => {
+    const requestedMonth = addMonths(state.requestedMonth, offset);
     dispatch({
       type: "setRequestedMonth",
-      requestedMonth: addMonths(state.requestedMonth, offset),
+      requestedMonth,
     });
+    router.replace(
+      `/my/shifts/bulk?month=${toMonthInputValue(requestedMonth)}`,
+    );
   };
 
   const handleToggleCalendarSelection = (
@@ -1737,7 +1741,7 @@ function useBulkShiftFormController({
           return;
         }
 
-        router.push("/my");
+        router.push(`/my?month=${toMonthInputValue(state.requestedMonth)}`);
         return;
       }
 
@@ -1748,7 +1752,7 @@ function useBulkShiftFormController({
         }),
       });
       markForResetOnRouteHidden();
-      router.push("/my");
+      router.push(`/my?month=${toMonthInputValue(state.requestedMonth)}`);
     } catch (error) {
       console.error("failed to submit bulk shifts", error);
       const message = toErrorMessage(error, messages.error.bulkShiftSaveFailed);
@@ -1833,7 +1837,7 @@ function useBulkShiftFormController({
 
   const handleCancel = () => {
     markForResetOnRouteHidden();
-    router.push("/my");
+    router.push(`/my?month=${toMonthInputValue(state.requestedMonth)}`);
   };
 
   const formErrorMessage =

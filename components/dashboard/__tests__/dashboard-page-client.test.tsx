@@ -1,18 +1,28 @@
-import { render, screen, within } from "@testing-library/react";
+import { fireEvent, render, screen, within } from "@testing-library/react";
 import { DashboardPageClient } from "@/components/dashboard/dashboard-page-client";
 import { useGoogleTokenExpiredSignOut } from "@/hooks/use-google-token-expired-signout";
 import { useMonthShifts } from "@/hooks/use-month-shifts";
 import { getBrowserQueryClient } from "@/lib/query/query-client";
 import { usePayrollSummaryAmountQuery } from "@/lib/query/queries/payroll";
 
+const pushMock = jest.fn();
+const replaceMock = jest.fn();
+
 jest.mock("next/navigation", () => ({
   useRouter: jest.fn(() => ({
-    push: jest.fn(),
+    push: pushMock,
+    replace: replaceMock,
   })),
 }));
 
 jest.mock("@/components/calendar/MonthCalendar", () => ({
-  MonthCalendar: jest.fn(() => <div data-testid="month-calendar" />),
+  MonthCalendar: jest.fn(
+    ({ onNavigateNext }: { onNavigateNext: () => void }) => (
+      <button type="button" onClick={onNavigateNext}>
+        次月へ移動
+      </button>
+    ),
+  ),
 }));
 
 jest.mock("@/components/calendar/ShiftListModal", () => ({
@@ -56,6 +66,8 @@ const mockedUsePayrollSummaryAmountQuery =
 
 describe("DashboardPageClient", () => {
   beforeEach(() => {
+    pushMock.mockReset();
+    replaceMock.mockReset();
     mockedUseGoogleTokenExpiredSignOut.mockReset();
     mockedUseMonthShifts.mockReset();
     mockedGetBrowserQueryClient.mockReset();
@@ -150,5 +162,39 @@ describe("DashboardPageClient", () => {
       month: "2026-08",
       initialData: initialNextPaymentAmount,
     });
+  });
+
+  it("月移動は URL を置換し、一括登録には表示中の月を引き継ぐ", () => {
+    mockedUseMonthShifts.mockImplementation(
+      (month) =>
+        ({
+          shifts: [],
+          displayMonth: month,
+          isLoading: false,
+          isInitialLoading: false,
+          isRefreshing: false,
+          isPlaceholderData: false,
+          errorMessage: null,
+          reload: jest.fn(),
+        }) as ReturnType<typeof useMonthShifts>,
+    );
+
+    render(
+      <DashboardPageClient
+        currentUserId="user-1"
+        initialMonthShifts={[]}
+        initialMonthStartDate="2026-07-01"
+        initialMonthEndDate="2026-07-31"
+        initialUnconfirmedShiftCount={0}
+        initialNextPaymentAmount={null}
+        todayDate="2026-07-15"
+      />,
+    );
+
+    fireEvent.click(screen.getByRole("button", { name: "次月へ移動" }));
+    expect(replaceMock).toHaveBeenCalledWith("/my?month=2026-08");
+
+    fireEvent.click(screen.getByRole("button", { name: "一括登録" }));
+    expect(pushMock).toHaveBeenCalledWith("/my/shifts/bulk?month=2026-08");
   });
 });

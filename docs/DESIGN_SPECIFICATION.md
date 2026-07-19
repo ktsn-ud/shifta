@@ -178,6 +178,11 @@ Browser (React UI) → Next.js Routes → Prisma ORM → Neon DB
 - pathname 依存 UI（パンくず、アクティブ表示など）は Suspense 配下の client component に分離し、共通 layout 全体を blocking-route 化しない。
 - Route Handler で計測のために `connection()` を扱う場合は、`measure(() => connection())` で包まず、直接 `await connection()` を `startStep/endStep` で囲む。
 
+### 月表示の URL 状態
+
+- `/my`、`/my/shifts/list`、`/my/shifts/bulk` の表示月は `month=YYYY-MM` query param を正本とする。未指定または不正値の場合は現在月を表示する。
+- 月移動は `router.replace` で同 query param を更新し、履歴を増やさない。ダッシュボードからの一括登録、および一括登録完了・キャンセル後のダッシュボード復帰では表示月を引き継ぐ。
+
 ### 計測方針
 
 - `SHIFTA_PERF=1` 時は `request-timing` と `auth-timing` を有効化し、サーバーログと `Server-Timing` ヘッダーの両方に同一ラベルで出力する。
@@ -2417,6 +2422,7 @@ GET /api/payroll/preview-baseline?months=YYYY-MM,YYYY-MM
 # 更新履歴（git log -p 確認済み）
 
 | 日時 | 変更概要 | 具体的な変更内容 |
+| 2026-07-19 00:00:00 +0000 | 月表示の URL 状態を追加 | `/my`、シフト一覧、一括登録の `month=YYYY-MM` による表示月復元、月移動時の replace 更新、関連導線での月引継ぎを 2.3 に追記。 |
 | 2026-07-05 00:00:00 +0000 | `/my/summary` を年次表へ再設計 | SCR_007 と 13章を年指定の年次ページへ更新し、所得テーブルと勤務時間テーブルの 2 テーブル構成、`/api/payroll/summary?year=YYYY` 契約、旧カード類の廃止を反映。 |
 | 2026-07-13 00:00:00 +0000 | 設計書を現行実装へ同期 | 認証方式を Google OAuth に更新し、主要ルート表を `/my/payroll-details` 正本へ整理、PayrollRule の重複期間・Timetable の翌日跨ぎ・ShiftType の `OTHER` 記述を実装に合わせて修正。 |
 | 2026-07-05 00:00:00 +0000 | シフト確定後の即時反映と背景再取得中の継続操作を明文化 | SCR_015 の確定成功時に未確定一覧から即時除去し、確定済み一覧へ provisional 行を残したまま背景再取得へ移る挙動と、再取得中でも他の未確定シフトを続けて確定できる UI 方針を追記。 |

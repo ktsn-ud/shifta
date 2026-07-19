@@ -909,6 +909,14 @@ export function ShiftListPageClient({
     router.push(`/my/shifts/${shiftId}/edit?${params.toString()}`);
   }
 
+  function handleMonthChange(nextMonth: Date) {
+    dispatch({
+      type: "setMonth",
+      month: nextMonth,
+    });
+    router.replace(`/my/shifts/list?month=${toMonthInputValue(nextMonth)}`);
+  }
+
   async function handleBulkDelete() {
     if (selectedShiftIds.length === 0 || state.isDeleting) {
       return;
@@ -982,24 +990,9 @@ export function ShiftListPageClient({
       <ShiftListHeader
         isRefreshing={isRefreshing}
         isCurrentMonth={isCurrentMonth}
-        onPreviousMonth={() =>
-          dispatch({
-            type: "setMonth",
-            month: addMonths(displayMonth, -1),
-          })
-        }
-        onNextMonth={() =>
-          dispatch({
-            type: "setMonth",
-            month: addMonths(displayMonth, 1),
-          })
-        }
-        onBackToCurrentMonth={() =>
-          dispatch({
-            type: "setMonth",
-            month: currentMonth,
-          })
-        }
+        onPreviousMonth={() => handleMonthChange(addMonths(state.month, -1))}
+        onNextMonth={() => handleMonthChange(addMonths(state.month, 1))}
+        onBackToCurrentMonth={() => handleMonthChange(currentMonth)}
       />
 
       <div className="space-y-4">
