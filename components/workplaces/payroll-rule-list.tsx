@@ -317,7 +317,7 @@ export function PayrollRuleList({
               <Table>
                 <TableHeader>
                   <TableRow>
-                    <TableHead>適用期間</TableHead>
+                    <TableHead>適用期間（終了日を含む）</TableHead>
                     <TableHead>基本時給</TableHead>
                     <TableHead>深夜割増率</TableHead>
                     <TableHead>休日手当(円/時)</TableHead>

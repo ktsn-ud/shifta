@@ -685,7 +685,9 @@ function InitialPayrollRuleFieldsSection({
       </Field>
 
       <Field data-invalid={Boolean(errors.endDate)}>
-        <FieldLabel htmlFor="initial-rule-end-date">適用終了日</FieldLabel>
+        <FieldLabel htmlFor="initial-rule-end-date">
+          適用終了日（この日まで）
+        </FieldLabel>
         <FieldContent>
           <Input
             id="initial-rule-end-date"

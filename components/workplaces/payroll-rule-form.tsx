@@ -408,7 +408,7 @@ function validate(values: FormValues): FormErrors {
   }
 
   if (values.endDate && values.startDate && values.endDate < values.startDate) {
-    errors.endDate = "終了日は開始日以降の日付を指定してください。";
+    errors.endDate = "適用終了日は適用開始日以降の日付を指定してください。";
   }
 
   const baseHourlyWage = Number(values.baseHourlyWage);
@@ -513,7 +513,7 @@ function PayrollRuleDateFields({
   return (
     <>
       <Field data-invalid={Boolean(errors.startDate)}>
-        <FieldLabel htmlFor="start-date">開始日</FieldLabel>
+        <FieldLabel htmlFor="start-date">適用開始日</FieldLabel>
         <FieldContent>
           <Input
             id="start-date"
@@ -529,7 +529,7 @@ function PayrollRuleDateFields({
       </Field>
 
       <Field data-invalid={Boolean(errors.endDate)}>
-        <FieldLabel htmlFor="end-date">終了日</FieldLabel>
+        <FieldLabel htmlFor="end-date">適用終了日（この日まで）</FieldLabel>
         <FieldContent>
           <Input
             id="end-date"

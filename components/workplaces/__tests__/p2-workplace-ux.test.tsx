@@ -1,6 +1,7 @@
 import { fireEvent, render, screen, waitFor } from "@testing-library/react";
 import { TimetableForm } from "@/components/workplaces/timetable-form";
 import { TimetableList } from "@/components/workplaces/timetable-list";
+import { PayrollRuleForm } from "@/components/workplaces/payroll-rule-form";
 import { WorkplaceForm } from "@/components/workplaces/workplace-form";
 import { WorkplaceList } from "@/components/workplaces/workplace-list";
 import { PayrollRuleList } from "@/components/workplaces/payroll-rule-list";
@@ -190,6 +191,68 @@ describe("勤務先管理のP2 UX", () => {
       );
     });
     global.fetch = originalFetch;
+  });
+
+  it("給与ルールの終了日が当日まで適用されることをフォームと一覧で明示する", () => {
+    mockedUseQuery.mockReturnValue({
+      data: {
+        id: "workplace-1",
+        name: "青葉塾",
+        type: "CRAM_SCHOOL",
+      },
+      isPending: false,
+      isFetching: false,
+      error: null,
+    } as unknown as ReturnType<typeof useQuery>);
+
+    const { rerender } = render(
+      <PayrollRuleForm mode="create" workplaceId="workplace-1" />,
+    );
+
+    expect(
+      screen.getByLabelText("適用終了日（この日まで）"),
+    ).toBeInTheDocument();
+
+    const rule = {
+      id: "rule-1",
+      workplaceId: "workplace-1",
+      startDate: "2026-07-01",
+      endDate: "2026-08-01",
+      baseHourlyWage: 1200,
+      holidayAllowanceHourly: 0,
+      nightPremiumRate: 0.25,
+      overtimePremiumRate: 0.25,
+      dailyOvertimeThreshold: 8,
+      holidayType: "NONE" as const,
+    };
+    mockedUseWorkplacePayrollRulesQuery.mockReturnValue({
+      data: [rule],
+      isLoading: false,
+      isPending: false,
+      isFetching: false,
+      isPlaceholderData: false,
+      error: null,
+    } as ReturnType<typeof useWorkplacePayrollRulesQuery>);
+
+    rerender(
+      <PayrollRuleList
+        workplaceId="workplace-1"
+        initialWorkplace={{
+          id: "workplace-1",
+          name: "青葉塾",
+          type: "CRAM_SCHOOL",
+          color: "#3366FF",
+        }}
+        initialRules={[rule]}
+      />,
+    );
+
+    expect(
+      screen.getByRole("columnheader", { name: "適用期間（終了日を含む）" }),
+    ).toBeInTheDocument();
+    expect(
+      screen.getByRole("cell", { name: "2026-07-01 〜 2026-07-31" }),
+    ).toBeInTheDocument();
   });
 
   it("時間割作成で追加継続と保存完了の役割を明示する", () => {
