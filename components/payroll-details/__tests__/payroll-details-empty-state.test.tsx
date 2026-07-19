@@ -1,4 +1,4 @@
-import { fireEvent, render, screen } from "@testing-library/react";
+import { render, screen } from "@testing-library/react";
 import { PayrollDetailsMonthlyPageClient } from "@/components/payroll-details/payroll-details-monthly-page-client";
 import { PayrollDetailsWorkplaceYearlyPageClient } from "@/components/payroll-details/payroll-details-workplace-yearly-page-client";
 import {
@@ -24,7 +24,7 @@ const mockedUsePayrollDetailsWorkplaceYearlyQuery =
     typeof usePayrollDetailsWorkplaceYearlyQuery
   >;
 
-const monthlyDetails: PayrollDetailsMonthlyResult = {
+const emptyMonthlyDetails: PayrollDetailsMonthlyResult = {
   month: "2026-05",
   shiftCount: 0,
   totals: {
@@ -65,85 +65,65 @@ const monthlyDetails: PayrollDetailsMonthlyResult = {
   byWorkplace: [],
 };
 
-const yearlyDetails: PayrollDetailsWorkplaceYearlyResult = {
+const emptyYearlyDetails: PayrollDetailsWorkplaceYearlyResult = {
   year: 2026,
   shiftCount: 0,
   workplaces: [],
 };
 
-describe("給与詳細の表示切替", () => {
+describe("給与詳細の空状態", () => {
   beforeEach(() => {
-    mockedUsePayrollDetailsMonthlyQuery.mockReset();
-    mockedUsePayrollDetailsWorkplaceYearlyQuery.mockReset();
-
     mockedUsePayrollDetailsMonthlyQuery.mockReturnValue({
-      data: monthlyDetails,
+      data: emptyMonthlyDetails,
       isLoading: false,
       isFetching: false,
       isPlaceholderData: false,
       error: null,
     } as ReturnType<typeof usePayrollDetailsMonthlyQuery>);
-    mockedUsePayrollDetailsWorkplaceYearlyQuery.mockImplementation(
-      (input) =>
-        ({
-          data: { ...yearlyDetails, year: input.year },
-          isLoading: false,
-          isFetching: false,
-          isPlaceholderData: false,
-          error: null,
-        }) as ReturnType<typeof usePayrollDetailsWorkplaceYearlyQuery>,
-    );
+    mockedUsePayrollDetailsWorkplaceYearlyQuery.mockReturnValue({
+      data: emptyYearlyDetails,
+      isLoading: false,
+      isFetching: false,
+      isPlaceholderData: false,
+      error: null,
+    } as ReturnType<typeof usePayrollDetailsWorkplaceYearlyQuery>);
   });
 
-  it("選択中の月から勤務先別表示へ年を引き継ぐ", () => {
+  it("月別表示では空状態と対象月付きのシフト登録CTAだけを表示する", () => {
     render(
       <PayrollDetailsMonthlyPageClient
         currentUserId="user-1"
         initialMonth="2026-05"
         currentMonthValue="2026-07"
-        initialDetails={monthlyDetails}
+        initialDetails={emptyMonthlyDetails}
       />,
     );
 
     expect(
-      screen.getByRole("link", { name: "勤務先別表示へ切り替え" }),
-    ).toHaveAttribute("href", "/my/payroll-details/workplace-yearly?year=2026");
+      screen.getByText("2026年5月のシフトはありません"),
+    ).toBeInTheDocument();
+    expect(
+      screen.getByRole("link", { name: "この月のシフトを登録" }),
+    ).toHaveAttribute("href", "/my/shifts/new?date=2026-05-01&month=2026-05");
+    expect(screen.queryByText("総勤務時間")).not.toBeInTheDocument();
+    expect(screen.queryByText("勤務先別内訳")).not.toBeInTheDocument();
   });
 
-  it("今年の勤務先別表示からは現在月を月別表示へ引き継ぐ", () => {
+  it("勤務先年次表示では空状態と対象年付きのシフト登録CTAだけを表示する", () => {
     render(
       <PayrollDetailsWorkplaceYearlyPageClient
         currentUserId="user-1"
         initialYear={2026}
         currentMonthValue="2026-07"
         currentYearValue="2026"
-        initialDetails={yearlyDetails}
+        initialDetails={emptyYearlyDetails}
       />,
     );
 
+    expect(screen.getByText("2026年のシフトはありません")).toBeInTheDocument();
     expect(
-      screen.getByRole("link", { name: "月別表示へ切り替え" }),
-    ).toHaveAttribute("href", "/my/payroll-details/monthly?month=2026-07");
-  });
-
-  it("過去年の勤務先別表示からは1月を月別表示へ引き継ぐ", () => {
-    render(
-      <PayrollDetailsWorkplaceYearlyPageClient
-        currentUserId="user-1"
-        initialYear={2026}
-        currentMonthValue="2026-07"
-        currentYearValue="2026"
-        initialDetails={yearlyDetails}
-      />,
-    );
-
-    fireEvent.change(screen.getByRole("spinbutton"), {
-      target: { value: "2025" },
-    });
-    fireEvent.click(screen.getByRole("button", { name: "適用" }));
-
-    expect(
-      screen.getByRole("link", { name: "月別表示へ切り替え" }),
-    ).toHaveAttribute("href", "/my/payroll-details/monthly?month=2025-01");
+      screen.getByRole("link", { name: "この年のシフトを登録" }),
+    ).toHaveAttribute("href", "/my/shifts/new?date=2026-01-01&month=2026-01");
+    expect(screen.queryByText("年間 基本勤務金額")).not.toBeInTheDocument();
   });
 });

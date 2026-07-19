@@ -1,8 +1,10 @@
 "use client";
 
 import { useMemo, useState } from "react";
+import Link from "next/link";
 import { Input } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
+import { buttonVariants } from "@/components/ui/button-variants";
 import { AsyncStateNotice } from "@/components/ui/async-state-notice";
 import {
   Card,
@@ -60,6 +62,11 @@ type PayrollDetailsMonthlyWorkplacePanelProps = {
 
 type PayrollDetailsMonthlyWorkplaceFormulaProps = {
   item: PayrollDetailsMonthlyWorkplaceItem;
+};
+
+type PayrollDetailsMonthlyEmptyStateProps = {
+  monthValue: string;
+  selectedMonthLabel: string;
 };
 
 export function PayrollDetailsMonthlyPageLoadingSkeleton() {
@@ -247,6 +254,30 @@ function PayrollDetailsMonthlyBreakdownCard({
             item={item}
           />
         ))}
+      </CardContent>
+    </Card>
+  );
+}
+
+function PayrollDetailsMonthlyEmptyState({
+  monthValue,
+  selectedMonthLabel,
+}: PayrollDetailsMonthlyEmptyStateProps) {
+  return (
+    <Card className="border-dashed border-border/80 bg-muted/20 shadow-sm">
+      <CardHeader>
+        <CardTitle>{selectedMonthLabel}のシフトはありません</CardTitle>
+        <CardDescription>
+          期間を変更するか、この月のシフトを登録してください。
+        </CardDescription>
+      </CardHeader>
+      <CardContent>
+        <Link
+          href={`/my/shifts/new?date=${monthValue}-01&month=${monthValue}`}
+          className={buttonVariants({})}
+        >
+          この月のシフトを登録
+        </Link>
       </CardContent>
     </Card>
   );
@@ -459,10 +490,7 @@ export function PayrollDetailsMonthlyPageClient({
           "給与詳細（月毎表示）の取得に失敗しました。",
         )
       : null;
-  const hasAnyShift =
-    details?.byWorkplace.some(
-      (workplace) => workplace.totalWorkHours > 0 || workplace.totalWage > 0,
-    ) ?? false;
+  const hasAnyShift = (details?.shiftCount ?? 0) > 0;
 
   return (
     <section className="space-y-6 p-4 md:p-6">
@@ -510,18 +538,21 @@ export function PayrollDetailsMonthlyPageClient({
           ) : null}
           <LoadingOverlay isLoading={isRefreshing} className="rounded-xl">
             {!hasAnyShift ? (
-              <p className="rounded-lg border border-border/70 bg-muted/30 px-3 py-2 text-sm text-muted-foreground">
-                対象月のシフトはありません
-              </p>
-            ) : null}
-
-            <PayrollDetailsMonthlySummaryCards
-              details={details}
-              selectedMonthLabel={selectedMonthLabel}
-            />
-            <PayrollDetailsMonthlyBreakdownCard
-              workplaceItems={details.byWorkplace}
-            />
+              <PayrollDetailsMonthlyEmptyState
+                monthValue={displayMonthValue}
+                selectedMonthLabel={selectedMonthLabel}
+              />
+            ) : (
+              <>
+                <PayrollDetailsMonthlySummaryCards
+                  details={details}
+                  selectedMonthLabel={selectedMonthLabel}
+                />
+                <PayrollDetailsMonthlyBreakdownCard
+                  workplaceItems={details.byWorkplace}
+                />
+              </>
+            )}
           </LoadingOverlay>
         </div>
       ) : null}

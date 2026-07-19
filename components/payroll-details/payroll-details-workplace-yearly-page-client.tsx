@@ -1,8 +1,10 @@
 "use client";
 
 import { useState } from "react";
+import Link from "next/link";
 import { Input } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
+import { buttonVariants } from "@/components/ui/button-variants";
 import { AsyncStateNotice } from "@/components/ui/async-state-notice";
 import {
   Card,
@@ -57,7 +59,7 @@ type PayrollDetailsYearlyHeaderProps = {
 };
 
 type PayrollDetailsYearlyEmptyStateProps = {
-  message: string;
+  yearValue: string;
 };
 
 type PayrollDetailsYearlyWorkplaceCardProps = {
@@ -203,12 +205,25 @@ function PayrollDetailsYearlyHeader({
 }
 
 function PayrollDetailsYearlyEmptyState({
-  message,
+  yearValue,
 }: PayrollDetailsYearlyEmptyStateProps) {
   return (
-    <p className="rounded-lg border border-border/70 bg-muted/30 px-3 py-2 text-sm text-muted-foreground">
-      {message}
-    </p>
+    <Card className="border-dashed border-border/80 bg-muted/20 shadow-sm">
+      <CardHeader>
+        <CardTitle>{yearValue}年のシフトはありません</CardTitle>
+        <CardDescription>
+          年を変更するか、この年のシフトを登録してください。
+        </CardDescription>
+      </CardHeader>
+      <CardContent>
+        <Link
+          href={`/my/shifts/new?date=${yearValue}-01-01&month=${yearValue}-01`}
+          className={buttonVariants({})}
+        >
+          この年のシフトを登録
+        </Link>
+      </CardContent>
+    </Card>
   );
 }
 
@@ -449,12 +464,7 @@ export function PayrollDetailsWorkplaceYearlyPageClient({
             "給与詳細（勤務先毎表示）の取得に失敗しました。",
           )
         : null;
-  const hasAnyShift =
-    details?.workplaces.some((workplace) =>
-      workplace.months.some(
-        (month) => month.totalWorkHours > 0 || month.totalWage > 0,
-      ),
-    ) ?? false;
+  const hasAnyShift = (details?.shiftCount ?? 0) > 0;
 
   return (
     <section className="space-y-6 p-4 md:p-6">
@@ -503,11 +513,7 @@ export function PayrollDetailsWorkplaceYearlyPageClient({
           ) : null}
           <LoadingOverlay isLoading={isRefreshing} className="rounded-xl">
             {!hasAnyShift ? (
-              <PayrollDetailsYearlyEmptyState message="対象年のシフトはありません" />
-            ) : null}
-
-            {details.workplaces.length === 0 ? (
-              <PayrollDetailsYearlyEmptyState message="対象年のシフトはありません" />
+              <PayrollDetailsYearlyEmptyState yearValue={displayYearValue} />
             ) : (
               <div className="space-y-6">
                 {details.workplaces.map((workplace) => (

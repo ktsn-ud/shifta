@@ -14,9 +14,11 @@ const mockedUsePayrollDetailsWorkplaceYearlyQuery =
 
 const yearlyDetailsWithWorkplace: PayrollDetailsWorkplaceYearlyResult = {
   year: 2026,
+  shiftCount: 1,
   workplaces: [
     {
       workplaceId: "workplace-1",
+      shiftCount: 1,
       workplaceName: "勤務先A",
       workplaceColor: "#3366FF",
       yearlyTotals: {
