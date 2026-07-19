@@ -411,7 +411,7 @@ export function PayrollDetailsMonthlyPageClient({
     fromMonthInputValue(draftMonthValue) !== null &&
     draftMonthValue !== requestedMonthValue;
 
-  const workplaceYearlyHref = "/my/payroll-details/workplace-yearly";
+  const workplaceYearlyHref = `/my/payroll-details/workplace-yearly?year=${requestedMonthValue.slice(0, 4)}`;
 
   const applyMonthValue = (nextValue: string) => {
     if (fromMonthInputValue(nextValue) === null) {

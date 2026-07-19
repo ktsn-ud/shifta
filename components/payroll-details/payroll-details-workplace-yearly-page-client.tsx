@@ -30,6 +30,7 @@ import { type PayrollDetailsWorkplaceYearlyResult } from "@/lib/payroll/details"
 type PayrollDetailsWorkplaceYearlyPageClientProps = {
   currentUserId: string;
   initialYear: number;
+  currentMonthValue: string;
   currentYearValue: string;
   initialDetails: PayrollDetailsWorkplaceYearlyResult;
 };
@@ -381,6 +382,7 @@ function PayrollDetailsYearlyMonthRow({
 export function PayrollDetailsWorkplaceYearlyPageClient({
   currentUserId,
   initialYear,
+  currentMonthValue,
   currentYearValue,
   initialDetails,
 }: PayrollDetailsWorkplaceYearlyPageClientProps) {
@@ -394,7 +396,11 @@ export function PayrollDetailsWorkplaceYearlyPageClient({
 
   const requestedYearNumber = toYearNumber(requestedYearValue);
 
-  const monthlyHref = "/my/payroll-details/monthly";
+  const monthlyMonthValue =
+    requestedYearValue === currentYearValue
+      ? currentMonthValue
+      : `${requestedYearValue}-01`;
+  const monthlyHref = `/my/payroll-details/monthly?month=${monthlyMonthValue}`;
 
   const applyYearValue = (nextValue: string) => {
     if (!isValidYearInput(nextValue)) {
