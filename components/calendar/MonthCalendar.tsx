@@ -59,6 +59,10 @@ function addDays(date: Date, days: number): Date {
   return new Date(date.getFullYear(), date.getMonth(), date.getDate() + days);
 }
 
+function formatAriaDate(date: Date): string {
+  return `${date.getFullYear()}年${date.getMonth() + 1}月${date.getDate()}日。`;
+}
+
 function toMonthGrid(month: Date): CalendarCell[] {
   const firstDayOfMonth = new Date(month.getFullYear(), month.getMonth(), 1);
   const gridStart = addDays(firstDayOfMonth, -firstDayOfMonth.getDay());
@@ -200,6 +204,11 @@ export function MonthCalendar({
               <button
                 key={cell.key}
                 type="button"
+                aria-label={
+                  cell.shifts.length === 0
+                    ? `${formatAriaDate(cell.date)}シフト未登録。クリックして確認または追加`
+                    : `${formatAriaDate(cell.date)}${cell.shifts.length}件のシフト。クリックして詳細を確認`
+                }
                 onClick={() => {
                   if (!cell.isCurrentMonth) {
                     return;
@@ -266,6 +275,12 @@ export function MonthCalendar({
                     </li>
                   ) : null}
                 </ul>
+
+                {cell.isCurrentMonth && cell.shifts.length === 0 ? (
+                  <span className="pointer-events-none absolute right-1 bottom-1 rounded bg-muted px-1 py-0.5 text-[10px] text-muted-foreground opacity-0 transition-opacity group-hover:opacity-100 group-focus-visible:opacity-100">
+                    確認・追加
+                  </span>
+                ) : null}
               </button>
             );
           })}

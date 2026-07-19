@@ -137,7 +137,7 @@ export function ShiftListModal({
           <div className="flex justify-end">
             <Button type="button" onClick={() => onCreateShift(targetDate)}>
               <PlusIcon className="size-4" />
-              新規追加
+              {sortedShifts.length === 0 ? "この日に追加" : "新規追加"}
             </Button>
           </div>
 

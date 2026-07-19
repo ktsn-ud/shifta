@@ -146,6 +146,24 @@ function isSameMonth(left: Date, right: Date): boolean {
   );
 }
 
+function getDefaultShiftDate(displayMonth: Date, currentDate: Date): Date {
+  if (isSameMonth(displayMonth, currentDate)) {
+    return currentDate;
+  }
+
+  const lastDay = new Date(
+    displayMonth.getFullYear(),
+    displayMonth.getMonth() + 1,
+    0,
+  ).getDate();
+
+  return new Date(
+    displayMonth.getFullYear(),
+    displayMonth.getMonth(),
+    Math.min(currentDate.getDate(), lastDay),
+  );
+}
+
 function formatCalendarMonthLabel(month: Date, currentDate: Date): string {
   const isSameYear = month.getFullYear() === currentDate.getFullYear();
   const monthLabel = `${month.getMonth() + 1}月`;
@@ -703,6 +721,10 @@ export function DashboardPageClient({
   );
   const isCurrentMonth = isSameMonth(displayMonth, currentMonth);
   const selectedDateShifts = shiftsByDate.get(toDateKey(selectedDate)) ?? [];
+  const defaultShiftDate = getDefaultShiftDate(displayMonth, currentDate);
+  const headerCreateDate = isSameMonth(selectedDate, displayMonth)
+    ? selectedDate
+    : defaultShiftDate;
   const failedShiftIds = getFailedShiftIds(shifts);
   const failedShiftCount = failedShiftIds.length;
 
@@ -759,7 +781,7 @@ export function DashboardPageClient({
           handleMonthChange(currentMonth);
         }}
         onCreateShift={() => {
-          handleCreateShift(currentDate);
+          handleCreateShift(headerCreateDate);
         }}
         onOpenBulkRegistration={() => {
           router.push(
@@ -871,11 +893,6 @@ export function DashboardPageClient({
             }}
             onDateClick={(date) => {
               setSelectedDate(date);
-              const dayShifts = shiftsByDate.get(toDateKey(date)) ?? [];
-              if (dayShifts.length === 0) {
-                handleCreateShift(date);
-                return;
-              }
               setModalOpen(true);
             }}
           />

@@ -17,16 +17,54 @@ jest.mock("next/navigation", () => ({
 
 jest.mock("@/components/calendar/MonthCalendar", () => ({
   MonthCalendar: jest.fn(
-    ({ onNavigateNext }: { onNavigateNext: () => void }) => (
-      <button type="button" onClick={onNavigateNext}>
-        次月へ移動
-      </button>
+    ({
+      onDateClick,
+      onNavigateNext,
+    }: {
+      onDateClick: (date: Date) => void;
+      onNavigateNext: () => void;
+    }) => (
+      <div>
+        <button type="button" onClick={onNavigateNext}>
+          次月へ移動
+        </button>
+        <button
+          type="button"
+          onClick={() => onDateClick(new Date(2026, 6, 10))}
+        >
+          シフトありの日を開く
+        </button>
+        <button
+          type="button"
+          onClick={() => onDateClick(new Date(2026, 6, 20))}
+        >
+          空の日を開く
+        </button>
+      </div>
     ),
   ),
 }));
 
 jest.mock("@/components/calendar/ShiftListModal", () => ({
-  ShiftListModal: jest.fn(() => null),
+  ShiftListModal: jest.fn(
+    ({
+      onCreateShift,
+      open,
+      targetDate,
+    }: {
+      onCreateShift: (date: Date) => void;
+      open: boolean;
+      targetDate: Date;
+    }) =>
+      open ? (
+        <div role="dialog">
+          <p>日別シフトモーダル</p>
+          <button type="button" onClick={() => onCreateShift(targetDate)}>
+            この日に追加
+          </button>
+        </div>
+      ) : null,
+  ),
 }));
 
 jest.mock("@/hooks/use-google-token-expired-signout", () => ({
@@ -196,5 +234,102 @@ describe("DashboardPageClient", () => {
 
     fireEvent.click(screen.getByRole("button", { name: "一括登録" }));
     expect(pushMock).toHaveBeenCalledWith("/my/shifts/bulk?month=2026-08");
+  });
+  it("シフトの有無にかかわらず日付クリックで日別モーダルを開く", () => {
+    render(
+      <DashboardPageClient
+        currentUserId="user-1"
+        initialMonthShifts={[]}
+        initialMonthStartDate="2026-07-01"
+        initialMonthEndDate="2026-07-31"
+        initialUnconfirmedShiftCount={0}
+        initialNextPaymentAmount={null}
+        todayDate="2026-07-15"
+      />,
+    );
+
+    fireEvent.click(
+      screen.getByRole("button", { name: "シフトありの日を開く" }),
+    );
+    expect(screen.getByRole("dialog")).toBeInTheDocument();
+
+    fireEvent.click(screen.getByRole("button", { name: "空の日を開く" }));
+    expect(screen.getByRole("dialog")).toBeInTheDocument();
+  });
+
+  it("空の日のモーダルから、その日を初期日としてシフトを追加できる", () => {
+    render(
+      <DashboardPageClient
+        currentUserId="user-1"
+        initialMonthShifts={[]}
+        initialMonthStartDate="2026-07-01"
+        initialMonthEndDate="2026-07-31"
+        initialUnconfirmedShiftCount={0}
+        initialNextPaymentAmount={null}
+        todayDate="2026-07-15"
+      />,
+    );
+
+    fireEvent.click(screen.getByRole("button", { name: "空の日を開く" }));
+    fireEvent.click(screen.getByRole("button", { name: "この日に追加" }));
+
+    expect(pushMock).toHaveBeenCalledWith(
+      "/my/shifts/new?date=2026-07-20&month=2026-07",
+    );
+  });
+
+  it("ヘッダーの新規登録は選択日を初期日にし、別月では表示月の日付を使う", () => {
+    mockedUseMonthShifts.mockImplementation(
+      (month) =>
+        ({
+          shifts: [],
+          displayMonth: month,
+          isLoading: false,
+          isInitialLoading: false,
+          isRefreshing: false,
+          isPlaceholderData: false,
+          errorMessage: null,
+          reload: jest.fn(),
+        }) as ReturnType<typeof useMonthShifts>,
+    );
+
+    const { unmount } = render(
+      <DashboardPageClient
+        currentUserId="user-1"
+        initialMonthShifts={[]}
+        initialMonthStartDate="2026-07-01"
+        initialMonthEndDate="2026-07-31"
+        initialUnconfirmedShiftCount={0}
+        initialNextPaymentAmount={null}
+        todayDate="2026-07-15"
+      />,
+    );
+
+    fireEvent.click(
+      screen.getByRole("button", { name: "シフトありの日を開く" }),
+    );
+    fireEvent.click(screen.getByRole("button", { name: "新規シフト登録" }));
+    expect(pushMock).toHaveBeenLastCalledWith(
+      "/my/shifts/new?date=2026-07-10&month=2026-07",
+    );
+
+    unmount();
+
+    render(
+      <DashboardPageClient
+        currentUserId="user-1"
+        initialMonthShifts={[]}
+        initialMonthStartDate="2026-08-01"
+        initialMonthEndDate="2026-08-31"
+        initialUnconfirmedShiftCount={0}
+        initialNextPaymentAmount={null}
+        todayDate="2026-07-15"
+      />,
+    );
+
+    fireEvent.click(screen.getByRole("button", { name: "新規シフト登録" }));
+    expect(pushMock).toHaveBeenLastCalledWith(
+      "/my/shifts/new?date=2026-08-15&month=2026-08",
+    );
   });
 });
