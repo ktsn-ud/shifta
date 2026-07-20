@@ -3,7 +3,6 @@
 import { useMemo, useState } from "react";
 import { PlusIcon, Trash2Icon } from "lucide-react";
 import { toast } from "sonner";
-import { DeleteConfirmDialog } from "@/components/shifts/DeleteConfirmDialog";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import {
@@ -75,10 +74,6 @@ function formatEstimatedPay(value: number | null): string {
   return estimatedPayFormatter.format(value);
 }
 
-function formatShiftLabel(shift: ShiftListModalShift): string {
-  return `${formatShiftTimeRange(formatTime(shift.startTime), formatTime(shift.endTime))} ${formatWorkplaceLabel(shift)}`;
-}
-
 function formatWorkplaceLabel(shift: ShiftListModalShift): string {
   return formatShiftWorkplaceLabel({
     workplaceName: shift.workplace.name,
@@ -111,9 +106,6 @@ export function ShiftListModal({
   onDeleteShift,
   onRetrySync,
 }: ShiftListModalProps) {
-  const [deleteTarget, setDeleteTarget] = useState<ShiftListModalShift | null>(
-    null,
-  );
   const [retryingShiftId, setRetryingShiftId] = useState<string | null>(null);
   const [retryError, setRetryError] = useState<string | null>(null);
 
@@ -254,7 +246,7 @@ export function ShiftListModal({
                       size="sm"
                       onClick={(event) => {
                         event.stopPropagation();
-                        setDeleteTarget(shift);
+                        onDeleteShift(shift.id);
                       }}
                     >
                       <Trash2Icon className="size-4" />
@@ -273,24 +265,6 @@ export function ShiftListModal({
           ) : null}
         </DialogContent>
       </Dialog>
-
-      <DeleteConfirmDialog
-        open={deleteTarget !== null}
-        onOpenChange={(next) => {
-          if (!next) {
-            setDeleteTarget(null);
-          }
-        }}
-        shiftLabel={deleteTarget ? formatShiftLabel(deleteTarget) : undefined}
-        onDelete={async () => {
-          if (!deleteTarget) {
-            return;
-          }
-
-          await onDeleteShift(deleteTarget.id);
-          setDeleteTarget(null);
-        }}
-      />
     </>
   );
 }

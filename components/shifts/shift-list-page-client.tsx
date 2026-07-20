@@ -1,6 +1,7 @@
 "use client";
 
 import { useMemo, useReducer } from "react";
+import { useQueryClient } from "@tanstack/react-query";
 import { useRouter } from "next/navigation";
 import {
   ArrowDownIcon,
@@ -17,14 +18,6 @@ import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Checkbox } from "@/components/ui/checkbox";
 import { LoadingOverlay } from "@/components/ui/loading-overlay";
-import {
-  Dialog,
-  DialogContent,
-  DialogDescription,
-  DialogFooter,
-  DialogHeader,
-  DialogTitle,
-} from "@/components/ui/dialog";
 import {
   Table,
   TableBody,
@@ -44,7 +37,6 @@ import {
 } from "@/lib/calendar/date";
 import { parseGoogleSyncStateFromPayload } from "@/lib/google-calendar/clientSync";
 import { messages, toErrorMessage } from "@/lib/messages";
-import { getBrowserQueryClient } from "@/lib/query/query-client";
 import { buildMutationSuccessDescription } from "@/lib/query/mutation-toast";
 import { invalidateAfterShiftMutation } from "@/lib/query/invalidation";
 import { removeShiftsFromMonthCachesOptimistically } from "@/lib/query/optimistic-shifts";
@@ -52,6 +44,7 @@ import { formatShiftTimeRange } from "@/lib/shifts/time";
 import { formatShiftWorkplaceLabel } from "@/lib/shifts/format";
 import { resolveUserFacingErrorFromResponse } from "@/lib/user-facing-error";
 import { type MonthShift, useMonthShifts } from "@/hooks/use-month-shifts";
+import { useUndoableAction } from "@/hooks/use-undoable-action";
 
 type SortColumn =
   | "date"
@@ -424,16 +417,6 @@ type ShiftListTableItemRowProps = {
   onEditShift: (shiftId: string) => void;
 };
 
-type ShiftListBulkDeleteDialogProps = {
-  open: boolean;
-  selectedCount: number;
-  isDeleting: boolean;
-  deleteErrorMessage: string | null;
-  onOpenChange: (open: boolean) => void;
-  onCancel: () => void;
-  onConfirm: () => void;
-};
-
 function ShiftListHeader({
   isRefreshing,
   isCurrentMonth,
@@ -741,54 +724,6 @@ function ShiftListTableItemRow({
   );
 }
 
-function ShiftListBulkDeleteDialog({
-  open,
-  selectedCount,
-  isDeleting,
-  deleteErrorMessage,
-  onOpenChange,
-  onCancel,
-  onConfirm,
-}: ShiftListBulkDeleteDialogProps) {
-  return (
-    <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent>
-        <DialogHeader>
-          <DialogTitle>選択したシフトを削除しますか？</DialogTitle>
-          <DialogDescription>
-            {selectedCount}件のシフトを削除します。この操作は取り消せません。
-          </DialogDescription>
-        </DialogHeader>
-
-        {deleteErrorMessage ? (
-          <p className="rounded-md border border-destructive/40 bg-destructive/5 px-3 py-2 text-sm text-destructive">
-            {deleteErrorMessage}
-          </p>
-        ) : null}
-
-        <DialogFooter>
-          <Button
-            type="button"
-            variant="outline"
-            disabled={isDeleting}
-            onClick={onCancel}
-          >
-            キャンセル
-          </Button>
-          <Button
-            type="button"
-            variant="destructive"
-            disabled={isDeleting || selectedCount === 0}
-            onClick={onConfirm}
-          >
-            {isDeleting ? "削除中..." : "削除する"}
-          </Button>
-        </DialogFooter>
-      </DialogContent>
-    </Dialog>
-  );
-}
-
 type ShiftListPageClientProps = {
   currentUserId: string;
   initialMonth: string;
@@ -807,7 +742,8 @@ export function ShiftListPageClient({
   todayDate,
 }: ShiftListPageClientProps) {
   const router = useRouter();
-  const queryClient = getBrowserQueryClient();
+  const queryClient = useQueryClient();
+  const { schedule: scheduleUndoableAction } = useUndoableAction();
   const [state, dispatch] = useReducer(
     shiftListReducer,
     initialMonth,
@@ -932,19 +868,7 @@ export function ShiftListPageClient({
     }
   }
 
-  async function handleBulkDelete() {
-    if (selectedShiftIds.length === 0 || state.isDeleting) {
-      return;
-    }
-
-    const shiftIds = selectedShiftIds;
-    const rollback = removeShiftsFromMonthCachesOptimistically(
-      queryClient,
-      shiftIds,
-    );
-
-    dispatch({ type: "startDelete" });
-
+  async function commitBulkDelete(shiftIds: string[], rollback: () => void) {
     try {
       const response = await fetch("/api/shifts", {
         method: "DELETE",
@@ -1000,6 +924,29 @@ export function ShiftListPageClient({
     }
   }
 
+  function handleBulkDelete() {
+    if (selectedShiftIds.length === 0 || state.isDeleting) return;
+    const shiftIds = selectedShiftIds;
+    const rollback = removeShiftsFromMonthCachesOptimistically(
+      queryClient,
+      shiftIds,
+    );
+    dispatch({ type: "startDelete" });
+    scheduleUndoableAction({
+      id: "bulk-shifts-" + shiftIds.toSorted().join("-"),
+      message: shiftIds.length + "件のシフトを削除予定にしました。",
+      onUndo: () => {
+        rollback();
+        dispatch({
+          type: "finishDeleteFailure",
+          selectedShiftIds: shiftIds,
+          message: "",
+        });
+      },
+      onCommit: () => commitBulkDelete(shiftIds, rollback),
+    });
+  }
+
   return (
     <section className="space-y-6 p-4 md:p-6">
       <ShiftListHeader
@@ -1044,7 +991,7 @@ export function ShiftListPageClient({
               isDeleting: state.isDeleting,
             }}
             onResetSort={() => dispatch({ type: "resetSort" })}
-            onOpenDeleteDialog={() => dispatch({ type: "openDeleteDialog" })}
+            onOpenDeleteDialog={handleBulkDelete}
             onToggleSort={handleToggleSort}
             onSelectAll={handleSelectAll}
             onToggleShiftSelection={handleToggleShiftSelection}
@@ -1052,22 +999,6 @@ export function ShiftListPageClient({
           />
         </LoadingOverlay>
       </div>
-
-      <ShiftListBulkDeleteDialog
-        open={state.deleteDialogOpen}
-        selectedCount={selectedCount}
-        isDeleting={state.isDeleting}
-        deleteErrorMessage={state.deleteErrorMessage}
-        onOpenChange={(nextOpen) => {
-          dispatch({
-            type: nextOpen ? "openDeleteDialog" : "closeDeleteDialog",
-          });
-        }}
-        onCancel={() => dispatch({ type: "closeDeleteDialog" })}
-        onConfirm={() => {
-          void handleBulkDelete();
-        }}
-      />
     </section>
   );
 }

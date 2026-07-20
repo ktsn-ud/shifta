@@ -44,6 +44,7 @@ import { toUserFacingMessage } from "@/lib/user-facing-error";
 import { usePayrollSummaryAmountQuery } from "@/lib/query/queries/payroll";
 import { type PayrollSummaryAmountResult } from "@/lib/payroll/summary";
 import { useGoogleTokenExpiredSignOut } from "@/hooks/use-google-token-expired-signout";
+import { useUndoableAction } from "@/hooks/use-undoable-action";
 import {
   type MonthShift,
   summarizeShifts,
@@ -114,6 +115,7 @@ type DeleteDashboardShiftParams = {
   shiftId: string;
   isSignOutScheduled: boolean;
   queryClient: QueryClient;
+  rollback: () => void;
   scheduleSignOut: () => void;
   navigateToCalendarSetup: () => void;
 };
@@ -301,16 +303,15 @@ async function deleteDashboardShift({
   shiftId,
   isSignOutScheduled,
   queryClient,
+  rollback,
   scheduleSignOut,
   navigateToCalendarSetup,
 }: DeleteDashboardShiftParams) {
   if (isSignOutScheduled) {
+    rollback();
     return;
   }
 
-  const rollback = removeShiftsFromMonthCachesOptimistically(queryClient, [
-    shiftId,
-  ]);
   let deletionCompleted = false;
 
   try {
@@ -373,8 +374,14 @@ async function deleteDashboardShift({
   } catch (error) {
     if (!deletionCompleted) {
       rollback();
+      toast.error(messages.error.shiftDeleteFailed, {
+        description: toUserFacingMessage(
+          error,
+          messages.error.shiftDeleteFailed,
+        ),
+        duration: 6000,
+      });
     }
-    throw error;
   }
 }
 
@@ -663,6 +670,7 @@ export function DashboardPageClient({
 }: DashboardPageClientProps) {
   const router = useRouter();
   const queryClient = getBrowserQueryClient();
+  const { schedule: scheduleUndoableAction } = useUndoableAction();
   const [month, setMonth] = useState(() => {
     const initialMonthDate = dateFromDateKey(initialMonthStartDate);
     return startOfMonth(initialMonthDate ?? new Date());
@@ -911,15 +919,26 @@ export function DashboardPageClient({
           });
           router.push(`/my/shifts/${shiftId}/edit?${params.toString()}`);
         }}
-        onDeleteShift={async (shiftId) => {
-          await deleteDashboardShift({
-            shiftId,
-            isSignOutScheduled,
+        onDeleteShift={(shiftId) => {
+          const rollback = removeShiftsFromMonthCachesOptimistically(
             queryClient,
-            scheduleSignOut,
-            navigateToCalendarSetup: () => {
-              router.push(CALENDAR_SETUP_PATH);
-            },
+            [shiftId],
+          );
+          scheduleUndoableAction({
+            id: "dashboard-shift-" + shiftId,
+            message: "シフトを削除予定にしました。",
+            onUndo: rollback,
+            onCommit: () =>
+              deleteDashboardShift({
+                shiftId,
+                isSignOutScheduled,
+                queryClient,
+                rollback,
+                scheduleSignOut,
+                navigateToCalendarSetup: () => {
+                  router.push(CALENDAR_SETUP_PATH);
+                },
+              }),
           });
         }}
         onRetrySync={async (shiftId) => {

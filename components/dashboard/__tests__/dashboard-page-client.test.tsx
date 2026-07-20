@@ -1,9 +1,11 @@
-import { fireEvent, render, screen, within } from "@testing-library/react";
+import { act, fireEvent, render, screen, within } from "@testing-library/react";
+import { toast } from "sonner";
 import { DashboardPageClient } from "@/components/dashboard/dashboard-page-client";
 import { useGoogleTokenExpiredSignOut } from "@/hooks/use-google-token-expired-signout";
 import { useMonthShifts } from "@/hooks/use-month-shifts";
 import { getBrowserQueryClient } from "@/lib/query/query-client";
 import { usePayrollSummaryAmountQuery } from "@/lib/query/queries/payroll";
+import { removeShiftsFromMonthCachesOptimistically } from "@/lib/query/optimistic-shifts";
 
 const pushMock = jest.fn();
 const replaceMock = jest.fn();
@@ -49,10 +51,12 @@ jest.mock("@/components/calendar/ShiftListModal", () => ({
   ShiftListModal: jest.fn(
     ({
       onCreateShift,
+      onDeleteShift,
       open,
       targetDate,
     }: {
       onCreateShift: (date: Date) => void;
+      onDeleteShift: (shiftId: string) => void;
       open: boolean;
       targetDate: Date;
     }) =>
@@ -62,8 +66,22 @@ jest.mock("@/components/calendar/ShiftListModal", () => ({
           <button type="button" onClick={() => onCreateShift(targetDate)}>
             この日に追加
           </button>
+          <button type="button" onClick={() => onDeleteShift("shift-1")}>
+            シフトを削除
+          </button>
         </div>
       ) : null,
+  ),
+}));
+
+jest.mock("sonner", () => ({
+  toast: Object.assign(
+    jest.fn(() => "undo-toast-1"),
+    {
+      dismiss: jest.fn(),
+      error: jest.fn(),
+      success: jest.fn(),
+    },
   ),
 }));
 
@@ -88,6 +106,10 @@ jest.mock("@/lib/query/queries/payroll", () => ({
   usePayrollSummaryAmountQuery: jest.fn(),
 }));
 
+jest.mock("@/lib/query/optimistic-shifts", () => ({
+  removeShiftsFromMonthCachesOptimistically: jest.fn(),
+}));
+
 const mockedUseGoogleTokenExpiredSignOut =
   useGoogleTokenExpiredSignOut as jest.MockedFunction<
     typeof useGoogleTokenExpiredSignOut
@@ -101,15 +123,27 @@ const mockedUsePayrollSummaryAmountQuery =
   usePayrollSummaryAmountQuery as jest.MockedFunction<
     typeof usePayrollSummaryAmountQuery
   >;
+const mockedRemoveShiftsFromMonthCachesOptimistically =
+  removeShiftsFromMonthCachesOptimistically as jest.MockedFunction<
+    typeof removeShiftsFromMonthCachesOptimistically
+  >;
+const mockToast = toast as jest.MockedFunction<typeof toast> &
+  jest.Mocked<Pick<typeof toast, "dismiss" | "error" | "success">>;
 
 describe("DashboardPageClient", () => {
   beforeEach(() => {
+    jest.useFakeTimers();
     pushMock.mockReset();
     replaceMock.mockReset();
     mockedUseGoogleTokenExpiredSignOut.mockReset();
     mockedUseMonthShifts.mockReset();
     mockedGetBrowserQueryClient.mockReset();
     mockedUsePayrollSummaryAmountQuery.mockReset();
+    mockedRemoveShiftsFromMonthCachesOptimistically.mockReset();
+    mockToast.mockClear();
+    mockToast.dismiss.mockClear();
+    mockToast.error.mockClear();
+    mockToast.success.mockClear();
 
     mockedUseGoogleTokenExpiredSignOut.mockReturnValue({
       isSignOutScheduled: false,
@@ -136,6 +170,11 @@ describe("DashboardPageClient", () => {
       isFetching: false,
       isPlaceholderData: false,
     } as ReturnType<typeof usePayrollSummaryAmountQuery>);
+    mockedRemoveShiftsFromMonthCachesOptimistically.mockReturnValue(jest.fn());
+  });
+
+  afterEach(() => {
+    jest.useRealTimers();
   });
 
   it("initialNextPaymentAmount が null で初回取得が失敗した場合は翌月支給額カードにフォールバックのエラー文言を表示する", () => {
@@ -331,5 +370,59 @@ describe("DashboardPageClient", () => {
     expect(pushMock).toHaveBeenLastCalledWith(
       "/my/shifts/new?date=2026-08-15&month=2026-08",
     );
+  });
+
+  it("単体シフトの削除失敗時は楽観状態を復元し、エラートーストを表示する", async () => {
+    const rollback = jest.fn();
+    const unhandledRejection = jest.fn();
+    window.addEventListener("unhandledrejection", unhandledRejection);
+    mockedRemoveShiftsFromMonthCachesOptimistically.mockReturnValue(rollback);
+    Object.defineProperty(globalThis, "fetch", {
+      writable: true,
+      value: jest.fn().mockResolvedValue({
+        ok: false,
+        status: 500,
+        json: async () => ({ message: "削除処理に失敗しました" }),
+      } as Response),
+    });
+
+    render(
+      <DashboardPageClient
+        currentUserId="user-1"
+        initialMonthShifts={[]}
+        initialMonthStartDate="2026-07-01"
+        initialMonthEndDate="2026-07-31"
+        initialUnconfirmedShiftCount={0}
+        initialNextPaymentAmount={null}
+        todayDate="2026-07-15"
+      />,
+    );
+
+    fireEvent.click(
+      screen.getByRole("button", { name: "シフトありの日を開く" }),
+    );
+    fireEvent.click(screen.getByRole("button", { name: "シフトを削除" }));
+    expect(rollback).not.toHaveBeenCalled();
+
+    await act(async () => {
+      jest.advanceTimersByTime(4000);
+      await Promise.resolve();
+      await Promise.resolve();
+    });
+
+    expect(globalThis.fetch).toHaveBeenCalledWith("/api/shifts/shift-1", {
+      method: "DELETE",
+    });
+    expect(rollback).toHaveBeenCalledTimes(1);
+    expect(mockToast.error).toHaveBeenCalledWith(
+      "シフトの削除に失敗しました。",
+      expect.objectContaining({
+        description:
+          "シフトの削除に失敗しました。 時間をおいてから再実行してください。",
+        duration: 6000,
+      }),
+    );
+    expect(unhandledRejection).not.toHaveBeenCalled();
+    window.removeEventListener("unhandledrejection", unhandledRejection);
   });
 });

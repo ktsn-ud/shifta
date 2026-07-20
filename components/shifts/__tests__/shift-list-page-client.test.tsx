@@ -1,34 +1,40 @@
 import {
+  act,
   fireEvent,
   render,
   screen,
   waitFor,
-  within,
 } from "@testing-library/react";
 import type { ComponentProps } from "react";
 import userEvent from "@testing-library/user-event";
 import { QueryClientProvider } from "@tanstack/react-query";
+import { toast } from "sonner";
 import { ShiftListPageClient } from "@/components/shifts/shift-list-page-client";
 import { clearMonthShiftsCache } from "@/hooks/use-month-shifts";
 import { createQueryClient } from "@/lib/query/query-client";
 
 const pushMock = jest.fn();
 const replaceMock = jest.fn();
-const toastSuccessMock = jest.fn();
-const toastErrorMock = jest.fn();
-const toastInfoMock = jest.fn();
-
 jest.mock("next/navigation", () => ({
   useRouter: () => ({ push: pushMock, replace: replaceMock }),
 }));
 
 jest.mock("sonner", () => ({
-  toast: {
-    success: (...args: unknown[]) => toastSuccessMock(...args),
-    error: (...args: unknown[]) => toastErrorMock(...args),
-    info: (...args: unknown[]) => toastInfoMock(...args),
-  },
+  toast: Object.assign(
+    jest.fn(() => "toast-1"),
+    {
+      dismiss: jest.fn(),
+      success: jest.fn(),
+      error: jest.fn(),
+      info: jest.fn(),
+    },
+  ),
 }));
+
+type MockToast = jest.MockedFunction<typeof toast> &
+  jest.Mocked<Pick<typeof toast, "dismiss" | "success" | "error" | "info">>;
+
+const mockToast = toast as MockToast;
 
 type TestShift = {
   id: string;
@@ -105,9 +111,11 @@ describe("ShiftListPageClient", () => {
   beforeEach(() => {
     pushMock.mockReset();
     replaceMock.mockReset();
-    toastSuccessMock.mockReset();
-    toastErrorMock.mockReset();
-    toastInfoMock.mockReset();
+    mockToast.success.mockReset();
+    mockToast.error.mockReset();
+    mockToast.info.mockReset();
+    mockToast.mockReset();
+    mockToast.dismiss.mockReset();
     clearMonthShiftsCache();
 
     Object.defineProperty(globalThis, "fetch", {
@@ -211,8 +219,9 @@ describe("ShiftListPageClient", () => {
     );
   });
 
-  it("sends selected shift ids to bulk delete API", async () => {
-    const user = userEvent.setup();
+  it("sends selected shift ids to bulk delete API after the Undo window", async () => {
+    jest.useFakeTimers();
+    const user = userEvent.setup({ advanceTimers: jest.advanceTimersByTime });
     const fetchMock = globalThis.fetch as jest.Mock;
 
     let shifts = [
@@ -272,8 +281,14 @@ describe("ShiftListPageClient", () => {
     await user.click(
       screen.getByRole("button", { name: "選択したシフトを削除" }),
     );
-    const dialog = await screen.findByRole("dialog");
-    await user.click(within(dialog).getByRole("button", { name: "削除する" }));
+    expect(screen.queryByRole("dialog")).not.toBeInTheDocument();
+    expect(fetchMock).not.toHaveBeenCalledWith(
+      "/api/shifts",
+      expect.objectContaining({ method: "DELETE" }),
+    );
+    act(() => {
+      jest.advanceTimersByTime(4000);
+    });
 
     await waitFor(() => {
       const deleteCall = fetchMock.mock.calls.find(
@@ -295,6 +310,7 @@ describe("ShiftListPageClient", () => {
         expect.arrayContaining(["shift-1", "shift-2"]),
       );
     });
+    jest.useRealTimers();
   });
 
   it("renders overnight shift time range with 翌 prefix", async () => {
@@ -424,7 +440,7 @@ describe("ShiftListPageClient", () => {
     await user.click(screen.getAllByRole("checkbox")[1]);
     await user.click(screen.getByRole("button", { name: "次月" }));
 
-    expect(toastInfoMock).toHaveBeenCalledWith(
+    expect(mockToast.info).toHaveBeenCalledWith(
       "月を変更したため選択を解除しました。",
       { description: "1件の選択を解除しました。" },
     );

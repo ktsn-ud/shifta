@@ -15,14 +15,6 @@ import {
 import { TableLoadingSkeleton } from "@/components/ui/loading-skeletons";
 import { LoadingOverlay } from "@/components/ui/loading-overlay";
 import {
-  Dialog,
-  DialogContent,
-  DialogDescription,
-  DialogFooter,
-  DialogHeader,
-  DialogTitle,
-} from "@/components/ui/dialog";
-import {
   Table,
   TableBody,
   TableCell,
@@ -34,6 +26,7 @@ import { formatWorkplaceType } from "@/lib/enum-labels";
 import { parseGoogleSyncStateFromPayload } from "@/lib/google-calendar/clientSync";
 import { messages, toErrorMessage } from "@/lib/messages";
 import { getBrowserQueryClient } from "@/lib/query/query-client";
+import { useUndoableAction } from "@/hooks/use-undoable-action";
 import { buildMutationSuccessDescription } from "@/lib/query/mutation-toast";
 import { invalidateAfterWorkplaceMutation } from "@/lib/query/invalidation";
 import { useWorkplacesQuery } from "@/lib/query/queries/workplaces";
@@ -90,15 +83,6 @@ type WorkplaceTableCardProps = {
 type WorkplaceTableRowActionsProps = {
   workplace: Workplace;
   onRequestDelete: (workplaceId: string) => void;
-};
-
-type WorkplaceDeleteDialogProps = {
-  target: Workplace | null;
-  deleteError: string | null;
-  isDeleting: boolean;
-  onOpenChange: (open: boolean) => void;
-  onCancel: () => void;
-  onConfirm: () => void;
 };
 
 function isRecord(value: unknown): value is Record<string, unknown> {
@@ -366,63 +350,6 @@ function WorkplaceTableRowActions({
   );
 }
 
-function WorkplaceDeleteDialog({
-  target,
-  deleteError,
-  isDeleting,
-  onOpenChange,
-  onCancel,
-  onConfirm,
-}: WorkplaceDeleteDialogProps) {
-  return (
-    <Dialog open={target !== null} onOpenChange={onOpenChange}>
-      <DialogContent>
-        <DialogHeader>
-          <DialogTitle>勤務先を削除しますか？</DialogTitle>
-          <DialogDescription>
-            {target
-              ? `${target.name} を削除します。この操作は取り消せません。`
-              : "この操作は取り消せません。"}
-          </DialogDescription>
-        </DialogHeader>
-
-        {target ? (
-          <div className="rounded-md border bg-muted/30 px-3 py-2 text-sm text-muted-foreground">
-            関連データ: シフト {target._count.shifts} 件 / 給与ルール{" "}
-            {target._count.payrollRules} 件 / 時間割{" "}
-            {target._count.timetableSets} 件
-          </div>
-        ) : null}
-
-        {deleteError ? (
-          <p className="rounded-md border border-destructive/40 bg-destructive/5 px-3 py-2 text-sm text-destructive">
-            {deleteError}
-          </p>
-        ) : null}
-
-        <DialogFooter>
-          <Button
-            type="button"
-            variant="outline"
-            disabled={isDeleting}
-            onClick={onCancel}
-          >
-            キャンセル
-          </Button>
-          <Button
-            type="button"
-            variant="destructive"
-            disabled={isDeleting}
-            onClick={onConfirm}
-          >
-            {isDeleting ? "削除中..." : "削除"}
-          </Button>
-        </DialogFooter>
-      </DialogContent>
-    </Dialog>
-  );
-}
-
 export function WorkplaceList({
   currentUserId,
   initialWorkplaces,
@@ -434,9 +361,6 @@ export function WorkplaceList({
     initialData: initialWorkplaces,
   });
   const [infoMessage, setInfoMessage] = useState<string | null>(null);
-  const [deletingId, setDeletingId] = useState<string | null>(null);
-  const [isDeleting, setIsDeleting] = useState(false);
-  const [deleteError, setDeleteError] = useState<string | null>(null);
   const workplaces = useMemo(
     () => workplacesQuery.data ?? [],
     [workplacesQuery.data],
@@ -447,18 +371,12 @@ export function WorkplaceList({
     ? toErrorMessage(workplacesQuery.error, "勤務先一覧の取得に失敗しました。")
     : null;
 
-  const deletingTarget = useMemo(
-    () => workplaces.find((workplace) => workplace.id === deletingId) ?? null,
-    [deletingId, workplaces],
-  );
+  const { schedule: scheduleUndoableAction } = useUndoableAction();
 
-  const confirmDelete = async () => {
-    if (!deletingTarget) {
-      return;
-    }
-
-    setIsDeleting(true);
-    setDeleteError(null);
+  const confirmDelete = async (
+    deletingTarget: Workplace,
+    rollback: () => void,
+  ) => {
     setInfoMessage(null);
 
     try {
@@ -511,18 +429,14 @@ export function WorkplaceList({
         });
         setInfoMessage(`${deletingTarget.name} を削除しました。`);
       }
-
-      setDeletingId(null);
     } catch (error) {
       console.error("failed to delete workplace", error);
       const message = toErrorMessage(error, "勤務先の削除に失敗しました。");
-      setDeleteError(message);
+      rollback();
       toast.error(messages.error.workplaceDeleteFailed, {
         description: message,
         duration: 6000,
       });
-    } finally {
-      setIsDeleting(false);
     }
   };
 
@@ -542,28 +456,29 @@ export function WorkplaceList({
         workplaces={workplaces}
         isLoading={isLoading}
         isRefreshing={isRefreshing}
-        isDeleting={isDeleting}
+        isDeleting={false}
         onRequestDelete={(workplaceId) => {
-          setDeleteError(null);
-          setDeletingId(workplaceId);
-        }}
-      />
-      <WorkplaceDeleteDialog
-        target={deletingTarget}
-        deleteError={deleteError}
-        isDeleting={isDeleting}
-        onOpenChange={(open) => {
-          if (open === false) {
-            setDeletingId(null);
-            setDeleteError(null);
-          }
-        }}
-        onCancel={() => {
-          setDeletingId(null);
-          setDeleteError(null);
-        }}
-        onConfirm={() => {
-          void confirmDelete();
+          const target = workplaces.find(
+            (workplace) => workplace.id === workplaceId,
+          );
+          if (!target) return;
+          const key = queryKeys.workplaces.list({
+            userId: currentUserId,
+            includeCounts: true,
+          });
+          const previousWorkplaces = queryClient.getQueryData<Workplace[]>(key);
+          queryClient.setQueryData<Workplace[]>(key, (current) =>
+            (current ?? []).filter((workplace) => workplace.id !== workplaceId),
+          );
+          scheduleUndoableAction({
+            id: "workplace-" + workplaceId,
+            message: target.name + " を削除予定にしました。",
+            onUndo: () => queryClient.setQueryData(key, previousWorkplaces),
+            onCommit: () =>
+              confirmDelete(target, () =>
+                queryClient.setQueryData(key, previousWorkplaces),
+              ),
+          });
         }}
       />
     </section>
