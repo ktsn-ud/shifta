@@ -8,7 +8,7 @@ import { FormErrorMessage } from "@/components/form/form-error-message";
 import { ConfirmDialog } from "@/components/modal/confirm-dialog";
 import { ShiftPayrollPreviewFloating } from "@/components/shifts/ShiftPayrollPreviewFloating";
 import { useShiftPayrollPreview } from "@/components/shifts/use-shift-payroll-preview";
-import { AsyncStateNotice } from "@/components/ui/async-state-notice";
+import { RefreshStatusFloating } from "@/components/ui/refresh-status-floating";
 import { Button } from "@/components/ui/button";
 import { DatePicker } from "@/components/ui/date-picker";
 import {
@@ -227,7 +227,6 @@ type ShiftFormData = {
   workplacesError: unknown;
   isWorkplaceLoading: boolean;
   isBootstrapRefreshing: boolean;
-  isStaleWorkplaceContext: boolean;
   shiftDetailData: ShiftDetail | null;
   shiftDetailError: unknown;
   isShiftLoading: boolean;
@@ -292,7 +291,6 @@ type ShiftFormControllerResult = {
   isShiftLoading: boolean;
   isWorkplaceLoading: boolean;
   isBootstrapRefreshing: boolean;
-  isStaleWorkplaceContext: boolean;
   formErrorMessage: string | null;
   previewMonths: ReturnType<typeof useShiftPayrollPreview>["months"];
   previewUnresolvedCount: number;
@@ -889,7 +887,6 @@ function useShiftFormData(params: {
     error: workplacesError,
     isPending: isWorkplacePending,
     isFetching: isWorkplaceFetching,
-    isPlaceholderData: isBootstrapPlaceholderData,
   } = useWorkplaceShiftFormBootstrapQuery({
     userId: loadQueryUserId,
     selectedWorkplaceId: requestedWorkplaceId,
@@ -929,11 +926,6 @@ function useShiftFormData(params: {
     workplacesError,
     isWorkplaceLoading: isWorkplacePending,
     isBootstrapRefreshing: isWorkplaceFetching && bootstrapData !== undefined,
-    isStaleWorkplaceContext:
-      Boolean(requestedWorkplaceId) &&
-      isBootstrapPlaceholderData &&
-      bootstrapData?.selectedWorkplace?.id !== undefined &&
-      bootstrapData.selectedWorkplace.id !== requestedWorkplaceId,
     shiftDetailData: shiftDetailData ?? null,
     shiftDetailError,
     isShiftLoading: mode === "edit" && Boolean(shiftId) && isShiftDetailPending,
@@ -1065,11 +1057,11 @@ function validateShiftForm(params: {
   const nextErrors: FormErrors = {};
 
   if (!form.workplaceId) {
-    nextErrors.workplaceId = "ERR_001: 勤務先は必須項目です";
+    nextErrors.workplaceId = "勤務先を選択してください。";
   }
 
   if (!form.date) {
-    nextErrors.date = "ERR_001: 日付は必須項目です";
+    nextErrors.date = "日付を選択してください。";
   }
 
   if (form.comment.length > 100) {
@@ -1086,15 +1078,15 @@ function validateShiftForm(params: {
     }
 
     if (!form.timetableSetId) {
-      nextErrors.timetableSetId = "ERR_001: 時間割セットは必須項目です";
+      nextErrors.timetableSetId = "時間割セットを選択してください。";
     }
 
     if (!form.startPeriod) {
-      nextErrors.startPeriod = "ERR_001: 開始コマは必須項目です";
+      nextErrors.startPeriod = "開始コマを選択してください。";
     }
 
     if (!form.endPeriod) {
-      nextErrors.endPeriod = "ERR_001: 終了コマは必須項目です";
+      nextErrors.endPeriod = "終了コマを選択してください。";
     }
 
     const startPeriod = Number(form.startPeriod);
@@ -1111,10 +1103,9 @@ function validateShiftForm(params: {
     if (!timetableSet) {
       if (timetableSets.length === 0) {
         nextErrors.timetableSetId =
-          "ERR_004: 塾の授業は時間割セットが登録されていません";
+          "塾の授業用の時間割セットが登録されていません。";
       } else if (!nextErrors.timetableSetId) {
-        nextErrors.timetableSetId =
-          "ERR_004: 選択した時間割セットが見つかりません";
+        nextErrors.timetableSetId = "選択した時間割セットが見つかりません。";
       }
     }
 
@@ -1125,8 +1116,7 @@ function validateShiftForm(params: {
         ? resolveLessonTimeRange(timetableSet, startPeriod, endPeriod)
         : null;
     if (!resolved && timetableSet && !nextErrors.endPeriod) {
-      nextErrors.endPeriod =
-        "ERR_004: 選択したコマ範囲の時間割が登録されていません";
+      nextErrors.endPeriod = "選択したコマ範囲の時間割が登録されていません。";
     }
 
     return {
@@ -1145,11 +1135,11 @@ function validateShiftForm(params: {
   }
 
   if (!form.startTime) {
-    nextErrors.startTime = "ERR_001: 開始時刻は必須項目です";
+    nextErrors.startTime = "開始時刻を入力してください。";
   }
 
   if (!form.endTime) {
-    nextErrors.endTime = "ERR_001: 終了時刻は必須項目です";
+    nextErrors.endTime = "終了時刻を入力してください。";
   }
 
   if (
@@ -1157,7 +1147,7 @@ function validateShiftForm(params: {
     form.endTime &&
     isSameTimeShift(form.startTime, form.endTime)
   ) {
-    nextErrors.endTime = "ERR_002: 開始時刻と終了時刻は同じ時刻にできません";
+    nextErrors.endTime = "開始時刻と終了時刻は同じ時刻にできません。";
   }
 
   if (Object.keys(nextErrors).length > 0) {
@@ -1231,9 +1221,7 @@ async function checkShiftOverlapWarning(params: {
       );
     });
 
-    return overlapped
-      ? "ERR_003: この日付にはすでにシフトが登録されています"
-      : null;
+    return overlapped ? "この日付にはすでにシフトが登録されています。" : null;
   } catch (error) {
     console.error("failed to check overlap", error);
     return null;
@@ -1297,6 +1285,32 @@ function buildShiftPayload(
   }
 
   return payload;
+}
+
+const formErrorFieldIds: Record<Exclude<FormErrorKey, "form">, string> = {
+  workplaceId: "shift-workplace",
+  date: "shift-date",
+  shiftType: "shift-type-lesson",
+  comment: "shift-comment",
+  startTime: "shift-start-time",
+  endTime: "shift-end-time",
+  breakMinutes: "shift-break-minutes",
+  timetableSetId: "shift-timetable-set",
+  startPeriod: "shift-start-period",
+  endPeriod: "shift-end-period",
+};
+
+function focusFirstInvalidShiftFormField(errors: FormErrors) {
+  const firstErrorKey = (
+    Object.keys(formErrorFieldIds) as Array<Exclude<FormErrorKey, "form">>
+  ).find((key) => Boolean(errors[key]));
+  if (!firstErrorKey) {
+    return;
+  }
+
+  window.setTimeout(() => {
+    document.getElementById(formErrorFieldIds[firstErrorKey])?.focus();
+  }, 0);
 }
 
 function getFormErrorMessage(params: {
@@ -1372,7 +1386,11 @@ function ShiftFormPrimaryFields(props: {
             onValueChange={(value) => onWorkplaceChange(value ?? "")}
             disabled={disabled}
           >
-            <SelectTrigger aria-label="勤務先" className="w-full max-w-50">
+            <SelectTrigger
+              id="shift-workplace"
+              aria-label="勤務先"
+              className="w-full max-w-50"
+            >
               <SelectValue placeholder="勤務先を選択">
                 {selectedWorkplace?.name}
               </SelectValue>
@@ -1484,7 +1502,11 @@ function ShiftFormLessonFields(props: {
             onValueChange={(value) => onTimetableSetChange(value ?? "")}
             disabled={disabled || isTimetableLoading}
           >
-            <SelectTrigger aria-label="時間割セット" className="w-full">
+            <SelectTrigger
+              id="shift-timetable-set"
+              aria-label="時間割セット"
+              className="w-full"
+            >
               <SelectValue placeholder="時間割セットを選択">
                 {selectedSet?.name}
               </SelectValue>
@@ -1514,7 +1536,10 @@ function ShiftFormLessonFields(props: {
                 disabled || isTimetableLoading || lessonPeriods.length === 0
               }
             >
-              <SelectTrigger className="w-full max-w-20">
+              <SelectTrigger
+                id="shift-start-period"
+                className="w-full max-w-20"
+              >
                 <SelectValue placeholder="開始コマを選択">
                   {form.startPeriod ? `${form.startPeriod}限` : null}
                 </SelectValue>
@@ -1552,7 +1577,7 @@ function ShiftFormLessonFields(props: {
                 disabled || isTimetableLoading || lessonPeriods.length === 0
               }
             >
-              <SelectTrigger className="w-full max-w-20">
+              <SelectTrigger id="shift-end-period" className="w-full max-w-20">
                 <SelectValue placeholder="終了コマを選択">
                   {form.endPeriod ? `${form.endPeriod}限` : null}
                 </SelectValue>
@@ -2333,6 +2358,7 @@ function useShiftFormController(
           description: firstValidationMessage,
           duration: 6000,
         });
+        focusFirstInvalidShiftFormField(validation.errors);
         return;
       }
 
@@ -2425,7 +2451,6 @@ function useShiftFormController(
     isShiftLoading: data.isShiftLoading,
     isWorkplaceLoading: data.isWorkplaceLoading,
     isBootstrapRefreshing: data.isBootstrapRefreshing,
-    isStaleWorkplaceContext: data.isStaleWorkplaceContext,
     formErrorMessage,
     previewMonths: shiftPayrollPreview.months,
     previewUnresolvedCount: shiftPayrollPreview.unresolvedCount,
@@ -2481,21 +2506,7 @@ function ShiftFormScreen(props: ShiftFormProps) {
         isWorkplaceLoading={controller.isWorkplaceLoading}
       />
 
-      {controller.isBootstrapRefreshing ? (
-        <AsyncStateNotice
-          variant={controller.isStaleWorkplaceContext ? "stale" : "refresh"}
-          title={
-            controller.isStaleWorkplaceContext
-              ? "勤務先に紐づく補助データを切り替え中です。"
-              : "勤務先に紐づく補助データを更新中です。"
-          }
-          description={
-            controller.isStaleWorkplaceContext
-              ? "給与ルールや時間割は前の勤務先の内容を一時表示しています。切り替え完了まで入力は停止します。"
-              : "給与ルールと時間割の最新状態を確認しています。"
-          }
-        />
-      ) : null}
+      {controller.isBootstrapRefreshing ? <RefreshStatusFloating /> : null}
 
       <LoadingOverlay
         isLoading={controller.isSubmitting}

@@ -50,6 +50,12 @@ describe("app/my/calendar-setup/page", () => {
 
     render(<CalendarSetupPage />);
 
+    expect(
+      screen.getByText(
+        "完了後はホームへ移動します。まずは「新規シフト登録」から始められます。",
+      ),
+    ).toBeInTheDocument();
+
     await userEvent.click(
       screen.getByRole("button", { name: "Google Calendar で設定する" }),
     );

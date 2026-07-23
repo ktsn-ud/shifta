@@ -62,6 +62,10 @@ export function BulkShiftWorkplaceSection(
             >
               <SelectTrigger
                 aria-label="勤務先"
+                aria-invalid={Boolean(errors.workplaceId)}
+                aria-describedby={
+                  errors.workplaceId ? "bulk-workplace-error" : undefined
+                }
                 id="bulk-workplace"
                 className="max-w-50 w-full md:w-72"
               >
@@ -82,7 +86,10 @@ export function BulkShiftWorkplaceSection(
             <FieldDescription>
               前回選択した勤務先を初期表示します。
             </FieldDescription>
-            <FormErrorMessage message={errors.workplaceId} />
+            <FormErrorMessage
+              id="bulk-workplace-error"
+              message={errors.workplaceId}
+            />
           </FieldContent>
         </Field>
       )}

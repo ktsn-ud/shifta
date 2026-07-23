@@ -1,7 +1,7 @@
 name = "implementer"
 description = "Implementation-focused agent. Use after Plan mode has produced an approved plan. Makes the smallest correct code changes and hands off validation to other agents."
 
-model = "gpt-5.4"
+model = "gpt-5.6-terra"
 model_reasoning_effort = "medium"
 sandbox_mode = "workspace-write"
 

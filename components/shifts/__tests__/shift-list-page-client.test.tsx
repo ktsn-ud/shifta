@@ -1,31 +1,40 @@
 import {
+  act,
   fireEvent,
   render,
   screen,
   waitFor,
-  within,
 } from "@testing-library/react";
 import type { ComponentProps } from "react";
 import userEvent from "@testing-library/user-event";
 import { QueryClientProvider } from "@tanstack/react-query";
+import { toast } from "sonner";
 import { ShiftListPageClient } from "@/components/shifts/shift-list-page-client";
 import { clearMonthShiftsCache } from "@/hooks/use-month-shifts";
 import { createQueryClient } from "@/lib/query/query-client";
 
 const pushMock = jest.fn();
-const toastSuccessMock = jest.fn();
-const toastErrorMock = jest.fn();
-
+const replaceMock = jest.fn();
 jest.mock("next/navigation", () => ({
-  useRouter: () => ({ push: pushMock }),
+  useRouter: () => ({ push: pushMock, replace: replaceMock }),
 }));
 
 jest.mock("sonner", () => ({
-  toast: {
-    success: (...args: unknown[]) => toastSuccessMock(...args),
-    error: (...args: unknown[]) => toastErrorMock(...args),
-  },
+  toast: Object.assign(
+    jest.fn(() => "toast-1"),
+    {
+      dismiss: jest.fn(),
+      success: jest.fn(),
+      error: jest.fn(),
+      info: jest.fn(),
+    },
+  ),
 }));
+
+type MockToast = jest.MockedFunction<typeof toast> &
+  jest.Mocked<Pick<typeof toast, "dismiss" | "success" | "error" | "info">>;
+
+const mockToast = toast as MockToast;
 
 type TestShift = {
   id: string;
@@ -101,8 +110,12 @@ function renderShiftListPage(
 describe("ShiftListPageClient", () => {
   beforeEach(() => {
     pushMock.mockReset();
-    toastSuccessMock.mockReset();
-    toastErrorMock.mockReset();
+    replaceMock.mockReset();
+    mockToast.success.mockReset();
+    mockToast.error.mockReset();
+    mockToast.info.mockReset();
+    mockToast.mockReset();
+    mockToast.dismiss.mockReset();
     clearMonthShiftsCache();
 
     Object.defineProperty(globalThis, "fetch", {
@@ -199,15 +212,16 @@ describe("ShiftListPageClient", () => {
       expect(screen.getByText("勤務先A (研修)")).toBeInTheDocument();
     });
 
-    fireEvent.click(screen.getByText("勤務先A (研修)"));
+    fireEvent.click(screen.getByRole("button", { name: "編集" }));
 
     expect(pushMock).toHaveBeenCalledWith(
       "/my/shifts/shift-1/edit?month=2026-03&returnTo=list",
     );
   });
 
-  it("sends selected shift ids to bulk delete API", async () => {
-    const user = userEvent.setup();
+  it("sends selected shift ids to bulk delete API after the Undo window", async () => {
+    jest.useFakeTimers();
+    const user = userEvent.setup({ advanceTimers: jest.advanceTimersByTime });
     const fetchMock = globalThis.fetch as jest.Mock;
 
     let shifts = [
@@ -267,8 +281,14 @@ describe("ShiftListPageClient", () => {
     await user.click(
       screen.getByRole("button", { name: "選択したシフトを削除" }),
     );
-    const dialog = await screen.findByRole("dialog");
-    await user.click(within(dialog).getByRole("button", { name: "削除する" }));
+    expect(screen.queryByRole("dialog")).not.toBeInTheDocument();
+    expect(fetchMock).not.toHaveBeenCalledWith(
+      "/api/shifts",
+      expect.objectContaining({ method: "DELETE" }),
+    );
+    act(() => {
+      jest.advanceTimersByTime(4000);
+    });
 
     await waitFor(() => {
       const deleteCall = fetchMock.mock.calls.find(
@@ -290,6 +310,7 @@ describe("ShiftListPageClient", () => {
         expect.arrayContaining(["shift-1", "shift-2"]),
       );
     });
+    jest.useRealTimers();
   });
 
   it("renders overnight shift time range with 翌 prefix", async () => {
@@ -361,9 +382,15 @@ describe("ShiftListPageClient", () => {
 
     await user.click(screen.getByRole("button", { name: "次月" }));
 
+    expect(replaceMock).toHaveBeenCalledWith("/my/shifts/list?month=2026-04");
+
     expect(screen.getByText("勤務先A")).toBeInTheDocument();
     expect(screen.getByText("2026年3月")).toBeInTheDocument();
     expect(screen.getByText("最新データを更新中...")).toBeInTheDocument();
+    expect(screen.getByLabelText("更新中")).toBeInTheDocument();
+    expect(
+      screen.queryByText("シフト一覧の最新データを確認中です。"),
+    ).not.toBeInTheDocument();
 
     resolveAprilResponse(
       jsonResponse({
@@ -384,5 +411,42 @@ describe("ShiftListPageClient", () => {
     });
     expect(screen.getByText("2026年4月")).toBeInTheDocument();
     expect(screen.queryByText("勤務先A")).not.toBeInTheDocument();
+  });
+
+  it("clears the selected shifts and announces the count when changing month", async () => {
+    const user = userEvent.setup();
+    const fetchMock = globalThis.fetch as jest.Mock;
+
+    fetchMock.mockImplementation(async (input: string) => {
+      if (input.startsWith("/api/shifts?")) {
+        return jsonResponse({
+          data: [
+            createShift({
+              id: "shift-1",
+              date: "2026-03-10T00:00:00.000Z",
+              startTime: "1970-01-01T09:00:00.000Z",
+              endTime: "1970-01-01T17:00:00.000Z",
+              workplaceName: "勤務先A",
+            }),
+          ],
+        });
+      }
+
+      throw new Error(`Unexpected fetch: ${input}`);
+    });
+
+    renderShiftListPage();
+
+    await waitFor(() => {
+      expect(screen.getByText("勤務先A")).toBeInTheDocument();
+    });
+
+    await user.click(screen.getAllByRole("checkbox")[1]);
+    await user.click(screen.getByRole("button", { name: "次月" }));
+
+    expect(mockToast.info).toHaveBeenCalledWith(
+      "月を変更したため選択を解除しました。",
+      { description: "1件の選択を解除しました。" },
+    );
   });
 });

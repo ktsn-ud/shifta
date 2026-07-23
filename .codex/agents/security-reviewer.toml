@@ -1,7 +1,7 @@
 name = "security_reviewer"
 description = "Security-focused reviewer for web apps, APIs, auth, authorization, input validation, secrets, dependency risks, and data exposure."
 
-model = "gpt-5.4"
+model = "gpt-5.6-terra"
 model_reasoning_effort = "high"
 sandbox_mode = "read-only"
 

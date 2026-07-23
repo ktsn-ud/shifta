@@ -1,7 +1,7 @@
 "use client";
 
 import Link from "next/link";
-import { useMemo, useState } from "react";
+import { useMemo } from "react";
 import { toast } from "sonner";
 import { buttonVariants } from "@/components/ui/button-variants";
 import { Button } from "@/components/ui/button";
@@ -14,14 +14,7 @@ import {
 } from "@/components/ui/card";
 import { TableLoadingSkeleton } from "@/components/ui/loading-skeletons";
 import { LoadingOverlay } from "@/components/ui/loading-overlay";
-import {
-  Dialog,
-  DialogContent,
-  DialogDescription,
-  DialogFooter,
-  DialogHeader,
-  DialogTitle,
-} from "@/components/ui/dialog";
+import { RefreshStatusFloating } from "@/components/ui/refresh-status-floating";
 import {
   Table,
   TableBody,
@@ -31,10 +24,9 @@ import {
   TableRow,
 } from "@/components/ui/table";
 import { formatWorkplaceType } from "@/lib/enum-labels";
-import { parseGoogleSyncStateFromPayload } from "@/lib/google-calendar/clientSync";
 import { messages, toErrorMessage } from "@/lib/messages";
 import { getBrowserQueryClient } from "@/lib/query/query-client";
-import { buildMutationSuccessDescription } from "@/lib/query/mutation-toast";
+import { useUndoableAction } from "@/hooks/use-undoable-action";
 import { invalidateAfterWorkplaceMutation } from "@/lib/query/invalidation";
 import { useWorkplacesQuery } from "@/lib/query/queries/workplaces";
 import { queryKeys } from "@/lib/query/query-keys";
@@ -56,15 +48,6 @@ type Workplace = {
   _count: RelatedCounts;
 };
 
-type WorkplaceDeleteResponse = {
-  data: {
-    id: string;
-    deleted: boolean;
-    relatedCounts: RelatedCounts;
-  };
-  warning?: string | null;
-};
-
 type WorkplaceListProps = {
   currentUserId: string;
   initialWorkplaces?: Workplace[];
@@ -75,7 +58,6 @@ type WorkplaceListHeaderProps = {
 };
 
 type WorkplaceListMessagesProps = {
-  infoMessage: string | null;
   errorMessage: string | null;
 };
 
@@ -91,77 +73,6 @@ type WorkplaceTableRowActionsProps = {
   workplace: Workplace;
   onRequestDelete: (workplaceId: string) => void;
 };
-
-type WorkplaceDeleteDialogProps = {
-  target: Workplace | null;
-  deleteError: string | null;
-  isDeleting: boolean;
-  onOpenChange: (open: boolean) => void;
-  onCancel: () => void;
-  onConfirm: () => void;
-};
-
-function isRecord(value: unknown): value is Record<string, unknown> {
-  return typeof value === "object" && value !== null;
-}
-
-function isNonNegativeInteger(value: unknown): value is number {
-  return typeof value === "number" && Number.isInteger(value) && value >= 0;
-}
-
-function parseRelatedCounts(value: unknown): RelatedCounts | null {
-  if (!isRecord(value)) {
-    return null;
-  }
-
-  if (
-    !isNonNegativeInteger(value.shifts) ||
-    !isNonNegativeInteger(value.payrollRules) ||
-    !isNonNegativeInteger(value.timetableSets)
-  ) {
-    return null;
-  }
-
-  return {
-    shifts: value.shifts,
-    payrollRules: value.payrollRules,
-    timetableSets: value.timetableSets,
-  };
-}
-
-function parseWorkplaceDeleteResponse(
-  value: unknown,
-): WorkplaceDeleteResponse | null {
-  if (!isRecord(value) || !isRecord(value.data)) {
-    return null;
-  }
-
-  const relatedCounts = parseRelatedCounts(value.data.relatedCounts);
-  if (
-    typeof value.data.id !== "string" ||
-    typeof value.data.deleted !== "boolean" ||
-    !relatedCounts
-  ) {
-    return null;
-  }
-
-  if (
-    value.warning !== undefined &&
-    value.warning !== null &&
-    typeof value.warning !== "string"
-  ) {
-    return null;
-  }
-
-  return {
-    data: {
-      id: value.data.id,
-      deleted: value.data.deleted,
-      relatedCounts,
-    },
-    ...(value.warning !== undefined ? { warning: value.warning } : {}),
-  };
-}
 
 async function readApiErrorMessage(
   response: Response,
@@ -190,18 +101,9 @@ function WorkplaceListHeader({ createHref }: WorkplaceListHeaderProps) {
   );
 }
 
-function WorkplaceListMessages({
-  infoMessage,
-  errorMessage,
-}: WorkplaceListMessagesProps) {
+function WorkplaceListMessages({ errorMessage }: WorkplaceListMessagesProps) {
   return (
     <>
-      {infoMessage ? (
-        <p className="rounded-lg border border-emerald-700/30 bg-emerald-700/5 px-3 py-2 text-sm text-emerald-800">
-          {infoMessage}
-        </p>
-      ) : null}
-
       {errorMessage ? (
         <p className="rounded-lg border border-destructive/40 bg-destructive/5 px-3 py-2 text-sm text-destructive">
           {errorMessage}
@@ -239,7 +141,10 @@ function WorkplaceTableCard({
             label={overlayLabel}
             className="rounded-lg"
           >
-            <div className="overflow-hidden rounded-lg border border-border/70">
+            <div className="space-y-2">
+              <p className="text-xs text-muted-foreground">
+                表は横にスクロールして確認できます。
+              </p>
               <Table>
                 <TableHeader className="bg-muted/35">
                   <TableRow>
@@ -253,11 +158,19 @@ function WorkplaceTableCard({
                 <TableBody>
                   {workplaces.length === 0 ? (
                     <TableRow>
-                      <TableCell
-                        colSpan={5}
-                        className="h-24 text-center text-muted-foreground"
-                      >
-                        勤務先がありません。
+                      <TableCell colSpan={5} className="py-8 text-center">
+                        <div className="mx-auto flex max-w-md flex-col items-center gap-3">
+                          <p className="font-medium">勤務先がありません</p>
+                          <p className="text-sm text-muted-foreground">
+                            勤務先を登録すると、シフトと給与の管理を始められます。
+                          </p>
+                          <Link
+                            href="/my/workplaces/new"
+                            className={buttonVariants({ size: "sm" })}
+                          >
+                            最初の勤務先を追加
+                          </Link>
+                        </div>
                       </TableCell>
                     </TableRow>
                   ) : (
@@ -340,9 +253,9 @@ function WorkplaceTableRowActions({
           時間割
         </Link>
       ) : (
-        <Button size="sm" variant="outline" disabled>
-          時間割
-        </Button>
+        <span className="self-center text-xs text-muted-foreground">
+          一般勤務先では時間割を設定できません
+        </span>
       )}
       <Button
         size="sm"
@@ -352,63 +265,6 @@ function WorkplaceTableRowActions({
         削除
       </Button>
     </div>
-  );
-}
-
-function WorkplaceDeleteDialog({
-  target,
-  deleteError,
-  isDeleting,
-  onOpenChange,
-  onCancel,
-  onConfirm,
-}: WorkplaceDeleteDialogProps) {
-  return (
-    <Dialog open={target !== null} onOpenChange={onOpenChange}>
-      <DialogContent>
-        <DialogHeader>
-          <DialogTitle>勤務先を削除しますか？</DialogTitle>
-          <DialogDescription>
-            {target
-              ? `${target.name} を削除します。この操作は取り消せません。`
-              : "この操作は取り消せません。"}
-          </DialogDescription>
-        </DialogHeader>
-
-        {target ? (
-          <div className="rounded-md border bg-muted/30 px-3 py-2 text-sm text-muted-foreground">
-            関連データ: シフト {target._count.shifts} 件 / 給与ルール{" "}
-            {target._count.payrollRules} 件 / 時間割{" "}
-            {target._count.timetableSets} 件
-          </div>
-        ) : null}
-
-        {deleteError ? (
-          <p className="rounded-md border border-destructive/40 bg-destructive/5 px-3 py-2 text-sm text-destructive">
-            {deleteError}
-          </p>
-        ) : null}
-
-        <DialogFooter>
-          <Button
-            type="button"
-            variant="outline"
-            disabled={isDeleting}
-            onClick={onCancel}
-          >
-            キャンセル
-          </Button>
-          <Button
-            type="button"
-            variant="destructive"
-            disabled={isDeleting}
-            onClick={onConfirm}
-          >
-            {isDeleting ? "削除中..." : "削除"}
-          </Button>
-        </DialogFooter>
-      </DialogContent>
-    </Dialog>
   );
 }
 
@@ -422,10 +278,6 @@ export function WorkplaceList({
     includeCounts: true,
     initialData: initialWorkplaces,
   });
-  const [infoMessage, setInfoMessage] = useState<string | null>(null);
-  const [deletingId, setDeletingId] = useState<string | null>(null);
-  const [isDeleting, setIsDeleting] = useState(false);
-  const [deleteError, setDeleteError] = useState<string | null>(null);
   const workplaces = useMemo(
     () => workplacesQuery.data ?? [],
     [workplacesQuery.data],
@@ -436,20 +288,12 @@ export function WorkplaceList({
     ? toErrorMessage(workplacesQuery.error, "勤務先一覧の取得に失敗しました。")
     : null;
 
-  const deletingTarget = useMemo(
-    () => workplaces.find((workplace) => workplace.id === deletingId) ?? null,
-    [deletingId, workplaces],
-  );
+  const { schedule: scheduleUndoableAction } = useUndoableAction();
 
-  const confirmDelete = async () => {
-    if (!deletingTarget) {
-      return;
-    }
-
-    setIsDeleting(true);
-    setDeleteError(null);
-    setInfoMessage(null);
-
+  const confirmDelete = async (
+    deletingTarget: Workplace,
+    rollback: () => void,
+  ) => {
     try {
       const response = await fetch(`/api/workplaces/${deletingTarget.id}`, {
         method: "DELETE",
@@ -459,16 +303,6 @@ export function WorkplaceList({
         throw new Error(
           await readApiErrorMessage(response, "勤務先の削除に失敗しました。"),
         );
-      }
-
-      const responsePayload = (await response.json()) as unknown;
-      const syncState = parseGoogleSyncStateFromPayload(
-        responsePayload,
-        messages.error.calendarSyncFailed,
-      );
-      const parsed = parseWorkplaceDeleteResponse(responsePayload);
-      if (!parsed) {
-        throw new Error("勤務先削除レスポンスの形式が不正です。");
       }
 
       await invalidateAfterWorkplaceMutation(queryClient);
@@ -482,77 +316,49 @@ export function WorkplaceList({
             (workplace) => workplace.id !== deletingTarget.id,
           ),
       );
-
-      if (parsed.warning) {
-        toast.warning(messages.success.workplaceDeleted, {
-          description: parsed.warning,
-          duration: 6000,
-        });
-        setInfoMessage(
-          `${deletingTarget.name} を削除しました。${parsed.warning}`,
-        );
-      } else {
-        toast.success(messages.success.workplaceDeleted, {
-          description: buildMutationSuccessDescription({
-            baseDescription: deletingTarget.name,
-            syncPending: syncState.pending,
-          }),
-        });
-        setInfoMessage(`${deletingTarget.name} を削除しました。`);
-      }
-
-      setDeletingId(null);
     } catch (error) {
       console.error("failed to delete workplace", error);
       const message = toErrorMessage(error, "勤務先の削除に失敗しました。");
-      setDeleteError(message);
+      rollback();
       toast.error(messages.error.workplaceDeleteFailed, {
         description: message,
         duration: 6000,
       });
-    } finally {
-      setIsDeleting(false);
     }
   };
 
   return (
     <section className="space-y-6 p-4 md:p-6">
       <WorkplaceListHeader createHref="/my/workplaces/new" />
-      <WorkplaceListMessages
-        infoMessage={infoMessage}
-        errorMessage={errorMessage}
-      />
-      {isRefreshing ? (
-        <p className="rounded-lg border border-amber-700/30 bg-amber-700/5 px-3 py-2 text-sm text-amber-800">
-          勤務先一覧を更新中です。表示中の内容は前回取得分の可能性があります。
-        </p>
-      ) : null}
+      <WorkplaceListMessages errorMessage={errorMessage} />
+      {isRefreshing ? <RefreshStatusFloating /> : null}
       <WorkplaceTableCard
         workplaces={workplaces}
         isLoading={isLoading}
         isRefreshing={isRefreshing}
-        isDeleting={isDeleting}
+        isDeleting={false}
         onRequestDelete={(workplaceId) => {
-          setDeleteError(null);
-          setDeletingId(workplaceId);
-        }}
-      />
-      <WorkplaceDeleteDialog
-        target={deletingTarget}
-        deleteError={deleteError}
-        isDeleting={isDeleting}
-        onOpenChange={(open) => {
-          if (open === false) {
-            setDeletingId(null);
-            setDeleteError(null);
-          }
-        }}
-        onCancel={() => {
-          setDeletingId(null);
-          setDeleteError(null);
-        }}
-        onConfirm={() => {
-          void confirmDelete();
+          const target = workplaces.find(
+            (workplace) => workplace.id === workplaceId,
+          );
+          if (!target) return;
+          const key = queryKeys.workplaces.list({
+            userId: currentUserId,
+            includeCounts: true,
+          });
+          const previousWorkplaces = queryClient.getQueryData<Workplace[]>(key);
+          queryClient.setQueryData<Workplace[]>(key, (current) =>
+            (current ?? []).filter((workplace) => workplace.id !== workplaceId),
+          );
+          scheduleUndoableAction({
+            id: "workplace-" + workplaceId,
+            message: target.name + " を削除しました。",
+            onUndo: () => queryClient.setQueryData(key, previousWorkplaces),
+            onCommit: () =>
+              confirmDelete(target, () =>
+                queryClient.setQueryData(key, previousWorkplaces),
+              ),
+          });
         }}
       />
     </section>

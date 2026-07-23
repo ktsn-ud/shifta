@@ -1,7 +1,7 @@
 "use client";
 
 import Link from "next/link";
-import { useMemo, useState } from "react";
+import { useMemo } from "react";
 import { toast } from "sonner";
 import { buttonVariants } from "@/components/ui/button-variants";
 import { Button } from "@/components/ui/button";
@@ -14,14 +14,8 @@ import {
 } from "@/components/ui/card";
 import { TableLoadingSkeleton } from "@/components/ui/loading-skeletons";
 import { LoadingOverlay } from "@/components/ui/loading-overlay";
-import {
-  Dialog,
-  DialogContent,
-  DialogDescription,
-  DialogFooter,
-  DialogHeader,
-  DialogTitle,
-} from "@/components/ui/dialog";
+import { RefreshStatusFloating } from "@/components/ui/refresh-status-floating";
+import { WorkplaceContextBreadcrumb } from "@/components/workplaces/workplace-context-breadcrumb";
 import {
   Table,
   TableBody,
@@ -31,10 +25,9 @@ import {
   TableRow,
 } from "@/components/ui/table";
 import { dateKeyFromApiDate } from "@/lib/calendar/date";
-import { parseGoogleSyncStateFromPayload } from "@/lib/google-calendar/clientSync";
 import { messages, toErrorMessage } from "@/lib/messages";
 import { getBrowserQueryClient } from "@/lib/query/query-client";
-import { buildMutationSuccessDescription } from "@/lib/query/mutation-toast";
+import { useUndoableAction } from "@/hooks/use-undoable-action";
 import { invalidateAfterPayrollRuleMutation } from "@/lib/query/invalidation";
 import {
   useWorkplaceDetailQuery,
@@ -165,26 +158,14 @@ export function PayrollRuleList({
     : rulesQuery.error
       ? toErrorMessage(rulesQuery.error, "給与ルール一覧の取得に失敗しました。")
       : null;
-  const [infoMessage, setInfoMessage] = useState<string | null>(
-    initialInfoMessage ?? null,
-  );
-  const [deletingRuleId, setDeletingRuleId] = useState<string | null>(null);
-  const [isDeleting, setIsDeleting] = useState(false);
-  const [deleteError, setDeleteError] = useState<string | null>(null);
+  const infoMessage = initialInfoMessage ?? null;
 
-  const deletingRule = useMemo(
-    () => rules.find((rule) => rule.id === deletingRuleId) ?? null,
-    [deletingRuleId, rules],
-  );
+  const { schedule: scheduleUndoableAction } = useUndoableAction();
 
-  const handleDelete = async () => {
-    if (!deletingRule) {
-      return;
-    }
-
-    setIsDeleting(true);
-    setDeleteError(null);
-
+  const handleDelete = async (
+    deletingRule: PayrollRule,
+    rollback: () => void,
+  ) => {
     try {
       const response = await fetch(
         `/api/workplaces/${workplaceId}/payroll-rules/${deletingRule.id}`,
@@ -202,38 +183,23 @@ export function PayrollRuleList({
         );
       }
 
-      const responsePayload = (await response.json()) as unknown;
-      const syncState = parseGoogleSyncStateFromPayload(
-        responsePayload,
-        messages.error.calendarSyncFailed,
-      );
-
       await invalidateAfterPayrollRuleMutation(queryClient, workplaceId);
       queryClient.setQueryData<PayrollRule[]>(
         queryKeys.workplaces.payrollRules({ workplaceId }),
         (current) =>
           (current ?? []).filter((rule) => rule.id !== deletingRule.id),
       );
-      setDeletingRuleId(null);
-      setInfoMessage("給与ルールを削除しました。");
-      toast.success(messages.success.payrollRuleDeleted, {
-        description: buildMutationSuccessDescription({
-          syncPending: syncState.pending,
-        }),
-      });
     } catch (error) {
       console.error("failed to delete payroll rule", error);
       const message = toErrorMessage(
         error,
         messages.error.payrollRuleDeleteFailed,
       );
-      setDeleteError(message);
+      rollback();
       toast.error(messages.error.payrollRuleDeleteFailed, {
         description: message,
         duration: 6000,
       });
-    } finally {
-      setIsDeleting(false);
     }
   };
 
@@ -241,6 +207,11 @@ export function PayrollRuleList({
     <section className="space-y-6 p-4 md:p-6">
       <header className="flex flex-wrap items-start justify-between gap-4 rounded-xl border border-border/80 bg-card/95 p-5 shadow-sm">
         <div className="space-y-2">
+          <WorkplaceContextBreadcrumb
+            workplaceId={workplaceId}
+            workplaceName={workplace?.name}
+            currentPage="給与ルール"
+          />
           <p className="text-xs font-medium uppercase tracking-[0.12em] text-muted-foreground">
             Payroll Rules
           </p>
@@ -279,11 +250,7 @@ export function PayrollRuleList({
         </p>
       ) : null}
 
-      {isRefreshing ? (
-        <p className="rounded-md border border-amber-700/30 bg-amber-700/5 px-3 py-2 text-sm text-amber-800">
-          給与ルール一覧を更新中です。表示中の内容は前回取得分の可能性があります。
-        </p>
-      ) : null}
+      {isRefreshing ? <RefreshStatusFloating /> : null}
 
       <Card>
         <CardHeader>
@@ -297,18 +264,17 @@ export function PayrollRuleList({
             <TableLoadingSkeleton rows={5} columns={6} />
           ) : (
             <LoadingOverlay
-              isLoading={isRefreshing || isDeleting}
-              label={
-                isDeleting
-                  ? "給与ルールを削除中です..."
-                  : "給与ルール一覧を更新中です。表示中の内容は前回取得分です。"
-              }
+              isLoading={isRefreshing}
+              label="給与ルール一覧を更新中です。表示中の内容は前回取得分です。"
               className="rounded-lg"
             >
+              <p className="text-xs text-muted-foreground">
+                表は横にスクロールして確認できます。
+              </p>
               <Table>
                 <TableHeader>
                   <TableRow>
-                    <TableHead>適用期間</TableHead>
+                    <TableHead>適用期間（終了日を含む）</TableHead>
                     <TableHead>基本時給</TableHead>
                     <TableHead>深夜割増率</TableHead>
                     <TableHead>休日手当(円/時)</TableHead>
@@ -319,8 +285,19 @@ export function PayrollRuleList({
                 <TableBody>
                   {rules.length === 0 ? (
                     <TableRow>
-                      <TableCell colSpan={6} className="h-16 text-center">
-                        給与ルールがありません。
+                      <TableCell colSpan={6} className="py-8 text-center">
+                        <div className="mx-auto flex max-w-md flex-col items-center gap-3">
+                          <p className="font-medium">給与ルールがありません</p>
+                          <p className="text-sm text-muted-foreground">
+                            給与を計算するには、適用する給与ルールの登録が必要です。
+                          </p>
+                          <Link
+                            href={`/my/workplaces/${workplaceId}/payroll-rules/new`}
+                            className={buttonVariants({ size: "sm" })}
+                          >
+                            給与ルールを追加
+                          </Link>
+                        </div>
                       </TableCell>
                     </TableRow>
                   ) : (
@@ -357,8 +334,43 @@ export function PayrollRuleList({
                               size="sm"
                               variant="destructive"
                               onClick={() => {
-                                setDeleteError(null);
-                                setDeletingRuleId(rule.id);
+                                const previousRules = queryClient.getQueryData<
+                                  PayrollRule[]
+                                >(
+                                  queryKeys.workplaces.payrollRules({
+                                    workplaceId,
+                                  }),
+                                );
+                                queryClient.setQueryData<PayrollRule[]>(
+                                  queryKeys.workplaces.payrollRules({
+                                    workplaceId,
+                                  }),
+                                  (current) =>
+                                    (current ?? []).filter(
+                                      (currentRule) =>
+                                        currentRule.id !== rule.id,
+                                    ),
+                                );
+                                scheduleUndoableAction({
+                                  id: "payroll-rule-" + rule.id,
+                                  message: "給与ルールを削除しました。",
+                                  onUndo: () =>
+                                    queryClient.setQueryData(
+                                      queryKeys.workplaces.payrollRules({
+                                        workplaceId,
+                                      }),
+                                      previousRules,
+                                    ),
+                                  onCommit: () =>
+                                    handleDelete(rule, () =>
+                                      queryClient.setQueryData(
+                                        queryKeys.workplaces.payrollRules({
+                                          workplaceId,
+                                        }),
+                                        previousRules,
+                                      ),
+                                    ),
+                                });
                               }}
                             >
                               削除
@@ -374,53 +386,6 @@ export function PayrollRuleList({
           )}
         </CardContent>
       </Card>
-
-      <Dialog
-        open={deletingRule !== null}
-        onOpenChange={(open) => {
-          if (open === false) {
-            setDeletingRuleId(null);
-            setDeleteError(null);
-          }
-        }}
-      >
-        <DialogContent>
-          <DialogHeader>
-            <DialogTitle>給与ルールを削除しますか？</DialogTitle>
-            <DialogDescription>この操作は取り消せません。</DialogDescription>
-          </DialogHeader>
-
-          {deleteError ? (
-            <p className="rounded-md border border-destructive/40 bg-destructive/5 px-3 py-2 text-sm text-destructive">
-              {deleteError}
-            </p>
-          ) : null}
-
-          <DialogFooter>
-            <Button
-              type="button"
-              variant="outline"
-              disabled={isDeleting}
-              onClick={() => {
-                setDeletingRuleId(null);
-                setDeleteError(null);
-              }}
-            >
-              キャンセル
-            </Button>
-            <Button
-              type="button"
-              variant="destructive"
-              disabled={isDeleting}
-              onClick={() => {
-                void handleDelete();
-              }}
-            >
-              {isDeleting ? "削除中..." : "削除"}
-            </Button>
-          </DialogFooter>
-        </DialogContent>
-      </Dialog>
     </section>
   );
 }

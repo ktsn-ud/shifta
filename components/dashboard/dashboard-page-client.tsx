@@ -1,7 +1,7 @@
 "use client";
 
 import { type QueryClient } from "@tanstack/react-query";
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
 import {
   AlertTriangleIcon,
@@ -11,7 +11,7 @@ import {
 import { toast } from "sonner";
 import { MonthCalendar } from "@/components/calendar/MonthCalendar";
 import { ShiftListModal } from "@/components/calendar/ShiftListModal";
-import { AsyncStateNotice } from "@/components/ui/async-state-notice";
+import { RefreshStatusFloating } from "@/components/ui/refresh-status-floating";
 import { Button } from "@/components/ui/button";
 import {
   Card,
@@ -37,13 +37,13 @@ import {
 import { CALENDAR_SETUP_PATH } from "@/lib/google-calendar/constants";
 import { messages } from "@/lib/messages";
 import { invalidateAfterShiftMutation } from "@/lib/query/invalidation";
-import { buildMutationSuccessDescription } from "@/lib/query/mutation-toast";
 import { removeShiftsFromMonthCachesOptimistically } from "@/lib/query/optimistic-shifts";
 import { getBrowserQueryClient } from "@/lib/query/query-client";
 import { toUserFacingMessage } from "@/lib/user-facing-error";
 import { usePayrollSummaryAmountQuery } from "@/lib/query/queries/payroll";
 import { type PayrollSummaryAmountResult } from "@/lib/payroll/summary";
 import { useGoogleTokenExpiredSignOut } from "@/hooks/use-google-token-expired-signout";
+import { useUndoableAction } from "@/hooks/use-undoable-action";
 import {
   type MonthShift,
   summarizeShifts,
@@ -114,6 +114,7 @@ type DeleteDashboardShiftParams = {
   shiftId: string;
   isSignOutScheduled: boolean;
   queryClient: QueryClient;
+  rollback: () => void;
   scheduleSignOut: () => void;
   navigateToCalendarSetup: () => void;
 };
@@ -143,6 +144,24 @@ function isSameMonth(left: Date, right: Date): boolean {
   return (
     left.getFullYear() === right.getFullYear() &&
     left.getMonth() === right.getMonth()
+  );
+}
+
+function getDefaultShiftDate(displayMonth: Date, currentDate: Date): Date {
+  if (isSameMonth(displayMonth, currentDate)) {
+    return currentDate;
+  }
+
+  const lastDay = new Date(
+    displayMonth.getFullYear(),
+    displayMonth.getMonth() + 1,
+    0,
+  ).getDate();
+
+  return new Date(
+    displayMonth.getFullYear(),
+    displayMonth.getMonth(),
+    Math.min(currentDate.getDate(), lastDay),
   );
 }
 
@@ -283,16 +302,15 @@ async function deleteDashboardShift({
   shiftId,
   isSignOutScheduled,
   queryClient,
+  rollback,
   scheduleSignOut,
   navigateToCalendarSetup,
 }: DeleteDashboardShiftParams) {
   if (isSignOutScheduled) {
+    rollback();
     return;
   }
 
-  const rollback = removeShiftsFromMonthCachesOptimistically(queryClient, [
-    shiftId,
-  ]);
   let deletionCompleted = false;
 
   try {
@@ -324,6 +342,7 @@ async function deleteDashboardShift({
 
     void invalidateAfterShiftMutation(queryClient, {
       mode: "background",
+      refetchType: "none",
     });
 
     if (syncFailure) {
@@ -346,17 +365,17 @@ async function deleteDashboardShift({
       }
       return;
     }
-
-    toast.success(messages.success.shiftDeleted, {
-      description: buildMutationSuccessDescription({
-        syncPending: syncState.pending,
-      }),
-    });
   } catch (error) {
     if (!deletionCompleted) {
       rollback();
+      toast.error(messages.error.shiftDeleteFailed, {
+        description: toUserFacingMessage(
+          error,
+          messages.error.shiftDeleteFailed,
+        ),
+        duration: 6000,
+      });
     }
-    throw error;
   }
 }
 
@@ -586,16 +605,18 @@ function DashboardCalendarSection({
   onDateClick,
 }: DashboardCalendarSectionProps) {
   return (
-    <LoadingOverlay isLoading={isRefreshing} className="rounded-xl">
-      <MonthCalendar
-        month={displayMonth}
-        shifts={shifts}
-        todayKey={todayDate}
-        onNavigatePrev={onNavigatePrev}
-        onNavigateNext={onNavigateNext}
-        onDateClick={onDateClick}
-      />
-    </LoadingOverlay>
+    <div className="relative" aria-busy={isRefreshing || undefined}>
+      <LoadingOverlay isLoading={isRefreshing} className="rounded-xl">
+        <MonthCalendar
+          month={displayMonth}
+          shifts={shifts}
+          todayKey={todayDate}
+          onNavigatePrev={onNavigatePrev}
+          onNavigateNext={onNavigateNext}
+          onDateClick={onDateClick}
+        />
+      </LoadingOverlay>
+    </div>
   );
 }
 
@@ -645,6 +666,20 @@ export function DashboardPageClient({
 }: DashboardPageClientProps) {
   const router = useRouter();
   const queryClient = getBrowserQueryClient();
+  const pendingShiftDeletionIdsRef = useRef(new Set<string>());
+  const isMountedRef = useRef(false);
+
+  useEffect(() => {
+    const pendingShiftDeletionIds = pendingShiftDeletionIdsRef.current;
+    isMountedRef.current = true;
+
+    return () => {
+      isMountedRef.current = false;
+      pendingShiftDeletionIds.clear();
+    };
+  }, []);
+
+  const { schedule: scheduleUndoableAction } = useUndoableAction();
   const [month, setMonth] = useState(() => {
     const initialMonthDate = dateFromDateKey(initialMonthStartDate);
     return startOfMonth(initialMonthDate ?? new Date());
@@ -686,8 +721,6 @@ export function DashboardPageClient({
   const summary = summarizeShifts(shifts);
   const currentDate = dateFromDateKey(todayDate) ?? new Date();
   const currentMonth = startOfMonth(currentDate);
-  const requestedMonthLabel = formatCalendarMonthLabel(month, currentDate);
-  const displayMonthLabel = formatCalendarMonthLabel(displayMonth, currentDate);
   const summaryPeriodLabel = formatSummaryPeriodLabel(
     displayMonth,
     currentDate,
@@ -703,6 +736,10 @@ export function DashboardPageClient({
   );
   const isCurrentMonth = isSameMonth(displayMonth, currentMonth);
   const selectedDateShifts = shiftsByDate.get(toDateKey(selectedDate)) ?? [];
+  const defaultShiftDate = getDefaultShiftDate(displayMonth, currentDate);
+  const headerCreateDate = isSameMonth(selectedDate, displayMonth)
+    ? selectedDate
+    : defaultShiftDate;
   const failedShiftIds = getFailedShiftIds(shifts);
   const failedShiftCount = failedShiftIds.length;
 
@@ -731,11 +768,6 @@ export function DashboardPageClient({
     nextPaymentSummaryQuery.isLoading && nextPaymentAmount === null;
   const isNextPaymentRefreshing =
     nextPaymentSummaryQuery.isFetching && nextPaymentAmount !== null;
-  const isStaleCalendarView = isSameMonth(month, displayMonth) === false;
-  const isStaleNextPaymentView =
-    nextPaymentSummaryQuery.isPlaceholderData &&
-    nextPaymentSummaryQuery.data !== undefined &&
-    nextPaymentSummaryQuery.data.month !== nextPaymentMonthValue;
 
   const handleCreateShift = (date: Date) => {
     const params = new URLSearchParams({
@@ -745,18 +777,26 @@ export function DashboardPageClient({
     router.push(`/my/shifts/new?${params.toString()}`);
   };
 
+  const handleMonthChange = (nextMonth: Date) => {
+    const monthValue = toMonthInputValue(nextMonth);
+    setMonth(nextMonth);
+    router.replace(`/my?month=${monthValue}`);
+  };
+
   return (
     <section className="space-y-6 p-4 md:p-6 lg:p-8">
       <DashboardHeader
         isCurrentMonth={isCurrentMonth}
         onBackToCurrentMonth={() => {
-          setMonth(currentMonth);
+          handleMonthChange(currentMonth);
         }}
         onCreateShift={() => {
-          handleCreateShift(currentDate);
+          handleCreateShift(headerCreateDate);
         }}
         onOpenBulkRegistration={() => {
-          router.push("/my/shifts/bulk");
+          router.push(
+            `/my/shifts/bulk?month=${toMonthInputValue(displayMonth)}`,
+          );
         }}
       />
 
@@ -811,20 +851,8 @@ export function DashboardPageClient({
         />
       ) : null}
 
-      {!isInitialLoading && isNextPaymentRefreshing ? (
-        <AsyncStateNotice
-          variant={isStaleNextPaymentView ? "stale" : "refresh"}
-          title={
-            isStaleNextPaymentView
-              ? `${nextPaymentMonthValue} の支給見込を読み込み中です。`
-              : "支給見込の最新データを確認中です。"
-          }
-          description={
-            isStaleNextPaymentView
-              ? `現在の表示は ${nextPaymentSummaryQuery.data?.month ?? nextPaymentMonthValue} のままです。新しい支給見込へ切り替わるまでこの内容を維持します。`
-              : "表示中の支給見込はまもなく最新化されます。"
-          }
-        />
+      {isRefreshing || isNextPaymentRefreshing ? (
+        <RefreshStatusFloating />
       ) : null}
 
       {errorMessage ? (
@@ -834,44 +862,22 @@ export function DashboardPageClient({
       ) : null}
 
       {!isInitialLoading ? (
-        <div className="space-y-4">
-          {isRefreshing ? (
-            <AsyncStateNotice
-              variant={isStaleCalendarView ? "stale" : "refresh"}
-              title={
-                isStaleCalendarView
-                  ? `${requestedMonthLabel} のシフトを読み込み中です。`
-                  : "カレンダーの最新データを確認中です。"
-              }
-              description={
-                isStaleCalendarView
-                  ? `現在の表示は ${displayMonthLabel} のままです。新しい月のシフトへ切り替わるまでこの内容を維持します。`
-                  : "表示中のシフト一覧と集計はまもなく最新化されます。"
-              }
-            />
-          ) : null}
-          <DashboardCalendarSection
-            displayMonth={displayMonth}
-            shifts={shifts}
-            todayDate={todayDate}
-            isRefreshing={isRefreshing}
-            onNavigatePrev={() => {
-              setMonth((current) => addMonths(current, -1));
-            }}
-            onNavigateNext={() => {
-              setMonth((current) => addMonths(current, 1));
-            }}
-            onDateClick={(date) => {
-              setSelectedDate(date);
-              const dayShifts = shiftsByDate.get(toDateKey(date)) ?? [];
-              if (dayShifts.length === 0) {
-                handleCreateShift(date);
-                return;
-              }
-              setModalOpen(true);
-            }}
-          />
-        </div>
+        <DashboardCalendarSection
+          displayMonth={displayMonth}
+          shifts={shifts}
+          todayDate={todayDate}
+          isRefreshing={isRefreshing}
+          onNavigatePrev={() => {
+            handleMonthChange(addMonths(month, -1));
+          }}
+          onNavigateNext={() => {
+            handleMonthChange(addMonths(month, 1));
+          }}
+          onDateClick={(date) => {
+            setSelectedDate(date);
+            setModalOpen(true);
+          }}
+        />
       ) : null}
 
       <ShiftListModal
@@ -887,15 +893,61 @@ export function DashboardPageClient({
           router.push(`/my/shifts/${shiftId}/edit?${params.toString()}`);
         }}
         onDeleteShift={async (shiftId) => {
-          await deleteDashboardShift({
-            shiftId,
-            isSignOutScheduled,
-            queryClient,
-            scheduleSignOut,
-            navigateToCalendarSetup: () => {
-              router.push(CALENDAR_SETUP_PATH);
-            },
-          });
+          if (pendingShiftDeletionIdsRef.current.has(shiftId)) {
+            return;
+          }
+
+          pendingShiftDeletionIdsRef.current.add(shiftId);
+          let isScheduled = false;
+
+          try {
+            await queryClient.cancelQueries({
+              queryKey: ["shifts", "month"],
+            });
+
+            if (!isMountedRef.current) {
+              return;
+            }
+
+            const rollback = removeShiftsFromMonthCachesOptimistically(
+              queryClient,
+              [shiftId],
+            );
+            isScheduled = scheduleUndoableAction({
+              id: "dashboard-shift-" + shiftId,
+              message: "シフトを削除しました。",
+              onUndo: () => {
+                pendingShiftDeletionIdsRef.current.delete(shiftId);
+                rollback();
+              },
+              onCommit: async () => {
+                try {
+                  await deleteDashboardShift({
+                    shiftId,
+                    isSignOutScheduled,
+                    queryClient,
+                    rollback,
+                    scheduleSignOut,
+                    navigateToCalendarSetup: () => {
+                      router.push(CALENDAR_SETUP_PATH);
+                    },
+                  });
+                } finally {
+                  pendingShiftDeletionIdsRef.current.delete(shiftId);
+                }
+              },
+            });
+
+            if (!isScheduled) {
+              rollback();
+            }
+          } catch (error) {
+            console.error("failed to cancel month shift queries", { error });
+          } finally {
+            if (!isScheduled) {
+              pendingShiftDeletionIdsRef.current.delete(shiftId);
+            }
+          }
         }}
         onRetrySync={async (shiftId) => {
           await retryDashboardShiftSync({

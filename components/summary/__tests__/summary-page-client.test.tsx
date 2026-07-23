@@ -115,6 +115,24 @@ describe("SummaryPageClient", () => {
     });
   });
 
+  it("再取得中は更新フロートを表示し、既存オーバーレイを維持する", () => {
+    mockedUsePayrollSummaryQuery.mockReturnValue({
+      data: createSummary(2026),
+      isLoading: false,
+      isFetching: true,
+      isPlaceholderData: false,
+      error: null,
+    } as ReturnType<typeof usePayrollSummaryQuery>);
+
+    renderSummaryPageClient();
+
+    expect(screen.getByLabelText("更新中")).toBeInTheDocument();
+    expect(screen.getByText("最新データを更新中...")).toBeInTheDocument();
+    expect(
+      screen.queryByText("給与サマリーの最新データを確認中です。"),
+    ).not.toBeInTheDocument();
+  });
+
   it("初期年では initialData 付きの usePayrollSummaryQuery だけで表示する", () => {
     const initialSummary = createSummary(2026);
 

@@ -6,6 +6,7 @@ import {
 } from "@/components/payroll-details/payroll-details-workplace-yearly-page-client";
 import { redirectToCalendarSetupIfNeeded } from "@/lib/api/calendar-setup-guard";
 import { requireCurrentUser } from "@/lib/api/current-user";
+import { startOfMonth, toMonthInputValue } from "@/lib/calendar/date";
 import { getPayrollDetailsWorkplaceYearlyForUser } from "@/lib/payroll/details";
 
 type PayrollDetailsWorkplaceYearlyPageSearchParams = {
@@ -55,12 +56,16 @@ async function WorkplaceYearlyPageContent({ year }: { year: number }) {
     current.user.id,
     year,
   );
-  const currentYearValue = String(new Date().getFullYear());
+  const now = new Date();
+  const currentMonthValue = toMonthInputValue(startOfMonth(now));
+  const currentYearValue = String(now.getFullYear());
 
   return (
     <PayrollDetailsWorkplaceYearlyPageClient
+      key={String(year)}
       currentUserId={current.user.id}
       initialYear={year}
+      currentMonthValue={currentMonthValue}
       currentYearValue={currentYearValue}
       initialDetails={initialDetails}
     />

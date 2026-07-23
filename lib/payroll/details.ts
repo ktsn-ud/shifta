@@ -30,6 +30,7 @@ type ShiftWithPayrollRelations = Prisma.ShiftGetPayload<{
 type WorkplaceWithPayrollCycle = PayrollSnapshotWorkplace;
 
 type PayrollBreakdownAccumulator = {
+  shiftCount: number;
   totalWorkHours: number;
   baseHours: number;
   holidayHours: number;
@@ -77,6 +78,7 @@ type PayrollMonthlyByWorkplace = {
 
 export type PayrollDetailsMonthlyResult = {
   month: string;
+  shiftCount: number;
   totals: PayrollBreakdownDisplay;
   totalsDisplayValue: PayrollDisplayValue;
   actualCoverage: ActualPayrollCoverage;
@@ -94,6 +96,7 @@ type PayrollWorkplaceYearlyMonth = {
 
 type PayrollWorkplaceYearlyItem = {
   workplaceId: string;
+  shiftCount: number;
   workplaceName: string;
   workplaceColor: string;
   yearlyTotals: PayrollBreakdownDisplay;
@@ -104,6 +107,7 @@ type PayrollWorkplaceYearlyItem = {
 
 export type PayrollDetailsWorkplaceYearlyResult = {
   year: number;
+  shiftCount: number;
   workplaces: PayrollWorkplaceYearlyItem[];
 };
 
@@ -152,6 +156,7 @@ function toDateOnlyUtc(date: Date): string {
 
 function createEmptyBreakdownAccumulator(): PayrollBreakdownAccumulator {
   return {
+    shiftCount: 0,
     totalWorkHours: 0,
     baseHours: 0,
     holidayHours: 0,
@@ -247,6 +252,7 @@ function mergeBreakdowns(
   target: PayrollBreakdownAccumulator,
   source: PayrollBreakdownAccumulator,
 ): void {
+  target.shiftCount += source.shiftCount;
   target.totalWorkHours += source.totalWorkHours;
   target.baseHours += source.baseHours;
   target.holidayHours += source.holidayHours;
@@ -322,6 +328,8 @@ function summarizeWorkplaceByPeriod(
     if (shiftTime > periodEndTime) {
       break;
     }
+
+    summary.shiftCount += 1;
 
     const rule = findApplicablePayrollRule(
       rulesByWorkplace,
@@ -405,6 +413,7 @@ export async function getPayrollDetailsMonthlyForUser(
   if (workplaces.length === 0) {
     return {
       month: monthKey,
+      shiftCount: 0,
       totals: toBreakdownDisplay(createEmptyBreakdownAccumulator()),
       totalsDisplayValue: createPayrollDisplayValue(0, null),
       actualCoverage: createEmptyActualPayrollCoverage(0),
@@ -454,6 +463,7 @@ export async function getPayrollDetailsMonthlyForUser(
 
   return {
     month: monthKey,
+    shiftCount: totals.shiftCount,
     totals: toBreakdownDisplay(totals),
     totalsDisplayValue: createPayrollDisplayValue(
       totals.totalWage,
@@ -492,6 +502,7 @@ export async function getPayrollDetailsWorkplaceYearlyForUser(
   if (workplaces.length === 0) {
     return {
       year,
+      shiftCount: 0,
       workplaces: [],
     };
   }
@@ -565,6 +576,7 @@ export async function getPayrollDetailsWorkplaceYearlyForUser(
 
     return {
       workplaceId: workplace.id,
+      shiftCount: yearlyTotals.shiftCount,
       workplaceName: workplace.name,
       workplaceColor: workplace.color,
       yearlyTotals: toBreakdownDisplay(yearlyTotals),
@@ -585,6 +597,10 @@ export async function getPayrollDetailsWorkplaceYearlyForUser(
 
   return {
     year,
+    shiftCount: yearlyByWorkplace.reduce(
+      (total, workplace) => total + workplace.shiftCount,
+      0,
+    ),
     workplaces: yearlyByWorkplace.sort(
       (left, right) =>
         right.yearlyDisplayValue.displayAmount -

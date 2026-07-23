@@ -58,6 +58,7 @@ async function ActualPayrollPageContent({ month }: { month: string }) {
 
   return (
     <ActualPayrollPageClient
+      key={month}
       currentUserId={current.user.id}
       initialMonth={month}
       currentMonthValue={currentMonthValue}

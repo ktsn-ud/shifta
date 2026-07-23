@@ -1,6 +1,7 @@
 "use client";
 
-import { useMemo, useReducer } from "react";
+import { useEffect, useMemo, useReducer, useRef } from "react";
+import { useQueryClient } from "@tanstack/react-query";
 import { useRouter } from "next/navigation";
 import {
   ArrowDownIcon,
@@ -8,22 +9,15 @@ import {
   ArrowUpIcon,
   ChevronLeftIcon,
   ChevronRightIcon,
+  PencilIcon,
   Trash2Icon,
 } from "lucide-react";
 import { toast } from "sonner";
-import { AsyncStateNotice } from "@/components/ui/async-state-notice";
+import { RefreshStatusFloating } from "@/components/ui/refresh-status-floating";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Checkbox } from "@/components/ui/checkbox";
 import { LoadingOverlay } from "@/components/ui/loading-overlay";
-import {
-  Dialog,
-  DialogContent,
-  DialogDescription,
-  DialogFooter,
-  DialogHeader,
-  DialogTitle,
-} from "@/components/ui/dialog";
 import {
   Table,
   TableBody,
@@ -41,16 +35,14 @@ import {
   startOfMonth,
   toMonthInputValue,
 } from "@/lib/calendar/date";
-import { parseGoogleSyncStateFromPayload } from "@/lib/google-calendar/clientSync";
 import { messages, toErrorMessage } from "@/lib/messages";
-import { getBrowserQueryClient } from "@/lib/query/query-client";
-import { buildMutationSuccessDescription } from "@/lib/query/mutation-toast";
 import { invalidateAfterShiftMutation } from "@/lib/query/invalidation";
 import { removeShiftsFromMonthCachesOptimistically } from "@/lib/query/optimistic-shifts";
 import { formatShiftTimeRange } from "@/lib/shifts/time";
 import { formatShiftWorkplaceLabel } from "@/lib/shifts/format";
 import { resolveUserFacingErrorFromResponse } from "@/lib/user-facing-error";
 import { type MonthShift, useMonthShifts } from "@/hooks/use-month-shifts";
+import { useUndoableAction } from "@/hooks/use-undoable-action";
 
 type SortColumn =
   | "date"
@@ -83,6 +75,10 @@ type ShiftListAction =
   | { type: "closeDeleteDialog" }
   | { type: "startDelete" }
   | { type: "finishDeleteSuccess" }
+  | {
+      type: "cancelDelete";
+      selectedShiftIds: string[];
+    }
   | {
       type: "finishDeleteFailure";
       selectedShiftIds: string[];
@@ -263,6 +259,7 @@ function shiftListReducer(
       return {
         ...state,
         month: action.month,
+        selectedShiftIds: [],
       };
     case "toggleSort":
       if (!state.sortState || state.sortState.column !== action.column) {
@@ -317,6 +314,13 @@ function shiftListReducer(
         deleteDialogOpen: false,
         isDeleting: false,
         deleteErrorMessage: null,
+      };
+    case "cancelDelete":
+      return {
+        ...state,
+        isDeleting: false,
+        deleteErrorMessage: null,
+        selectedShiftIds: action.selectedShiftIds,
       };
     case "finishDeleteFailure":
       return {
@@ -420,16 +424,6 @@ type ShiftListTableItemRowProps = {
   isSelected: boolean;
   onToggleShiftSelection: (shiftId: string, checked: boolean) => void;
   onEditShift: (shiftId: string) => void;
-};
-
-type ShiftListBulkDeleteDialogProps = {
-  open: boolean;
-  selectedCount: number;
-  isDeleting: boolean;
-  deleteErrorMessage: string | null;
-  onOpenChange: (open: boolean) => void;
-  onCancel: () => void;
-  onConfirm: () => void;
 };
 
 function ShiftListHeader({
@@ -576,7 +570,7 @@ function ShiftListTableCard({
                 {sortedShifts.length === 0 ? (
                   <TableRow>
                     <TableCell
-                      colSpan={6}
+                      colSpan={7}
                       className="h-24 text-center text-muted-foreground"
                     >
                       表示対象のシフトがありません。
@@ -665,6 +659,7 @@ function ShiftListTableHeaderRow({
           onToggle={onToggleSort}
         />
       </TableHead>
+      <TableHead className="w-20 text-right">操作</TableHead>
     </TableRow>
   );
 }
@@ -716,68 +711,25 @@ function ShiftListTableItemRow({
               backgroundColor: shift.workplace.color,
             }}
           />
-          <button
-            type="button"
-            className="text-left hover:underline"
-            onClick={() => onEditShift(shift.id)}
-          >
-            {workplaceLabel}
-          </button>
+          <span>{workplaceLabel}</span>
         </div>
       </TableCell>
       <TableCell>{shift.breakMinutes}分</TableCell>
       <TableCell className="text-right font-medium">
         {formatCurrency(shift.estimatedPay)}
       </TableCell>
+      <TableCell className="w-20 text-right">
+        <Button
+          type="button"
+          variant="ghost"
+          size="sm"
+          onClick={() => onEditShift(shift.id)}
+        >
+          <PencilIcon data-icon="inline-start" />
+          編集
+        </Button>
+      </TableCell>
     </TableRow>
-  );
-}
-
-function ShiftListBulkDeleteDialog({
-  open,
-  selectedCount,
-  isDeleting,
-  deleteErrorMessage,
-  onOpenChange,
-  onCancel,
-  onConfirm,
-}: ShiftListBulkDeleteDialogProps) {
-  return (
-    <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent>
-        <DialogHeader>
-          <DialogTitle>選択したシフトを削除しますか？</DialogTitle>
-          <DialogDescription>
-            {selectedCount}件のシフトを削除します。この操作は取り消せません。
-          </DialogDescription>
-        </DialogHeader>
-
-        {deleteErrorMessage ? (
-          <p className="rounded-md border border-destructive/40 bg-destructive/5 px-3 py-2 text-sm text-destructive">
-            {deleteErrorMessage}
-          </p>
-        ) : null}
-
-        <DialogFooter>
-          <Button
-            type="button"
-            variant="outline"
-            disabled={isDeleting}
-            onClick={onCancel}
-          >
-            キャンセル
-          </Button>
-          <Button
-            type="button"
-            variant="destructive"
-            disabled={isDeleting || selectedCount === 0}
-            onClick={onConfirm}
-          >
-            {isDeleting ? "削除中..." : "削除する"}
-          </Button>
-        </DialogFooter>
-      </DialogContent>
-    </Dialog>
   );
 }
 
@@ -799,26 +751,31 @@ export function ShiftListPageClient({
   todayDate,
 }: ShiftListPageClientProps) {
   const router = useRouter();
-  const queryClient = getBrowserQueryClient();
+  const queryClient = useQueryClient();
+  const isMountedRef = useRef(false);
+
+  useEffect(() => {
+    isMountedRef.current = true;
+
+    return () => {
+      isMountedRef.current = false;
+    };
+  }, []);
+
+  const { schedule: scheduleUndoableAction } = useUndoableAction();
   const [state, dispatch] = useReducer(
     shiftListReducer,
     initialMonth,
     createInitialShiftListState,
   );
 
-  const {
-    shifts,
-    displayMonth,
-    isInitialLoading,
-    isRefreshing,
-    isPlaceholderData,
-    errorMessage,
-  } = useMonthShifts(state.month, {
-    cacheUserKey: currentUserId,
-    initialShifts: initialMonthShifts,
-    initialStartDate: initialMonthStartDate,
-    initialEndDate: initialMonthEndDate,
-  });
+  const { shifts, displayMonth, isInitialLoading, isRefreshing, errorMessage } =
+    useMonthShifts(state.month, {
+      cacheUserKey: currentUserId,
+      initialShifts: initialMonthShifts,
+      initialStartDate: initialMonthStartDate,
+      initialEndDate: initialMonthEndDate,
+    });
 
   const sortedShifts = useMemo(() => {
     return shifts.toSorted((left, right) =>
@@ -847,11 +804,8 @@ export function ShiftListPageClient({
   );
   const isCurrentMonth = isSameMonth(displayMonth, currentMonth);
   const selectedCount = selectedShiftIds.length;
-  const requestedMonthLabel = formatMonthLabel(state.month);
   const monthValue = toMonthInputValue(displayMonth);
   const displayMonthLabel = formatMonthLabel(displayMonth);
-  const isStaleView =
-    isPlaceholderData && isSameMonth(displayMonth, state.month) === false;
 
   const isAllSelected =
     sortedShifts.length > 0 &&
@@ -909,19 +863,22 @@ export function ShiftListPageClient({
     router.push(`/my/shifts/${shiftId}/edit?${params.toString()}`);
   }
 
-  async function handleBulkDelete() {
-    if (selectedShiftIds.length === 0 || state.isDeleting) {
-      return;
+  function handleMonthChange(nextMonth: Date) {
+    const clearedSelectionCount = selectedShiftIds.length;
+    dispatch({
+      type: "setMonth",
+      month: nextMonth,
+    });
+    router.replace(`/my/shifts/list?month=${toMonthInputValue(nextMonth)}`);
+
+    if (clearedSelectionCount > 0) {
+      toast.info("月を変更したため選択を解除しました。", {
+        description: `${clearedSelectionCount}件の選択を解除しました。`,
+      });
     }
+  }
 
-    const shiftIds = selectedShiftIds;
-    const rollback = removeShiftsFromMonthCachesOptimistically(
-      queryClient,
-      shiftIds,
-    );
-
-    dispatch({ type: "startDelete" });
-
+  async function commitBulkDelete(shiftIds: string[], rollback: () => void) {
     try {
       const response = await fetch("/api/shifts", {
         method: "DELETE",
@@ -939,26 +896,10 @@ export function ShiftListPageClient({
         throw new Error(resolved.message);
       }
 
-      const payload = (await response.json().catch(() => null)) as {
-        deletedCount?: number;
-      } | null;
-
-      const deletedCount = payload?.deletedCount ?? shiftIds.length;
-      const syncState = parseGoogleSyncStateFromPayload(
-        payload,
-        messages.error.calendarSyncFailed,
-      );
-
       dispatch({ type: "finishDeleteSuccess" });
       void invalidateAfterShiftMutation(queryClient, {
         mode: "background",
-      });
-
-      toast.success(messages.success.shiftDeleted, {
-        description: buildMutationSuccessDescription({
-          baseDescription: `${deletedCount}件のシフトを削除しました。`,
-          syncPending: syncState.pending,
-        }),
+        refetchType: "none",
       });
     } catch (error) {
       rollback();
@@ -977,47 +918,71 @@ export function ShiftListPageClient({
     }
   }
 
+  async function handleBulkDelete() {
+    if (selectedShiftIds.length === 0 || state.isDeleting) return;
+
+    const shiftIds = selectedShiftIds;
+    dispatch({ type: "startDelete" });
+
+    try {
+      await queryClient.cancelQueries({ queryKey: ["shifts", "month"] });
+    } catch (error) {
+      console.error("failed to cancel month shift queries", { error });
+      if (isMountedRef.current) {
+        dispatch({
+          type: "cancelDelete",
+          selectedShiftIds: shiftIds,
+        });
+      }
+      return;
+    }
+
+    if (!isMountedRef.current) {
+      return;
+    }
+
+    const rollback = removeShiftsFromMonthCachesOptimistically(
+      queryClient,
+      shiftIds,
+    );
+    const isScheduled = scheduleUndoableAction({
+      id: "bulk-shifts-" + shiftIds.toSorted().join("-"),
+      message: shiftIds.length + "件のシフトを削除しました。",
+      onUndo: () => {
+        rollback();
+        if (isMountedRef.current) {
+          dispatch({
+            type: "cancelDelete",
+            selectedShiftIds: shiftIds,
+          });
+        }
+      },
+      onCommit: () => commitBulkDelete(shiftIds, rollback),
+    });
+
+    if (!isScheduled) {
+      rollback();
+      if (isMountedRef.current) {
+        dispatch({
+          type: "cancelDelete",
+          selectedShiftIds: shiftIds,
+        });
+      }
+    }
+  }
+
   return (
     <section className="space-y-6 p-4 md:p-6">
       <ShiftListHeader
         isRefreshing={isRefreshing}
         isCurrentMonth={isCurrentMonth}
-        onPreviousMonth={() =>
-          dispatch({
-            type: "setMonth",
-            month: addMonths(displayMonth, -1),
-          })
-        }
-        onNextMonth={() =>
-          dispatch({
-            type: "setMonth",
-            month: addMonths(displayMonth, 1),
-          })
-        }
-        onBackToCurrentMonth={() =>
-          dispatch({
-            type: "setMonth",
-            month: currentMonth,
-          })
-        }
+        onPreviousMonth={() => handleMonthChange(addMonths(state.month, -1))}
+        onNextMonth={() => handleMonthChange(addMonths(state.month, 1))}
+        onBackToCurrentMonth={() => handleMonthChange(currentMonth)}
       />
 
       <div className="space-y-4">
-        {isRefreshing ? (
-          <AsyncStateNotice
-            variant={isStaleView ? "stale" : "refresh"}
-            title={
-              isStaleView
-                ? `${requestedMonthLabel} のシフト一覧を読み込み中です。`
-                : "シフト一覧の最新データを確認中です。"
-            }
-            description={
-              isStaleView
-                ? `現在の表示は ${displayMonthLabel} のままです。新しい月の一覧へ切り替わるまでこの内容を維持します。`
-                : "表示中のシフト一覧はまもなく最新化されます。"
-            }
-          />
-        ) : null}
+        {isRefreshing ? <RefreshStatusFloating /> : null}
 
         <LoadingOverlay isLoading={isRefreshing} className="rounded-xl">
           <ShiftListTableCard
@@ -1036,7 +1001,7 @@ export function ShiftListPageClient({
               isDeleting: state.isDeleting,
             }}
             onResetSort={() => dispatch({ type: "resetSort" })}
-            onOpenDeleteDialog={() => dispatch({ type: "openDeleteDialog" })}
+            onOpenDeleteDialog={handleBulkDelete}
             onToggleSort={handleToggleSort}
             onSelectAll={handleSelectAll}
             onToggleShiftSelection={handleToggleShiftSelection}
@@ -1044,22 +1009,6 @@ export function ShiftListPageClient({
           />
         </LoadingOverlay>
       </div>
-
-      <ShiftListBulkDeleteDialog
-        open={state.deleteDialogOpen}
-        selectedCount={selectedCount}
-        isDeleting={state.isDeleting}
-        deleteErrorMessage={state.deleteErrorMessage}
-        onOpenChange={(nextOpen) => {
-          dispatch({
-            type: nextOpen ? "openDeleteDialog" : "closeDeleteDialog",
-          });
-        }}
-        onCancel={() => dispatch({ type: "closeDeleteDialog" })}
-        onConfirm={() => {
-          void handleBulkDelete();
-        }}
-      />
     </section>
   );
 }

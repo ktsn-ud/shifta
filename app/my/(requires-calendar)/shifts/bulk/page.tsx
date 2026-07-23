@@ -1,19 +1,40 @@
 import type { Metadata } from "next";
 import { connection } from "next/server";
-import { toDateKey, toMonthInputValue } from "@/lib/calendar/date";
+import {
+  fromMonthInputValue,
+  toDateKey,
+  toMonthInputValue,
+} from "@/lib/calendar/date";
 import { BulkShiftFormLazy } from "@/components/shifts/BulkShiftFormLazy";
 
 export const metadata: Metadata = {
   title: { absolute: "シフト一括登録｜Shifta" },
 };
 
-export default async function ShiftBulkPage() {
+type ShiftBulkPageSearchParams = {
+  month?: string | string[];
+};
+
+type ShiftBulkPageProps = {
+  searchParams?: ShiftBulkPageSearchParams | Promise<ShiftBulkPageSearchParams>;
+};
+
+export default async function ShiftBulkPage({
+  searchParams,
+}: ShiftBulkPageProps) {
   await connection();
   const today = new Date();
+  const resolvedSearchParams = searchParams ? await searchParams : {};
+  const requestedMonth =
+    typeof resolvedSearchParams.month === "string"
+      ? fromMonthInputValue(resolvedSearchParams.month)
+      : null;
+  const monthValue = toMonthInputValue(requestedMonth ?? today);
 
   return (
     <BulkShiftFormLazy
-      initialMonthInputValue={toMonthInputValue(today)}
+      key={monthValue}
+      initialMonthInputValue={monthValue}
       todayDateKey={toDateKey(today)}
     />
   );
