@@ -9,7 +9,7 @@ import {
   CardHeader,
   CardTitle,
 } from "@/components/ui/card";
-import { AsyncStateNotice } from "@/components/ui/async-state-notice";
+import { RefreshStatusFloating } from "@/components/ui/refresh-status-floating";
 import { Input } from "@/components/ui/input";
 import { LoadingOverlay } from "@/components/ui/loading-overlay";
 import { SpinnerPanel } from "@/components/ui/spinner";
@@ -587,11 +587,6 @@ export function SummaryPageClient({
     requestedYearNumber !== null && summaryQuery.isLoading && summary === null;
   const isRefreshing =
     requestedYearNumber !== null && summaryQuery.isFetching && summary !== null;
-  const isStaleView =
-    requestedYearNumber !== null &&
-    summaryQuery.isPlaceholderData &&
-    summary !== null &&
-    displayYearNumber !== requestedYearNumber;
   const errorMessage =
     requestedYearNumber === null
       ? "年は YYYY 形式（2000〜2100）で指定してください。"
@@ -646,21 +641,7 @@ export function SummaryPageClient({
         />
       ) : summary ? (
         <div className="space-y-4">
-          {isRefreshing ? (
-            <AsyncStateNotice
-              variant={isStaleView ? "stale" : "refresh"}
-              title={
-                isStaleView
-                  ? `${requestedYearValue}年の給与サマリーを読み込み中です。`
-                  : "給与サマリーの最新データを確認中です。"
-              }
-              description={
-                isStaleView
-                  ? `現在の表示は ${displayYearValue}年のままです。新しい年の集計へ切り替わるまでこの内容を維持します。`
-                  : "表示中の年次表はまもなく最新化されます。"
-              }
-            />
-          ) : null}
+          {isRefreshing ? <RefreshStatusFloating /> : null}
           <LoadingOverlay isLoading={isRefreshing} className="rounded-xl">
             {!hasSummaryRows ? (
               <p className="rounded-lg border border-border/70 bg-muted/30 px-3 py-2 text-sm text-muted-foreground">

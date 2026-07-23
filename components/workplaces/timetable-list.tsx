@@ -1,7 +1,7 @@
 "use client";
 
 import Link from "next/link";
-import { useMemo, useState } from "react";
+import { useMemo } from "react";
 import { toast } from "sonner";
 import { buttonVariants } from "@/components/ui/button-variants";
 import { Button } from "@/components/ui/button";
@@ -14,14 +14,8 @@ import {
 } from "@/components/ui/card";
 import { TableLoadingSkeleton } from "@/components/ui/loading-skeletons";
 import { LoadingOverlay } from "@/components/ui/loading-overlay";
-import {
-  Dialog,
-  DialogContent,
-  DialogDescription,
-  DialogFooter,
-  DialogHeader,
-  DialogTitle,
-} from "@/components/ui/dialog";
+import { RefreshStatusFloating } from "@/components/ui/refresh-status-floating";
+import { WorkplaceContextBreadcrumb } from "@/components/workplaces/workplace-context-breadcrumb";
 import {
   Table,
   TableBody,
@@ -30,10 +24,9 @@ import {
   TableHeader,
   TableRow,
 } from "@/components/ui/table";
-import { parseGoogleSyncStateFromPayload } from "@/lib/google-calendar/clientSync";
 import { messages, toErrorMessage } from "@/lib/messages";
 import { getBrowserQueryClient } from "@/lib/query/query-client";
-import { buildMutationSuccessDescription } from "@/lib/query/mutation-toast";
+import { useUndoableAction } from "@/hooks/use-undoable-action";
 import { invalidateAfterTimetableMutation } from "@/lib/query/invalidation";
 import {
   useWorkplaceDetailQuery,
@@ -124,24 +117,13 @@ export function TimetableList({
           "時間割一覧の取得に失敗しました。",
         )
       : null;
-  const [infoMessage, setInfoMessage] = useState<string | null>(null);
-  const [deletingId, setDeletingId] = useState<string | null>(null);
-  const [isDeleting, setIsDeleting] = useState(false);
-  const [deleteError, setDeleteError] = useState<string | null>(null);
 
-  const deletingTarget = useMemo(
-    () => timetableSets.find((set) => set.id === deletingId) ?? null,
-    [deletingId, timetableSets],
-  );
+  const { schedule: scheduleUndoableAction } = useUndoableAction();
 
-  const handleDelete = async () => {
-    if (!deletingTarget) {
-      return;
-    }
-
-    setIsDeleting(true);
-    setDeleteError(null);
-
+  const handleDelete = async (
+    deletingTarget: TimetableSet,
+    rollback: () => void,
+  ) => {
     try {
       const response = await fetch(
         `/api/workplaces/${workplaceId}/timetables/${deletingTarget.id}`,
@@ -158,38 +140,23 @@ export function TimetableList({
         );
       }
 
-      const responsePayload = (await response.json()) as unknown;
-      const syncState = parseGoogleSyncStateFromPayload(
-        responsePayload,
-        messages.error.calendarSyncFailed,
-      );
-
       await invalidateAfterTimetableMutation(queryClient, workplaceId);
       queryClient.setQueryData<TimetableSet[]>(
         queryKeys.workplaces.timetables({ workplaceId }),
         (current) =>
           (current ?? []).filter((set) => set.id !== deletingTarget.id),
       );
-      setDeletingId(null);
-      setInfoMessage("時間割セットを削除しました。");
-      toast.success(messages.success.timetableDeleted, {
-        description: buildMutationSuccessDescription({
-          syncPending: syncState.pending,
-        }),
-      });
     } catch (error) {
       console.error("failed to delete timetable set", error);
       const message = toErrorMessage(
         error,
         messages.error.timetableDeleteFailed,
       );
-      setDeleteError(message);
+      rollback();
       toast.error(messages.error.timetableDeleteFailed, {
         description: message,
         duration: 6000,
       });
-    } finally {
-      setIsDeleting(false);
     }
   };
 
@@ -197,6 +164,11 @@ export function TimetableList({
     <section className="space-y-6 p-4 md:p-6">
       <header className="flex flex-wrap items-start justify-between gap-4 rounded-xl border border-border/80 bg-card/95 p-5 shadow-sm">
         <div className="space-y-2">
+          <WorkplaceContextBreadcrumb
+            workplaceId={workplaceId}
+            workplaceName={workplace?.name}
+            currentPage="時間割"
+          />
           <p className="text-xs font-medium uppercase tracking-[0.12em] text-muted-foreground">
             Timetable
           </p>
@@ -222,16 +194,12 @@ export function TimetableList({
               新規時間割セット追加
             </Link>
           ) : (
-            <Button disabled>新規時間割セット追加</Button>
+            <p className="self-center text-sm text-muted-foreground">
+              一般勤務先では時間割を設定できません
+            </p>
           )}
         </div>
       </header>
-
-      {infoMessage ? (
-        <p className="rounded-md border border-emerald-700/30 bg-emerald-700/5 px-3 py-2 text-sm text-emerald-800">
-          {infoMessage}
-        </p>
-      ) : null}
 
       {errorMessage ? (
         <p className="rounded-md border border-destructive/40 bg-destructive/5 px-3 py-2 text-sm text-destructive">
@@ -239,11 +207,7 @@ export function TimetableList({
         </p>
       ) : null}
 
-      {isRefreshing ? (
-        <p className="rounded-md border border-amber-700/30 bg-amber-700/5 px-3 py-2 text-sm text-amber-800">
-          時間割一覧を更新中です。表示中の内容は前回取得分の可能性があります。
-        </p>
-      ) : null}
+      {isRefreshing ? <RefreshStatusFloating /> : null}
 
       {isLoading ? (
         <TableLoadingSkeleton rows={5} columns={4} />
@@ -267,12 +231,8 @@ export function TimetableList({
         </Card>
       ) : (
         <LoadingOverlay
-          isLoading={isRefreshing || isDeleting}
-          label={
-            isDeleting
-              ? "時間割セットを削除中です..."
-              : "時間割一覧を更新中です。表示中の内容は前回取得分です。"
-          }
+          isLoading={isRefreshing}
+          label="時間割一覧を更新中です。表示中の内容は前回取得分です。"
           className="rounded-xl"
         >
           <div className="grid gap-4">
@@ -334,8 +294,34 @@ export function TimetableList({
                       size="sm"
                       variant="destructive"
                       onClick={() => {
-                        setDeleteError(null);
-                        setDeletingId(set.id);
+                        const previousTimetables = queryClient.getQueryData<
+                          TimetableSet[]
+                        >(queryKeys.workplaces.timetables({ workplaceId }));
+                        queryClient.setQueryData<TimetableSet[]>(
+                          queryKeys.workplaces.timetables({ workplaceId }),
+                          (current) =>
+                            (current ?? []).filter(
+                              (currentSet) => currentSet.id !== set.id,
+                            ),
+                        );
+                        scheduleUndoableAction({
+                          id: "timetable-" + set.id,
+                          message: set.name + " を削除しました。",
+                          onUndo: () =>
+                            queryClient.setQueryData(
+                              queryKeys.workplaces.timetables({ workplaceId }),
+                              previousTimetables,
+                            ),
+                          onCommit: () =>
+                            handleDelete(set, () =>
+                              queryClient.setQueryData(
+                                queryKeys.workplaces.timetables({
+                                  workplaceId,
+                                }),
+                                previousTimetables,
+                              ),
+                            ),
+                        });
                       }}
                     >
                       削除
@@ -347,57 +333,6 @@ export function TimetableList({
           </div>
         </LoadingOverlay>
       )}
-
-      <Dialog
-        open={deletingTarget !== null}
-        onOpenChange={(open) => {
-          if (open === false) {
-            setDeletingId(null);
-            setDeleteError(null);
-          }
-        }}
-      >
-        <DialogContent>
-          <DialogHeader>
-            <DialogTitle>時間割セットを削除しますか？</DialogTitle>
-            <DialogDescription>
-              {deletingTarget
-                ? `${deletingTarget.name} を削除します。この操作は取り消せません。`
-                : "この操作は取り消せません。"}
-            </DialogDescription>
-          </DialogHeader>
-
-          {deleteError ? (
-            <p className="rounded-md border border-destructive/40 bg-destructive/5 px-3 py-2 text-sm text-destructive">
-              {deleteError}
-            </p>
-          ) : null}
-
-          <DialogFooter>
-            <Button
-              type="button"
-              variant="outline"
-              disabled={isDeleting}
-              onClick={() => {
-                setDeletingId(null);
-                setDeleteError(null);
-              }}
-            >
-              キャンセル
-            </Button>
-            <Button
-              type="button"
-              variant="destructive"
-              disabled={isDeleting}
-              onClick={() => {
-                void handleDelete();
-              }}
-            >
-              {isDeleting ? "削除中..." : "削除"}
-            </Button>
-          </DialogFooter>
-        </DialogContent>
-      </Dialog>
     </section>
   );
 }

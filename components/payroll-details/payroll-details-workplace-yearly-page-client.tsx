@@ -1,9 +1,12 @@
 "use client";
 
 import { useState } from "react";
+import Link from "next/link";
+import { useRouter } from "next/navigation";
 import { Input } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
-import { AsyncStateNotice } from "@/components/ui/async-state-notice";
+import { buttonVariants } from "@/components/ui/button-variants";
+import { RefreshStatusFloating } from "@/components/ui/refresh-status-floating";
 import {
   Card,
   CardContent,
@@ -30,6 +33,7 @@ import { type PayrollDetailsWorkplaceYearlyResult } from "@/lib/payroll/details"
 type PayrollDetailsWorkplaceYearlyPageClientProps = {
   currentUserId: string;
   initialYear: number;
+  currentMonthValue: string;
   currentYearValue: string;
   initialDetails: PayrollDetailsWorkplaceYearlyResult;
 };
@@ -56,7 +60,7 @@ type PayrollDetailsYearlyHeaderProps = {
 };
 
 type PayrollDetailsYearlyEmptyStateProps = {
-  message: string;
+  yearValue: string;
 };
 
 type PayrollDetailsYearlyWorkplaceCardProps = {
@@ -202,12 +206,25 @@ function PayrollDetailsYearlyHeader({
 }
 
 function PayrollDetailsYearlyEmptyState({
-  message,
+  yearValue,
 }: PayrollDetailsYearlyEmptyStateProps) {
   return (
-    <p className="rounded-lg border border-border/70 bg-muted/30 px-3 py-2 text-sm text-muted-foreground">
-      {message}
-    </p>
+    <Card className="border-dashed border-border/80 bg-muted/20 shadow-sm">
+      <CardHeader>
+        <CardTitle>{yearValue}年のシフトはありません</CardTitle>
+        <CardDescription>
+          年を変更するか、この年のシフトを登録してください。
+        </CardDescription>
+      </CardHeader>
+      <CardContent>
+        <Link
+          href={`/my/shifts/new?date=${yearValue}-01-01&month=${yearValue}-01`}
+          className={buttonVariants({})}
+        >
+          この年のシフトを登録
+        </Link>
+      </CardContent>
+    </Card>
   );
 }
 
@@ -295,7 +312,10 @@ function PayrollDetailsYearlyTable({
   workplace,
 }: PayrollDetailsYearlyTableProps) {
   return (
-    <div className="overflow-hidden rounded-lg border border-border/70">
+    <div className="space-y-2">
+      <p className="text-xs text-muted-foreground">
+        表は横にスクロールして確認できます。
+      </p>
       <Table>
         <TableHeader className="bg-muted/35">
           <TableRow>
@@ -381,9 +401,11 @@ function PayrollDetailsYearlyMonthRow({
 export function PayrollDetailsWorkplaceYearlyPageClient({
   currentUserId,
   initialYear,
+  currentMonthValue,
   currentYearValue,
   initialDetails,
 }: PayrollDetailsWorkplaceYearlyPageClientProps) {
+  const router = useRouter();
   const [draftYearValue, setDraftYearValue] = useState(String(initialYear));
   const [requestedYearValue, setRequestedYearValue] = useState(
     String(initialYear),
@@ -394,19 +416,29 @@ export function PayrollDetailsWorkplaceYearlyPageClient({
 
   const requestedYearNumber = toYearNumber(requestedYearValue);
 
-  const monthlyHref = "/my/payroll-details/monthly";
+  const monthlyMonthValue =
+    requestedYearValue === currentYearValue
+      ? currentMonthValue
+      : `${requestedYearValue}-01`;
+  const monthlyHref = `/my/payroll-details/monthly?month=${monthlyMonthValue}`;
 
   const applyYearValue = (nextValue: string) => {
-    if (!isValidYearInput(nextValue)) {
+    const year = toYearNumber(nextValue);
+    if (year === null) {
       return;
     }
 
-    setRequestedYearValue(nextValue);
+    const yearValue = String(year);
+    setRequestedYearValue(yearValue);
+    router.replace(`/my/payroll-details/workplace-yearly?year=${yearValue}`);
   };
 
   const handleBackToCurrentYear = () => {
     setDraftYearValue(currentYearValue);
     setRequestedYearValue(currentYearValue);
+    router.replace(
+      `/my/payroll-details/workplace-yearly?year=${currentYearValue}`,
+    );
   };
 
   const detailsQuery = usePayrollDetailsWorkplaceYearlyQuery({
@@ -426,11 +458,6 @@ export function PayrollDetailsWorkplaceYearlyPageClient({
     requestedYearNumber !== null && detailsQuery.isLoading && details === null;
   const isRefreshing =
     requestedYearNumber !== null && detailsQuery.isFetching && details !== null;
-  const isStaleView =
-    requestedYearNumber !== null &&
-    detailsQuery.isPlaceholderData &&
-    details !== null &&
-    displayYearNumber !== requestedYearNumber;
   const errorMessage =
     requestedYearNumber === null
       ? "年は YYYY 形式（2000〜2100）で指定してください。"
@@ -440,12 +467,7 @@ export function PayrollDetailsWorkplaceYearlyPageClient({
             "給与詳細（勤務先毎表示）の取得に失敗しました。",
           )
         : null;
-  const hasAnyShift =
-    details?.workplaces.some((workplace) =>
-      workplace.months.some(
-        (month) => month.totalWorkHours > 0 || month.totalWage > 0,
-      ),
-    ) ?? false;
+  const hasAnyShift = (details?.shiftCount ?? 0) > 0;
 
   return (
     <section className="space-y-6 p-4 md:p-6">
@@ -477,28 +499,10 @@ export function PayrollDetailsWorkplaceYearlyPageClient({
         />
       ) : details ? (
         <div className="space-y-6">
-          {isRefreshing ? (
-            <AsyncStateNotice
-              variant={isStaleView ? "stale" : "refresh"}
-              title={
-                isStaleView
-                  ? `${requestedYearValue} 年の給与詳細を読み込み中です。`
-                  : "給与詳細の最新データを確認中です。"
-              }
-              description={
-                isStaleView
-                  ? `現在の表示は ${displayYearValue} 年のままです。新しい年の詳細へ切り替わるまでこの内容を維持します。`
-                  : "表示中の勤務先別年次内訳はまもなく最新化されます。"
-              }
-            />
-          ) : null}
+          {isRefreshing ? <RefreshStatusFloating /> : null}
           <LoadingOverlay isLoading={isRefreshing} className="rounded-xl">
             {!hasAnyShift ? (
-              <PayrollDetailsYearlyEmptyState message="対象年のシフトはありません" />
-            ) : null}
-
-            {details.workplaces.length === 0 ? (
-              <PayrollDetailsYearlyEmptyState message="対象年のシフトはありません" />
+              <PayrollDetailsYearlyEmptyState yearValue={displayYearValue} />
             ) : (
               <div className="space-y-6">
                 {details.workplaces.map((workplace) => (

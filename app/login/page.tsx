@@ -83,6 +83,11 @@ function LoginCard({
             <p className="text-sm leading-6 text-muted-foreground">
               カレンダーと連携する Google アカウントでサインインしてください。
             </p>
+            {!isTokenExpiredReason ? (
+              <p className="text-sm leading-6 text-muted-foreground">
+                初回は Google Calendar の初期設定があります。
+              </p>
+            ) : null}
             {isTokenExpiredReason ? (
               <p className="rounded-md border border-amber-300/60 bg-amber-50/70 px-3 py-2 text-sm text-amber-900">
                 連携トークンの期限切れにより、再認証が必要です。

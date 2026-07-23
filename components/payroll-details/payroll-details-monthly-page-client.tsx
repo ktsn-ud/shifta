@@ -1,9 +1,12 @@
 "use client";
 
 import { useMemo, useState } from "react";
+import Link from "next/link";
+import { useRouter } from "next/navigation";
 import { Input } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
-import { AsyncStateNotice } from "@/components/ui/async-state-notice";
+import { buttonVariants } from "@/components/ui/button-variants";
+import { RefreshStatusFloating } from "@/components/ui/refresh-status-floating";
 import {
   Card,
   CardContent,
@@ -16,7 +19,11 @@ import { SpinnerPanel } from "@/components/ui/spinner";
 import { PayrollDetailsViewSwitch } from "@/components/payroll-details/payroll-details-view-switch";
 import { ValueFrame } from "@/components/payroll-details/value-frame";
 import { formatCurrency } from "@/components/payroll-details/format";
-import { formatMonthLabel, fromMonthInputValue } from "@/lib/calendar/date";
+import {
+  formatMonthLabel,
+  fromMonthInputValue,
+  toMonthInputValue,
+} from "@/lib/calendar/date";
 import { toErrorMessage } from "@/lib/messages";
 import { usePayrollDetailsMonthlyQuery } from "@/lib/query/queries/payroll";
 import { type PayrollDetailsMonthlyResult } from "@/lib/payroll/details";
@@ -60,6 +67,11 @@ type PayrollDetailsMonthlyWorkplacePanelProps = {
 
 type PayrollDetailsMonthlyWorkplaceFormulaProps = {
   item: PayrollDetailsMonthlyWorkplaceItem;
+};
+
+type PayrollDetailsMonthlyEmptyStateProps = {
+  monthValue: string;
+  selectedMonthLabel: string;
 };
 
 export function PayrollDetailsMonthlyPageLoadingSkeleton() {
@@ -252,6 +264,30 @@ function PayrollDetailsMonthlyBreakdownCard({
   );
 }
 
+function PayrollDetailsMonthlyEmptyState({
+  monthValue,
+  selectedMonthLabel,
+}: PayrollDetailsMonthlyEmptyStateProps) {
+  return (
+    <Card className="border-dashed border-border/80 bg-muted/20 shadow-sm">
+      <CardHeader>
+        <CardTitle>{selectedMonthLabel}のシフトはありません</CardTitle>
+        <CardDescription>
+          期間を変更するか、この月のシフトを登録してください。
+        </CardDescription>
+      </CardHeader>
+      <CardContent>
+        <Link
+          href={`/my/shifts/new?date=${monthValue}-01&month=${monthValue}`}
+          className={buttonVariants({})}
+        >
+          この月のシフトを登録
+        </Link>
+      </CardContent>
+    </Card>
+  );
+}
+
 function PayrollDetailsMonthlyWorkplacePanel({
   item,
 }: PayrollDetailsMonthlyWorkplacePanelProps) {
@@ -402,6 +438,7 @@ export function PayrollDetailsMonthlyPageClient({
   currentMonthValue,
   initialDetails,
 }: PayrollDetailsMonthlyPageClientProps) {
+  const router = useRouter();
   const [draftMonthValue, setDraftMonthValue] = useState(initialMonth);
   const [requestedMonthValue, setRequestedMonthValue] = useState(initialMonth);
 
@@ -411,19 +448,23 @@ export function PayrollDetailsMonthlyPageClient({
     fromMonthInputValue(draftMonthValue) !== null &&
     draftMonthValue !== requestedMonthValue;
 
-  const workplaceYearlyHref = "/my/payroll-details/workplace-yearly";
+  const workplaceYearlyHref = `/my/payroll-details/workplace-yearly?year=${requestedMonthValue.slice(0, 4)}`;
 
   const applyMonthValue = (nextValue: string) => {
-    if (fromMonthInputValue(nextValue) === null) {
+    const parsedMonth = fromMonthInputValue(nextValue);
+    if (parsedMonth === null) {
       return;
     }
 
-    setRequestedMonthValue(nextValue);
+    const monthValue = toMonthInputValue(parsedMonth);
+    setRequestedMonthValue(monthValue);
+    router.replace(`/my/payroll-details/monthly?month=${monthValue}`);
   };
 
   const handleBackToCurrentMonth = () => {
     setDraftMonthValue(currentMonthValue);
     setRequestedMonthValue(currentMonthValue);
+    router.replace(`/my/payroll-details/monthly?month=${currentMonthValue}`);
   };
 
   const detailsQuery = usePayrollDetailsMonthlyQuery({
@@ -446,11 +487,6 @@ export function PayrollDetailsMonthlyPageClient({
     isValidRequestedMonth && detailsQuery.isLoading && details === null;
   const isRefreshing =
     isValidRequestedMonth && detailsQuery.isFetching && details !== null;
-  const isStaleView =
-    isValidRequestedMonth &&
-    detailsQuery.isPlaceholderData &&
-    details !== null &&
-    displayMonthValue !== requestedMonthValue;
   const errorMessage = !isValidRequestedMonth
     ? "月は YYYY-MM 形式で指定してください。"
     : detailsQuery.error
@@ -459,10 +495,7 @@ export function PayrollDetailsMonthlyPageClient({
           "給与詳細（月毎表示）の取得に失敗しました。",
         )
       : null;
-  const hasAnyShift =
-    details?.byWorkplace.some(
-      (workplace) => workplace.totalWorkHours > 0 || workplace.totalWage > 0,
-    ) ?? false;
+  const hasAnyShift = (details?.shiftCount ?? 0) > 0;
 
   return (
     <section className="space-y-6 p-4 md:p-6">
@@ -493,35 +526,24 @@ export function PayrollDetailsMonthlyPageClient({
         />
       ) : details ? (
         <div className="space-y-4">
-          {isRefreshing ? (
-            <AsyncStateNotice
-              variant={isStaleView ? "stale" : "refresh"}
-              title={
-                isStaleView
-                  ? `${requestedMonthValue} の給与詳細を読み込み中です。`
-                  : "給与詳細の最新データを確認中です。"
-              }
-              description={
-                isStaleView
-                  ? `現在の表示は ${displayMonthValue} のままです。新しい月の詳細へ切り替わるまでこの内容を維持します。`
-                  : "表示中の勤務先別内訳はまもなく最新化されます。"
-              }
-            />
-          ) : null}
+          {isRefreshing ? <RefreshStatusFloating /> : null}
           <LoadingOverlay isLoading={isRefreshing} className="rounded-xl">
             {!hasAnyShift ? (
-              <p className="rounded-lg border border-border/70 bg-muted/30 px-3 py-2 text-sm text-muted-foreground">
-                対象月のシフトはありません
-              </p>
-            ) : null}
-
-            <PayrollDetailsMonthlySummaryCards
-              details={details}
-              selectedMonthLabel={selectedMonthLabel}
-            />
-            <PayrollDetailsMonthlyBreakdownCard
-              workplaceItems={details.byWorkplace}
-            />
+              <PayrollDetailsMonthlyEmptyState
+                monthValue={displayMonthValue}
+                selectedMonthLabel={selectedMonthLabel}
+              />
+            ) : (
+              <>
+                <PayrollDetailsMonthlySummaryCards
+                  details={details}
+                  selectedMonthLabel={selectedMonthLabel}
+                />
+                <PayrollDetailsMonthlyBreakdownCard
+                  workplaceItems={details.byWorkplace}
+                />
+              </>
+            )}
           </LoadingOverlay>
         </div>
       ) : null}

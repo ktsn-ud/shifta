@@ -92,6 +92,7 @@ describe("app/my/(requires-calendar)/summary/page", () => {
     });
     expect(getPayrollSummaryForUserMock).toHaveBeenCalledWith("user-1", 2025);
     expect(summaryElement.type).toBe(SummaryPageClient);
+    expect(summaryElement.key).toBe("2025");
     expect(summaryElement.props).toEqual(
       expect.objectContaining({
         currentUserId: "user-1",

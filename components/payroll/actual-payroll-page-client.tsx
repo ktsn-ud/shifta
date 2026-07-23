@@ -2,7 +2,7 @@
 
 import { useReducer } from "react";
 import { toast } from "sonner";
-import { AsyncStateNotice } from "@/components/ui/async-state-notice";
+import { RefreshStatusFloating } from "@/components/ui/refresh-status-floating";
 import { Button } from "@/components/ui/button";
 import {
   Card,
@@ -87,10 +87,8 @@ type ActualPayrollEditorScreenProps = {
   draftMonthValue: string;
   canApplyMonth: boolean;
   selectedMonthLabel: string;
-  displayMonthValue: string;
   isInitialLoading: boolean;
   isRefreshing: boolean;
-  isStaleView: boolean;
   errorMessage: string | null;
   data: ActualPayrollEditorResult;
   onDraftMonthValueChange: (value: string) => void;
@@ -140,10 +138,8 @@ type ActualPayrollTableRowProps = {
 type ActualPayrollScreenState = {
   data: ActualPayrollEditorResult;
   selectedMonthLabel: string;
-  displayMonthValue: string;
   isInitialLoading: boolean;
   isRefreshing: boolean;
-  isStaleView: boolean;
   errorMessage: string | null;
 };
 
@@ -395,11 +391,8 @@ function buildActualPayrollScreenState(params: {
     selectedMonthLabel: selectedMonth
       ? formatMonthLabel(selectedMonth)
       : displayMonthValue,
-    displayMonthValue,
     isInitialLoading: isValidRequestedMonth && isLoading && data === null,
     isRefreshing: isValidRequestedMonth && isFetching && data !== null,
-    isStaleView:
-      isValidRequestedMonth && displayMonthValue !== requestedMonthValue,
     errorMessage: !isValidRequestedMonth
       ? "月は YYYY-MM 形式で指定してください。"
       : queryError
@@ -605,10 +598,8 @@ function ActualPayrollEditorScreen({
   draftMonthValue,
   canApplyMonth,
   selectedMonthLabel,
-  displayMonthValue,
   isInitialLoading,
   isRefreshing,
-  isStaleView,
   errorMessage,
   data,
   onDraftMonthValueChange,
@@ -750,21 +741,7 @@ function ActualPayrollEditorScreen({
         />
       ) : (
         <>
-          {isRefreshing ? (
-            <AsyncStateNotice
-              variant={isStaleView ? "stale" : "refresh"}
-              title={
-                isStaleView
-                  ? `${requestedMonthValue} の実給与を読み込み中です。`
-                  : "実給与の最新データを確認中です。"
-              }
-              description={
-                isStaleView
-                  ? `現在の表示は ${displayMonthValue} のままです。新しい月の実給与へ切り替わるまでこの内容を維持します。`
-                  : "表示中の実給与データはまもなく最新化されます。"
-              }
-            />
-          ) : null}
+          {isRefreshing ? <RefreshStatusFloating /> : null}
 
           {state.isSaving ? (
             <p className="rounded-lg border border-primary/20 bg-primary/5 px-3 py-2 text-sm text-primary">
@@ -867,10 +844,8 @@ export function ActualPayrollPageClient({
       draftMonthValue={filterState.draftMonthValue}
       canApplyMonth={canApplyMonth}
       selectedMonthLabel={screenState.selectedMonthLabel}
-      displayMonthValue={screenState.displayMonthValue}
       isInitialLoading={screenState.isInitialLoading}
       isRefreshing={screenState.isRefreshing}
-      isStaleView={screenState.isStaleView}
       errorMessage={screenState.errorMessage}
       data={screenState.data}
       onDraftMonthValueChange={(value) => {

@@ -22,6 +22,7 @@ import {
 } from "@/components/ui/form";
 import { Input } from "@/components/ui/input";
 import { LoadingOverlay } from "@/components/ui/loading-overlay";
+import { WorkplaceContextBreadcrumb } from "@/components/workplaces/workplace-context-breadcrumb";
 import { SpinnerPanel } from "@/components/ui/spinner";
 import { useResetOnRouteHidden } from "@/hooks/use-reset-on-route-hidden";
 import { parseGoogleSyncStateFromPayload } from "@/lib/google-calendar/clientSync";
@@ -685,7 +686,7 @@ function TimetableItemsSection({
               onClick={onQueueCurrentSet}
               disabled={isSubmitting}
             >
-              時間割セットを確定
+              追加して続ける
             </Button>
           ) : null}
         </div>
@@ -702,12 +703,12 @@ function QueuedSetsSection({
   return (
     <div className="space-y-3">
       <h3 className="text-sm font-semibold">
-        作成予定セット ({queuedSets.length})
+        保存待ちの時間割セット ({queuedSets.length})
       </h3>
 
       {queuedSets.length === 0 ? (
         <p className="rounded-md border px-3 py-2 text-sm text-muted-foreground">
-          追加済みのセットはありません。入力中のセットを「時間割セットを確定」で作成予定に積めます。
+          まだ保存待ちのセットはありません。「追加して続ける」で入力中のセットを追加できます。
         </p>
       ) : (
         <div className="space-y-2">
@@ -1014,6 +1015,11 @@ function TimetableEditorForm({
   return (
     <section className="space-y-6 p-4 md:p-6">
       <header className="space-y-1">
+        <WorkplaceContextBreadcrumb
+          workplaceId={workplaceId}
+          workplaceName={workplaceName}
+          currentPage="時間割"
+        />
         <h2 className="text-xl font-semibold">{controller.pageTitle}</h2>
         <p className="text-sm text-muted-foreground">
           {workplaceName
@@ -1103,7 +1109,7 @@ function TimetableEditorForm({
                   : "作成中..."
                 : controller.isEdit
                   ? "更新"
-                  : "まとめて作成"}
+                  : "保存して完了"}
             </Button>
             <Button
               type="button"
@@ -1226,6 +1232,10 @@ export function TimetableForm({
     return (
       <section className="space-y-4 p-4 md:p-6">
         <header>
+          <WorkplaceContextBreadcrumb
+            workplaceId={workplaceId}
+            currentPage="時間割"
+          />
           <h2 className="text-xl font-semibold">{pageTitle}</h2>
         </header>
         <SpinnerPanel
@@ -1240,6 +1250,11 @@ export function TimetableForm({
     return (
       <section className="space-y-4 p-4 md:p-6">
         <header>
+          <WorkplaceContextBreadcrumb
+            workplaceId={workplaceId}
+            workplaceName={workplace?.name}
+            currentPage="時間割"
+          />
           <h2 className="text-xl font-semibold">{pageTitle}</h2>
         </header>
         <Card>

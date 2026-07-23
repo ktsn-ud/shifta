@@ -1,5 +1,6 @@
 import { render, screen } from "@testing-library/react";
 import { LoadingOverlay } from "@/components/ui/loading-overlay";
+import { RefreshStatusFloating } from "@/components/ui/refresh-status-floating";
 
 describe("LoadingOverlay", () => {
   it("keeps content interactive when blockInteraction is false", () => {
@@ -51,5 +52,18 @@ describe("LoadingOverlay", () => {
 
     expect(content).toHaveClass("pointer-events-none");
     expect(overlay).not.toHaveClass("pointer-events-none");
+  });
+
+  it("renders a non-interactive fixed refresh status", () => {
+    render(<RefreshStatusFloating />);
+
+    const floating = screen.getByLabelText("更新中");
+    expect(floating.tagName).toBe("ASIDE");
+    expect(floating).toHaveClass("fixed", "pointer-events-none");
+    expect(screen.getByText("更新中")).toBeInTheDocument();
+    expect(screen.getByText("更新中").parentElement).toHaveAttribute(
+      "aria-busy",
+      "true",
+    );
   });
 });

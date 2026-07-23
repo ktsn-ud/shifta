@@ -77,6 +77,7 @@ async function SummaryPageContent({ year }: { year: number }) {
 
     return (
       <SummaryPageClient
+        key={String(year)}
         currentUserId={current.user.id}
         initialSummary={initialSummary}
         initialYear={year}

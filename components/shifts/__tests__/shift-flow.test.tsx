@@ -1,11 +1,10 @@
-import { type ReactElement } from "react";
+import { type ReactElement, useState } from "react";
 import { QueryClientProvider } from "@tanstack/react-query";
 import {
   fireEvent,
   render as baseRender,
   screen,
   waitFor,
-  within,
 } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { ShiftListModal } from "@/components/calendar/ShiftListModal";
@@ -613,7 +612,7 @@ describe("shift flow integration", () => {
     await user.click(screen.getByRole("button", { name: "登録" }));
 
     expect(
-      screen.getByText("ERR_002: 開始時刻と終了時刻は同じ時刻にできません"),
+      screen.getByText("開始時刻と終了時刻は同じ時刻にできません。"),
     ).toBeInTheDocument();
 
     rerender(
@@ -627,7 +626,7 @@ describe("shift flow integration", () => {
     });
 
     expect(
-      screen.queryByText("ERR_002: 開始時刻と終了時刻は同じ時刻にできません"),
+      screen.queryByText("開始時刻と終了時刻は同じ時刻にできません。"),
     ).not.toBeInTheDocument();
     expect(screen.getByLabelText("開始時刻")).toHaveValue("");
     expect(screen.getByLabelText("終了時刻")).toHaveValue("");
@@ -807,8 +806,11 @@ describe("shift flow integration", () => {
     await user.click(screen.getByRole("button", { name: "登録" }));
 
     expect(
-      screen.getByText("ERR_002: 開始時刻と終了時刻は同じ時刻にできません"),
+      screen.getByText("開始時刻と終了時刻は同じ時刻にできません。"),
     ).toBeInTheDocument();
+    await waitFor(() => {
+      expect(screen.getByLabelText("終了時刻")).toHaveFocus();
+    });
     expect(fetchMock).toHaveBeenCalled();
   });
 
@@ -2050,50 +2052,64 @@ describe("shift flow integration", () => {
   });
 
   it("deletes a shift from shift list modal", async () => {
-    const onDeleteShift = jest.fn(async () => undefined);
+    const onDeleteShift = jest.fn(async (shiftId: string) => {
+      if (shiftId !== "shift-1") {
+        throw new Error("Unexpected shift id");
+      }
+    });
+    const initialShifts = [
+      {
+        id: "shift-1",
+        startTime: "1970-01-01T09:00:00.000Z",
+        endTime: "1970-01-01T17:00:00.000Z",
+        shiftType: "NORMAL" as const,
+        comment: null,
+        estimatedPay: 8000,
+        googleSyncStatus: "SUCCESS" as const,
+        googleSyncError: null,
+        workplace: {
+          id: "workplace-1",
+          name: "勤務先A",
+          color: "#3366FF",
+        },
+      },
+    ];
 
-    render(
-      <ShiftListModal
-        open
-        onOpenChange={jest.fn()}
-        targetDate={new Date("2026-03-18T00:00:00.000Z")}
-        shifts={[
-          {
-            id: "shift-1",
-            startTime: "1970-01-01T09:00:00.000Z",
-            endTime: "1970-01-01T17:00:00.000Z",
-            shiftType: "NORMAL",
-            comment: null,
-            estimatedPay: 8000,
-            googleSyncStatus: "SUCCESS",
-            googleSyncError: null,
-            workplace: {
-              id: "workplace-1",
-              name: "勤務先A",
-              color: "#3366FF",
-            },
-          },
-        ]}
-        onCreateShift={jest.fn()}
-        onEditShift={jest.fn()}
-        onDeleteShift={onDeleteShift}
-        onRetrySync={jest.fn()}
-      />,
-    );
+    function StatefulShiftListModal() {
+      const [shifts, setShifts] = useState(initialShifts);
+
+      return (
+        <ShiftListModal
+          open
+          onOpenChange={jest.fn()}
+          targetDate={new Date("2026-03-18T00:00:00.000Z")}
+          shifts={shifts}
+          onCreateShift={jest.fn()}
+          onEditShift={jest.fn()}
+          onDeleteShift={(shiftId) => {
+            onDeleteShift(shiftId);
+            setShifts((current) =>
+              current.filter((shift) => shift.id !== shiftId),
+            );
+          }}
+          onRetrySync={jest.fn()}
+        />
+      );
+    }
+
+    render(<StatefulShiftListModal />);
 
     const openDeleteButton = screen.getByRole("button", { name: "削除" });
     await userEvent.click(openDeleteButton);
 
-    const dialog = await screen.findByRole("dialog");
-    const confirmDeleteButton = within(dialog).getByRole("button", {
-      name: "削除",
-    });
-
-    await userEvent.click(confirmDeleteButton);
-
     await waitFor(() => {
       expect(onDeleteShift).toHaveBeenCalledWith("shift-1");
     });
+    expect(screen.queryByText("勤務先A")).not.toBeInTheDocument();
+    expect(screen.getByRole("dialog")).toBeInTheDocument();
+    expect(
+      screen.queryByRole("heading", { name: "このシフトを削除しますか？" }),
+    ).not.toBeInTheDocument();
   });
 
   it("shows payroll preview when create form becomes calculable", async () => {
