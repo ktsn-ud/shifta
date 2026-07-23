@@ -11,7 +11,7 @@ import {
 import { toast } from "sonner";
 import { MonthCalendar } from "@/components/calendar/MonthCalendar";
 import { ShiftListModal } from "@/components/calendar/ShiftListModal";
-import { AsyncStateNotice } from "@/components/ui/async-state-notice";
+import { RefreshStatusFloating } from "@/components/ui/refresh-status-floating";
 import { Button } from "@/components/ui/button";
 import {
   Card,
@@ -20,7 +20,8 @@ import {
   CardHeader,
   CardTitle,
 } from "@/components/ui/card";
-import { Spinner, SpinnerPanel } from "@/components/ui/spinner";
+import { LoadingOverlay } from "@/components/ui/loading-overlay";
+import { SpinnerPanel } from "@/components/ui/spinner";
 import {
   addMonths,
   dateFromDateKey,
@@ -605,22 +606,16 @@ function DashboardCalendarSection({
 }: DashboardCalendarSectionProps) {
   return (
     <div className="relative" aria-busy={isRefreshing || undefined}>
-      <MonthCalendar
-        month={displayMonth}
-        shifts={shifts}
-        todayKey={todayDate}
-        onNavigatePrev={onNavigatePrev}
-        onNavigateNext={onNavigateNext}
-        onDateClick={onDateClick}
-      />
-      {isRefreshing ? (
-        <aside
-          aria-label="カレンダーを更新中"
-          className="pointer-events-none fixed bottom-4 right-4 z-20 rounded-md border border-border/80 bg-card/95 px-3 py-2 shadow-lg backdrop-blur sm:bottom-6 sm:right-6"
-        >
-          <Spinner label="更新中" />
-        </aside>
-      ) : null}
+      <LoadingOverlay isLoading={isRefreshing} className="rounded-xl">
+        <MonthCalendar
+          month={displayMonth}
+          shifts={shifts}
+          todayKey={todayDate}
+          onNavigatePrev={onNavigatePrev}
+          onNavigateNext={onNavigateNext}
+          onDateClick={onDateClick}
+        />
+      </LoadingOverlay>
     </div>
   );
 }
@@ -773,10 +768,6 @@ export function DashboardPageClient({
     nextPaymentSummaryQuery.isLoading && nextPaymentAmount === null;
   const isNextPaymentRefreshing =
     nextPaymentSummaryQuery.isFetching && nextPaymentAmount !== null;
-  const isStaleNextPaymentView =
-    nextPaymentSummaryQuery.isPlaceholderData &&
-    nextPaymentSummaryQuery.data !== undefined &&
-    nextPaymentSummaryQuery.data.month !== nextPaymentMonthValue;
 
   const handleCreateShift = (date: Date) => {
     const params = new URLSearchParams({
@@ -860,20 +851,8 @@ export function DashboardPageClient({
         />
       ) : null}
 
-      {!isInitialLoading && isNextPaymentRefreshing ? (
-        <AsyncStateNotice
-          variant={isStaleNextPaymentView ? "stale" : "refresh"}
-          title={
-            isStaleNextPaymentView
-              ? `${nextPaymentMonthValue} の支給見込を読み込み中です。`
-              : "支給見込の最新データを確認中です。"
-          }
-          description={
-            isStaleNextPaymentView
-              ? `現在の表示は ${nextPaymentSummaryQuery.data?.month ?? nextPaymentMonthValue} のままです。新しい支給見込へ切り替わるまでこの内容を維持します。`
-              : "表示中の支給見込はまもなく最新化されます。"
-          }
-        />
+      {isRefreshing || isNextPaymentRefreshing ? (
+        <RefreshStatusFloating />
       ) : null}
 
       {errorMessage ? (

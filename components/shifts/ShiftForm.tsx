@@ -8,7 +8,7 @@ import { FormErrorMessage } from "@/components/form/form-error-message";
 import { ConfirmDialog } from "@/components/modal/confirm-dialog";
 import { ShiftPayrollPreviewFloating } from "@/components/shifts/ShiftPayrollPreviewFloating";
 import { useShiftPayrollPreview } from "@/components/shifts/use-shift-payroll-preview";
-import { AsyncStateNotice } from "@/components/ui/async-state-notice";
+import { RefreshStatusFloating } from "@/components/ui/refresh-status-floating";
 import { Button } from "@/components/ui/button";
 import { DatePicker } from "@/components/ui/date-picker";
 import {
@@ -227,7 +227,6 @@ type ShiftFormData = {
   workplacesError: unknown;
   isWorkplaceLoading: boolean;
   isBootstrapRefreshing: boolean;
-  isStaleWorkplaceContext: boolean;
   shiftDetailData: ShiftDetail | null;
   shiftDetailError: unknown;
   isShiftLoading: boolean;
@@ -292,7 +291,6 @@ type ShiftFormControllerResult = {
   isShiftLoading: boolean;
   isWorkplaceLoading: boolean;
   isBootstrapRefreshing: boolean;
-  isStaleWorkplaceContext: boolean;
   formErrorMessage: string | null;
   previewMonths: ReturnType<typeof useShiftPayrollPreview>["months"];
   previewUnresolvedCount: number;
@@ -889,7 +887,6 @@ function useShiftFormData(params: {
     error: workplacesError,
     isPending: isWorkplacePending,
     isFetching: isWorkplaceFetching,
-    isPlaceholderData: isBootstrapPlaceholderData,
   } = useWorkplaceShiftFormBootstrapQuery({
     userId: loadQueryUserId,
     selectedWorkplaceId: requestedWorkplaceId,
@@ -929,11 +926,6 @@ function useShiftFormData(params: {
     workplacesError,
     isWorkplaceLoading: isWorkplacePending,
     isBootstrapRefreshing: isWorkplaceFetching && bootstrapData !== undefined,
-    isStaleWorkplaceContext:
-      Boolean(requestedWorkplaceId) &&
-      isBootstrapPlaceholderData &&
-      bootstrapData?.selectedWorkplace?.id !== undefined &&
-      bootstrapData.selectedWorkplace.id !== requestedWorkplaceId,
     shiftDetailData: shiftDetailData ?? null,
     shiftDetailError,
     isShiftLoading: mode === "edit" && Boolean(shiftId) && isShiftDetailPending,
@@ -2459,7 +2451,6 @@ function useShiftFormController(
     isShiftLoading: data.isShiftLoading,
     isWorkplaceLoading: data.isWorkplaceLoading,
     isBootstrapRefreshing: data.isBootstrapRefreshing,
-    isStaleWorkplaceContext: data.isStaleWorkplaceContext,
     formErrorMessage,
     previewMonths: shiftPayrollPreview.months,
     previewUnresolvedCount: shiftPayrollPreview.unresolvedCount,
@@ -2515,21 +2506,7 @@ function ShiftFormScreen(props: ShiftFormProps) {
         isWorkplaceLoading={controller.isWorkplaceLoading}
       />
 
-      {controller.isBootstrapRefreshing ? (
-        <AsyncStateNotice
-          variant={controller.isStaleWorkplaceContext ? "stale" : "refresh"}
-          title={
-            controller.isStaleWorkplaceContext
-              ? "勤務先に紐づく補助データを切り替え中です。"
-              : "勤務先に紐づく補助データを更新中です。"
-          }
-          description={
-            controller.isStaleWorkplaceContext
-              ? "給与ルールや時間割は前の勤務先の内容を一時表示しています。切り替え完了まで入力は停止します。"
-              : "給与ルールと時間割の最新状態を確認しています。"
-          }
-        />
-      ) : null}
+      {controller.isBootstrapRefreshing ? <RefreshStatusFloating /> : null}
 
       <LoadingOverlay
         isLoading={controller.isSubmitting}

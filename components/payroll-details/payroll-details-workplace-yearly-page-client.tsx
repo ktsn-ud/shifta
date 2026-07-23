@@ -6,7 +6,7 @@ import { useRouter } from "next/navigation";
 import { Input } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
 import { buttonVariants } from "@/components/ui/button-variants";
-import { AsyncStateNotice } from "@/components/ui/async-state-notice";
+import { RefreshStatusFloating } from "@/components/ui/refresh-status-floating";
 import {
   Card,
   CardContent,
@@ -458,11 +458,6 @@ export function PayrollDetailsWorkplaceYearlyPageClient({
     requestedYearNumber !== null && detailsQuery.isLoading && details === null;
   const isRefreshing =
     requestedYearNumber !== null && detailsQuery.isFetching && details !== null;
-  const isStaleView =
-    requestedYearNumber !== null &&
-    detailsQuery.isPlaceholderData &&
-    details !== null &&
-    displayYearNumber !== requestedYearNumber;
   const errorMessage =
     requestedYearNumber === null
       ? "年は YYYY 形式（2000〜2100）で指定してください。"
@@ -504,21 +499,7 @@ export function PayrollDetailsWorkplaceYearlyPageClient({
         />
       ) : details ? (
         <div className="space-y-6">
-          {isRefreshing ? (
-            <AsyncStateNotice
-              variant={isStaleView ? "stale" : "refresh"}
-              title={
-                isStaleView
-                  ? `${requestedYearValue} 年の給与詳細を読み込み中です。`
-                  : "給与詳細の最新データを確認中です。"
-              }
-              description={
-                isStaleView
-                  ? `現在の表示は ${displayYearValue} 年のままです。新しい年の詳細へ切り替わるまでこの内容を維持します。`
-                  : "表示中の勤務先別年次内訳はまもなく最新化されます。"
-              }
-            />
-          ) : null}
+          {isRefreshing ? <RefreshStatusFloating /> : null}
           <LoadingOverlay isLoading={isRefreshing} className="rounded-xl">
             {!hasAnyShift ? (
               <PayrollDetailsYearlyEmptyState yearValue={displayYearValue} />

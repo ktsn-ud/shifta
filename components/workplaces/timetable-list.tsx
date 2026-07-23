@@ -14,6 +14,7 @@ import {
 } from "@/components/ui/card";
 import { TableLoadingSkeleton } from "@/components/ui/loading-skeletons";
 import { LoadingOverlay } from "@/components/ui/loading-overlay";
+import { RefreshStatusFloating } from "@/components/ui/refresh-status-floating";
 import { WorkplaceContextBreadcrumb } from "@/components/workplaces/workplace-context-breadcrumb";
 import {
   Table,
@@ -206,11 +207,7 @@ export function TimetableList({
         </p>
       ) : null}
 
-      {isRefreshing ? (
-        <p className="rounded-md border border-amber-700/30 bg-amber-700/5 px-3 py-2 text-sm text-amber-800">
-          時間割一覧を更新中です。表示中の内容は前回取得分の可能性があります。
-        </p>
-      ) : null}
+      {isRefreshing ? <RefreshStatusFloating /> : null}
 
       {isLoading ? (
         <TableLoadingSkeleton rows={5} columns={4} />

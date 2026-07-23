@@ -93,6 +93,51 @@ describe("給与詳細の空状態", () => {
     } as ReturnType<typeof usePayrollDetailsWorkplaceYearlyQuery>);
   });
 
+  it("月次・年次の再取得中は更新フロートと既存オーバーレイを表示する", () => {
+    mockedUsePayrollDetailsMonthlyQuery.mockReturnValue({
+      data: emptyMonthlyDetails,
+      isLoading: false,
+      isFetching: true,
+      isPlaceholderData: false,
+      error: null,
+    } as ReturnType<typeof usePayrollDetailsMonthlyQuery>);
+    const { rerender } = render(
+      <PayrollDetailsMonthlyPageClient
+        currentUserId="user-1"
+        initialMonth="2026-05"
+        currentMonthValue="2026-07"
+        initialDetails={emptyMonthlyDetails}
+      />,
+    );
+    expect(screen.getByLabelText("更新中")).toBeInTheDocument();
+    expect(screen.getByText("最新データを更新中...")).toBeInTheDocument();
+    expect(
+      screen.queryByText("給与詳細の最新データを確認中です。"),
+    ).not.toBeInTheDocument();
+
+    mockedUsePayrollDetailsWorkplaceYearlyQuery.mockReturnValue({
+      data: emptyYearlyDetails,
+      isLoading: false,
+      isFetching: true,
+      isPlaceholderData: false,
+      error: null,
+    } as ReturnType<typeof usePayrollDetailsWorkplaceYearlyQuery>);
+    rerender(
+      <PayrollDetailsWorkplaceYearlyPageClient
+        currentUserId="user-1"
+        initialYear={2026}
+        currentMonthValue="2026-07"
+        currentYearValue="2026"
+        initialDetails={emptyYearlyDetails}
+      />,
+    );
+    expect(screen.getByLabelText("更新中")).toBeInTheDocument();
+    expect(screen.getByText("最新データを更新中...")).toBeInTheDocument();
+    expect(
+      screen.queryByText("給与詳細の最新データを確認中です。"),
+    ).not.toBeInTheDocument();
+  });
+
   it("月別表示では空状態と対象月付きのシフト登録CTAだけを表示する", () => {
     render(
       <PayrollDetailsMonthlyPageClient

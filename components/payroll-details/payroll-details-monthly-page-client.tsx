@@ -6,7 +6,7 @@ import { useRouter } from "next/navigation";
 import { Input } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
 import { buttonVariants } from "@/components/ui/button-variants";
-import { AsyncStateNotice } from "@/components/ui/async-state-notice";
+import { RefreshStatusFloating } from "@/components/ui/refresh-status-floating";
 import {
   Card,
   CardContent,
@@ -487,11 +487,6 @@ export function PayrollDetailsMonthlyPageClient({
     isValidRequestedMonth && detailsQuery.isLoading && details === null;
   const isRefreshing =
     isValidRequestedMonth && detailsQuery.isFetching && details !== null;
-  const isStaleView =
-    isValidRequestedMonth &&
-    detailsQuery.isPlaceholderData &&
-    details !== null &&
-    displayMonthValue !== requestedMonthValue;
   const errorMessage = !isValidRequestedMonth
     ? "月は YYYY-MM 形式で指定してください。"
     : detailsQuery.error
@@ -531,21 +526,7 @@ export function PayrollDetailsMonthlyPageClient({
         />
       ) : details ? (
         <div className="space-y-4">
-          {isRefreshing ? (
-            <AsyncStateNotice
-              variant={isStaleView ? "stale" : "refresh"}
-              title={
-                isStaleView
-                  ? `${requestedMonthValue} の給与詳細を読み込み中です。`
-                  : "給与詳細の最新データを確認中です。"
-              }
-              description={
-                isStaleView
-                  ? `現在の表示は ${displayMonthValue} のままです。新しい月の詳細へ切り替わるまでこの内容を維持します。`
-                  : "表示中の勤務先別内訳はまもなく最新化されます。"
-              }
-            />
-          ) : null}
+          {isRefreshing ? <RefreshStatusFloating /> : null}
           <LoadingOverlay isLoading={isRefreshing} className="rounded-xl">
             {!hasAnyShift ? (
               <PayrollDetailsMonthlyEmptyState

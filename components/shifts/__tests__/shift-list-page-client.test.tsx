@@ -387,6 +387,10 @@ describe("ShiftListPageClient", () => {
     expect(screen.getByText("勤務先A")).toBeInTheDocument();
     expect(screen.getByText("2026年3月")).toBeInTheDocument();
     expect(screen.getByText("最新データを更新中...")).toBeInTheDocument();
+    expect(screen.getByLabelText("更新中")).toBeInTheDocument();
+    expect(
+      screen.queryByText("シフト一覧の最新データを確認中です。"),
+    ).not.toBeInTheDocument();
 
     resolveAprilResponse(
       jsonResponse({

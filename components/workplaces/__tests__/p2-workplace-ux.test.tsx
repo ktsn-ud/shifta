@@ -105,6 +105,59 @@ describe("勤務先管理のP2 UX", () => {
     } as unknown as ReturnType<typeof useWorkplaceTimetablesQuery>);
   });
 
+  it("勤務先設定一覧の再取得中は共通更新フロートを表示する", () => {
+    mockedUseWorkplacesQuery.mockReturnValue({
+      data: [],
+      isLoading: false,
+      isFetching: true,
+      error: null,
+    } as unknown as ReturnType<typeof useWorkplacesQuery>);
+    const { rerender } = render(
+      <WorkplaceList currentUserId="user-1" initialWorkplaces={[]} />,
+    );
+    expect(screen.getByLabelText("更新中")).toBeInTheDocument();
+
+    mockedUseWorkplacePayrollRulesQuery.mockReturnValue({
+      data: [],
+      isLoading: false,
+      isFetching: true,
+      error: null,
+    } as unknown as ReturnType<typeof useWorkplacePayrollRulesQuery>);
+    rerender(
+      <PayrollRuleList
+        workplaceId="workplace-1"
+        initialWorkplace={{
+          id: "workplace-1",
+          name: "青葉塾",
+          type: "CRAM_SCHOOL",
+          color: "#3366FF",
+        }}
+        initialRules={[]}
+      />,
+    );
+    expect(screen.getByLabelText("更新中")).toBeInTheDocument();
+
+    mockedUseWorkplaceTimetablesQuery.mockReturnValue({
+      data: [],
+      isLoading: false,
+      isFetching: true,
+      error: null,
+    } as unknown as ReturnType<typeof useWorkplaceTimetablesQuery>);
+    rerender(
+      <TimetableList
+        workplaceId="workplace-1"
+        initialWorkplace={{
+          id: "workplace-1",
+          name: "青葉塾",
+          type: "CRAM_SCHOOL",
+          color: "#3366FF",
+        }}
+        initialTimetables={[]}
+      />,
+    );
+    expect(screen.getByLabelText("更新中")).toBeInTheDocument();
+  });
+
   it("勤務先一覧と給与ルール一覧の空状態から作成画面へ進める", () => {
     const { rerender } = render(
       <WorkplaceList currentUserId="user-1" initialWorkplaces={[]} />,

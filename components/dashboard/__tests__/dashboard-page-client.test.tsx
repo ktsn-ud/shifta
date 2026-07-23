@@ -203,8 +203,9 @@ describe("DashboardPageClient", () => {
     };
     const { rerender } = render(<DashboardPageClient {...props} />);
 
-    const refreshFloating = screen.getByLabelText("カレンダーを更新中");
+    const refreshFloating = screen.getByLabelText("更新中");
     expect(refreshFloating.tagName).toBe("ASIDE");
+    expect(refreshFloating).toHaveClass("fixed", "pointer-events-none");
     expect(within(refreshFloating).getByText("更新中")).toBeInTheDocument();
     expect(
       within(refreshFloating).getByText("更新中").parentElement,
@@ -229,9 +230,7 @@ describe("DashboardPageClient", () => {
     } as ReturnType<typeof useMonthShifts>);
     rerender(<DashboardPageClient {...props} />);
 
-    expect(
-      screen.queryByLabelText("カレンダーを更新中"),
-    ).not.toBeInTheDocument();
+    expect(screen.queryByLabelText("更新中")).not.toBeInTheDocument();
   });
 
   it("initialNextPaymentAmount が null で初回取得が失敗した場合は翌月支給額カードにフォールバックのエラー文言を表示する", () => {

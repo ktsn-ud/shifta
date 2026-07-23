@@ -14,6 +14,7 @@ import {
 } from "@/components/ui/card";
 import { TableLoadingSkeleton } from "@/components/ui/loading-skeletons";
 import { LoadingOverlay } from "@/components/ui/loading-overlay";
+import { RefreshStatusFloating } from "@/components/ui/refresh-status-floating";
 import {
   Table,
   TableBody,
@@ -330,11 +331,7 @@ export function WorkplaceList({
     <section className="space-y-6 p-4 md:p-6">
       <WorkplaceListHeader createHref="/my/workplaces/new" />
       <WorkplaceListMessages errorMessage={errorMessage} />
-      {isRefreshing ? (
-        <p className="rounded-lg border border-amber-700/30 bg-amber-700/5 px-3 py-2 text-sm text-amber-800">
-          勤務先一覧を更新中です。表示中の内容は前回取得分の可能性があります。
-        </p>
-      ) : null}
+      {isRefreshing ? <RefreshStatusFloating /> : null}
       <WorkplaceTableCard
         workplaces={workplaces}
         isLoading={isLoading}
