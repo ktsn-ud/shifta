@@ -180,6 +180,60 @@ describe("DashboardPageClient", () => {
     jest.useRealTimers();
   });
 
+  it("月次シフトの再取得中はカレンダー領域に更新フロートを表示する", () => {
+    mockedUseMonthShifts.mockReturnValue({
+      shifts: [],
+      displayMonth: new Date("2026-07-01T00:00:00.000Z"),
+      isLoading: false,
+      isInitialLoading: false,
+      isRefreshing: true,
+      isPlaceholderData: false,
+      errorMessage: null,
+      reload: jest.fn(),
+    } as ReturnType<typeof useMonthShifts>);
+
+    const props = {
+      currentUserId: "user-1",
+      initialMonthShifts: [],
+      initialMonthStartDate: "2026-07-01",
+      initialMonthEndDate: "2026-07-31",
+      initialUnconfirmedShiftCount: 0,
+      initialNextPaymentAmount: null,
+      todayDate: "2026-07-15",
+    };
+    const { rerender } = render(<DashboardPageClient {...props} />);
+
+    const refreshFloating = screen.getByLabelText("カレンダーを更新中");
+    expect(refreshFloating.tagName).toBe("ASIDE");
+    expect(within(refreshFloating).getByText("更新中")).toBeInTheDocument();
+    expect(
+      within(refreshFloating).getByText("更新中").parentElement,
+    ).toHaveAttribute("aria-busy", "true");
+    const calendarRegion = screen
+      .getByRole("button", { name: "次月へ移動" })
+      .closest("[aria-busy]");
+    expect(calendarRegion).toHaveAttribute("aria-busy", "true");
+    expect(
+      screen.queryByText("カレンダーの最新データを確認中です。"),
+    ).not.toBeInTheDocument();
+
+    mockedUseMonthShifts.mockReturnValue({
+      shifts: [],
+      displayMonth: new Date("2026-07-01T00:00:00.000Z"),
+      isLoading: false,
+      isInitialLoading: false,
+      isRefreshing: false,
+      isPlaceholderData: false,
+      errorMessage: null,
+      reload: jest.fn(),
+    } as ReturnType<typeof useMonthShifts>);
+    rerender(<DashboardPageClient {...props} />);
+
+    expect(
+      screen.queryByLabelText("カレンダーを更新中"),
+    ).not.toBeInTheDocument();
+  });
+
   it("initialNextPaymentAmount が null で初回取得が失敗した場合は翌月支給額カードにフォールバックのエラー文言を表示する", () => {
     render(
       <DashboardPageClient

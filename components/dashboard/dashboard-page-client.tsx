@@ -20,8 +20,7 @@ import {
   CardHeader,
   CardTitle,
 } from "@/components/ui/card";
-import { LoadingOverlay } from "@/components/ui/loading-overlay";
-import { SpinnerPanel } from "@/components/ui/spinner";
+import { Spinner, SpinnerPanel } from "@/components/ui/spinner";
 import {
   addMonths,
   dateFromDateKey,
@@ -605,7 +604,7 @@ function DashboardCalendarSection({
   onDateClick,
 }: DashboardCalendarSectionProps) {
   return (
-    <LoadingOverlay isLoading={isRefreshing} className="rounded-xl">
+    <div className="relative" aria-busy={isRefreshing || undefined}>
       <MonthCalendar
         month={displayMonth}
         shifts={shifts}
@@ -614,7 +613,15 @@ function DashboardCalendarSection({
         onNavigateNext={onNavigateNext}
         onDateClick={onDateClick}
       />
-    </LoadingOverlay>
+      {isRefreshing ? (
+        <aside
+          aria-label="カレンダーを更新中"
+          className="pointer-events-none fixed bottom-4 right-4 z-20 rounded-md border border-border/80 bg-card/95 px-3 py-2 shadow-lg backdrop-blur sm:bottom-6 sm:right-6"
+        >
+          <Spinner label="更新中" />
+        </aside>
+      ) : null}
+    </div>
   );
 }
 
@@ -719,8 +726,6 @@ export function DashboardPageClient({
   const summary = summarizeShifts(shifts);
   const currentDate = dateFromDateKey(todayDate) ?? new Date();
   const currentMonth = startOfMonth(currentDate);
-  const requestedMonthLabel = formatCalendarMonthLabel(month, currentDate);
-  const displayMonthLabel = formatCalendarMonthLabel(displayMonth, currentDate);
   const summaryPeriodLabel = formatSummaryPeriodLabel(
     displayMonth,
     currentDate,
@@ -768,7 +773,6 @@ export function DashboardPageClient({
     nextPaymentSummaryQuery.isLoading && nextPaymentAmount === null;
   const isNextPaymentRefreshing =
     nextPaymentSummaryQuery.isFetching && nextPaymentAmount !== null;
-  const isStaleCalendarView = isSameMonth(month, displayMonth) === false;
   const isStaleNextPaymentView =
     nextPaymentSummaryQuery.isPlaceholderData &&
     nextPaymentSummaryQuery.data !== undefined &&
@@ -879,39 +883,22 @@ export function DashboardPageClient({
       ) : null}
 
       {!isInitialLoading ? (
-        <div className="space-y-4">
-          {isRefreshing ? (
-            <AsyncStateNotice
-              variant={isStaleCalendarView ? "stale" : "refresh"}
-              title={
-                isStaleCalendarView
-                  ? `${requestedMonthLabel} のシフトを読み込み中です。`
-                  : "カレンダーの最新データを確認中です。"
-              }
-              description={
-                isStaleCalendarView
-                  ? `現在の表示は ${displayMonthLabel} のままです。新しい月のシフトへ切り替わるまでこの内容を維持します。`
-                  : "表示中のシフト一覧と集計はまもなく最新化されます。"
-              }
-            />
-          ) : null}
-          <DashboardCalendarSection
-            displayMonth={displayMonth}
-            shifts={shifts}
-            todayDate={todayDate}
-            isRefreshing={isRefreshing}
-            onNavigatePrev={() => {
-              handleMonthChange(addMonths(month, -1));
-            }}
-            onNavigateNext={() => {
-              handleMonthChange(addMonths(month, 1));
-            }}
-            onDateClick={(date) => {
-              setSelectedDate(date);
-              setModalOpen(true);
-            }}
-          />
-        </div>
+        <DashboardCalendarSection
+          displayMonth={displayMonth}
+          shifts={shifts}
+          todayDate={todayDate}
+          isRefreshing={isRefreshing}
+          onNavigatePrev={() => {
+            handleMonthChange(addMonths(month, -1));
+          }}
+          onNavigateNext={() => {
+            handleMonthChange(addMonths(month, 1));
+          }}
+          onDateClick={(date) => {
+            setSelectedDate(date);
+            setModalOpen(true);
+          }}
+        />
       ) : null}
 
       <ShiftListModal
