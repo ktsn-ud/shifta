@@ -3,13 +3,17 @@ import { queryKeys } from "@/lib/query/query-keys";
 
 type InvalidateAfterShiftMutationOptions = {
   mode?: "all" | "background";
+  refetchType?: "active" | "none";
 };
 
 export async function invalidateAfterShiftMutation(
   queryClient: QueryClient,
   options?: InvalidateAfterShiftMutationOptions,
 ): Promise<void> {
-  await queryClient.invalidateQueries({ queryKey: ["shifts"] });
+  await queryClient.invalidateQueries({
+    queryKey: ["shifts"],
+    refetchType: options?.refetchType,
+  });
 
   const relatedInvalidation = Promise.all([
     queryClient.invalidateQueries({ queryKey: ["payroll", "summary"] }),

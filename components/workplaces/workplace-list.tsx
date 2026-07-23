@@ -1,7 +1,7 @@
 "use client";
 
 import Link from "next/link";
-import { useMemo, useState } from "react";
+import { useMemo } from "react";
 import { toast } from "sonner";
 import { buttonVariants } from "@/components/ui/button-variants";
 import { Button } from "@/components/ui/button";
@@ -23,11 +23,9 @@ import {
   TableRow,
 } from "@/components/ui/table";
 import { formatWorkplaceType } from "@/lib/enum-labels";
-import { parseGoogleSyncStateFromPayload } from "@/lib/google-calendar/clientSync";
 import { messages, toErrorMessage } from "@/lib/messages";
 import { getBrowserQueryClient } from "@/lib/query/query-client";
 import { useUndoableAction } from "@/hooks/use-undoable-action";
-import { buildMutationSuccessDescription } from "@/lib/query/mutation-toast";
 import { invalidateAfterWorkplaceMutation } from "@/lib/query/invalidation";
 import { useWorkplacesQuery } from "@/lib/query/queries/workplaces";
 import { queryKeys } from "@/lib/query/query-keys";
@@ -49,15 +47,6 @@ type Workplace = {
   _count: RelatedCounts;
 };
 
-type WorkplaceDeleteResponse = {
-  data: {
-    id: string;
-    deleted: boolean;
-    relatedCounts: RelatedCounts;
-  };
-  warning?: string | null;
-};
-
 type WorkplaceListProps = {
   currentUserId: string;
   initialWorkplaces?: Workplace[];
@@ -68,7 +57,6 @@ type WorkplaceListHeaderProps = {
 };
 
 type WorkplaceListMessagesProps = {
-  infoMessage: string | null;
   errorMessage: string | null;
 };
 
@@ -84,68 +72,6 @@ type WorkplaceTableRowActionsProps = {
   workplace: Workplace;
   onRequestDelete: (workplaceId: string) => void;
 };
-
-function isRecord(value: unknown): value is Record<string, unknown> {
-  return typeof value === "object" && value !== null;
-}
-
-function isNonNegativeInteger(value: unknown): value is number {
-  return typeof value === "number" && Number.isInteger(value) && value >= 0;
-}
-
-function parseRelatedCounts(value: unknown): RelatedCounts | null {
-  if (!isRecord(value)) {
-    return null;
-  }
-
-  if (
-    !isNonNegativeInteger(value.shifts) ||
-    !isNonNegativeInteger(value.payrollRules) ||
-    !isNonNegativeInteger(value.timetableSets)
-  ) {
-    return null;
-  }
-
-  return {
-    shifts: value.shifts,
-    payrollRules: value.payrollRules,
-    timetableSets: value.timetableSets,
-  };
-}
-
-function parseWorkplaceDeleteResponse(
-  value: unknown,
-): WorkplaceDeleteResponse | null {
-  if (!isRecord(value) || !isRecord(value.data)) {
-    return null;
-  }
-
-  const relatedCounts = parseRelatedCounts(value.data.relatedCounts);
-  if (
-    typeof value.data.id !== "string" ||
-    typeof value.data.deleted !== "boolean" ||
-    !relatedCounts
-  ) {
-    return null;
-  }
-
-  if (
-    value.warning !== undefined &&
-    value.warning !== null &&
-    typeof value.warning !== "string"
-  ) {
-    return null;
-  }
-
-  return {
-    data: {
-      id: value.data.id,
-      deleted: value.data.deleted,
-      relatedCounts,
-    },
-    ...(value.warning !== undefined ? { warning: value.warning } : {}),
-  };
-}
 
 async function readApiErrorMessage(
   response: Response,
@@ -174,18 +100,9 @@ function WorkplaceListHeader({ createHref }: WorkplaceListHeaderProps) {
   );
 }
 
-function WorkplaceListMessages({
-  infoMessage,
-  errorMessage,
-}: WorkplaceListMessagesProps) {
+function WorkplaceListMessages({ errorMessage }: WorkplaceListMessagesProps) {
   return (
     <>
-      {infoMessage ? (
-        <p className="rounded-lg border border-emerald-700/30 bg-emerald-700/5 px-3 py-2 text-sm text-emerald-800">
-          {infoMessage}
-        </p>
-      ) : null}
-
       {errorMessage ? (
         <p className="rounded-lg border border-destructive/40 bg-destructive/5 px-3 py-2 text-sm text-destructive">
           {errorMessage}
@@ -360,7 +277,6 @@ export function WorkplaceList({
     includeCounts: true,
     initialData: initialWorkplaces,
   });
-  const [infoMessage, setInfoMessage] = useState<string | null>(null);
   const workplaces = useMemo(
     () => workplacesQuery.data ?? [],
     [workplacesQuery.data],
@@ -377,8 +293,6 @@ export function WorkplaceList({
     deletingTarget: Workplace,
     rollback: () => void,
   ) => {
-    setInfoMessage(null);
-
     try {
       const response = await fetch(`/api/workplaces/${deletingTarget.id}`, {
         method: "DELETE",
@@ -388,16 +302,6 @@ export function WorkplaceList({
         throw new Error(
           await readApiErrorMessage(response, "勤務先の削除に失敗しました。"),
         );
-      }
-
-      const responsePayload = (await response.json()) as unknown;
-      const syncState = parseGoogleSyncStateFromPayload(
-        responsePayload,
-        messages.error.calendarSyncFailed,
-      );
-      const parsed = parseWorkplaceDeleteResponse(responsePayload);
-      if (!parsed) {
-        throw new Error("勤務先削除レスポンスの形式が不正です。");
       }
 
       await invalidateAfterWorkplaceMutation(queryClient);
@@ -411,24 +315,6 @@ export function WorkplaceList({
             (workplace) => workplace.id !== deletingTarget.id,
           ),
       );
-
-      if (parsed.warning) {
-        toast.warning(messages.success.workplaceDeleted, {
-          description: parsed.warning,
-          duration: 6000,
-        });
-        setInfoMessage(
-          `${deletingTarget.name} を削除しました。${parsed.warning}`,
-        );
-      } else {
-        toast.success(messages.success.workplaceDeleted, {
-          description: buildMutationSuccessDescription({
-            baseDescription: deletingTarget.name,
-            syncPending: syncState.pending,
-          }),
-        });
-        setInfoMessage(`${deletingTarget.name} を削除しました。`);
-      }
     } catch (error) {
       console.error("failed to delete workplace", error);
       const message = toErrorMessage(error, "勤務先の削除に失敗しました。");
@@ -443,10 +329,7 @@ export function WorkplaceList({
   return (
     <section className="space-y-6 p-4 md:p-6">
       <WorkplaceListHeader createHref="/my/workplaces/new" />
-      <WorkplaceListMessages
-        infoMessage={infoMessage}
-        errorMessage={errorMessage}
-      />
+      <WorkplaceListMessages errorMessage={errorMessage} />
       {isRefreshing ? (
         <p className="rounded-lg border border-amber-700/30 bg-amber-700/5 px-3 py-2 text-sm text-amber-800">
           勤務先一覧を更新中です。表示中の内容は前回取得分の可能性があります。
@@ -472,7 +355,7 @@ export function WorkplaceList({
           );
           scheduleUndoableAction({
             id: "workplace-" + workplaceId,
-            message: target.name + " を削除予定にしました。",
+            message: target.name + " を削除しました。",
             onUndo: () => queryClient.setQueryData(key, previousWorkplaces),
             onCommit: () =>
               confirmDelete(target, () =>

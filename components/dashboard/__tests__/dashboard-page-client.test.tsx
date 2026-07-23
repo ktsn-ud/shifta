@@ -9,6 +9,7 @@ import { removeShiftsFromMonthCachesOptimistically } from "@/lib/query/optimisti
 
 const pushMock = jest.fn();
 const replaceMock = jest.fn();
+const cancelQueriesMock = jest.fn();
 
 jest.mock("next/navigation", () => ({
   useRouter: jest.fn(() => ({
@@ -140,6 +141,8 @@ describe("DashboardPageClient", () => {
     mockedGetBrowserQueryClient.mockReset();
     mockedUsePayrollSummaryAmountQuery.mockReset();
     mockedRemoveShiftsFromMonthCachesOptimistically.mockReset();
+    cancelQueriesMock.mockReset();
+    cancelQueriesMock.mockResolvedValue(undefined);
     mockToast.mockClear();
     mockToast.dismiss.mockClear();
     mockToast.error.mockClear();
@@ -149,9 +152,9 @@ describe("DashboardPageClient", () => {
       isSignOutScheduled: false,
       scheduleSignOut: jest.fn(),
     });
-    mockedGetBrowserQueryClient.mockReturnValue(
-      {} as ReturnType<typeof getBrowserQueryClient>,
-    );
+    mockedGetBrowserQueryClient.mockReturnValue({
+      cancelQueries: cancelQueriesMock,
+    } as unknown as ReturnType<typeof getBrowserQueryClient>);
     mockedUseMonthShifts.mockReturnValue({
       shifts: [],
       displayMonth: new Date("2026-07-01T00:00:00.000Z"),
@@ -403,6 +406,26 @@ describe("DashboardPageClient", () => {
     );
     fireEvent.click(screen.getByRole("button", { name: "シフトを削除" }));
     expect(rollback).not.toHaveBeenCalled();
+    expect(cancelQueriesMock).toHaveBeenCalledWith({
+      queryKey: ["shifts", "month"],
+    });
+    expect(
+      mockedRemoveShiftsFromMonthCachesOptimistically,
+    ).not.toHaveBeenCalled();
+
+    await act(async () => {
+      await Promise.resolve();
+    });
+
+    expect(
+      mockedRemoveShiftsFromMonthCachesOptimistically,
+    ).toHaveBeenCalledTimes(1);
+    expect(mockToast).toHaveBeenCalledWith(
+      "シフトを削除しました。",
+      expect.objectContaining({
+        action: expect.objectContaining({ label: "元に戻す" }),
+      }),
+    );
 
     await act(async () => {
       jest.advanceTimersByTime(4000);
@@ -422,7 +445,91 @@ describe("DashboardPageClient", () => {
         duration: 6000,
       }),
     );
+    expect(mockToast.success).not.toHaveBeenCalled();
     expect(unhandledRejection).not.toHaveBeenCalled();
     window.removeEventListener("unhandledrejection", unhandledRejection);
+  });
+
+  it("does not schedule dashboard deletion after unmounting during query cancellation", async () => {
+    let resolveCancellation!: () => void;
+    cancelQueriesMock.mockImplementation(
+      () =>
+        new Promise<void>((resolve) => {
+          resolveCancellation = resolve;
+        }),
+    );
+    Object.defineProperty(globalThis, "fetch", {
+      writable: true,
+      value: jest.fn(),
+    });
+
+    const { unmount } = render(
+      <DashboardPageClient
+        currentUserId="user-1"
+        initialMonthShifts={[]}
+        initialMonthStartDate="2026-07-01"
+        initialMonthEndDate="2026-07-31"
+        initialUnconfirmedShiftCount={0}
+        initialNextPaymentAmount={null}
+        todayDate="2026-07-15"
+      />,
+    );
+
+    fireEvent.click(
+      screen.getByRole("button", { name: "シフトありの日を開く" }),
+    );
+    fireEvent.click(screen.getByRole("button", { name: "シフトを削除" }));
+
+    unmount();
+    await act(async () => {
+      resolveCancellation();
+      await Promise.resolve();
+      jest.advanceTimersByTime(4000);
+    });
+
+    expect(
+      mockedRemoveShiftsFromMonthCachesOptimistically,
+    ).not.toHaveBeenCalled();
+    expect(mockToast).not.toHaveBeenCalled();
+    expect(globalThis.fetch).not.toHaveBeenCalled();
+  });
+
+  it("does not remove or schedule a dashboard shift when query cancellation fails", async () => {
+    const consoleError = jest
+      .spyOn(console, "error")
+      .mockImplementation(() => {});
+    cancelQueriesMock.mockRejectedValue(new Error("cancel failed"));
+    Object.defineProperty(globalThis, "fetch", {
+      writable: true,
+      value: jest.fn(),
+    });
+
+    render(
+      <DashboardPageClient
+        currentUserId="user-1"
+        initialMonthShifts={[]}
+        initialMonthStartDate="2026-07-01"
+        initialMonthEndDate="2026-07-31"
+        initialUnconfirmedShiftCount={0}
+        initialNextPaymentAmount={null}
+        todayDate="2026-07-15"
+      />,
+    );
+
+    fireEvent.click(
+      screen.getByRole("button", { name: "シフトありの日を開く" }),
+    );
+    fireEvent.click(screen.getByRole("button", { name: "シフトを削除" }));
+
+    await act(async () => {
+      await Promise.resolve();
+    });
+
+    expect(
+      mockedRemoveShiftsFromMonthCachesOptimistically,
+    ).not.toHaveBeenCalled();
+    expect(mockToast).not.toHaveBeenCalled();
+    expect(globalThis.fetch).not.toHaveBeenCalled();
+    consoleError.mockRestore();
   });
 });

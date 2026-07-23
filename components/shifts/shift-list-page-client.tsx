@@ -1,6 +1,6 @@
 "use client";
 
-import { useMemo, useReducer } from "react";
+import { useEffect, useMemo, useReducer, useRef } from "react";
 import { useQueryClient } from "@tanstack/react-query";
 import { useRouter } from "next/navigation";
 import {
@@ -35,9 +35,7 @@ import {
   startOfMonth,
   toMonthInputValue,
 } from "@/lib/calendar/date";
-import { parseGoogleSyncStateFromPayload } from "@/lib/google-calendar/clientSync";
 import { messages, toErrorMessage } from "@/lib/messages";
-import { buildMutationSuccessDescription } from "@/lib/query/mutation-toast";
 import { invalidateAfterShiftMutation } from "@/lib/query/invalidation";
 import { removeShiftsFromMonthCachesOptimistically } from "@/lib/query/optimistic-shifts";
 import { formatShiftTimeRange } from "@/lib/shifts/time";
@@ -77,6 +75,10 @@ type ShiftListAction =
   | { type: "closeDeleteDialog" }
   | { type: "startDelete" }
   | { type: "finishDeleteSuccess" }
+  | {
+      type: "cancelDelete";
+      selectedShiftIds: string[];
+    }
   | {
       type: "finishDeleteFailure";
       selectedShiftIds: string[];
@@ -312,6 +314,13 @@ function shiftListReducer(
         deleteDialogOpen: false,
         isDeleting: false,
         deleteErrorMessage: null,
+      };
+    case "cancelDelete":
+      return {
+        ...state,
+        isDeleting: false,
+        deleteErrorMessage: null,
+        selectedShiftIds: action.selectedShiftIds,
       };
     case "finishDeleteFailure":
       return {
@@ -743,6 +752,16 @@ export function ShiftListPageClient({
 }: ShiftListPageClientProps) {
   const router = useRouter();
   const queryClient = useQueryClient();
+  const isMountedRef = useRef(false);
+
+  useEffect(() => {
+    isMountedRef.current = true;
+
+    return () => {
+      isMountedRef.current = false;
+    };
+  }, []);
+
   const { schedule: scheduleUndoableAction } = useUndoableAction();
   const [state, dispatch] = useReducer(
     shiftListReducer,
@@ -886,26 +905,10 @@ export function ShiftListPageClient({
         throw new Error(resolved.message);
       }
 
-      const payload = (await response.json().catch(() => null)) as {
-        deletedCount?: number;
-      } | null;
-
-      const deletedCount = payload?.deletedCount ?? shiftIds.length;
-      const syncState = parseGoogleSyncStateFromPayload(
-        payload,
-        messages.error.calendarSyncFailed,
-      );
-
       dispatch({ type: "finishDeleteSuccess" });
       void invalidateAfterShiftMutation(queryClient, {
         mode: "background",
-      });
-
-      toast.success(messages.success.shiftDeleted, {
-        description: buildMutationSuccessDescription({
-          baseDescription: `${deletedCount}件のシフトを削除しました。`,
-          syncPending: syncState.pending,
-        }),
+        refetchType: "none",
       });
     } catch (error) {
       rollback();
@@ -924,27 +927,57 @@ export function ShiftListPageClient({
     }
   }
 
-  function handleBulkDelete() {
+  async function handleBulkDelete() {
     if (selectedShiftIds.length === 0 || state.isDeleting) return;
+
     const shiftIds = selectedShiftIds;
+    dispatch({ type: "startDelete" });
+
+    try {
+      await queryClient.cancelQueries({ queryKey: ["shifts", "month"] });
+    } catch (error) {
+      console.error("failed to cancel month shift queries", { error });
+      if (isMountedRef.current) {
+        dispatch({
+          type: "cancelDelete",
+          selectedShiftIds: shiftIds,
+        });
+      }
+      return;
+    }
+
+    if (!isMountedRef.current) {
+      return;
+    }
+
     const rollback = removeShiftsFromMonthCachesOptimistically(
       queryClient,
       shiftIds,
     );
-    dispatch({ type: "startDelete" });
-    scheduleUndoableAction({
+    const isScheduled = scheduleUndoableAction({
       id: "bulk-shifts-" + shiftIds.toSorted().join("-"),
-      message: shiftIds.length + "件のシフトを削除予定にしました。",
+      message: shiftIds.length + "件のシフトを削除しました。",
       onUndo: () => {
         rollback();
-        dispatch({
-          type: "finishDeleteFailure",
-          selectedShiftIds: shiftIds,
-          message: "",
-        });
+        if (isMountedRef.current) {
+          dispatch({
+            type: "cancelDelete",
+            selectedShiftIds: shiftIds,
+          });
+        }
       },
       onCommit: () => commitBulkDelete(shiftIds, rollback),
     });
+
+    if (!isScheduled) {
+      rollback();
+      if (isMountedRef.current) {
+        dispatch({
+          type: "cancelDelete",
+          selectedShiftIds: shiftIds,
+        });
+      }
+    }
   }
 
   return (

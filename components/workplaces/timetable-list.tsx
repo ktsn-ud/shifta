@@ -1,7 +1,7 @@
 "use client";
 
 import Link from "next/link";
-import { useMemo, useState } from "react";
+import { useMemo } from "react";
 import { toast } from "sonner";
 import { buttonVariants } from "@/components/ui/button-variants";
 import { Button } from "@/components/ui/button";
@@ -23,11 +23,9 @@ import {
   TableHeader,
   TableRow,
 } from "@/components/ui/table";
-import { parseGoogleSyncStateFromPayload } from "@/lib/google-calendar/clientSync";
 import { messages, toErrorMessage } from "@/lib/messages";
 import { getBrowserQueryClient } from "@/lib/query/query-client";
 import { useUndoableAction } from "@/hooks/use-undoable-action";
-import { buildMutationSuccessDescription } from "@/lib/query/mutation-toast";
 import { invalidateAfterTimetableMutation } from "@/lib/query/invalidation";
 import {
   useWorkplaceDetailQuery,
@@ -118,7 +116,6 @@ export function TimetableList({
           "時間割一覧の取得に失敗しました。",
         )
       : null;
-  const [infoMessage, setInfoMessage] = useState<string | null>(null);
 
   const { schedule: scheduleUndoableAction } = useUndoableAction();
 
@@ -142,24 +139,12 @@ export function TimetableList({
         );
       }
 
-      const responsePayload = (await response.json()) as unknown;
-      const syncState = parseGoogleSyncStateFromPayload(
-        responsePayload,
-        messages.error.calendarSyncFailed,
-      );
-
       await invalidateAfterTimetableMutation(queryClient, workplaceId);
       queryClient.setQueryData<TimetableSet[]>(
         queryKeys.workplaces.timetables({ workplaceId }),
         (current) =>
           (current ?? []).filter((set) => set.id !== deletingTarget.id),
       );
-      setInfoMessage("時間割セットを削除しました。");
-      toast.success(messages.success.timetableDeleted, {
-        description: buildMutationSuccessDescription({
-          syncPending: syncState.pending,
-        }),
-      });
     } catch (error) {
       console.error("failed to delete timetable set", error);
       const message = toErrorMessage(
@@ -214,12 +199,6 @@ export function TimetableList({
           )}
         </div>
       </header>
-
-      {infoMessage ? (
-        <p className="rounded-md border border-emerald-700/30 bg-emerald-700/5 px-3 py-2 text-sm text-emerald-800">
-          {infoMessage}
-        </p>
-      ) : null}
 
       {errorMessage ? (
         <p className="rounded-md border border-destructive/40 bg-destructive/5 px-3 py-2 text-sm text-destructive">
@@ -330,7 +309,7 @@ export function TimetableList({
                         );
                         scheduleUndoableAction({
                           id: "timetable-" + set.id,
-                          message: set.name + " を削除予定にしました。",
+                          message: set.name + " を削除しました。",
                           onUndo: () =>
                             queryClient.setQueryData(
                               queryKeys.workplaces.timetables({ workplaceId }),

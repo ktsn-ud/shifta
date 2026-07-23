@@ -1,7 +1,7 @@
 "use client";
 
 import Link from "next/link";
-import { useMemo, useState } from "react";
+import { useMemo } from "react";
 import { toast } from "sonner";
 import { buttonVariants } from "@/components/ui/button-variants";
 import { Button } from "@/components/ui/button";
@@ -24,11 +24,9 @@ import {
   TableRow,
 } from "@/components/ui/table";
 import { dateKeyFromApiDate } from "@/lib/calendar/date";
-import { parseGoogleSyncStateFromPayload } from "@/lib/google-calendar/clientSync";
 import { messages, toErrorMessage } from "@/lib/messages";
 import { getBrowserQueryClient } from "@/lib/query/query-client";
 import { useUndoableAction } from "@/hooks/use-undoable-action";
-import { buildMutationSuccessDescription } from "@/lib/query/mutation-toast";
 import { invalidateAfterPayrollRuleMutation } from "@/lib/query/invalidation";
 import {
   useWorkplaceDetailQuery,
@@ -159,9 +157,7 @@ export function PayrollRuleList({
     : rulesQuery.error
       ? toErrorMessage(rulesQuery.error, "給与ルール一覧の取得に失敗しました。")
       : null;
-  const [infoMessage, setInfoMessage] = useState<string | null>(
-    initialInfoMessage ?? null,
-  );
+  const infoMessage = initialInfoMessage ?? null;
 
   const { schedule: scheduleUndoableAction } = useUndoableAction();
 
@@ -186,24 +182,12 @@ export function PayrollRuleList({
         );
       }
 
-      const responsePayload = (await response.json()) as unknown;
-      const syncState = parseGoogleSyncStateFromPayload(
-        responsePayload,
-        messages.error.calendarSyncFailed,
-      );
-
       await invalidateAfterPayrollRuleMutation(queryClient, workplaceId);
       queryClient.setQueryData<PayrollRule[]>(
         queryKeys.workplaces.payrollRules({ workplaceId }),
         (current) =>
           (current ?? []).filter((rule) => rule.id !== deletingRule.id),
       );
-      setInfoMessage("給与ルールを削除しました。");
-      toast.success(messages.success.payrollRuleDeleted, {
-        description: buildMutationSuccessDescription({
-          syncPending: syncState.pending,
-        }),
-      });
     } catch (error) {
       console.error("failed to delete payroll rule", error);
       const message = toErrorMessage(
@@ -372,7 +356,7 @@ export function PayrollRuleList({
                                 );
                                 scheduleUndoableAction({
                                   id: "payroll-rule-" + rule.id,
-                                  message: "給与ルールを削除予定にしました。",
+                                  message: "給与ルールを削除しました。",
                                   onUndo: () =>
                                     queryClient.setQueryData(
                                       queryKeys.workplaces.payrollRules({

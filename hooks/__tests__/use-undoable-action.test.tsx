@@ -33,14 +33,14 @@ describe("useUndoableAction", () => {
     act(() => {
       result.current.schedule({
         id: "shift-1",
-        message: "シフトを削除予定にしました。",
+        message: "シフトを削除しました。",
         onCommit,
         onUndo,
       });
     });
 
     expect(onCommit).not.toHaveBeenCalled();
-    expect(toastMock).toHaveBeenCalledWith("シフトを削除予定にしました。", {
+    expect(toastMock).toHaveBeenCalledWith("シフトを削除しました。", {
       duration: 4000,
       action: expect.objectContaining({ label: "元に戻す" }),
     });
@@ -65,7 +65,7 @@ describe("useUndoableAction", () => {
     act(() => {
       result.current.schedule({
         id: "shift-1",
-        message: "シフトを削除予定にしました。",
+        message: "シフトを削除しました。",
         onCommit,
         onUndo,
       });
@@ -91,7 +91,7 @@ describe("useUndoableAction", () => {
     act(() => {
       result.current.schedule({
         id: "pending-shift",
-        message: "シフトを削除予定にしました。",
+        message: "シフトを削除しました。",
         onCommit: pendingCommit,
         onUndo: pendingUndo,
       });
@@ -109,7 +109,7 @@ describe("useUndoableAction", () => {
     act(() => {
       committedResult.current.schedule({
         id: "committed-shift",
-        message: "シフトを削除予定にしました。",
+        message: "シフトを削除しました。",
         onCommit: jest.fn(),
         onUndo: committedUndo,
       });
@@ -126,7 +126,7 @@ describe("useUndoableAction", () => {
     act(() => {
       undoneResult.current.schedule({
         id: "undone-shift",
-        message: "シフトを削除予定にしました。",
+        message: "シフトを削除しました。",
         onCommit: jest.fn(),
         onUndo: undoneUndo,
       });

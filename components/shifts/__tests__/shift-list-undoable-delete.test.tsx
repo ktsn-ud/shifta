@@ -40,6 +40,7 @@ describe("ShiftListPageClient Undo deletion", () => {
     jest.useFakeTimers();
     mockToast.mockClear();
     mockToast.dismiss.mockClear();
+    mockToast.success.mockClear();
     Object.defineProperty(globalThis, "fetch", {
       writable: true,
       value: jest.fn(async (input: string) => {
@@ -140,7 +141,7 @@ describe("ShiftListPageClient Undo deletion", () => {
     await waitFor(() => expect(findRowByWorkplace("勤務先A")).toBeUndefined());
     expect(findRowByWorkplace("勤務先B")).toBeInTheDocument();
     expect(mockToast).toHaveBeenCalledWith(
-      "1件のシフトを削除予定にしました。",
+      "1件のシフトを削除しました。",
       expect.objectContaining({
         action: expect.objectContaining({ label: "元に戻す" }),
       }),
@@ -158,5 +159,244 @@ describe("ShiftListPageClient Undo deletion", () => {
     await waitFor(() => expect(getTargetRow()).toBeInTheDocument());
     expect(findRowByWorkplace("勤務先B")).toBeInTheDocument();
     expect(deleteCalls).toHaveLength(0);
+  });
+  it("waits for month-query cancellation before removing selected shifts", async () => {
+    const user = userEvent.setup({ advanceTimers: jest.advanceTimersByTime });
+    const queryClient = createQueryClient();
+    let resolveCancellation!: () => void;
+    jest.spyOn(queryClient, "cancelQueries").mockImplementation(
+      () =>
+        new Promise<void>((resolve) => {
+          resolveCancellation = resolve;
+        }),
+    );
+
+    render(
+      <QueryClientProvider client={queryClient}>
+        <ShiftListPageClient
+          currentUserId="user-test"
+          initialMonth="2026-03"
+          initialMonthShifts={[]}
+          initialMonthStartDate="2026-02-01"
+          initialMonthEndDate="2026-02-28"
+          todayDate="2026-03-15"
+        />
+      </QueryClientProvider>,
+    );
+
+    const getTargetRow = () =>
+      screen
+        .getAllByRole("row")
+        .find((row) => within(row).queryByText("勤務先A"));
+
+    await waitFor(() => expect(getTargetRow()).toBeInTheDocument());
+    await user.click(
+      within(getTargetRow() as HTMLElement).getByRole("checkbox"),
+    );
+    await user.click(
+      screen.getByRole("button", { name: "選択したシフトを削除" }),
+    );
+
+    expect(getTargetRow()).toBeInTheDocument();
+    expect(mockToast).not.toHaveBeenCalled();
+
+    await act(async () => {
+      resolveCancellation();
+      await Promise.resolve();
+    });
+
+    await waitFor(() => expect(getTargetRow()).toBeUndefined());
+    expect(mockToast).toHaveBeenCalledWith(
+      "1件のシフトを削除しました。",
+      expect.objectContaining({
+        action: expect.objectContaining({ label: "元に戻す" }),
+      }),
+    );
+  });
+
+  it("does not schedule deletion after unmounting during month-query cancellation", async () => {
+    const user = userEvent.setup({ advanceTimers: jest.advanceTimersByTime });
+    const queryClient = createQueryClient();
+    let resolveCancellation!: () => void;
+    jest.spyOn(queryClient, "cancelQueries").mockImplementation(
+      () =>
+        new Promise<void>((resolve) => {
+          resolveCancellation = resolve;
+        }),
+    );
+
+    const { unmount } = render(
+      <QueryClientProvider client={queryClient}>
+        <ShiftListPageClient
+          currentUserId="user-test"
+          initialMonth="2026-03"
+          initialMonthShifts={[]}
+          initialMonthStartDate="2026-02-01"
+          initialMonthEndDate="2026-02-28"
+          todayDate="2026-03-15"
+        />
+      </QueryClientProvider>,
+    );
+
+    const getTargetRow = () =>
+      screen
+        .getAllByRole("row")
+        .find((row) => within(row).queryByText("勤務先A"));
+
+    await waitFor(() => expect(getTargetRow()).toBeInTheDocument());
+    await user.click(
+      within(getTargetRow() as HTMLElement).getByRole("checkbox"),
+    );
+    await user.click(
+      screen.getByRole("button", { name: "選択したシフトを削除" }),
+    );
+
+    unmount();
+    await act(async () => {
+      resolveCancellation();
+      await Promise.resolve();
+      jest.advanceTimersByTime(4000);
+    });
+
+    const cachedShiftIds = queryClient
+      .getQueriesData<{ id: string }[]>({ queryKey: ["shifts", "month"] })
+      .flatMap(([, shifts]) => shifts?.map((shift) => shift.id) ?? []);
+    expect(cachedShiftIds).toContain("shift-1");
+    expect(mockToast).not.toHaveBeenCalled();
+    const deleteCalls = (globalThis.fetch as jest.Mock).mock.calls.filter(
+      ([url, init]) => url === "/api/shifts" && init?.method === "DELETE",
+    );
+    expect(deleteCalls).toHaveLength(0);
+  });
+
+  it("restores the selection state when month-query cancellation fails", async () => {
+    const user = userEvent.setup({ advanceTimers: jest.advanceTimersByTime });
+    const queryClient = createQueryClient();
+    jest
+      .spyOn(queryClient, "cancelQueries")
+      .mockRejectedValue(new Error("cancel failed"));
+
+    render(
+      <QueryClientProvider client={queryClient}>
+        <ShiftListPageClient
+          currentUserId="user-test"
+          initialMonth="2026-03"
+          initialMonthShifts={[]}
+          initialMonthStartDate="2026-02-01"
+          initialMonthEndDate="2026-02-28"
+          todayDate="2026-03-15"
+        />
+      </QueryClientProvider>,
+    );
+
+    const getTargetRow = () =>
+      screen
+        .getAllByRole("row")
+        .find((row) => within(row).queryByText("勤務先A"));
+
+    await waitFor(() => expect(getTargetRow()).toBeInTheDocument());
+    await user.click(
+      within(getTargetRow() as HTMLElement).getByRole("checkbox"),
+    );
+    await user.click(
+      screen.getByRole("button", { name: "選択したシフトを削除" }),
+    );
+
+    await waitFor(() => {
+      expect(getTargetRow()).toBeInTheDocument();
+      expect(
+        screen.getByRole("button", { name: "選択したシフトを削除" }),
+      ).not.toBeDisabled();
+    });
+    expect(mockToast).not.toHaveBeenCalled();
+    const deleteCalls = (globalThis.fetch as jest.Mock).mock.calls.filter(
+      ([url, init]) => url === "/api/shifts" && init?.method === "DELETE",
+    );
+    expect(deleteCalls).toHaveLength(0);
+  });
+
+  it("keeps a deleted shift hidden when an older month response resolves afterward", async () => {
+    const user = userEvent.setup({ advanceTimers: jest.advanceTimersByTime });
+    const queryClient = createQueryClient();
+    let requestCount = 0;
+    let resolveStaleRequest!: (value: Response) => void;
+    const staleShift = {
+      id: "shift-1",
+      workplaceId: "workplace-1",
+      date: "2026-03-10T00:00:00.000Z",
+      startTime: "1970-01-01T09:00:00.000Z",
+      endTime: "1970-01-01T17:00:00.000Z",
+      breakMinutes: 0,
+      shiftType: "NORMAL",
+      comment: null,
+      googleSyncStatus: "SUCCESS",
+      googleSyncError: null,
+      googleSyncedAt: null,
+      workedMinutes: 480,
+      estimatedPay: 8000,
+      workplace: {
+        id: "workplace-1",
+        name: "勤務先A",
+        color: "#3366FF",
+        type: "GENERAL",
+      },
+      lessonRange: null,
+    };
+    (globalThis.fetch as jest.Mock).mockImplementation(
+      (input: string, init?: { method?: string }) => {
+        if (input.startsWith("/api/shifts?") && requestCount++ === 0) {
+          return Promise.resolve(response({ data: [staleShift] }));
+        }
+        if (input.startsWith("/api/shifts?")) {
+          return new Promise<Response>((resolve) => {
+            resolveStaleRequest = resolve;
+          });
+        }
+        if (input === "/api/shifts" && init?.method === "DELETE") {
+          return Promise.resolve(response({ deletedCount: 1 }));
+        }
+        throw new Error("Unexpected fetch");
+      },
+    );
+
+    render(
+      <QueryClientProvider client={queryClient}>
+        <ShiftListPageClient
+          currentUserId="user-test"
+          initialMonth="2026-03"
+          initialMonthShifts={[]}
+          initialMonthStartDate="2026-02-01"
+          initialMonthEndDate="2026-02-28"
+          todayDate="2026-03-15"
+        />
+      </QueryClientProvider>,
+    );
+
+    await waitFor(() =>
+      expect(screen.getByText("勤務先A")).toBeInTheDocument(),
+    );
+    void queryClient.invalidateQueries({ queryKey: ["shifts", "month"] });
+    await waitFor(() => expect(requestCount).toBe(2));
+
+    await user.click(screen.getAllByRole("checkbox")[1]);
+    await user.click(
+      screen.getByRole("button", { name: "選択したシフトを削除" }),
+    );
+    await waitFor(() =>
+      expect(screen.queryByText("勤務先A")).not.toBeInTheDocument(),
+    );
+
+    await act(async () => {
+      jest.advanceTimersByTime(4000);
+      await Promise.resolve();
+    });
+    resolveStaleRequest(response({ data: [staleShift] }));
+    await act(async () => {
+      await Promise.resolve();
+      await Promise.resolve();
+    });
+
+    expect(screen.queryByText("勤務先A")).not.toBeInTheDocument();
+    expect(mockToast.success).not.toHaveBeenCalled();
   });
 });
