@@ -378,16 +378,6 @@ describe("shift confirm page and card flow", () => {
     expect(toast.success).toHaveBeenCalledWith("シフトを確定しました。");
   });
 
-  it("navigates to the edit page from the detail edit action", async () => {
-    const user = userEvent.setup();
-
-    render(<ConfirmShiftCard shift={createUnconfirmedShift()} />);
-
-    await user.click(screen.getByRole("button", { name: "詳細を編集" }));
-
-    expect(pushMock).toHaveBeenCalledWith("/my/shifts/shift-1/edit");
-  });
-
   it("shows success toast without waiting for post-confirm reload", async () => {
     const user = userEvent.setup();
     const fetchMock = globalThis.fetch as jest.Mock;

@@ -2,7 +2,7 @@
 
 import { useRef, useState } from "react";
 import { useRouter } from "next/navigation";
-import { CheckIcon, PencilIcon } from "lucide-react";
+import { CheckIcon } from "lucide-react";
 import { toast } from "sonner";
 import { TIME_ONLY_REGEX } from "@/lib/api/date-time";
 import {
@@ -329,16 +329,6 @@ function ConfirmShiftCardContent({
               >
                 <CheckIcon data-icon="inline-start" />
                 {isConfirming ? "確定中..." : "確定"}
-              </Button>
-              <Button
-                type="button"
-                variant="outline"
-                className="w-full lg:w-auto"
-                disabled={isMutating}
-                onClick={() => router.push(`/my/shifts/${shift.id}/edit`)}
-              >
-                <PencilIcon data-icon="inline-start" />
-                詳細を編集
               </Button>
             </div>
           </div>
