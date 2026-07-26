@@ -19,6 +19,10 @@ import { LoadingOverlay } from "@/components/ui/loading-overlay";
 import { WorkplaceContextBreadcrumb } from "@/components/workplaces/workplace-context-breadcrumb";
 import { RadioGroup, RadioGroupItem } from "@/components/ui/radio-group";
 import { useResetOnRouteHidden } from "@/hooks/use-reset-on-route-hidden";
+import {
+  createPayrollRuleAction,
+  updatePayrollRuleAction,
+} from "@/lib/actions/workplace";
 import { dateKeyFromApiDate } from "@/lib/calendar/date";
 import { formatHolidayType, formatWorkplaceType } from "@/lib/enum-labels";
 import { parseGoogleSyncStateFromPayload } from "@/lib/google-calendar/clientSync";
@@ -28,11 +32,7 @@ import { invalidateAfterPayrollRuleMutation } from "@/lib/query/invalidation";
 import { buildMutationSuccessDescription } from "@/lib/query/mutation-toast";
 import { getBrowserQueryClient } from "@/lib/query/query-client";
 import { queryKeys } from "@/lib/query/query-keys";
-import {
-  buildActionableErrorMessage,
-  classifyApiErrorKind,
-  toUserFacingMessage,
-} from "@/lib/user-facing-error";
+import { toUserFacingMessage } from "@/lib/user-facing-error";
 
 type WorkplaceType = "GENERAL" | "CRAM_SCHOOL";
 type HolidayType = "NONE" | "WEEKEND" | "HOLIDAY" | "WEEKEND_HOLIDAY";
@@ -75,11 +75,6 @@ type PayrollRuleDetail = {
   overtimePremiumRate: NumericValue;
   dailyOvertimeThreshold: NumericValue;
   holidayType: HolidayType;
-};
-
-type ParsedApiError = {
-  message: string;
-  fieldErrors: Record<string, string>;
 };
 
 type PayrollRuleFormState = {
@@ -321,72 +316,6 @@ function clearFieldError(
   return nextErrors;
 }
 
-async function parseApiError(
-  response: Response,
-  fallback: string,
-): Promise<ParsedApiError> {
-  let fieldErrors: Record<string, string> = {};
-  let code: string | null = null;
-  let requiresCalendarSetup = false;
-  let requiresSignOut = false;
-
-  try {
-    const payload = (await response.json()) as {
-      details?: unknown;
-    };
-
-    if (
-      payload.details &&
-      typeof payload.details === "object" &&
-      "fieldErrors" in payload.details
-    ) {
-      const rawFieldErrors = (payload.details as { fieldErrors?: unknown })
-        .fieldErrors;
-      if (rawFieldErrors && typeof rawFieldErrors === "object") {
-        Object.entries(rawFieldErrors).forEach(([field, detail]) => {
-          if (Array.isArray(detail) === false) {
-            return;
-          }
-
-          const firstMessage = detail.find(
-            (message): message is string =>
-              typeof message === "string" && message.length > 0,
-          );
-          if (firstMessage) {
-            fieldErrors[field] = firstMessage;
-          }
-        });
-      }
-    }
-    if (payload.details && typeof payload.details === "object") {
-      const detailsRecord = payload.details as Record<string, unknown>;
-      if (typeof detailsRecord.code === "string") {
-        code = detailsRecord.code;
-      }
-      if (detailsRecord.requiresCalendarSetup === true) {
-        requiresCalendarSetup = true;
-      }
-      if (detailsRecord.requiresSignOut === true) {
-        requiresSignOut = true;
-      }
-    }
-  } catch {
-    fieldErrors = {};
-  }
-
-  const kind = classifyApiErrorKind({
-    status: response.status,
-    code,
-    requiresCalendarSetup,
-    requiresSignOut,
-  });
-
-  return {
-    message: buildActionableErrorMessage(fallback, kind),
-    fieldErrors,
-  };
-}
-
 function toFormErrors(fieldErrors: Record<string, string>): FormErrors {
   const nextErrors: FormErrors = {};
 
@@ -398,6 +327,25 @@ function toFormErrors(fieldErrors: Record<string, string>): FormErrors {
   }
 
   return nextErrors;
+}
+
+function actionFieldErrors(details: unknown): Record<string, string> {
+  if (!details || typeof details !== "object" || !("fieldErrors" in details)) {
+    return {};
+  }
+  const fieldErrors = (details as { fieldErrors?: unknown }).fieldErrors;
+  if (!fieldErrors || typeof fieldErrors !== "object") return {};
+  return Object.entries(fieldErrors).reduce<Record<string, string>>(
+    (result, [field, messages]) => {
+      if (!Array.isArray(messages)) return result;
+      const message = messages.find(
+        (item): item is string => typeof item === "string" && item.length > 0,
+      );
+      if (message) result[field] = message;
+      return result;
+    },
+    {},
+  );
 }
 
 function validate(values: FormValues): FormErrors {
@@ -798,26 +746,24 @@ function usePayrollRuleEditorController({
     } as const;
 
     try {
-      const response = await fetch(
-        isEdit
-          ? `/api/workplaces/${workplaceId}/payroll-rules/${ruleId}`
-          : `/api/workplaces/${workplaceId}/payroll-rules`,
-        {
-          method: isEdit ? "PUT" : "POST",
-          headers: {
-            "Content-Type": "application/json",
-          },
-          body: JSON.stringify(payload),
-        },
-      );
-
-      if (response.ok === false) {
-        const parsedError = await parseApiError(
-          response,
-          isEdit
-            ? "給与ルールの更新に失敗しました。"
-            : "給与ルールの作成に失敗しました。",
+      let responsePayload;
+      if (isEdit) {
+        if (!workplaceId || !ruleId) {
+          throw new Error("給与ルールの識別子が不足しています。");
+        }
+        responsePayload = await updatePayrollRuleAction(
+          workplaceId,
+          ruleId,
+          payload,
         );
+      } else {
+        responsePayload = await createPayrollRuleAction(workplaceId, payload);
+      }
+      if (typeof responsePayload.error === "string") {
+        const parsedError = {
+          message: responsePayload.error,
+          fieldErrors: actionFieldErrors(responsePayload.details),
+        };
 
         dispatch({
           type: "setErrors",
@@ -834,7 +780,6 @@ function usePayrollRuleEditorController({
         return;
       }
 
-      const responsePayload = (await response.json()) as unknown;
       const syncState = parseGoogleSyncStateFromPayload(
         responsePayload,
         messages.error.calendarSyncFailed,

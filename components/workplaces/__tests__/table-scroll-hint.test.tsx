@@ -19,6 +19,11 @@ jest.mock("@/lib/query/query-client", () => ({
   })),
 }));
 
+jest.mock("@/lib/actions/workplace", () => ({
+  deleteWorkplaceAction: jest.fn(async () => ({})),
+  deletePayrollRuleAction: jest.fn(async () => ({})),
+}));
+
 const mockedUseWorkplacesQuery = useWorkplacesQuery as jest.MockedFunction<
   typeof useWorkplacesQuery
 >;

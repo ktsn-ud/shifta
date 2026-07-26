@@ -1,4 +1,7 @@
 import { requireCurrentUser } from "@/lib/api/current-user";
+import { updateWorkplaceRouteAction } from "@/lib/actions/workplace-core/workplace";
+import { getCachedWorkplaceDetail } from "@/lib/cache/workplace-read-cache";
+import { revalidateWorkplaceDomainTags } from "@/lib/cache/revalidate";
 import { prisma } from "@/lib/prisma";
 
 const connectionMock = jest.fn<Promise<void>, []>();
@@ -42,6 +45,7 @@ jest.mock("@/lib/prisma", () => ({
   prisma: {
     workplace: {
       findFirst: jest.fn(),
+      update: jest.fn(),
     },
   },
 }));
@@ -50,11 +54,32 @@ jest.mock("@/lib/cache/revalidate", () => ({
   revalidateWorkplaceDomainTags: jest.fn(),
 }));
 
+jest.mock("@/lib/cache/workplace-read-cache", () => ({
+  getCachedWorkplaceDetail: jest.fn(),
+}));
+
 const requireCurrentUserMock = jest.mocked(requireCurrentUser);
+const getCachedWorkplaceDetailMock = jest.mocked(getCachedWorkplaceDetail);
+const revalidateWorkplaceDomainTagsMock = jest.mocked(
+  revalidateWorkplaceDomainTags,
+);
 const prismaWorkplaceFindFirstMock = jest.mocked(prisma.workplace.findFirst);
+const prismaWorkplaceUpdateMock = jest.mocked(prisma.workplace.update);
 
 function createRequest(url: string): Request {
   return { url } as Request;
+}
+
+function createMutationRequest(body: unknown): Request {
+  return {
+    method: "POST",
+    url: "http://localhost/api/workplaces/workplace-1",
+    headers: {
+      get: (name: string) =>
+        name.toLowerCase() === "sec-fetch-site" ? "same-origin" : null,
+    },
+    text: async () => JSON.stringify(body),
+  } as unknown as Request;
 }
 
 function createUnauthorizedResponse(): Response {
@@ -75,14 +100,18 @@ function createUnauthorizedResponse(): Response {
   } as unknown as Response;
 }
 
-async function loadGet() {
+async function loadRouteModule() {
   let routeModule: typeof import("@/app/api/workplaces/[workplaceId]/route");
 
   await jest.isolateModulesAsync(async () => {
     routeModule = await import("@/app/api/workplaces/[workplaceId]/route");
   });
 
-  return routeModule!.GET;
+  return routeModule!;
+}
+
+async function loadGet() {
+  return (await loadRouteModule()).GET;
 }
 
 describe("GET /api/workplaces/[workplaceId]", () => {
@@ -95,7 +124,7 @@ describe("GET /api/workplaces/[workplaceId]", () => {
     requireCurrentUserMock.mockResolvedValue({
       user: { id: "user-1" },
     } as Awaited<ReturnType<typeof requireCurrentUser>>);
-    prismaWorkplaceFindFirstMock.mockResolvedValue({
+    getCachedWorkplaceDetailMock.mockResolvedValue({
       id: "workplace-1",
       name: "勤務先A",
       color: "#3366FF",
@@ -146,28 +175,11 @@ describe("GET /api/workplaces/[workplaceId]", () => {
         timetableSets: 0,
       },
     });
-    expect(prismaWorkplaceFindFirstMock).toHaveBeenCalledWith({
-      where: {
-        id: "workplace-1",
-        userId: "user-1",
-      },
-      select: {
-        id: true,
-        name: true,
-        type: true,
-        color: true,
-        closingDayType: true,
-        closingDay: true,
-        payday: true,
-        _count: {
-          select: {
-            shifts: true,
-            payrollRules: true,
-            timetableSets: true,
-          },
-        },
-      },
-    });
+    expect(getCachedWorkplaceDetailMock).toHaveBeenCalledWith(
+      "user-1",
+      "workplace-1",
+    );
+    expect(prismaWorkplaceFindFirstMock).not.toHaveBeenCalled();
     expect(connectionMock).toHaveBeenCalledTimes(1);
   });
 
@@ -175,7 +187,7 @@ describe("GET /api/workplaces/[workplaceId]", () => {
     requireCurrentUserMock.mockResolvedValue({
       user: { id: "user-1" },
     } as Awaited<ReturnType<typeof requireCurrentUser>>);
-    prismaWorkplaceFindFirstMock.mockResolvedValue(null);
+    getCachedWorkplaceDetailMock.mockResolvedValue(null);
 
     const GET = await loadGet();
     const response = await GET(
@@ -208,7 +220,81 @@ describe("GET /api/workplaces/[workplaceId]", () => {
     );
 
     expect(response).toBe(unauthorizedResponse);
-    expect(prismaWorkplaceFindFirstMock).not.toHaveBeenCalled();
+    expect(getCachedWorkplaceDetailMock).not.toHaveBeenCalled();
     expect(connectionMock).toHaveBeenCalledTimes(1);
+  });
+
+  it("Mutation 用 HTTP export を公開しない", async () => {
+    const routeModule = await loadRouteModule();
+
+    expect(routeModule).not.toHaveProperty("POST");
+    expect(routeModule).not.toHaveProperty("PUT");
+    expect(routeModule).not.toHaveProperty("DELETE");
+  });
+
+  it("内部 Route Action は所有外勤務先を更新しない", async () => {
+    requireCurrentUserMock.mockResolvedValue({
+      user: { id: "user-1" },
+    } as Awaited<ReturnType<typeof requireCurrentUser>>);
+    prismaWorkplaceFindFirstMock.mockResolvedValue(null);
+    const response = await updateWorkplaceRouteAction(
+      createMutationRequest({ name: "変更後" }),
+      { params: Promise.resolve({ workplaceId: "workplace-owned-by-user-2" }) },
+    );
+
+    expect(response).toBeDefined();
+    expect(response!.status).toBe(404);
+    await expect(response!.json()).resolves.toEqual({
+      error: "勤務先が見つかりません",
+    });
+  });
+
+  it("内部 Route Action は所有確認後も不正な入力を DB 更新前に拒否する", async () => {
+    requireCurrentUserMock.mockResolvedValue({
+      user: { id: "user-1" },
+    } as Awaited<ReturnType<typeof requireCurrentUser>>);
+    prismaWorkplaceFindFirstMock.mockResolvedValue({
+      id: "workplace-1",
+      closingDayType: "DAY_OF_MONTH",
+      closingDay: 15,
+      payday: 25,
+      _count: { shifts: 0, payrollRules: 0, timetableSets: 0 },
+    } as never);
+    const response = await updateWorkplaceRouteAction(
+      createMutationRequest({ name: "" }),
+      { params: Promise.resolve({ workplaceId: "workplace-1" }) },
+    );
+
+    expect(response).toBeDefined();
+    expect(response!.status).toBe(400);
+    await expect(response!.json()).resolves.toEqual(
+      expect.objectContaining({ error: "入力値が不正です" }),
+    );
+  });
+
+  it("core の更新成功は旧 revalidateTag 経路を使わない", async () => {
+    requireCurrentUserMock.mockResolvedValue({
+      user: { id: "user-1" },
+    } as Awaited<ReturnType<typeof requireCurrentUser>>);
+    prismaWorkplaceFindFirstMock.mockResolvedValue({
+      id: "workplace-1",
+      closingDayType: "DAY_OF_MONTH",
+      closingDay: 15,
+      payday: 25,
+      _count: { shifts: 0, payrollRules: 0, timetableSets: 0 },
+    } as never);
+    prismaWorkplaceUpdateMock.mockResolvedValue({
+      id: "workplace-1",
+      name: "変更後",
+    } as never);
+
+    const response = await updateWorkplaceRouteAction(
+      createMutationRequest({ name: "変更後" }),
+      { params: Promise.resolve({ workplaceId: "workplace-1" }) },
+    );
+
+    expect(response).toBeDefined();
+    expect(response!.status).toBe(200);
+    expect(revalidateWorkplaceDomainTagsMock).not.toHaveBeenCalled();
   });
 });

@@ -34,7 +34,7 @@ import {
   useWorkplacePayrollRulesQuery,
 } from "@/lib/query/queries/workplaces";
 import { queryKeys } from "@/lib/query/query-keys";
-import { resolveUserFacingErrorFromResponse } from "@/lib/user-facing-error";
+import { deletePayrollRuleAction } from "@/lib/actions/workplace";
 
 type PayrollRuleListProps = {
   workplaceId: string;
@@ -64,14 +64,6 @@ type PayrollRule = {
   dailyOvertimeThreshold: NumericValue;
   holidayType: HolidayType;
 };
-
-async function readApiErrorMessage(
-  response: Response,
-  fallback: string,
-): Promise<string> {
-  const resolved = await resolveUserFacingErrorFromResponse(response, fallback);
-  return resolved.message;
-}
 
 function toNumber(value: string | number | null): number | null {
   if (value === null) {
@@ -167,21 +159,11 @@ export function PayrollRuleList({
     rollback: () => void,
   ) => {
     try {
-      const response = await fetch(
-        `/api/workplaces/${workplaceId}/payroll-rules/${deletingRule.id}`,
-        {
-          method: "DELETE",
-        },
+      const response = await deletePayrollRuleAction(
+        workplaceId,
+        deletingRule.id,
       );
-
-      if (response.ok === false) {
-        throw new Error(
-          await readApiErrorMessage(
-            response,
-            "給与ルールの削除に失敗しました。",
-          ),
-        );
-      }
+      if (typeof response.error === "string") throw new Error(response.error);
 
       await invalidateAfterPayrollRuleMutation(queryClient, workplaceId);
       queryClient.setQueryData<PayrollRule[]>(

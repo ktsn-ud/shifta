@@ -1,3 +1,4 @@
+import "server-only";
 import { auth } from "@/lib/auth";
 import { jsonError } from "@/lib/api/http";
 import { createRequestTiming } from "@/lib/perf/request-timing";

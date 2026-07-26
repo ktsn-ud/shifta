@@ -3,16 +3,11 @@ import { Prisma } from "@/lib/generated/prisma/client";
 import { z } from "zod";
 import { requireCurrentUser } from "@/lib/api/current-user";
 import { parseTimeOnly, toMinutes, TIME_ONLY_REGEX } from "@/lib/api/date-time";
-import {
-  jsonError,
-  parseJsonBody,
-  verifyMutationRequest,
-} from "@/lib/api/http";
+import { jsonError, parseJsonBody } from "@/lib/api/http";
 import { requireOwnedWorkplace } from "@/lib/api/workplace";
 import { prisma } from "@/lib/prisma";
 import { jsonNoStore } from "@/lib/api/cache-control";
 import { buildSuccessSyncResponse } from "@/lib/google-calendar/sync-response";
-import { revalidateWorkplaceDomainTags } from "@/lib/cache/revalidate";
 
 const timetableItemSchema = z.strictObject({
   period: z.coerce.number().int().positive(),
@@ -103,7 +98,10 @@ async function findSetMeta(id: string, workplaceId: string) {
   });
 }
 
-export async function PUT(request: Request, context: Context) {
+export async function updateTimetableRouteAction(
+  request: Request,
+  context: Context,
+) {
   try {
     const current = await requireCurrentUser();
     if ("response" in current) {
@@ -199,11 +197,6 @@ export async function PUT(request: Request, context: Context) {
       return jsonError("時間割セットの更新に失敗しました", 500);
     }
 
-    revalidateWorkplaceDomainTags({
-      userId: current.user.id,
-      workplaceId,
-    });
-
     return jsonNoStore({
       data: buildSetResponse(updated),
       sync: buildSuccessSyncResponse(),
@@ -231,13 +224,8 @@ export async function PUT(request: Request, context: Context) {
   }
 }
 
-export async function DELETE(request: Request, context: Context) {
+export async function deleteTimetableRouteAction(_: Request, context: Context) {
   try {
-    const csrfError = verifyMutationRequest(request);
-    if (csrfError) {
-      return csrfError;
-    }
-
     const current = await requireCurrentUser();
     if ("response" in current) {
       return current.response;
@@ -282,11 +270,6 @@ export async function DELETE(request: Request, context: Context) {
         id,
         workplaceId,
       },
-    });
-
-    revalidateWorkplaceDomainTags({
-      userId: current.user.id,
-      workplaceId,
     });
 
     return jsonNoStore({

@@ -10,6 +10,10 @@ import userEvent from "@testing-library/user-event";
 import { ShiftListModal } from "@/components/calendar/ShiftListModal";
 import { ShiftForm } from "@/components/shifts/ShiftForm";
 import { WorkplaceForm } from "@/components/workplaces/workplace-form";
+import {
+  createWorkplaceAction,
+  updateWorkplaceAction,
+} from "@/lib/actions/workplace";
 
 const pushMock = jest.fn();
 const refreshMock = jest.fn();
@@ -50,6 +54,19 @@ jest.mock("next/navigation", () => ({
   }),
   usePathname: () => "/my",
 }));
+
+jest.mock("@/lib/actions/workplace", () => ({
+  createWorkplaceAction: jest.fn(async () => ({
+    data: {
+      id: "workplace-1",
+      type: "GENERAL",
+    },
+  })),
+  updateWorkplaceAction: jest.fn(async () => ({ data: {} })),
+}));
+
+const createWorkplaceActionMock = jest.mocked(createWorkplaceAction);
+const updateWorkplaceActionMock = jest.mocked(updateWorkplaceAction);
 
 function render(ui: ReactElement) {
   const queryClient = new QueryClient({
@@ -177,6 +194,15 @@ describe("major flow integration", () => {
     jest.useFakeTimers().setSystemTime(new Date("2026-03-15T09:00:00.000Z"));
     pushMock.mockReset();
     refreshMock.mockReset();
+    createWorkplaceActionMock.mockReset();
+    createWorkplaceActionMock.mockResolvedValue({
+      data: {
+        id: "workplace-1",
+        type: "GENERAL",
+      },
+    });
+    updateWorkplaceActionMock.mockReset();
+    updateWorkplaceActionMock.mockResolvedValue({ data: {} });
     globalThis.__majorFlowShiftBootstrapResponseInput = undefined;
     globalThis.timetableSetsData = undefined;
 
@@ -194,28 +220,6 @@ describe("major flow integration", () => {
     const user = userEvent.setup({
       advanceTimers: jest.advanceTimersByTime,
     });
-    const fetchMock = globalThis.fetch as jest.Mock;
-
-    fetchMock.mockImplementation(async (input: string, init?: RequestInit) => {
-      if (input === "/api/workplaces" && init?.method === "POST") {
-        return jsonResponse(
-          {
-            data: {
-              id: "workplace-1",
-              type: "GENERAL",
-            },
-          },
-          201,
-        );
-      }
-
-      const previewResponse = handleShiftPreviewFetch(input);
-      if (previewResponse) {
-        return previewResponse;
-      }
-
-      throw new Error("Unexpected fetch: " + input);
-    });
 
     render(<WorkplaceForm mode="create" initialRuleStartDate="2026-03-15" />);
 
@@ -231,26 +235,16 @@ describe("major flow integration", () => {
       );
     });
 
-    const postCall = fetchMock.mock.calls.find(
-      ([url, options]) =>
-        url === "/api/workplaces" &&
-        (options as RequestInit | undefined)?.method === "POST",
-    );
+    expect(createWorkplaceActionMock).toHaveBeenCalledTimes(1);
+    const [payload] = createWorkplaceActionMock.mock.calls[0] as [
+      Record<string, unknown>,
+    ];
 
-    expect(postCall).toBeTruthy();
-
-    const body = JSON.parse(
-      ((postCall?.[1] as { body?: string } | undefined)?.body ??
-        "{}") as string,
-    ) as {
-      name: string;
-      type: string;
-      initialPayrollRule?: unknown;
-    };
-
-    expect(body.name).toBe("店舗A");
-    expect(body.type).toBe("GENERAL");
-    expect(body.initialPayrollRule).toBeUndefined();
+    expect(payload).toMatchObject({
+      name: "店舗A",
+      type: "GENERAL",
+    });
+    expect(payload).not.toHaveProperty("initialPayrollRule");
   });
 
   it("creates a LESSON shift", async () => {

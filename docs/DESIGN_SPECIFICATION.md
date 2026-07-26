@@ -105,7 +105,7 @@ Browser (React UI) → Next.js Routes → Prisma ORM → Neon DB
 
 ---
 
-## 2.2 データ取得・キャッシュ戦略（2026-05 更新）
+## 2.2 データ取得・キャッシュ戦略（2026-07 更新）
 
 2026-05 のパフォーマンス改善で、読み取りキャッシュ責務を **Server Cache（Next.js Cache Components）** と **Client Cache（TanStack Query）** に整理した。
 
@@ -113,8 +113,9 @@ Browser (React UI) → Next.js Routes → Prisma ORM → Neon DB
 
 - API レスポンスは `lib/api/cache-control.ts` を経由し、機密データを含むレスポンスを `private, no-store` 中心で返却する。
 - `/my`・`/my/shifts/list` の初期月次シフト取得は `lib/shifts/month-shifts.ts` の共通 DAL で取得し、初回表示時の重複 fetch を避ける。
-- 勤務先・給与ルール・時間割の参照系は `lib/cache/workplace-read-cache.ts` で `use cache` + `cacheTag` を利用し、Mutation 時は `lib/cache/revalidate.ts` の tag invalidation で再検証する。
-- シフト系 Mutation（作成/更新/削除/確定/一括登録）でも user/workplace 領域の tag invalidation を実行し、Server Component 側の stale 表示を抑制する。
+- 勤務先・給与ルール・時間割の参照系は、ユーザーと関連 ID をキーにした serializable DTO を Server Cache（`cacheLife("max")` + tags）へ保存する。GET API は `private, no-store` のまま、このキャッシュ済み DAL を呼び出す。
+- 勤務先・給与ルール・時間割の作成/更新/削除は公開 Mutation REST Route を持たず、共通認証・既存 Zod 検証・所有確認を行う Server Action 経由で実行する。DB 更新後は `updateTag` で勤務先および給与関連タグを即時無効化する。
+- Mutation 後のクライアント整合性は、既存の React Query ドメイン単位 invalidation と Undo / Google Calendar 同期契約を維持する。Route core の `revalidateTag` は更新経路では使用しない。
 
 ### クライアント側（React Query）
 
@@ -128,8 +129,8 @@ Browser (React UI) → Next.js Routes → Prisma ORM → Neon DB
 - 初回表示時の full spinner / skeleton と、保存中の表示・操作制御は再取得時とは別の仕様として維持する。
 - Mutation 後の整合は `lib/query/invalidation.ts` のドメイン単位 invalidation で行い、手動 reload を原則廃止する。
 - 削除操作（単体シフト、選択シフト一括、勤務先、給与ルール、時間割セット）は確認ウィンドウを表示しない。削除クリック直後に対象を楽観的に表示から除去し、「削除しました」などの完了表現と4秒間の「元に戻す」アクションを持つトーストを表示する。
-- 上記トーストの期限内に「元に戻す」を選択した場合は DELETE API を呼ばず、除去した表示を復元する。期限経過後は既存 DELETE API による hard delete をバックグラウンドで実行し、成功時に追加トーストは表示しない。失敗時は表示を復元してエラー通知する。
-- シフト削除導線は月次 `shifts.month` キャッシュを楽観的に更新し、削除時には進行中の月次取得をキャンセルする。DELETE 後は月次キャッシュを即時再フェッチせず、一覧・カレンダーから除去した行が古い取得結果で再表示されないことを優先する。
+- 上記トーストの期限内に「元に戻す」を選択した場合は削除 Server Action を呼ばず、除去した表示を復元する。期限経過後は削除 Server Action による hard delete をバックグラウンドで実行し、成功時に追加トーストは表示しない。失敗時は表示を復元してエラー通知する。
+- シフト削除導線は月次 `shifts.month` キャッシュを楽観的に更新し、削除時には進行中の月次取得をキャンセルする。削除処理後は月次キャッシュを即時再フェッチせず、一覧・カレンダーから除去した行が古い取得結果で再表示されないことを優先する。
 - 日跨ぎ終了のシフト保存・確定で表示する内容確認ダイアログは削除操作とは別の仕様であり、引き続き表示する。
 - 単体シフトの登録・編集は保存成功レスポンスの `data` を使って `shifts.month` キャッシュへ即時反映し、遷移は再取得完了待ちでブロックしない。
 - 一括登録も保存成功レスポンスの `data[]` を使って `shifts.month` キャッシュへ即時反映し、複数件登録後も `/my` 遷移を重い invalidation で待たせない。
@@ -573,15 +574,15 @@ Browser (React UI) → Next.js Routes → Prisma ORM → Neon DB
 
 1. ユーザーがシフトの「削除」ボタンをクリック
 2. 対象シフトを一覧・カレンダーから楽観的に除去し、「削除しました」と4秒間の「元に戻す」アクション付きトーストを表示
-3. 期限内に「元に戻す」を選択した場合、DELETE API を呼ばずに表示を復元
-4. 期限経過後、DELETE /api/shifts/{id} をバックグラウンドで呼び出す（成功時の追加トーストは表示しない）
+3. 期限内に「元に戻す」を選択した場合、削除 Server Action を呼ばずに表示を復元
+4. 期限経過後、削除 Server Action をバックグラウンドで呼び出す（成功時の追加トーストは表示しない）
 5. サーバー側で ShiftLessonRange を DELETE → Shift を hard delete
 6. DB 削除成功後、DELETE /api/calendar-sync や Google Calendar API でイベント削除（googleEventId で識別）
-7. 削除時に進行中の月次取得をキャンセルし、DELETE 後は月次シフトを即時再フェッチしない。楽観的に除去したシフトが古い取得結果でカレンダーへ再表示されることを防ぐ。
+7. 削除時に進行中の月次取得をキャンセルし、削除処理後は月次シフトを即時再フェッチしない。楽観的に除去したシフトが古い取得結果でカレンダーへ再表示されることを防ぐ。
 
 **エラーハンドリング**
 
-- DELETE API 失敗 → 楽観的に除去したシフトを表示へ復元し、エラー通知を表示
+- 削除 Server Action 失敗 → 楽観的に除去したシフトを表示へ復元し、エラー通知を表示
 - Google Calendar API エラー → DB は既に削除済み（スタッシュして後で手動対応）
 
 ---
@@ -2432,6 +2433,7 @@ GET /api/payroll/preview-baseline?months=YYYY-MM,YYYY-MM
 # 更新履歴（git log -p 確認済み）
 
 | 日時 | 変更概要 | 具体的な変更内容 |
+| 2026-07-26 00:00:00 +0000 | 長寿命 Server Cache と Server Action 更新経路を反映 | 勤務先・給与ルール・時間割の参照を `cacheLife("max")` とタグ付き serializable DTO の Server Cache に統一し、GET API は `private, no-store` のまま cached DAL を利用する仕様へ更新。公開 Mutation REST Route と Route core の `revalidateTag` を廃止し、更新は認証・検証・所有確認付き Server Action と `updateTag` による即時無効化を正本とした。削除フローの DELETE API 記述も Server Action に置換。 |
 | 2026-07-23 00:00:00 +0000 | 再取得中の画面内通知を右下フロートへ統一 | SCR_003、SCR_007、SCR_014、給与詳細の再取得中は、既存の LoadingOverlay・`aria-busy=true`・操作制御を維持したまま、画面内の「最新データを更新中...」通知を右下の非操作型スピナーと「更新中」フロートへ統一。初期ロードと保存中は別仕様として維持する。 |
 | 2026-07-23 00:00:00 +0000 | ダッシュボード再取得UIをフローティング表示へ変更 | SCR_003 の月切替・再取得中は、カレンダーを表示・操作可能なまま右下のスピナーと「更新中」をフローティング表示する仕様へ変更。`aria-busy=true` は維持し、他画面の再取得中オーバーレイ方針は継続する。 |
 | 2026-07-23 00:00:00 +0000 | Undo 削除の完了表示とシフト再表示防止を更新 | 削除クリック直後の4秒 Undo トーストを「削除しました」などの完了表現に統一し、期限経過後の hard delete は成功時に追加トーストを表示せずバックグラウンドで確定する仕様へ更新。シフト削除では進行中の月次取得をキャンセルし、DELETE 後に月次キャッシュを即時再フェッチしないことで、楽観的に除去したシフトの再表示を防ぐ。Undo と DELETE 失敗時の表示復元は維持。 |
