@@ -5,6 +5,8 @@ services:
       dockerfile: docker/Dockerfile
     container_name: codex-sandbox
     working_dir: /workspace
+    security_opt:
+      - seccomp:unconfined
 
     volumes:
       - ../:/workspace
