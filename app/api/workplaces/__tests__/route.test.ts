@@ -1,4 +1,5 @@
 import { requireCurrentUser } from "@/lib/api/current-user";
+import { getCachedWorkplaces } from "@/lib/cache/workplace-read-cache";
 import { prisma } from "@/lib/prisma";
 
 const connectionMock = jest.fn<Promise<void>, []>();
@@ -50,7 +51,12 @@ jest.mock("@/lib/cache/revalidate", () => ({
   revalidateWorkplaceDomainTags: jest.fn(),
 }));
 
+jest.mock("@/lib/cache/workplace-read-cache", () => ({
+  getCachedWorkplaces: jest.fn(),
+}));
+
 const requireCurrentUserMock = jest.mocked(requireCurrentUser);
+const getCachedWorkplacesMock = jest.mocked(getCachedWorkplaces);
 const prismaWorkplaceFindManyMock = jest.mocked(prisma.workplace.findMany);
 
 function createRequest(url: string): Request {
@@ -75,14 +81,18 @@ function createUnauthorizedResponse(): Response {
   } as unknown as Response;
 }
 
-async function loadGet() {
+async function loadRouteModule() {
   let routeModule: typeof import("@/app/api/workplaces/route");
 
   await jest.isolateModulesAsync(async () => {
     routeModule = await import("@/app/api/workplaces/route");
   });
 
-  return routeModule!.GET;
+  return routeModule!;
+}
+
+async function loadGet() {
+  return (await loadRouteModule()).GET;
 }
 
 describe("GET /api/workplaces", () => {
@@ -95,12 +105,15 @@ describe("GET /api/workplaces", () => {
     requireCurrentUserMock.mockResolvedValue({
       user: { id: "user-1" },
     } as Awaited<ReturnType<typeof requireCurrentUser>>);
-    prismaWorkplaceFindManyMock.mockResolvedValue([
+    getCachedWorkplacesMock.mockResolvedValue([
       {
         id: "workplace-1",
         name: "勤務先A",
         color: "#3366FF",
         type: "GENERAL",
+        closingDayType: "DAY_OF_MONTH",
+        closingDay: 15,
+        payday: 25,
         _count: {
           shifts: 2,
           payrollRules: 3,
@@ -134,6 +147,9 @@ describe("GET /api/workplaces", () => {
         name: "勤務先A",
         color: "#3366FF",
         type: "GENERAL",
+        closingDayType: "DAY_OF_MONTH",
+        closingDay: 15,
+        payday: 25,
         _count: {
           shifts: 2,
           payrollRules: 3,
@@ -141,32 +157,29 @@ describe("GET /api/workplaces", () => {
         },
       },
     ]);
-    expect(prismaWorkplaceFindManyMock).toHaveBeenCalledWith({
-      where: { userId: "user-1" },
-      include: {
-        _count: {
-          select: {
-            shifts: true,
-            payrollRules: true,
-            timetableSets: true,
-          },
-        },
-      },
-      orderBy: { createdAt: "desc" },
-    });
+    expect(getCachedWorkplacesMock).toHaveBeenCalledWith("user-1");
+    expect(prismaWorkplaceFindManyMock).not.toHaveBeenCalled();
     expect(connectionMock).toHaveBeenCalledTimes(1);
   });
 
-  it("includeCounts=false なら軽量 select で返す", async () => {
+  it("includeCounts=false でも cached DAL を使い count を除外して no-store で返す", async () => {
     requireCurrentUserMock.mockResolvedValue({
       user: { id: "user-1" },
     } as Awaited<ReturnType<typeof requireCurrentUser>>);
-    prismaWorkplaceFindManyMock.mockResolvedValue([
+    getCachedWorkplacesMock.mockResolvedValue([
       {
         id: "workplace-2",
         name: "勤務先B",
         color: "#FF6633",
         type: "CRAM_SCHOOL",
+        closingDayType: "END_OF_MONTH",
+        closingDay: null,
+        payday: 25,
+        _count: {
+          shifts: 4,
+          payrollRules: 2,
+          timetableSets: 1,
+        },
       },
     ] as never);
 
@@ -176,6 +189,9 @@ describe("GET /api/workplaces", () => {
     );
 
     expect(response.status).toBe(200);
+    expect(response.headers.get("cache-control")).toBe(
+      "private, no-store, no-cache, must-revalidate",
+    );
     await expect(response.json()).resolves.toEqual({
       data: [
         {
@@ -186,16 +202,8 @@ describe("GET /api/workplaces", () => {
         },
       ],
     });
-    expect(prismaWorkplaceFindManyMock).toHaveBeenCalledWith({
-      where: { userId: "user-1" },
-      select: {
-        id: true,
-        name: true,
-        color: true,
-        type: true,
-      },
-      orderBy: { createdAt: "desc" },
-    });
+    expect(getCachedWorkplacesMock).toHaveBeenCalledWith("user-1");
+    expect(prismaWorkplaceFindManyMock).not.toHaveBeenCalled();
   });
 
   it("未認証時は current-user の response をそのまま返す", async () => {
@@ -210,7 +218,15 @@ describe("GET /api/workplaces", () => {
     );
 
     expect(response).toBe(unauthorizedResponse);
-    expect(prismaWorkplaceFindManyMock).not.toHaveBeenCalled();
+    expect(getCachedWorkplacesMock).not.toHaveBeenCalled();
     expect(connectionMock).toHaveBeenCalledTimes(1);
+  });
+
+  it("Mutation 用 HTTP export を公開しない", async () => {
+    const routeModule = await loadRouteModule();
+
+    expect(routeModule).not.toHaveProperty("POST");
+    expect(routeModule).not.toHaveProperty("PUT");
+    expect(routeModule).not.toHaveProperty("DELETE");
   });
 });

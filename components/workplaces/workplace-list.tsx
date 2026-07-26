@@ -30,7 +30,7 @@ import { useUndoableAction } from "@/hooks/use-undoable-action";
 import { invalidateAfterWorkplaceMutation } from "@/lib/query/invalidation";
 import { useWorkplacesQuery } from "@/lib/query/queries/workplaces";
 import { queryKeys } from "@/lib/query/query-keys";
-import { resolveUserFacingErrorFromResponse } from "@/lib/user-facing-error";
+import { deleteWorkplaceAction } from "@/lib/actions/workplace";
 
 type WorkplaceType = "GENERAL" | "CRAM_SCHOOL";
 
@@ -73,14 +73,6 @@ type WorkplaceTableRowActionsProps = {
   workplace: Workplace;
   onRequestDelete: (workplaceId: string) => void;
 };
-
-async function readApiErrorMessage(
-  response: Response,
-  fallback: string,
-): Promise<string> {
-  const resolved = await resolveUserFacingErrorFromResponse(response, fallback);
-  return resolved.message;
-}
 
 function WorkplaceListHeader({ createHref }: WorkplaceListHeaderProps) {
   return (
@@ -295,15 +287,8 @@ export function WorkplaceList({
     rollback: () => void,
   ) => {
     try {
-      const response = await fetch(`/api/workplaces/${deletingTarget.id}`, {
-        method: "DELETE",
-      });
-
-      if (response.ok === false) {
-        throw new Error(
-          await readApiErrorMessage(response, "勤務先の削除に失敗しました。"),
-        );
-      }
+      const response = await deleteWorkplaceAction(deletingTarget.id);
+      if (typeof response.error === "string") throw new Error(response.error);
 
       await invalidateAfterWorkplaceMutation(queryClient);
       queryClient.setQueryData<Workplace[]>(
