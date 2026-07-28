@@ -275,10 +275,10 @@ function ConfirmShiftCardContent({
         </CardHeader>
 
         <CardContent className="flex flex-col gap-4">
-          <div className="grid grid-cols-2 gap-3 lg:grid-cols-[minmax(0,1fr)_minmax(0,1fr)_minmax(0,1fr)_auto]">
+          <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-[minmax(0,1fr)_minmax(0,1fr)_minmax(0,1fr)_auto]">
             <label
               htmlFor={startTimeInputId}
-              className="flex flex-col gap-1 text-sm"
+              className="flex min-w-0 flex-col gap-1 text-sm"
             >
               開始時刻
               <Input
@@ -292,7 +292,7 @@ function ConfirmShiftCardContent({
 
             <label
               htmlFor={endTimeInputId}
-              className="flex flex-col gap-1 text-sm"
+              className="flex min-w-0 flex-col gap-1 text-sm"
             >
               終了時刻
               <Input
@@ -306,7 +306,7 @@ function ConfirmShiftCardContent({
 
             <label
               htmlFor={breakMinutesInputId}
-              className="flex flex-col gap-1 text-sm"
+              className="flex min-w-0 flex-col gap-1 text-sm"
             >
               休憩時間（分）
               <Input
