@@ -26,11 +26,12 @@ import {
   type WorkplaceEditDetailItem,
   useWorkplaceEditDetailQuery,
 } from "@/lib/query/queries/workplaces";
-import {
-  resolveUserFacingErrorFromResponse,
-  toUserFacingMessage,
-} from "@/lib/user-facing-error";
+import { toUserFacingMessage } from "@/lib/user-facing-error";
 import { useResetOnRouteHidden } from "@/hooks/use-reset-on-route-hidden";
+import {
+  createWorkplaceAction,
+  updateWorkplaceAction,
+} from "@/lib/actions/workplace";
 
 const colorRegex = /^#[0-9A-Fa-f]{6}$/;
 const PAYROLL_DAY_MIN = 1;
@@ -215,14 +216,6 @@ function createEditWorkplaceFormSeed(
     createInitialRule: false,
     initialRuleValues: createInitialRuleValues(initialRuleStartDate),
   };
-}
-
-async function readApiErrorMessage(
-  response: Response,
-  fallback: string,
-): Promise<string> {
-  const resolved = await resolveUserFacingErrorFromResponse(response, fallback);
-  return resolved.message;
 }
 
 function validate(
@@ -1033,34 +1026,23 @@ function WorkplaceEditorForm({
         };
       }
 
-      const response = await fetch(
-        isEdit ? `/api/workplaces/${workplaceId}` : "/api/workplaces",
-        {
-          method: isEdit ? "PUT" : "POST",
-          headers: {
-            "Content-Type": "application/json",
-          },
-          body: JSON.stringify(payload),
-        },
-      );
-
-      if (response.ok === false) {
-        throw new Error(
-          await readApiErrorMessage(
-            response,
-            isEdit
-              ? "勤務先の更新に失敗しました。"
-              : "勤務先の作成に失敗しました。",
-          ),
-        );
+      let actionResult;
+      if (isEdit) {
+        if (!workplaceId) {
+          throw new Error("勤務先の識別子が不足しています。");
+        }
+        actionResult = await updateWorkplaceAction(workplaceId, payload);
+      } else {
+        actionResult = await createWorkplaceAction(payload);
       }
-
-      const responsePayload = (await response.json()) as {
+      const responsePayload = actionResult as {
+        error?: string;
         data?: {
           id?: string;
           type?: WorkplaceType;
         };
       };
+      if (responsePayload.error) throw new Error(responsePayload.error);
       const syncState = parseGoogleSyncStateFromPayload(
         responsePayload,
         messages.error.calendarSyncFailed,

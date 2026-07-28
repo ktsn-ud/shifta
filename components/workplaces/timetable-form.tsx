@@ -25,6 +25,10 @@ import { LoadingOverlay } from "@/components/ui/loading-overlay";
 import { WorkplaceContextBreadcrumb } from "@/components/workplaces/workplace-context-breadcrumb";
 import { SpinnerPanel } from "@/components/ui/spinner";
 import { useResetOnRouteHidden } from "@/hooks/use-reset-on-route-hidden";
+import {
+  createTimetableAction,
+  updateTimetableAction,
+} from "@/lib/actions/workplace";
 import { parseGoogleSyncStateFromPayload } from "@/lib/google-calendar/clientSync";
 import { messages, toErrorMessage } from "@/lib/messages";
 import { fetchJson } from "@/lib/query/fetch-json";
@@ -32,10 +36,7 @@ import { invalidateAfterTimetableMutation } from "@/lib/query/invalidation";
 import { buildMutationSuccessDescription } from "@/lib/query/mutation-toast";
 import { getBrowserQueryClient } from "@/lib/query/query-client";
 import { queryKeys } from "@/lib/query/query-keys";
-import {
-  resolveUserFacingErrorFromResponse,
-  toUserFacingMessage,
-} from "@/lib/user-facing-error";
+import { toUserFacingMessage } from "@/lib/user-facing-error";
 
 const timeRegex = /^([01]\d|2[0-3]):([0-5]\d)$/;
 
@@ -252,14 +253,6 @@ function parseTimetableSetListResponse(
   }
 
   return payload.data;
-}
-
-async function readApiErrorMessage(
-  response: Response,
-  fallback: string,
-): Promise<string> {
-  const resolved = await resolveUserFacingErrorFromResponse(response, fallback);
-  return resolved.message;
 }
 
 function toTimeOnly(value: string): string {
@@ -887,29 +880,21 @@ function useTimetableEditorController({
     );
 
     try {
-      const endpoint = isEdit
-        ? `/api/workplaces/${workplaceId}/timetables/${timetableId}`
-        : `/api/workplaces/${workplaceId}/timetables`;
-      const method = isEdit ? "PUT" : "POST";
-
-      const response = await fetch(endpoint, {
-        method,
-        headers: {
-          "Content-Type": "application/json",
-        },
-        body: JSON.stringify(payload),
-      });
-
-      if (response.ok === false) {
-        throw new Error(
-          await readApiErrorMessage(
-            response,
-            messages.error.timetableSaveFailed,
-          ),
+      let responsePayload;
+      if (isEdit) {
+        if (!timetableId) {
+          throw new Error("時間割セットの識別子が不足しています。");
+        }
+        responsePayload = await updateTimetableAction(
+          workplaceId,
+          timetableId,
+          payload,
         );
+      } else {
+        responsePayload = await createTimetableAction(workplaceId, payload);
       }
-
-      const responsePayload = (await response.json()) as unknown;
+      if (typeof responsePayload.error === "string")
+        throw new Error(responsePayload.error);
       const syncState = parseGoogleSyncStateFromPayload(
         responsePayload,
         messages.error.calendarSyncFailed,

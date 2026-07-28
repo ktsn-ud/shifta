@@ -13,6 +13,12 @@ import {
   useWorkplaceTimetablesQuery,
 } from "@/lib/query/queries/workplaces";
 import { useQuery } from "@tanstack/react-query";
+import {
+  createWorkplaceAction,
+  deleteWorkplaceAction,
+} from "@/lib/actions/workplace";
+import { getBrowserQueryClient } from "@/lib/query/query-client";
+import { useUndoableAction } from "@/hooks/use-undoable-action";
 
 const pushMock = jest.fn();
 
@@ -38,9 +44,25 @@ jest.mock("@/lib/query/queries/workplaces", () => ({
 
 jest.mock("@/lib/query/query-client", () => ({
   getBrowserQueryClient: jest.fn(() => ({
+    getQueryData: jest.fn(),
     setQueryData: jest.fn(),
     invalidateQueries: jest.fn(),
   })),
+}));
+
+jest.mock("@/lib/actions/workplace", () => ({
+  createWorkplaceAction: jest.fn(),
+  deleteWorkplaceAction: jest.fn(),
+  createPayrollRuleAction: jest.fn(),
+  updatePayrollRuleAction: jest.fn(),
+  createTimetableAction: jest.fn(),
+  updateTimetableAction: jest.fn(),
+  deleteTimetableAction: jest.fn(),
+  updateWorkplaceAction: jest.fn(),
+}));
+
+jest.mock("@/hooks/use-undoable-action", () => ({
+  useUndoableAction: jest.fn(),
 }));
 
 const mockedUseQuery = useQuery as jest.MockedFunction<typeof useQuery>;
@@ -63,6 +85,17 @@ const mockedUseWorkplaceTimetablesQuery =
   useWorkplaceTimetablesQuery as jest.MockedFunction<
     typeof useWorkplaceTimetablesQuery
   >;
+const createWorkplaceActionMock = jest.mocked(createWorkplaceAction);
+const deleteWorkplaceActionMock = jest.mocked(deleteWorkplaceAction);
+const getBrowserQueryClientMock = jest.mocked(getBrowserQueryClient);
+const useUndoableActionMock = jest.mocked(useUndoableAction);
+type ScheduledUndoableAction = Parameters<
+  ReturnType<typeof useUndoableAction>["schedule"]
+>[0];
+const scheduleUndoableActionMock = jest.fn<
+  boolean,
+  [ScheduledUndoableAction]
+>();
 
 describe("勤務先管理のP2 UX", () => {
   beforeEach(() => {
@@ -103,6 +136,18 @@ describe("勤務先管理のP2 UX", () => {
       isFetching: false,
       error: null,
     } as unknown as ReturnType<typeof useWorkplaceTimetablesQuery>);
+    createWorkplaceActionMock.mockReset();
+    deleteWorkplaceActionMock.mockReset();
+    getBrowserQueryClientMock.mockReset();
+    getBrowserQueryClientMock.mockReturnValue({
+      getQueryData: jest.fn(),
+      setQueryData: jest.fn(),
+      invalidateQueries: jest.fn(),
+    } as unknown as ReturnType<typeof getBrowserQueryClient>);
+    scheduleUndoableActionMock.mockReset();
+    useUndoableActionMock.mockReturnValue({
+      schedule: scheduleUndoableActionMock,
+    });
   });
 
   it("勤務先設定一覧の再取得中は共通更新フロートを表示する", () => {
@@ -217,14 +262,10 @@ describe("勤務先管理のP2 UX", () => {
   });
 
   it("勤務先作成時は初期給与ルールが初期状態でOFFで、作成後は給与ルール作成へ進む", async () => {
-    const originalFetch = global.fetch;
-    const fetchMock = jest.fn().mockResolvedValue({
-      ok: true,
-      json: async () => ({
-        data: { id: "workplace-1", name: "青葉塾", type: "CRAM_SCHOOL" },
-      }),
-    } as Response);
-    global.fetch = fetchMock as typeof global.fetch;
+    createWorkplaceActionMock.mockResolvedValue({
+      data: { id: "workplace-1", name: "青葉塾", type: "CRAM_SCHOOL" },
+      sync: { status: "success", pending: false },
+    });
 
     render(<WorkplaceForm mode="create" initialRuleStartDate="2026-07-01" />);
 
@@ -243,7 +284,53 @@ describe("勤務先管理のP2 UX", () => {
         "/my/workplaces/workplace-1/payroll-rules/new",
       );
     });
-    global.fetch = originalFetch;
+    expect(createWorkplaceActionMock).toHaveBeenCalledWith(
+      expect.objectContaining({ name: "青葉塾" }),
+    );
+  });
+
+  it("削除 Action が失敗したときは楽観的な勤務先一覧を復元する", async () => {
+    const workplace = {
+      id: "workplace-1",
+      name: "青葉塾",
+      type: "CRAM_SCHOOL" as const,
+      color: "#3366FF",
+      _count: { shifts: 0, payrollRules: 0, timetableSets: 0 },
+    };
+    const queryClient = {
+      getQueryData: jest.fn(() => [workplace]),
+      setQueryData: jest.fn(),
+      invalidateQueries: jest.fn(),
+    };
+    getBrowserQueryClientMock.mockReturnValue(
+      queryClient as unknown as ReturnType<typeof getBrowserQueryClient>,
+    );
+    mockedUseWorkplacesQuery.mockReturnValue({
+      data: [workplace],
+      isLoading: false,
+      isFetching: false,
+      error: null,
+    } as unknown as ReturnType<typeof useWorkplacesQuery>);
+    deleteWorkplaceActionMock.mockResolvedValue({
+      error: "削除に失敗しました",
+    });
+
+    render(
+      <WorkplaceList currentUserId="user-1" initialWorkplaces={[workplace]} />,
+    );
+    fireEvent.click(screen.getByRole("button", { name: "削除" }));
+
+    const scheduled = scheduleUndoableActionMock.mock.calls[0]?.[0];
+    expect(scheduled).toEqual(
+      expect.objectContaining({ id: "workplace-workplace-1" }),
+    );
+    await scheduled?.onCommit();
+
+    expect(deleteWorkplaceActionMock).toHaveBeenCalledWith("workplace-1");
+    expect(queryClient.setQueryData).toHaveBeenLastCalledWith(
+      expect.anything(),
+      [workplace],
+    );
   });
 
   it("給与ルールの終了日が当日まで適用されることをフォームと一覧で明示する", () => {

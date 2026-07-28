@@ -33,7 +33,7 @@ import {
   useWorkplaceTimetablesQuery,
 } from "@/lib/query/queries/workplaces";
 import { queryKeys } from "@/lib/query/query-keys";
-import { resolveUserFacingErrorFromResponse } from "@/lib/user-facing-error";
+import { deleteTimetableAction } from "@/lib/actions/workplace";
 
 type TimetableListProps = {
   workplaceId: string;
@@ -65,14 +65,6 @@ type TimetableSet = {
   updatedAt: string;
   items: TimetableItem[];
 };
-
-async function readApiErrorMessage(
-  response: Response,
-  fallback: string,
-): Promise<string> {
-  const resolved = await resolveUserFacingErrorFromResponse(response, fallback);
-  return resolved.message;
-}
 
 function toTimeOnly(value: string): string {
   const date = new Date(value);
@@ -125,20 +117,11 @@ export function TimetableList({
     rollback: () => void,
   ) => {
     try {
-      const response = await fetch(
-        `/api/workplaces/${workplaceId}/timetables/${deletingTarget.id}`,
-        {
-          method: "DELETE",
-        },
+      const response = await deleteTimetableAction(
+        workplaceId,
+        deletingTarget.id,
       );
-      if (response.ok === false) {
-        throw new Error(
-          await readApiErrorMessage(
-            response,
-            "時間割セットの削除に失敗しました。",
-          ),
-        );
-      }
+      if (typeof response.error === "string") throw new Error(response.error);
 
       await invalidateAfterTimetableMutation(queryClient, workplaceId);
       queryClient.setQueryData<TimetableSet[]>(

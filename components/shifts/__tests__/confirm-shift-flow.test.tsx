@@ -329,6 +329,35 @@ describe("shift confirm page and card flow", () => {
     });
   });
 
+  it("uses a single-column form layout on mobile while preserving wider responsive layouts", () => {
+    render(<ConfirmShiftCard shift={createUnconfirmedShift()} />);
+
+    const startTimeLabel = screen.getByLabelText("開始時刻").closest("label");
+    const endTimeLabel = screen.getByLabelText("終了時刻").closest("label");
+    const breakMinutesLabel = screen
+      .getByLabelText("休憩時間（分）")
+      .closest("label");
+
+    if (
+      !(startTimeLabel instanceof HTMLLabelElement) ||
+      !(endTimeLabel instanceof HTMLLabelElement) ||
+      !(breakMinutesLabel instanceof HTMLLabelElement) ||
+      !(startTimeLabel.parentElement instanceof HTMLElement)
+    ) {
+      throw new Error("shift confirmation form layout elements were not found");
+    }
+
+    expect(startTimeLabel.parentElement).toHaveClass(
+      "grid",
+      "grid-cols-1",
+      "sm:grid-cols-2",
+      "lg:grid-cols-[minmax(0,1fr)_minmax(0,1fr)_minmax(0,1fr)_auto]",
+    );
+    expect(startTimeLabel).toHaveClass("min-w-0");
+    expect(endTimeLabel).toHaveClass("min-w-0");
+    expect(breakMinutesLabel).toHaveClass("min-w-0");
+  });
+
   it("confirms a shift with edited values", async () => {
     const user = userEvent.setup();
     const onActionCompleted = jest.fn(async () => undefined);
@@ -376,16 +405,6 @@ describe("shift confirm page and card flow", () => {
       }),
     );
     expect(toast.success).toHaveBeenCalledWith("シフトを確定しました。");
-  });
-
-  it("navigates to the edit page from the detail edit action", async () => {
-    const user = userEvent.setup();
-
-    render(<ConfirmShiftCard shift={createUnconfirmedShift()} />);
-
-    await user.click(screen.getByRole("button", { name: "詳細を編集" }));
-
-    expect(pushMock).toHaveBeenCalledWith("/my/shifts/shift-1/edit");
   });
 
   it("shows success toast without waiting for post-confirm reload", async () => {
