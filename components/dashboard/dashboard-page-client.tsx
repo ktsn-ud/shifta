@@ -41,6 +41,7 @@ import { removeShiftsFromMonthCachesOptimistically } from "@/lib/query/optimisti
 import { getBrowserQueryClient } from "@/lib/query/query-client";
 import { toUserFacingMessage } from "@/lib/user-facing-error";
 import { usePayrollSummaryAmountQuery } from "@/lib/query/queries/payroll";
+import { useUnconfirmedShiftCountQuery } from "@/lib/query/queries/shift-confirmation";
 import { type PayrollSummaryAmountResult } from "@/lib/payroll/summary";
 import { useGoogleTokenExpiredSignOut } from "@/hooks/use-google-token-expired-signout";
 import { useUndoableAction } from "@/hooks/use-undoable-action";
@@ -56,6 +57,7 @@ type DashboardPageClientProps = {
   initialMonthStartDate: string;
   initialMonthEndDate: string;
   initialUnconfirmedShiftCount: number;
+  initialUnconfirmedShiftCountVersion: string;
   initialNextPaymentAmount: PayrollSummaryAmountResult | null;
   todayDate: string;
 };
@@ -661,6 +663,7 @@ export function DashboardPageClient({
   initialMonthStartDate,
   initialMonthEndDate,
   initialUnconfirmedShiftCount,
+  initialUnconfirmedShiftCountVersion,
   initialNextPaymentAmount,
   todayDate,
 }: DashboardPageClientProps) {
@@ -751,6 +754,13 @@ export function DashboardPageClient({
         ? initialNextPaymentAmount
         : undefined,
   });
+  const unconfirmedShiftCountQuery = useUnconfirmedShiftCountQuery({
+    userId: currentUserId,
+    initialDataVersion: initialUnconfirmedShiftCountVersion,
+    initialData: initialUnconfirmedShiftCount,
+  });
+  const unconfirmedShiftCount =
+    unconfirmedShiftCountQuery.data ?? initialUnconfirmedShiftCount;
 
   const nextPaymentAmount =
     nextPaymentSummaryQuery.data?.totalWage ??
@@ -807,9 +817,9 @@ export function DashboardPageClient({
         />
       ) : null}
 
-      {!isInitialLoading && initialUnconfirmedShiftCount > 0 ? (
+      {!isInitialLoading && unconfirmedShiftCount > 0 ? (
         <UnconfirmedShiftNotice
-          count={initialUnconfirmedShiftCount}
+          count={unconfirmedShiftCount}
           onOpenConfirmPage={() => {
             router.push("/my/shifts/confirm");
           }}
@@ -851,7 +861,9 @@ export function DashboardPageClient({
         />
       ) : null}
 
-      {isRefreshing || isNextPaymentRefreshing ? (
+      {isRefreshing ||
+      isNextPaymentRefreshing ||
+      unconfirmedShiftCountQuery.isFetching ? (
         <RefreshStatusFloating />
       ) : null}
 

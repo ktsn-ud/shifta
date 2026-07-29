@@ -1,20 +1,12 @@
-import {
-  fireEvent,
-  render,
-  screen,
-  waitFor,
-  within,
-} from "@testing-library/react";
+import { fireEvent, render, screen, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { QueryClientProvider } from "@tanstack/react-query";
 import type { ReactElement } from "react";
 import { ConfirmShiftCard } from "@/components/shifts/ConfirmShiftCard";
 import { ShiftConfirmPageClient } from "@/components/shifts/shift-confirm-page-client";
-import type {
-  ConfirmedShiftWorkplaceGroup,
-  UnconfirmedShiftItem,
-} from "@/components/shifts/shift-confirmation-types";
+import type { UnconfirmedShiftItem } from "@/components/shifts/shift-confirmation-types";
 import { getBrowserQueryClient } from "@/lib/query/query-client";
+import { queryKeys } from "@/lib/query/query-keys";
 import { toast } from "sonner";
 
 const pushMock = jest.fn();
@@ -57,9 +49,14 @@ function createUnconfirmedShift(
   };
 }
 
-function renderWithQueryProvider(ui: ReactElement) {
-  const queryClient = getBrowserQueryClient();
-  queryClient.clear();
+function renderWithQueryProvider(
+  ui: ReactElement,
+  queryClient = getBrowserQueryClient(),
+  clearQueryClient = true,
+) {
+  if (clearQueryClient) {
+    queryClient.clear();
+  }
 
   return render(
     <QueryClientProvider client={queryClient}>{ui}</QueryClientProvider>,
@@ -75,51 +72,6 @@ function createDeferred<T>() {
   return { promise, resolve };
 }
 
-function getDesktopLayoutElements() {
-  const pageSection = screen
-    .getByRole("heading", { name: "シフト確定" })
-    .closest("section");
-  const unconfirmedSection = screen
-    .getByRole("heading", { name: "未確定シフト" })
-    .closest("section");
-  const confirmedSection = screen
-    .getByRole("heading", { name: "今月の確定済みシフト" })
-    .closest("section");
-
-  if (
-    !(pageSection instanceof HTMLElement) ||
-    !(unconfirmedSection instanceof HTMLElement) ||
-    !(confirmedSection instanceof HTMLElement)
-  ) {
-    throw new Error("shift confirm layout elements were not found");
-  }
-
-  const unconfirmedListWrapper = unconfirmedSection.lastElementChild;
-  const confirmedListWrapper = confirmedSection.lastElementChild;
-  const gridWrapper = unconfirmedSection.parentElement;
-  const overlayContent = gridWrapper?.parentElement;
-  const overlayRoot = overlayContent?.parentElement;
-
-  if (
-    !(unconfirmedListWrapper instanceof HTMLElement) ||
-    !(confirmedListWrapper instanceof HTMLElement) ||
-    !(gridWrapper instanceof HTMLElement) ||
-    !(overlayContent instanceof HTMLElement) ||
-    !(overlayRoot instanceof HTMLElement)
-  ) {
-    throw new Error("shift confirm layout wrappers were not found");
-  }
-
-  return {
-    pageSection,
-    overlayRoot,
-    overlayContent,
-    gridWrapper,
-    unconfirmedListWrapper,
-    confirmedListWrapper,
-  };
-}
-
 describe("shift confirm page and card flow", () => {
   beforeEach(() => {
     pushMock.mockReset();
@@ -128,50 +80,160 @@ describe("shift confirm page and card flow", () => {
 
     Object.defineProperty(globalThis, "fetch", {
       writable: true,
-      value: jest.fn(),
+      value: jest.fn().mockResolvedValue(jsonResponse({ shifts: [] })),
     });
   });
 
-  it("loads and renders initial unconfirmed/confirmed shifts", () => {
-    const initialConfirmedShiftGroups: ConfirmedShiftWorkplaceGroup[] = [
-      {
-        workplaceId: "workplace-1",
-        workplaceName: "コンビニA",
-        workplaceColor: "#FF5733",
-        shifts: [
-          {
-            id: "shift-2",
-            date: "2026年3月6日(金)",
-            comment: null,
-            startTime: "09:00",
-            endTime: "15:00",
-            workDurationHours: 5.5,
-            wage: 6500,
-          },
-        ],
-      },
-    ];
+  it("keeps SSR cards usable while refreshing the latest unconfirmed shifts in the background", async () => {
+    const fetchMock = globalThis.fetch as jest.Mock;
+    const refresh = createDeferred<Response>();
+
+    fetchMock.mockImplementation((input: RequestInfo | URL) => {
+      if (input === "/api/shifts/unconfirmed") {
+        return refresh.promise;
+      }
+
+      throw new Error(`Unexpected fetch: ${String(input)}`);
+    });
 
     renderWithQueryProvider(
       <ShiftConfirmPageClient
         currentUserId="user-test"
         initialUnconfirmedShifts={[createUnconfirmedShift()]}
-        initialConfirmedShiftGroups={initialConfirmedShiftGroups}
+        initialUnconfirmedShiftsVersion="unconfirmed-shifts-v1"
       />,
     );
 
     expect(screen.getByDisplayValue("10:00")).toBeInTheDocument();
-    expect(screen.getByText("2026年3月6日(金)")).toBeInTheDocument();
-    expect(screen.getByText("09:00 ～ 15:00（実働5.5h）")).toBeInTheDocument();
-    expect(screen.getByText(/6,500/)).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "確定" })).toBeEnabled();
+    expect(
+      screen.queryByRole("heading", { name: "今月の確定済みシフト" }),
+    ).not.toBeInTheDocument();
+    await waitFor(() => {
+      expect(fetchMock).toHaveBeenCalledWith(
+        "/api/shifts/unconfirmed",
+        expect.anything(),
+      );
+    });
+    expect(screen.getByLabelText("更新中")).toHaveClass(
+      "fixed",
+      "pointer-events-none",
+    );
+    expect(
+      screen.queryByText("シフト確定情報を読み込み中..."),
+    ).not.toBeInTheDocument();
+
+    refresh.resolve(
+      jsonResponse({
+        shifts: [
+          {
+            id: "shift-2",
+            workplaceId: "workplace-2",
+            comment: null,
+            date: "2026-03-06",
+            startTime: "12:00",
+            endTime: "20:00",
+            breakMinutes: 60,
+            isConfirmed: false,
+            workplace: {
+              id: "workplace-2",
+              name: "書店B",
+              color: "#2563EB",
+            },
+          },
+        ],
+      }),
+    );
+
+    await waitFor(() => {
+      expect(screen.getByText("書店B")).toBeInTheDocument();
+    });
+    expect(screen.queryByText("コンビニA")).not.toBeInTheDocument();
+    expect(screen.queryByLabelText("更新中")).not.toBeInTheDocument();
   });
 
-  it("shows empty states when no initial shifts are passed", () => {
+  it("同一ユーザーの旧 cache があっても再訪時は新しい version の SSR カードを初期表示する", async () => {
+    const queryClient = getBrowserQueryClient();
+    const fetchMock = globalThis.fetch as jest.Mock;
+    const refresh = createDeferred<Response>();
+    const oldVersion = "unconfirmed-shifts-v1";
+    const revisitedVersion = "unconfirmed-shifts-v2";
+    const oldShift = createUnconfirmedShift({
+      id: "shift-old",
+      workplaceName: "古い勤務先",
+    });
+    const latestSsrShift = createUnconfirmedShift({
+      id: "shift-latest",
+      workplaceName: "新しい勤務先",
+      startTime: "12:00",
+    });
+
+    queryClient.clear();
+    queryClient.setQueryData(
+      queryKeys.shifts.unconfirmed({
+        userId: "user-test",
+        initialDataVersion: oldVersion,
+      }),
+      [oldShift],
+    );
+    fetchMock.mockImplementation((input: RequestInfo | URL) => {
+      if (input === "/api/shifts/unconfirmed") {
+        return refresh.promise;
+      }
+
+      throw new Error(`Unexpected fetch: ${String(input)}`);
+    });
+
+    const { unmount } = renderWithQueryProvider(
+      <ShiftConfirmPageClient
+        currentUserId="user-test"
+        initialUnconfirmedShifts={[latestSsrShift]}
+        initialUnconfirmedShiftsVersion={revisitedVersion}
+      />,
+      queryClient,
+      false,
+    );
+
+    expect(screen.getByText("新しい勤務先")).toBeInTheDocument();
+    expect(screen.getByDisplayValue("12:00")).toBeInTheDocument();
+    expect(screen.queryByText("古い勤務先")).not.toBeInTheDocument();
+    expect(
+      queryClient.getQueryData(
+        queryKeys.shifts.unconfirmed({
+          userId: "user-test",
+          initialDataVersion: oldVersion,
+        }),
+      ),
+    ).toEqual([oldShift]);
+    expect(
+      queryClient.getQueryData(
+        queryKeys.shifts.unconfirmed({
+          userId: "user-test",
+          initialDataVersion: revisitedVersion,
+        }),
+      ),
+    ).toEqual([latestSsrShift]);
+    await waitFor(() => {
+      expect(fetchMock).toHaveBeenCalledWith(
+        "/api/shifts/unconfirmed",
+        expect.anything(),
+      );
+    });
+
+    refresh.resolve(jsonResponse({ shifts: [] }));
+    await waitFor(() => {
+      expect(screen.queryByLabelText("更新中")).not.toBeInTheDocument();
+    });
+    unmount();
+    queryClient.clear();
+  });
+
+  it("shows the unconfirmed empty state when no initial shifts are passed", () => {
     renderWithQueryProvider(
       <ShiftConfirmPageClient
         currentUserId="user-test"
         initialUnconfirmedShifts={[]}
-        initialConfirmedShiftGroups={[]}
+        initialUnconfirmedShiftsVersion="unconfirmed-shifts-v1"
       />,
     );
 
@@ -179,76 +241,112 @@ describe("shift confirm page and card flow", () => {
       screen.getByText("未確定シフトはまだありません"),
     ).toBeInTheDocument();
     expect(
-      screen.getByText("今月の確定済みシフトはまだありません"),
-    ).toBeInTheDocument();
+      screen.queryByText("今月の確定済みシフトはまだありません"),
+    ).not.toBeInTheDocument();
   });
 
-  it("renders overnight time range in confirmed shift list", () => {
-    const initialConfirmedShiftGroups: ConfirmedShiftWorkplaceGroup[] = [
-      {
-        workplaceId: "workplace-1",
-        workplaceName: "コンビニA",
-        workplaceColor: "#FF5733",
-        shifts: [
-          {
-            id: "shift-2",
-            date: "2026年3月6日(金)",
-            comment: null,
-            startTime: "18:00",
-            endTime: "01:00",
-            workDurationHours: 6.0,
-            wage: 7200,
-          },
-        ],
-      },
-    ];
+  it("keeps card controls usable during a manual refresh", async () => {
+    const user = userEvent.setup();
+    const fetchMock = globalThis.fetch as jest.Mock;
+    const refresh = createDeferred<Response>();
+    let unconfirmedRequestCount = 0;
+
+    fetchMock.mockImplementation((input: RequestInfo | URL) => {
+      if (input === "/api/shifts/unconfirmed") {
+        unconfirmedRequestCount += 1;
+        if (unconfirmedRequestCount === 1) {
+          return Promise.resolve(
+            jsonResponse({
+              shifts: [
+                {
+                  id: "shift-1",
+                  workplaceId: "workplace-1",
+                  comment: null,
+                  date: "2026-03-05",
+                  startTime: "10:00",
+                  endTime: "18:00",
+                  breakMinutes: 60,
+                  isConfirmed: false,
+                  workplace: {
+                    id: "workplace-1",
+                    name: "コンビニA",
+                    color: "#FF5733",
+                  },
+                },
+              ],
+            }),
+          );
+        }
+        return refresh.promise;
+      }
+
+      throw new Error(`Unexpected fetch: ${String(input)}`);
+    });
 
     renderWithQueryProvider(
       <ShiftConfirmPageClient
         currentUserId="user-test"
-        initialUnconfirmedShifts={[]}
-        initialConfirmedShiftGroups={initialConfirmedShiftGroups}
+        initialUnconfirmedShifts={[createUnconfirmedShift()]}
+        initialUnconfirmedShiftsVersion="unconfirmed-shifts-v1"
       />,
     );
 
-    expect(
-      screen.getByText("18:00 ～ 翌01:00（実働6.0h）"),
-    ).toBeInTheDocument();
+    await waitFor(() => {
+      expect(fetchMock).toHaveBeenCalledWith(
+        "/api/shifts/unconfirmed",
+        expect.anything(),
+      );
+      expect(screen.getByRole("button", { name: "更新" })).toBeEnabled();
+    });
+
+    const refreshButton = screen.getByRole("button", { name: "更新" });
+    await user.click(refreshButton);
+
+    await waitFor(() => {
+      expect(unconfirmedRequestCount).toBe(2);
+    });
+    await waitFor(() => {
+      expect(refreshButton).toBeDisabled();
+      expect(screen.getByText("更新中...")).toBeInTheDocument();
+    });
+    expect(screen.getByLabelText("開始時刻")).toBeEnabled();
+    expect(screen.getByRole("button", { name: "確定" })).toBeEnabled();
+    expect(screen.queryByText("最新データを更新中...")).not.toBeInTheDocument();
+    expect(screen.queryByRole("status")).not.toBeInTheDocument();
+
+    refresh.resolve(jsonResponse({ shifts: [] }));
+
+    await waitFor(() => {
+      expect(screen.getByRole("button", { name: "更新" })).toBeEnabled();
+      expect(screen.queryByText("更新中...")).not.toBeInTheDocument();
+    });
   });
 
-  it("uses a height-constrained desktop layout with independent scroll wrappers during refresh", async () => {
+  it("does not restore a confirmed card from an in-flight refresh response", async () => {
     const user = userEvent.setup();
     const fetchMock = globalThis.fetch as jest.Mock;
-    const unconfirmedReload = createDeferred<Response>();
-    const confirmedReload = createDeferred<Response>();
+    const refresh = createDeferred<Response>();
 
     fetchMock.mockImplementation(
-      async (input: string, init?: { method?: string }) => {
+      (input: RequestInfo | URL, init?: RequestInit) => {
+        if (input === "/api/shifts/unconfirmed") {
+          return refresh.promise;
+        }
+
         if (
           input === "/api/shifts/shift-1/confirm" &&
           init?.method === "PATCH"
         ) {
-          return jsonResponse({
-            id: "shift-1",
-            workplaceId: "workplace-1",
-            isConfirmed: true,
-            date: "2026-03-05",
-            startTime: "10:00",
-            endTime: "18:00",
-            breakMinutes: 60,
-            syncStatus: "pending",
-          });
+          return Promise.resolve(
+            jsonResponse({
+              id: "shift-1",
+              isConfirmed: true,
+              syncStatus: "pending",
+            }),
+          );
         }
 
-        if (input === "/api/shifts/unconfirmed") {
-          return unconfirmedReload.promise;
-        }
-
-        if (input === "/api/shifts/confirmed-current-month") {
-          return confirmedReload.promise;
-        }
-
-        throw new Error("Unexpected fetch: " + input);
+        throw new Error(`Unexpected fetch: ${String(input)}`);
       },
     );
 
@@ -256,77 +354,184 @@ describe("shift confirm page and card flow", () => {
       <ShiftConfirmPageClient
         currentUserId="user-test"
         initialUnconfirmedShifts={[createUnconfirmedShift()]}
-        initialConfirmedShiftGroups={[]}
+        initialUnconfirmedShiftsVersion="unconfirmed-shifts-v1"
       />,
     );
 
-    const {
-      pageSection,
-      overlayRoot,
-      overlayContent,
-      gridWrapper,
-      unconfirmedListWrapper,
-      confirmedListWrapper,
-    } = getDesktopLayoutElements();
-
-    expect(pageSection).toHaveClass(
-      "md:h-[calc(100svh-var(--header-height))]",
-      "md:min-h-0",
-      "md:overflow-hidden",
-    );
-    expect(overlayRoot).toHaveClass("rounded-xl", "md:min-h-0", "md:flex-1");
-    expect(overlayContent).toHaveClass(
-      "md:flex",
-      "md:h-full",
-      "md:min-h-0",
-      "md:flex-col",
-    );
-    expect(gridWrapper).toHaveClass(
-      "md:grid",
-      "md:h-full",
-      "md:min-h-0",
-      "md:flex-1",
-      "md:grid-cols-[minmax(0,1fr)_1px_minmax(0,1fr)]",
-    );
-    expect(unconfirmedListWrapper).toHaveClass(
-      "md:min-h-0",
-      "md:flex-1",
-      "md:overflow-y-auto",
-    );
-    expect(confirmedListWrapper).toHaveClass(
-      "md:min-h-0",
-      "md:flex-1",
-      "md:overflow-y-auto",
-    );
-    expect(unconfirmedListWrapper).not.toBe(confirmedListWrapper);
+    await waitFor(() => {
+      expect(fetchMock).toHaveBeenCalledWith(
+        "/api/shifts/unconfirmed",
+        expect.anything(),
+      );
+    });
 
     await user.click(screen.getByRole("button", { name: "確定" }));
 
     await waitFor(() => {
-      expect(overlayRoot).toHaveAttribute("aria-busy", "true");
+      expect(
+        screen.getByText("未確定シフトはまだありません"),
+      ).toBeInTheDocument();
     });
 
-    const overlayPane = overlayRoot.lastElementChild;
-    if (!(overlayPane instanceof HTMLElement)) {
-      throw new Error("refresh overlay pane was not rendered");
-    }
-    expect(overlayPane).toHaveClass(
-      "absolute",
-      "inset-0",
-      "z-10",
-      "flex",
-      "items-center",
-      "justify-center",
-      "pointer-events-none",
+    refresh.resolve(
+      jsonResponse({
+        shifts: [
+          {
+            id: "shift-1",
+            workplaceId: "workplace-1",
+            comment: null,
+            date: "2026-03-05",
+            startTime: "10:00",
+            endTime: "18:00",
+            breakMinutes: 60,
+            isConfirmed: false,
+            workplace: {
+              id: "workplace-1",
+              name: "コンビニA",
+              color: "#FF5733",
+            },
+          },
+        ],
+      }),
     );
-    expect(overlayContent).not.toHaveClass("pointer-events-none");
-
-    unconfirmedReload.resolve(jsonResponse({ shifts: [] }));
-    confirmedReload.resolve(jsonResponse({ shifts: [] }));
 
     await waitFor(() => {
-      expect(overlayRoot).not.toHaveAttribute("aria-busy");
+      expect(screen.getByRole("button", { name: "更新" })).toBeEnabled();
+      expect(
+        screen.queryByRole("button", { name: "確定" }),
+      ).not.toBeInTheDocument();
     });
+    expect(
+      screen.getByText("未確定シフトはまだありません"),
+    ).toBeInTheDocument();
+  });
+
+  it("keeps the displayed cards when a manual refresh fails", async () => {
+    const user = userEvent.setup();
+    const fetchMock = globalThis.fetch as jest.Mock;
+    let unconfirmedRequestCount = 0;
+
+    fetchMock.mockImplementation((input: RequestInfo | URL) => {
+      if (input !== "/api/shifts/unconfirmed") {
+        throw new Error(`Unexpected fetch: ${String(input)}`);
+      }
+
+      unconfirmedRequestCount += 1;
+      return Promise.resolve(
+        unconfirmedRequestCount === 1
+          ? jsonResponse({
+              shifts: [
+                {
+                  id: "shift-1",
+                  workplaceId: "workplace-1",
+                  comment: null,
+                  date: "2026-03-05",
+                  startTime: "10:00",
+                  endTime: "18:00",
+                  breakMinutes: 60,
+                  isConfirmed: false,
+                  workplace: {
+                    id: "workplace-1",
+                    name: "コンビニA",
+                    color: "#FF5733",
+                  },
+                },
+              ],
+            })
+          : jsonResponse({ message: "unavailable" }, 500),
+      );
+    });
+
+    renderWithQueryProvider(
+      <ShiftConfirmPageClient
+        currentUserId="user-test"
+        initialUnconfirmedShifts={[createUnconfirmedShift()]}
+        initialUnconfirmedShiftsVersion="unconfirmed-shifts-v1"
+      />,
+    );
+
+    await waitFor(() => {
+      expect(fetchMock).toHaveBeenCalledTimes(1);
+      expect(screen.getByRole("button", { name: "更新" })).toBeEnabled();
+    });
+
+    await user.click(screen.getByRole("button", { name: "更新" }));
+
+    await waitFor(() => {
+      expect(fetchMock).toHaveBeenCalledTimes(2);
+      expect(
+        screen.getByText(/未確定シフトの取得に失敗しました/),
+      ).toBeInTheDocument();
+    });
+    expect(screen.getByDisplayValue("10:00")).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "更新" })).toBeEnabled();
+  });
+
+  it("removes a confirmed card immediately without issuing an additional unconfirmed refresh", async () => {
+    const user = userEvent.setup();
+    const fetchMock = globalThis.fetch as jest.Mock;
+    const backgroundRefresh = createDeferred<Response>();
+
+    fetchMock.mockImplementation(
+      (input: RequestInfo | URL, init?: RequestInit) => {
+        if (input === "/api/shifts/unconfirmed") {
+          return backgroundRefresh.promise;
+        }
+
+        if (
+          input === "/api/shifts/shift-1/confirm" &&
+          init?.method === "PATCH"
+        ) {
+          return Promise.resolve(
+            jsonResponse({
+              id: "shift-1",
+              isConfirmed: true,
+              date: "2026-03-05",
+              startTime: "10:00",
+              endTime: "18:00",
+              breakMinutes: 60,
+              syncStatus: "pending",
+            }),
+          );
+        }
+
+        throw new Error(`Unexpected fetch: ${String(input)}`);
+      },
+    );
+
+    renderWithQueryProvider(
+      <ShiftConfirmPageClient
+        currentUserId="user-test"
+        initialUnconfirmedShifts={[createUnconfirmedShift()]}
+        initialUnconfirmedShiftsVersion="unconfirmed-shifts-v1"
+      />,
+    );
+
+    await waitFor(() => {
+      expect(fetchMock).toHaveBeenCalledWith(
+        "/api/shifts/unconfirmed",
+        expect.anything(),
+      );
+    });
+
+    await user.click(screen.getByRole("button", { name: "確定" }));
+
+    await waitFor(() => {
+      expect(
+        screen.getByText("未確定シフトはまだありません"),
+      ).toBeInTheDocument();
+    });
+    expect(fetchMock).toHaveBeenCalledWith(
+      "/api/shifts/shift-1/confirm",
+      expect.objectContaining({ method: "PATCH" }),
+    );
+    expect(
+      fetchMock.mock.calls.filter(
+        ([input]) => input === "/api/shifts/unconfirmed",
+      ),
+    ).toHaveLength(1);
+    expect(screen.queryByText("最新データを更新中...")).not.toBeInTheDocument();
+    expect(screen.queryByRole("status")).not.toBeInTheDocument();
   });
 
   it("uses a single-column form layout on mobile while preserving wider responsive layouts", () => {
@@ -360,7 +565,7 @@ describe("shift confirm page and card flow", () => {
 
   it("confirms a shift with edited values", async () => {
     const user = userEvent.setup();
-    const onActionCompleted = jest.fn(async () => undefined);
+    const onActionCompleted = jest.fn();
     const fetchMock = globalThis.fetch as jest.Mock;
 
     fetchMock.mockResolvedValueOnce(
@@ -395,28 +600,20 @@ describe("shift confirm page and card flow", () => {
     await user.click(screen.getByRole("button", { name: "確定" }));
 
     await waitFor(() => {
-      expect(onActionCompleted).toHaveBeenCalled();
+      expect(onActionCompleted).toHaveBeenCalledWith("shift-1");
     });
 
     expect(fetchMock).toHaveBeenCalledWith(
       "/api/shifts/shift-1/confirm",
-      expect.objectContaining({
-        method: "PATCH",
-      }),
+      expect.objectContaining({ method: "PATCH" }),
     );
     expect(toast.success).toHaveBeenCalledWith("シフトを確定しました。");
   });
 
-  it("shows success toast without waiting for post-confirm reload", async () => {
+  it("reports a pending Google Calendar sync after confirmation", async () => {
     const user = userEvent.setup();
     const fetchMock = globalThis.fetch as jest.Mock;
-    let resolveReload: (() => void) | undefined;
-    const onActionCompleted = jest.fn(
-      () =>
-        new Promise<void>((resolve) => {
-          resolveReload = resolve;
-        }),
-    );
+    const onActionCompleted = jest.fn();
 
     fetchMock.mockResolvedValueOnce(
       jsonResponse({
@@ -444,23 +641,7 @@ describe("shift confirm page and card flow", () => {
         description: "Google Calendar 同期はバックグラウンドで実行中です。",
       });
     });
-    expect(onActionCompleted).toHaveBeenCalledWith({
-      shiftId: "shift-1",
-      workplaceId: "workplace-1",
-      workplaceName: "コンビニA",
-      workplaceColor: "#FF5733",
-      date: "2026年3月5日(木)",
-      startTime: "10:00",
-      endTime: "18:00",
-      comment: null,
-    });
-    expect(
-      screen.getByRole("button", {
-        name: "確定",
-      }),
-    ).toBeEnabled();
-
-    resolveReload?.();
+    expect(onActionCompleted).toHaveBeenCalledWith("shift-1");
   });
 
   it("shows overnight confirmation before confirming shift", async () => {
@@ -502,277 +683,8 @@ describe("shift confirm page and card flow", () => {
     await waitFor(() => {
       expect(fetchMock).toHaveBeenCalledWith(
         "/api/shifts/shift-1/confirm",
-        expect.objectContaining({
-          method: "PATCH",
-        }),
+        expect.objectContaining({ method: "PATCH" }),
       );
-    });
-  });
-
-  it("shows a provisional confirmed row before the background reload completes", async () => {
-    const user = userEvent.setup();
-    const fetchMock = globalThis.fetch as jest.Mock;
-    const unconfirmedReload = createDeferred<Response>();
-    const confirmedReload = createDeferred<Response>();
-
-    fetchMock.mockImplementation(
-      async (input: string, init?: { method?: string }) => {
-        if (
-          input === "/api/shifts/shift-1/confirm" &&
-          init?.method === "PATCH"
-        ) {
-          return jsonResponse({
-            id: "shift-1",
-            workplaceId: "workplace-1",
-            isConfirmed: true,
-            date: "2026-03-05",
-            startTime: "10:00",
-            endTime: "18:00",
-            breakMinutes: 60,
-            syncStatus: "pending",
-          });
-        }
-
-        if (input === "/api/shifts/unconfirmed") {
-          return unconfirmedReload.promise;
-        }
-
-        if (input === "/api/shifts/confirmed-current-month") {
-          return confirmedReload.promise;
-        }
-
-        throw new Error("Unexpected fetch: " + input);
-      },
-    );
-
-    renderWithQueryProvider(
-      <ShiftConfirmPageClient
-        currentUserId="user-test"
-        initialUnconfirmedShifts={[createUnconfirmedShift()]}
-        initialConfirmedShiftGroups={[]}
-      />,
-    );
-
-    await user.click(screen.getByRole("button", { name: "確定" }));
-
-    await waitFor(() => {
-      expect(
-        screen.getByText("未確定シフトはまだありません"),
-      ).toBeInTheDocument();
-      expect(
-        screen.getByText("10:00 ～ 18:00（実働計算中）"),
-      ).toBeInTheDocument();
-      expect(screen.getByText("計算中")).toBeInTheDocument();
-    });
-
-    unconfirmedReload.resolve(jsonResponse({ shifts: [] }));
-    confirmedReload.resolve(
-      jsonResponse({
-        shifts: [
-          {
-            id: "shift-1",
-            comment: null,
-            date: "2026-03-05",
-            startTime: "10:00",
-            endTime: "18:00",
-            breakMinutes: 60,
-            workDurationHours: 7,
-            wage: 8400,
-            isConfirmed: true,
-            workplace: {
-              id: "workplace-1",
-              name: "コンビニA",
-              color: "#FF5733",
-            },
-          },
-        ],
-      }),
-    );
-
-    await waitFor(() => {
-      expect(
-        screen.getByText("10:00 ～ 18:00（実働7.0h）"),
-      ).toBeInTheDocument();
-      expect(screen.getByText(/8,400/)).toBeInTheDocument();
-    });
-  });
-
-  it("allows confirming another shift while the background refresh overlay is visible", async () => {
-    const user = userEvent.setup();
-    const fetchMock = globalThis.fetch as jest.Mock;
-    const unconfirmedReload = createDeferred<Response>();
-    const confirmedReload = createDeferred<Response>();
-
-    fetchMock.mockImplementation(
-      async (input: string, init?: { method?: string }) => {
-        if (
-          input === "/api/shifts/shift-1/confirm" &&
-          init?.method === "PATCH"
-        ) {
-          return jsonResponse({
-            id: "shift-1",
-            workplaceId: "workplace-1",
-            isConfirmed: true,
-            date: "2026-03-05",
-            startTime: "10:00",
-            endTime: "18:00",
-            breakMinutes: 60,
-            syncStatus: "pending",
-          });
-        }
-
-        if (
-          input === "/api/shifts/shift-2/confirm" &&
-          init?.method === "PATCH"
-        ) {
-          return jsonResponse({
-            id: "shift-2",
-            workplaceId: "workplace-1",
-            isConfirmed: true,
-            date: "2026-03-06",
-            startTime: "12:00",
-            endTime: "20:00",
-            breakMinutes: 45,
-            syncStatus: "pending",
-          });
-        }
-
-        if (input === "/api/shifts/unconfirmed") {
-          return unconfirmedReload.promise;
-        }
-
-        if (input === "/api/shifts/confirmed-current-month") {
-          return confirmedReload.promise;
-        }
-
-        throw new Error("Unexpected fetch: " + input);
-      },
-    );
-
-    renderWithQueryProvider(
-      <ShiftConfirmPageClient
-        currentUserId="user-test"
-        initialUnconfirmedShifts={[
-          createUnconfirmedShift(),
-          createUnconfirmedShift({
-            id: "shift-2",
-            date: "2026年3月6日(金)",
-            startTime: "12:00",
-            endTime: "20:00",
-            breakMinutes: 45,
-          }),
-        ]}
-        initialConfirmedShiftGroups={[]}
-      />,
-    );
-
-    await user.click(screen.getAllByRole("button", { name: "確定" })[0]);
-
-    await waitFor(() => {
-      expect(
-        fetchMock.mock.calls.some(
-          ([input, init]) =>
-            input === "/api/shifts/shift-1/confirm" && init?.method === "PATCH",
-        ),
-      ).toBe(true);
-    });
-
-    await waitFor(() => {
-      expect(
-        screen.getByText("10:00 ～ 18:00（実働計算中）"),
-      ).toBeInTheDocument();
-      expect(screen.getByText("2026年3月6日(金)")).toBeInTheDocument();
-    });
-
-    const refreshingRegion = screen
-      .getByRole("heading", { name: "シフト確定" })
-      .closest("section");
-    if (!(refreshingRegion instanceof HTMLElement)) {
-      throw new Error("shift confirm page section was not found");
-    }
-    expect(refreshingRegion).toContainElement(
-      screen.getByText("最新データを更新中..."),
-    );
-
-    const unconfirmedSection = screen
-      .getByRole("heading", { name: "未確定シフト" })
-      .closest("section");
-    if (!(unconfirmedSection instanceof HTMLElement)) {
-      throw new Error("unconfirmed shifts section was not found");
-    }
-
-    await user.click(
-      within(unconfirmedSection).getByRole("button", { name: "確定" }),
-    );
-
-    await waitFor(() => {
-      expect(
-        fetchMock.mock.calls.some(
-          ([input, init]) =>
-            input === "/api/shifts/shift-2/confirm" && init?.method === "PATCH",
-        ),
-      ).toBe(true);
-    });
-
-    await waitFor(() => {
-      expect(
-        screen.getByText("12:00 ～ 20:00（実働計算中）"),
-      ).toBeInTheDocument();
-      expect(screen.getAllByText("計算中")).toHaveLength(2);
-      expect(
-        screen.getByText("未確定シフトはまだありません"),
-      ).toBeInTheDocument();
-    });
-
-    unconfirmedReload.resolve(jsonResponse({ shifts: [] }));
-    confirmedReload.resolve(
-      jsonResponse({
-        shifts: [
-          {
-            id: "shift-1",
-            comment: null,
-            date: "2026-03-05",
-            startTime: "10:00",
-            endTime: "18:00",
-            breakMinutes: 60,
-            workDurationHours: 7,
-            wage: 8400,
-            isConfirmed: true,
-            workplace: {
-              id: "workplace-1",
-              name: "コンビニA",
-              color: "#FF5733",
-            },
-          },
-          {
-            id: "shift-2",
-            comment: null,
-            date: "2026-03-06",
-            startTime: "12:00",
-            endTime: "20:00",
-            breakMinutes: 45,
-            workDurationHours: 7.25,
-            wage: 9100,
-            isConfirmed: true,
-            workplace: {
-              id: "workplace-1",
-              name: "コンビニA",
-              color: "#FF5733",
-            },
-          },
-        ],
-      }),
-    );
-
-    await waitFor(() => {
-      expect(
-        screen.getByText("10:00 ～ 18:00（実働7.0h）"),
-      ).toBeInTheDocument();
-      expect(
-        screen.getByText("12:00 ～ 20:00（実働7.3h）"),
-      ).toBeInTheDocument();
-      expect(screen.getByText(/8,400/)).toBeInTheDocument();
-      expect(screen.getByText(/9,100/)).toBeInTheDocument();
     });
   });
 

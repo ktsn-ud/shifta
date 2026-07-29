@@ -113,6 +113,8 @@ describe("app/my/(requires-calendar)/page", () => {
         initialMonthStartDate: "2026-07-01",
         initialMonthEndDate: "2026-07-31",
         initialUnconfirmedShiftCount: 2,
+        initialUnconfirmedShiftCountVersion:
+          '{"todayDate":"2026-07-15","initialUnconfirmedShiftCount":2}',
         initialNextPaymentAmount: {
           month: "2026-08",
           totalWage: 123456,
