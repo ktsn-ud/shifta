@@ -25,16 +25,7 @@ import { Input } from "@/components/ui/input";
 
 type ConfirmShiftCardProps = {
   shift: UnconfirmedShiftItem;
-  onActionCompleted?: (input: {
-    shiftId: string;
-    workplaceId: string;
-    workplaceName: string;
-    workplaceColor: string;
-    date: string;
-    startTime: string;
-    endTime: string;
-    comment: string | null;
-  }) => Promise<void> | void;
+  onActionCompleted?: (shiftId: string) => Promise<void> | void;
 };
 
 type ValidationResult = {
@@ -163,25 +154,10 @@ function ConfirmShiftCardContent({
       );
       const syncFailure = syncState.failure;
 
-      void Promise.resolve(
-        onActionCompleted?.({
-          shiftId: shift.id,
-          workplaceId: shift.workplaceId,
-          workplaceName: shift.workplaceName,
-          workplaceColor: shift.workplaceColor,
-          date: shift.date,
-          startTime: data.startTime,
-          endTime: data.endTime,
-          comment: shift.comment,
-        }),
-      ).catch((error) => {
-        console.error("failed to refresh shift confirmation data", {
-          shiftId: shift.id,
-          error,
-        });
-      });
+      await onActionCompleted?.(shift.id);
       void invalidateAfterShiftMutation(queryClient, {
         mode: "background",
+        refetchType: "none",
       }).catch((error) => {
         console.error("failed to invalidate queries after shift confirmation", {
           shiftId: shift.id,

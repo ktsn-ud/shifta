@@ -22,17 +22,20 @@ async function ShiftConfirmPageContent() {
   }
   await redirectToCalendarSetupIfNeeded(current.user);
 
-  const initialData = await timing.measure(
-    "getShiftConfirmationInitialData",
+  const initialUnconfirmedShifts = await timing.measure(
+    "getUnconfirmedShifts",
     () => getShiftConfirmationInitialData(current.user.id),
+  );
+  const initialUnconfirmedShiftsVersion = JSON.stringify(
+    initialUnconfirmedShifts,
   );
   timing.flushLog();
 
   return (
     <ShiftConfirmPageClient
       currentUserId={current.user.id}
-      initialUnconfirmedShifts={initialData.unconfirmedShifts}
-      initialConfirmedShiftGroups={initialData.confirmedShiftGroups}
+      initialUnconfirmedShifts={initialUnconfirmedShifts}
+      initialUnconfirmedShiftsVersion={initialUnconfirmedShiftsVersion}
     />
   );
 }

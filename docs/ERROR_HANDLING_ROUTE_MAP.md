@@ -54,7 +54,6 @@
 | `/api/shifts/bulk`                                 | 400 入力不正、500 失敗                                     | 入力修正、再実行                         |
 | `/api/shifts/[id]/confirm`                         | 400 時間不正、404 未検出、500 失敗                         | 入力修正、再選択、再実行                 |
 | `/api/shifts/unconfirmed`                          | 500 取得失敗                                               | 再読み込み                               |
-| `/api/shifts/confirmed-current-month`              | 500 取得失敗                                               | 再読み込み                               |
 | `/api/shifts/[id]/retry-sync`                      | 409 要再設定、502 同期失敗、500 再同期失敗                 | カレンダー再設定、再実行                 |
 | `/api/shifts/[id]/sync-status`                     | 404 未検出、500 取得失敗                                   | 一覧で再確認、再実行                     |
 | `/api/calendar/initialize`                         | 401 未認証、403 権限不足、409 既設定、500 初期化失敗       | 再ログイン、権限同意、再実行             |

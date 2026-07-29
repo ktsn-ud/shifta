@@ -1,6 +1,5 @@
 import { useQuery } from "@tanstack/react-query";
-import { type ConfirmedShiftWorkplaceGroup } from "@/components/shifts/shift-confirmation-types";
-import { type UnconfirmedShiftItem } from "@/components/shifts/shift-confirmation-types";
+import type { UnconfirmedShiftItem } from "@/components/shifts/shift-confirmation-types";
 import { fetchJson } from "@/lib/query/fetch-json";
 import { queryKeys } from "@/lib/query/query-keys";
 
@@ -22,23 +21,8 @@ type UnconfirmedShiftApiResponse = {
   }>;
 };
 
-type ConfirmedShiftApiResponse = {
-  shifts: Array<{
-    id: string;
-    comment: string | null;
-    date: string;
-    startTime: string;
-    endTime: string;
-    breakMinutes: number;
-    workDurationHours: number;
-    wage: number | null;
-    isConfirmed: boolean;
-    workplace: {
-      id: string;
-      name: string;
-      color: string;
-    };
-  }>;
+type UnconfirmedShiftCountApiResponse = {
+  count: number;
 };
 
 const dateWithWeekdayFormatter = new Intl.DateTimeFormat("ja-JP", {
@@ -80,64 +64,27 @@ function parseUnconfirmedPayload(payload: unknown): UnconfirmedShiftItem[] {
   }));
 }
 
-function parseConfirmedPayload(
-  payload: unknown,
-): ConfirmedShiftWorkplaceGroup[] {
+function parseUnconfirmedShiftCountPayload(payload: unknown): number {
   if (
     typeof payload !== "object" ||
     payload === null ||
-    !Array.isArray((payload as ConfirmedShiftApiResponse).shifts)
+    typeof (payload as UnconfirmedShiftCountApiResponse).count !== "number"
   ) {
-    throw new Error("CONFIRMED_SHIFTS_RESPONSE_INVALID");
+    throw new Error("UNCONFIRMED_SHIFT_COUNT_RESPONSE_INVALID");
   }
 
-  const grouped = new Map<string, ConfirmedShiftWorkplaceGroup>();
-
-  for (const shift of (payload as ConfirmedShiftApiResponse).shifts) {
-    const { color, id, name } = shift.workplace;
-    const existing = grouped.get(id);
-    if (existing) {
-      existing.shifts.push({
-        id: shift.id,
-        date: formatDateWithWeekday(shift.date),
-        comment: shift.comment,
-        startTime: shift.startTime,
-        endTime: shift.endTime,
-        workDurationHours: shift.workDurationHours,
-        wage: shift.wage,
-      });
-      continue;
-    }
-
-    grouped.set(id, {
-      workplaceId: id,
-      workplaceName: name,
-      workplaceColor: color,
-      shifts: [
-        {
-          id: shift.id,
-          date: formatDateWithWeekday(shift.date),
-          comment: shift.comment,
-          startTime: shift.startTime,
-          endTime: shift.endTime,
-          workDurationHours: shift.workDurationHours,
-          wage: shift.wage,
-        },
-      ],
-    });
-  }
-
-  return Array.from(grouped.values());
+  return (payload as UnconfirmedShiftCountApiResponse).count;
 }
 
 export function useUnconfirmedShiftsQuery(input: {
   userId: string;
+  initialDataVersion: string;
   initialData?: UnconfirmedShiftItem[];
 }) {
-  const { initialData, userId } = input;
+  const { initialData, initialDataVersion, userId } = input;
 
   return useQuery({
-    queryKey: queryKeys.shifts.unconfirmed({ userId }),
+    queryKey: queryKeys.shifts.unconfirmed({ userId, initialDataVersion }),
     queryFn: ({ signal }) =>
       fetchJson("/api/shifts/unconfirmed", {
         init: { signal, cache: "no-store" },
@@ -147,25 +94,37 @@ export function useUnconfirmedShiftsQuery(input: {
     initialData,
     staleTime: 30 * 1000,
     gcTime: 5 * 60 * 1000,
+    refetchOnMount: "always",
+    refetchOnWindowFocus: false,
+    refetchOnReconnect: false,
+    retry: false,
   });
 }
 
-export function useConfirmedCurrentMonthShiftsQuery(input: {
+export function useUnconfirmedShiftCountQuery(input: {
   userId: string;
-  initialData?: ConfirmedShiftWorkplaceGroup[];
+  initialDataVersion: string;
+  initialData: number;
 }) {
-  const { initialData, userId } = input;
+  const { initialData, initialDataVersion, userId } = input;
 
   return useQuery({
-    queryKey: queryKeys.shifts.confirmedCurrentMonth({ userId }),
+    queryKey: queryKeys.shifts.unconfirmedCount({
+      userId,
+      initialDataVersion,
+    }),
     queryFn: ({ signal }) =>
-      fetchJson("/api/shifts/confirmed-current-month", {
+      fetchJson("/api/shifts/unconfirmed/count", {
         init: { signal, cache: "no-store" },
-        fallbackMessage: "確定済みシフトの取得に失敗しました。",
-        parse: parseConfirmedPayload,
+        fallbackMessage: "未確定シフト件数の取得に失敗しました。",
+        parse: parseUnconfirmedShiftCountPayload,
       }),
     initialData,
     staleTime: 30 * 1000,
     gcTime: 5 * 60 * 1000,
+    refetchOnMount: "always",
+    refetchOnWindowFocus: false,
+    refetchOnReconnect: false,
+    retry: false,
   });
 }

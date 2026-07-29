@@ -16,11 +16,26 @@ export async function invalidateAfterShiftMutation(
   });
 
   const relatedInvalidation = Promise.all([
-    queryClient.invalidateQueries({ queryKey: ["payroll", "summary"] }),
-    queryClient.invalidateQueries({ queryKey: ["payroll", "actual"] }),
-    queryClient.invalidateQueries({ queryKey: ["payroll", "previewBaseline"] }),
-    queryClient.invalidateQueries({ queryKey: ["payroll", "details"] }),
-    queryClient.invalidateQueries({ queryKey: ["workplaces"] }),
+    queryClient.invalidateQueries({
+      queryKey: ["payroll", "summary"],
+      refetchType: options?.refetchType,
+    }),
+    queryClient.invalidateQueries({
+      queryKey: ["payroll", "actual"],
+      refetchType: options?.refetchType,
+    }),
+    queryClient.invalidateQueries({
+      queryKey: ["payroll", "previewBaseline"],
+      refetchType: options?.refetchType,
+    }),
+    queryClient.invalidateQueries({
+      queryKey: ["payroll", "details"],
+      refetchType: options?.refetchType,
+    }),
+    queryClient.invalidateQueries({
+      queryKey: ["workplaces"],
+      refetchType: options?.refetchType,
+    }),
   ]);
 
   if (options?.mode === "background") {
