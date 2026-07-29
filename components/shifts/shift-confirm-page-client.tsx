@@ -1,140 +1,47 @@
 "use client";
 
-import { toast } from "sonner";
+import { RefreshCwIcon } from "lucide-react";
 import { ConfirmShiftCard } from "@/components/shifts/ConfirmShiftCard";
-import { ConfirmedShiftsList } from "@/components/shifts/ConfirmedShiftsList";
-import {
-  type ConfirmedShiftWorkplaceGroup,
-  type UnconfirmedShiftItem,
-} from "@/components/shifts/shift-confirmation-types";
-import { LoadingOverlay } from "@/components/ui/loading-overlay";
+import type { UnconfirmedShiftItem } from "@/components/shifts/shift-confirmation-types";
+import { Button } from "@/components/ui/button";
 import { SpinnerPanel } from "@/components/ui/spinner";
 import { toErrorMessage } from "@/lib/messages";
 import { getBrowserQueryClient } from "@/lib/query/query-client";
-import {
-  useConfirmedCurrentMonthShiftsQuery,
-  useUnconfirmedShiftsQuery,
-} from "@/lib/query/queries/shift-confirmation";
+import { useUnconfirmedShiftsQuery } from "@/lib/query/queries/shift-confirmation";
 import { queryKeys } from "@/lib/query/query-keys";
 
 type ShiftConfirmPageClientProps = {
   currentUserId: string;
   initialUnconfirmedShifts: UnconfirmedShiftItem[];
-  initialConfirmedShiftGroups: ConfirmedShiftWorkplaceGroup[];
 };
-
-type ConfirmActionCompletedInput = {
-  shiftId: string;
-  workplaceId: string;
-  workplaceName: string;
-  workplaceColor: string;
-  date: string;
-  startTime: string;
-  endTime: string;
-  comment: string | null;
-};
-
-function upsertProvisionalConfirmedShift(
-  groups: ConfirmedShiftWorkplaceGroup[],
-  input: ConfirmActionCompletedInput,
-): ConfirmedShiftWorkplaceGroup[] {
-  const provisionalShift = {
-    id: input.shiftId,
-    date: input.date,
-    comment: input.comment,
-    startTime: input.startTime,
-    endTime: input.endTime,
-    workDurationHours: null,
-    wage: null,
-    status: "provisional" as const,
-  };
-
-  const nextGroups = groups.map((group) => ({
-    ...group,
-    shifts: [...group.shifts],
-  }));
-  const existingGroup = nextGroups.find(
-    (group) => group.workplaceId === input.workplaceId,
-  );
-
-  if (!existingGroup) {
-    return [
-      ...nextGroups,
-      {
-        workplaceId: input.workplaceId,
-        workplaceName: input.workplaceName,
-        workplaceColor: input.workplaceColor,
-        shifts: [provisionalShift],
-      },
-    ];
-  }
-
-  existingGroup.shifts = [
-    ...existingGroup.shifts.filter((shift) => shift.id !== input.shiftId),
-    provisionalShift,
-  ];
-
-  return nextGroups;
-}
 
 export function ShiftConfirmPageClient({
   currentUserId,
   initialUnconfirmedShifts,
-  initialConfirmedShiftGroups,
 }: ShiftConfirmPageClientProps) {
   const queryClient = getBrowserQueryClient();
   const unconfirmedQuery = useUnconfirmedShiftsQuery({
     userId: currentUserId,
     initialData: initialUnconfirmedShifts,
   });
-  const confirmedQuery = useConfirmedCurrentMonthShiftsQuery({
-    userId: currentUserId,
-    initialData: initialConfirmedShiftGroups,
-  });
-
   const unconfirmedShifts = unconfirmedQuery.data ?? [];
-  const confirmedShiftGroups = confirmedQuery.data ?? [];
-  const hasShiftConfirmationData =
-    unconfirmedQuery.data !== undefined || confirmedQuery.data !== undefined;
   const isInitialLoading =
-    (unconfirmedQuery.isLoading || confirmedQuery.isLoading) &&
-    !hasShiftConfirmationData;
+    unconfirmedQuery.isLoading && unconfirmedQuery.data === undefined;
   const isRefreshing =
-    hasShiftConfirmationData &&
-    (unconfirmedQuery.isFetching || confirmedQuery.isFetching);
+    unconfirmedQuery.isFetching && unconfirmedQuery.data !== undefined;
   const errorMessage = unconfirmedQuery.error
     ? toErrorMessage(
         unconfirmedQuery.error,
         "シフト確定ページのデータ取得に失敗しました。",
       )
-    : confirmedQuery.error
-      ? toErrorMessage(
-          confirmedQuery.error,
-          "シフト確定ページのデータ取得に失敗しました。",
-        )
-      : null;
+    : null;
 
-  const handleActionCompleted = (input: ConfirmActionCompletedInput) => {
-    try {
-      queryClient.setQueryData<UnconfirmedShiftItem[]>(
-        queryKeys.shifts.unconfirmed({ userId: currentUserId }),
-        (previous) =>
-          (previous ?? []).filter((shift) => shift.id !== input.shiftId),
-      );
-      queryClient.setQueryData<ConfirmedShiftWorkplaceGroup[]>(
-        queryKeys.shifts.confirmedCurrentMonth({ userId: currentUserId }),
-        (previous) => upsertProvisionalConfirmedShift(previous ?? [], input),
-      );
-    } catch (error) {
-      const message = toErrorMessage(
-        error,
-        "シフト確定ページのデータ取得に失敗しました。",
-      );
-      toast.error("シフト確定ページのデータ取得に失敗しました。", {
-        description: message,
-        duration: 6000,
-      });
-    }
+  const handleActionCompleted = async (shiftId: string): Promise<void> => {
+    const queryKey = queryKeys.shifts.unconfirmed({ userId: currentUserId });
+    await queryClient.cancelQueries({ queryKey });
+    queryClient.setQueryData<UnconfirmedShiftItem[]>(queryKey, (previous) =>
+      (previous ?? []).filter((shift) => shift.id !== shiftId),
+    );
   };
 
   return (
@@ -161,55 +68,44 @@ export function ShiftConfirmPageClient({
           label="シフト確定情報を読み込み中..."
         />
       ) : (
-        <LoadingOverlay
-          isLoading={isRefreshing}
-          blockInteraction={false}
-          className="rounded-xl md:min-h-0 md:flex-1"
-          contentClassName="md:flex md:h-full md:min-h-0 md:flex-col"
-        >
-          <div className="flex flex-col gap-6 md:grid md:h-full md:min-h-0 md:flex-1 md:grid-cols-[minmax(0,1fr)_1px_minmax(0,1fr)] md:gap-6">
-            <section className="space-y-3 md:flex md:min-h-0 md:flex-col">
-              <h3 className="text-lg font-semibold">未確定シフト</h3>
-              <div className="md:min-h-0 md:flex-1 md:overflow-y-auto md:pr-2">
-                {unconfirmedShifts.length === 0 ? (
-                  <p className="text-sm text-muted-foreground">
-                    未確定シフトはまだありません
-                  </p>
-                ) : (
-                  <div className="p-1">
-                    <div className="flex flex-col gap-3">
-                      {unconfirmedShifts.map((shift) => (
-                        <ConfirmShiftCard
-                          key={shift.id}
-                          shift={shift}
-                          onActionCompleted={handleActionCompleted}
-                        />
-                      ))}
-                    </div>
-                  </div>
-                )}
-              </div>
-            </section>
-
-            <div
-              aria-hidden="true"
-              className="hidden w-px self-stretch bg-border md:mb-[15px] md:block"
-            />
-
-            <section className="space-y-3 md:flex md:min-h-0 md:flex-col">
-              <h3 className="text-lg font-semibold">今月の確定済みシフト</h3>
-              <div className="md:min-h-0 md:flex-1 md:overflow-y-auto md:pr-2">
-                {confirmedShiftGroups.length > 0 ? (
-                  <ConfirmedShiftsList groups={confirmedShiftGroups} />
-                ) : (
-                  <p className="text-sm text-muted-foreground">
-                    今月の確定済みシフトはまだありません
-                  </p>
-                )}
-              </div>
-            </section>
+        <section className="space-y-3 md:flex md:min-h-0 md:flex-1 md:flex-col">
+          <div className="flex items-center justify-between gap-3">
+            <h3 className="text-lg font-semibold">未確定シフト</h3>
+            <Button
+              type="button"
+              variant="outline"
+              size="sm"
+              disabled={isRefreshing}
+              onClick={() => {
+                void unconfirmedQuery.refetch();
+              }}
+            >
+              <RefreshCwIcon
+                className={isRefreshing ? "animate-spin" : undefined}
+              />
+              {isRefreshing ? "更新中..." : "更新"}
+            </Button>
           </div>
-        </LoadingOverlay>
+          <div className="md:min-h-0 md:flex-1 md:overflow-y-auto md:pr-2">
+            {unconfirmedShifts.length === 0 ? (
+              <p className="text-sm text-muted-foreground">
+                未確定シフトはまだありません
+              </p>
+            ) : (
+              <div className="p-1">
+                <div className="flex flex-col gap-3">
+                  {unconfirmedShifts.map((shift) => (
+                    <ConfirmShiftCard
+                      key={shift.id}
+                      shift={shift}
+                      onActionCompleted={handleActionCompleted}
+                    />
+                  ))}
+                </div>
+              </div>
+            )}
+          </div>
+        </section>
       )}
     </section>
   );

@@ -1,6 +1,5 @@
 import { useQuery } from "@tanstack/react-query";
-import { type ConfirmedShiftWorkplaceGroup } from "@/components/shifts/shift-confirmation-types";
-import { type UnconfirmedShiftItem } from "@/components/shifts/shift-confirmation-types";
+import type { UnconfirmedShiftItem } from "@/components/shifts/shift-confirmation-types";
 import { fetchJson } from "@/lib/query/fetch-json";
 import { queryKeys } from "@/lib/query/query-keys";
 
@@ -13,25 +12,6 @@ type UnconfirmedShiftApiResponse = {
     startTime: string;
     endTime: string;
     breakMinutes: number;
-    isConfirmed: boolean;
-    workplace: {
-      id: string;
-      name: string;
-      color: string;
-    };
-  }>;
-};
-
-type ConfirmedShiftApiResponse = {
-  shifts: Array<{
-    id: string;
-    comment: string | null;
-    date: string;
-    startTime: string;
-    endTime: string;
-    breakMinutes: number;
-    workDurationHours: number;
-    wage: number | null;
     isConfirmed: boolean;
     workplace: {
       id: string;
@@ -80,56 +60,6 @@ function parseUnconfirmedPayload(payload: unknown): UnconfirmedShiftItem[] {
   }));
 }
 
-function parseConfirmedPayload(
-  payload: unknown,
-): ConfirmedShiftWorkplaceGroup[] {
-  if (
-    typeof payload !== "object" ||
-    payload === null ||
-    !Array.isArray((payload as ConfirmedShiftApiResponse).shifts)
-  ) {
-    throw new Error("CONFIRMED_SHIFTS_RESPONSE_INVALID");
-  }
-
-  const grouped = new Map<string, ConfirmedShiftWorkplaceGroup>();
-
-  for (const shift of (payload as ConfirmedShiftApiResponse).shifts) {
-    const { color, id, name } = shift.workplace;
-    const existing = grouped.get(id);
-    if (existing) {
-      existing.shifts.push({
-        id: shift.id,
-        date: formatDateWithWeekday(shift.date),
-        comment: shift.comment,
-        startTime: shift.startTime,
-        endTime: shift.endTime,
-        workDurationHours: shift.workDurationHours,
-        wage: shift.wage,
-      });
-      continue;
-    }
-
-    grouped.set(id, {
-      workplaceId: id,
-      workplaceName: name,
-      workplaceColor: color,
-      shifts: [
-        {
-          id: shift.id,
-          date: formatDateWithWeekday(shift.date),
-          comment: shift.comment,
-          startTime: shift.startTime,
-          endTime: shift.endTime,
-          workDurationHours: shift.workDurationHours,
-          wage: shift.wage,
-        },
-      ],
-    });
-  }
-
-  return Array.from(grouped.values());
-}
-
 export function useUnconfirmedShiftsQuery(input: {
   userId: string;
   initialData?: UnconfirmedShiftItem[];
@@ -147,25 +77,9 @@ export function useUnconfirmedShiftsQuery(input: {
     initialData,
     staleTime: 30 * 1000,
     gcTime: 5 * 60 * 1000,
-  });
-}
-
-export function useConfirmedCurrentMonthShiftsQuery(input: {
-  userId: string;
-  initialData?: ConfirmedShiftWorkplaceGroup[];
-}) {
-  const { initialData, userId } = input;
-
-  return useQuery({
-    queryKey: queryKeys.shifts.confirmedCurrentMonth({ userId }),
-    queryFn: ({ signal }) =>
-      fetchJson("/api/shifts/confirmed-current-month", {
-        init: { signal, cache: "no-store" },
-        fallbackMessage: "確定済みシフトの取得に失敗しました。",
-        parse: parseConfirmedPayload,
-      }),
-    initialData,
-    staleTime: 30 * 1000,
-    gcTime: 5 * 60 * 1000,
+    refetchOnMount: false,
+    refetchOnWindowFocus: false,
+    refetchOnReconnect: false,
+    retry: false,
   });
 }

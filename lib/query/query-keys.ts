@@ -93,8 +93,6 @@ export const queryKeys = {
       ["shifts", "detail", input] as const,
     unconfirmed: (input: { userId: string }) =>
       ["shifts", "unconfirmed", input] as const,
-    confirmedCurrentMonth: (input: { userId: string }) =>
-      ["shifts", "confirmedCurrentMonth", input] as const,
   },
   payroll: {
     summary: (input: PayrollSummaryQueryInput) =>
