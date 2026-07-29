@@ -91,8 +91,10 @@ export const queryKeys = {
       ["shifts", "month", input] as const,
     detail: (input: ShiftDetailQueryInput) =>
       ["shifts", "detail", input] as const,
-    unconfirmed: (input: { userId: string }) =>
+    unconfirmed: (input: { userId: string; initialDataVersion: string }) =>
       ["shifts", "unconfirmed", input] as const,
+    unconfirmedCount: (input: { userId: string; initialDataVersion: string }) =>
+      ["shifts", "unconfirmedCount", input] as const,
   },
   payroll: {
     summary: (input: PayrollSummaryQueryInput) =>

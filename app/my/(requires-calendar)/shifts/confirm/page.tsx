@@ -26,12 +26,16 @@ async function ShiftConfirmPageContent() {
     "getUnconfirmedShifts",
     () => getShiftConfirmationInitialData(current.user.id),
   );
+  const initialUnconfirmedShiftsVersion = JSON.stringify(
+    initialUnconfirmedShifts,
+  );
   timing.flushLog();
 
   return (
     <ShiftConfirmPageClient
       currentUserId={current.user.id}
       initialUnconfirmedShifts={initialUnconfirmedShifts}
+      initialUnconfirmedShiftsVersion={initialUnconfirmedShiftsVersion}
     />
   );
 }

@@ -79,6 +79,10 @@ async function DashboardPageContent({ month }: { month: Date }) {
       ),
     ]);
     const todayDate = toDateOnlyString(startOfUtcDay(new Date()));
+    const initialUnconfirmedShiftCountVersion = JSON.stringify({
+      todayDate,
+      initialUnconfirmedShiftCount,
+    });
 
     return (
       <DashboardPageClient
@@ -88,6 +92,9 @@ async function DashboardPageContent({ month }: { month: Date }) {
         initialMonthStartDate={startDate}
         initialMonthEndDate={endDate}
         initialUnconfirmedShiftCount={initialUnconfirmedShiftCount}
+        initialUnconfirmedShiftCountVersion={
+          initialUnconfirmedShiftCountVersion
+        }
         initialNextPaymentAmount={initialNextPaymentAmount}
         todayDate={todayDate}
       />

@@ -5,6 +5,7 @@ import { useGoogleTokenExpiredSignOut } from "@/hooks/use-google-token-expired-s
 import { useMonthShifts } from "@/hooks/use-month-shifts";
 import { getBrowserQueryClient } from "@/lib/query/query-client";
 import { usePayrollSummaryAmountQuery } from "@/lib/query/queries/payroll";
+import { useUnconfirmedShiftCountQuery } from "@/lib/query/queries/shift-confirmation";
 import { removeShiftsFromMonthCachesOptimistically } from "@/lib/query/optimistic-shifts";
 
 const pushMock = jest.fn();
@@ -107,6 +108,10 @@ jest.mock("@/lib/query/queries/payroll", () => ({
   usePayrollSummaryAmountQuery: jest.fn(),
 }));
 
+jest.mock("@/lib/query/queries/shift-confirmation", () => ({
+  useUnconfirmedShiftCountQuery: jest.fn(),
+}));
+
 jest.mock("@/lib/query/optimistic-shifts", () => ({
   removeShiftsFromMonthCachesOptimistically: jest.fn(),
 }));
@@ -124,6 +129,10 @@ const mockedUsePayrollSummaryAmountQuery =
   usePayrollSummaryAmountQuery as jest.MockedFunction<
     typeof usePayrollSummaryAmountQuery
   >;
+const mockedUseUnconfirmedShiftCountQuery =
+  useUnconfirmedShiftCountQuery as jest.MockedFunction<
+    typeof useUnconfirmedShiftCountQuery
+  >;
 const mockedRemoveShiftsFromMonthCachesOptimistically =
   removeShiftsFromMonthCachesOptimistically as jest.MockedFunction<
     typeof removeShiftsFromMonthCachesOptimistically
@@ -140,6 +149,7 @@ describe("DashboardPageClient", () => {
     mockedUseMonthShifts.mockReset();
     mockedGetBrowserQueryClient.mockReset();
     mockedUsePayrollSummaryAmountQuery.mockReset();
+    mockedUseUnconfirmedShiftCountQuery.mockReset();
     mockedRemoveShiftsFromMonthCachesOptimistically.mockReset();
     cancelQueriesMock.mockReset();
     cancelQueriesMock.mockResolvedValue(undefined);
@@ -173,11 +183,113 @@ describe("DashboardPageClient", () => {
       isFetching: false,
       isPlaceholderData: false,
     } as ReturnType<typeof usePayrollSummaryAmountQuery>);
+    mockedUseUnconfirmedShiftCountQuery.mockReturnValue({
+      data: 0,
+      isFetching: false,
+    } as ReturnType<typeof useUnconfirmedShiftCountQuery>);
     mockedRemoveShiftsFromMonthCachesOptimistically.mockReturnValue(jest.fn());
   });
 
   afterEach(() => {
     jest.useRealTimers();
+  });
+
+  it("SSR の未確定件数を表示し、背景更新中は最新件数と更新フロートを表示する", async () => {
+    const props = {
+      currentUserId: "user-1",
+      initialMonthShifts: [],
+      initialMonthStartDate: "2026-07-01",
+      initialMonthEndDate: "2026-07-31",
+      initialUnconfirmedShiftCount: 2,
+      initialUnconfirmedShiftCountVersion: "dashboard-count-v1",
+      initialNextPaymentAmount: null,
+      todayDate: "2026-07-15",
+    };
+
+    mockedUseUnconfirmedShiftCountQuery.mockReturnValue({
+      data: 2,
+      isFetching: false,
+    } as ReturnType<typeof useUnconfirmedShiftCountQuery>);
+
+    const { rerender } = render(<DashboardPageClient {...props} />);
+    const confirmPageButton = screen.getByRole("button", {
+      name: "シフト確定ページへ",
+    });
+    const notice = confirmPageButton.closest("[data-slot='card']");
+    if (notice === null) {
+      throw new Error("未確定シフトのお知らせカードが見つかりません");
+    }
+
+    expect(notice).toHaveTextContent("本日以前の未確定シフトが 2 件あります。");
+
+    mockedUseUnconfirmedShiftCountQuery.mockReturnValue({
+      data: 3,
+      isFetching: true,
+    } as ReturnType<typeof useUnconfirmedShiftCountQuery>);
+
+    await act(async () => {
+      rerender(<DashboardPageClient {...props} />);
+    });
+
+    expect(mockedUseUnconfirmedShiftCountQuery).toHaveBeenCalledWith({
+      userId: "user-1",
+      initialDataVersion: "dashboard-count-v1",
+      initialData: 2,
+    });
+    expect(notice).toHaveTextContent("本日以前の未確定シフトが 3 件あります。");
+    expect(screen.getByLabelText("更新中")).toHaveClass(
+      "fixed",
+      "pointer-events-none",
+    );
+    expect(
+      screen.queryByText("ダッシュボードを読み込み中..."),
+    ).not.toBeInTheDocument();
+  });
+
+  it("同一ユーザーへの再訪では新しい SSR 件数と version を未確定件数 query に渡す", async () => {
+    const oldVisitProps = {
+      currentUserId: "user-1",
+      initialMonthShifts: [],
+      initialMonthStartDate: "2026-07-01",
+      initialMonthEndDate: "2026-07-31",
+      initialUnconfirmedShiftCount: 1,
+      initialUnconfirmedShiftCountVersion: "dashboard-count-v1",
+      initialNextPaymentAmount: null,
+      todayDate: "2026-07-15",
+    };
+    const revisitedProps = {
+      ...oldVisitProps,
+      initialUnconfirmedShiftCount: 4,
+      initialUnconfirmedShiftCountVersion: "dashboard-count-v2",
+    };
+
+    mockedUseUnconfirmedShiftCountQuery.mockImplementation(
+      ({ initialData, initialDataVersion }) =>
+        ({
+          data: initialDataVersion === "dashboard-count-v1" ? 1 : initialData,
+          isFetching: false,
+        }) as ReturnType<typeof useUnconfirmedShiftCountQuery>,
+    );
+
+    const { rerender } = render(<DashboardPageClient {...oldVisitProps} />);
+    const notice = screen
+      .getByRole("button", { name: "シフト確定ページへ" })
+      .closest("[data-slot='card']");
+    if (notice === null) {
+      throw new Error("未確定シフトのお知らせカードが見つかりません");
+    }
+    expect(notice).toHaveTextContent("本日以前の未確定シフトが 1 件あります。");
+
+    await act(async () => {
+      rerender(<DashboardPageClient {...revisitedProps} />);
+    });
+
+    expect(notice).toHaveTextContent("本日以前の未確定シフトが 4 件あります。");
+    expect(mockedUseUnconfirmedShiftCountQuery).toHaveBeenLastCalledWith({
+      userId: "user-1",
+      initialDataVersion: "dashboard-count-v2",
+      initialData: 4,
+    });
   });
 
   it("月次シフトの再取得中はカレンダー領域に更新フロートを表示する", () => {
@@ -198,6 +310,7 @@ describe("DashboardPageClient", () => {
       initialMonthStartDate: "2026-07-01",
       initialMonthEndDate: "2026-07-31",
       initialUnconfirmedShiftCount: 0,
+      initialUnconfirmedShiftCountVersion: "dashboard-count-v1",
       initialNextPaymentAmount: null,
       todayDate: "2026-07-15",
     };
@@ -241,6 +354,7 @@ describe("DashboardPageClient", () => {
         initialMonthStartDate="2026-07-01"
         initialMonthEndDate="2026-07-31"
         initialUnconfirmedShiftCount={0}
+        initialUnconfirmedShiftCountVersion="dashboard-count-v1"
         initialNextPaymentAmount={null}
         todayDate="2026-07-15"
       />,
@@ -285,6 +399,7 @@ describe("DashboardPageClient", () => {
         initialMonthStartDate="2026-07-01"
         initialMonthEndDate="2026-07-31"
         initialUnconfirmedShiftCount={0}
+        initialUnconfirmedShiftCountVersion="dashboard-count-v1"
         initialNextPaymentAmount={initialNextPaymentAmount}
         todayDate="2026-07-15"
       />,
@@ -319,6 +434,7 @@ describe("DashboardPageClient", () => {
         initialMonthStartDate="2026-07-01"
         initialMonthEndDate="2026-07-31"
         initialUnconfirmedShiftCount={0}
+        initialUnconfirmedShiftCountVersion="dashboard-count-v1"
         initialNextPaymentAmount={null}
         todayDate="2026-07-15"
       />,
@@ -338,6 +454,7 @@ describe("DashboardPageClient", () => {
         initialMonthStartDate="2026-07-01"
         initialMonthEndDate="2026-07-31"
         initialUnconfirmedShiftCount={0}
+        initialUnconfirmedShiftCountVersion="dashboard-count-v1"
         initialNextPaymentAmount={null}
         todayDate="2026-07-15"
       />,
@@ -360,6 +477,7 @@ describe("DashboardPageClient", () => {
         initialMonthStartDate="2026-07-01"
         initialMonthEndDate="2026-07-31"
         initialUnconfirmedShiftCount={0}
+        initialUnconfirmedShiftCountVersion="dashboard-count-v1"
         initialNextPaymentAmount={null}
         todayDate="2026-07-15"
       />,
@@ -395,6 +513,7 @@ describe("DashboardPageClient", () => {
         initialMonthStartDate="2026-07-01"
         initialMonthEndDate="2026-07-31"
         initialUnconfirmedShiftCount={0}
+        initialUnconfirmedShiftCountVersion="dashboard-count-v1"
         initialNextPaymentAmount={null}
         todayDate="2026-07-15"
       />,
@@ -417,6 +536,7 @@ describe("DashboardPageClient", () => {
         initialMonthStartDate="2026-08-01"
         initialMonthEndDate="2026-08-31"
         initialUnconfirmedShiftCount={0}
+        initialUnconfirmedShiftCountVersion="dashboard-count-v1"
         initialNextPaymentAmount={null}
         todayDate="2026-07-15"
       />,
@@ -449,6 +569,7 @@ describe("DashboardPageClient", () => {
         initialMonthStartDate="2026-07-01"
         initialMonthEndDate="2026-07-31"
         initialUnconfirmedShiftCount={0}
+        initialUnconfirmedShiftCountVersion="dashboard-count-v1"
         initialNextPaymentAmount={null}
         todayDate="2026-07-15"
       />,
@@ -523,6 +644,7 @@ describe("DashboardPageClient", () => {
         initialMonthStartDate="2026-07-01"
         initialMonthEndDate="2026-07-31"
         initialUnconfirmedShiftCount={0}
+        initialUnconfirmedShiftCountVersion="dashboard-count-v1"
         initialNextPaymentAmount={null}
         todayDate="2026-07-15"
       />,
@@ -564,6 +686,7 @@ describe("DashboardPageClient", () => {
         initialMonthStartDate="2026-07-01"
         initialMonthEndDate="2026-07-31"
         initialUnconfirmedShiftCount={0}
+        initialUnconfirmedShiftCountVersion="dashboard-count-v1"
         initialNextPaymentAmount={null}
         todayDate="2026-07-15"
       />,

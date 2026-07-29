@@ -4,6 +4,7 @@ import { RefreshCwIcon } from "lucide-react";
 import { ConfirmShiftCard } from "@/components/shifts/ConfirmShiftCard";
 import type { UnconfirmedShiftItem } from "@/components/shifts/shift-confirmation-types";
 import { Button } from "@/components/ui/button";
+import { RefreshStatusFloating } from "@/components/ui/refresh-status-floating";
 import { SpinnerPanel } from "@/components/ui/spinner";
 import { toErrorMessage } from "@/lib/messages";
 import { getBrowserQueryClient } from "@/lib/query/query-client";
@@ -13,15 +14,18 @@ import { queryKeys } from "@/lib/query/query-keys";
 type ShiftConfirmPageClientProps = {
   currentUserId: string;
   initialUnconfirmedShifts: UnconfirmedShiftItem[];
+  initialUnconfirmedShiftsVersion: string;
 };
 
 export function ShiftConfirmPageClient({
   currentUserId,
   initialUnconfirmedShifts,
+  initialUnconfirmedShiftsVersion,
 }: ShiftConfirmPageClientProps) {
   const queryClient = getBrowserQueryClient();
   const unconfirmedQuery = useUnconfirmedShiftsQuery({
     userId: currentUserId,
+    initialDataVersion: initialUnconfirmedShiftsVersion,
     initialData: initialUnconfirmedShifts,
   });
   const unconfirmedShifts = unconfirmedQuery.data ?? [];
@@ -37,7 +41,10 @@ export function ShiftConfirmPageClient({
     : null;
 
   const handleActionCompleted = async (shiftId: string): Promise<void> => {
-    const queryKey = queryKeys.shifts.unconfirmed({ userId: currentUserId });
+    const queryKey = queryKeys.shifts.unconfirmed({
+      userId: currentUserId,
+      initialDataVersion: initialUnconfirmedShiftsVersion,
+    });
     await queryClient.cancelQueries({ queryKey });
     queryClient.setQueryData<UnconfirmedShiftItem[]>(queryKey, (previous) =>
       (previous ?? []).filter((shift) => shift.id !== shiftId),
@@ -61,6 +68,8 @@ export function ShiftConfirmPageClient({
           {errorMessage}
         </p>
       ) : null}
+
+      {isRefreshing ? <RefreshStatusFloating /> : null}
 
       {isInitialLoading ? (
         <SpinnerPanel

@@ -21,6 +21,10 @@ type UnconfirmedShiftApiResponse = {
   }>;
 };
 
+type UnconfirmedShiftCountApiResponse = {
+  count: number;
+};
+
 const dateWithWeekdayFormatter = new Intl.DateTimeFormat("ja-JP", {
   year: "numeric",
   month: "long",
@@ -60,14 +64,27 @@ function parseUnconfirmedPayload(payload: unknown): UnconfirmedShiftItem[] {
   }));
 }
 
+function parseUnconfirmedShiftCountPayload(payload: unknown): number {
+  if (
+    typeof payload !== "object" ||
+    payload === null ||
+    typeof (payload as UnconfirmedShiftCountApiResponse).count !== "number"
+  ) {
+    throw new Error("UNCONFIRMED_SHIFT_COUNT_RESPONSE_INVALID");
+  }
+
+  return (payload as UnconfirmedShiftCountApiResponse).count;
+}
+
 export function useUnconfirmedShiftsQuery(input: {
   userId: string;
+  initialDataVersion: string;
   initialData?: UnconfirmedShiftItem[];
 }) {
-  const { initialData, userId } = input;
+  const { initialData, initialDataVersion, userId } = input;
 
   return useQuery({
-    queryKey: queryKeys.shifts.unconfirmed({ userId }),
+    queryKey: queryKeys.shifts.unconfirmed({ userId, initialDataVersion }),
     queryFn: ({ signal }) =>
       fetchJson("/api/shifts/unconfirmed", {
         init: { signal, cache: "no-store" },
@@ -77,7 +94,35 @@ export function useUnconfirmedShiftsQuery(input: {
     initialData,
     staleTime: 30 * 1000,
     gcTime: 5 * 60 * 1000,
-    refetchOnMount: false,
+    refetchOnMount: "always",
+    refetchOnWindowFocus: false,
+    refetchOnReconnect: false,
+    retry: false,
+  });
+}
+
+export function useUnconfirmedShiftCountQuery(input: {
+  userId: string;
+  initialDataVersion: string;
+  initialData: number;
+}) {
+  const { initialData, initialDataVersion, userId } = input;
+
+  return useQuery({
+    queryKey: queryKeys.shifts.unconfirmedCount({
+      userId,
+      initialDataVersion,
+    }),
+    queryFn: ({ signal }) =>
+      fetchJson("/api/shifts/unconfirmed/count", {
+        init: { signal, cache: "no-store" },
+        fallbackMessage: "未確定シフト件数の取得に失敗しました。",
+        parse: parseUnconfirmedShiftCountPayload,
+      }),
+    initialData,
+    staleTime: 30 * 1000,
+    gcTime: 5 * 60 * 1000,
+    refetchOnMount: "always",
     refetchOnWindowFocus: false,
     refetchOnReconnect: false,
     retry: false,
