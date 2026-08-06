@@ -43,7 +43,13 @@ function MonthlyPageFallback() {
   return <PayrollDetailsMonthlyPageLoadingSkeleton />;
 }
 
-async function MonthlyPageContent({ month }: { month: string }) {
+async function MonthlyPageContent({
+  searchParams,
+}: PayrollDetailsMonthlyPageProps) {
+  const resolvedSearchParams = searchParams
+    ? await searchParams
+    : ({} as PayrollDetailsMonthlyPageSearchParams);
+  const month = resolveInitialMonth(resolvedSearchParams.month);
   const current = await requireCurrentUser();
   if ("response" in current) {
     redirect("/login");
@@ -67,17 +73,12 @@ async function MonthlyPageContent({ month }: { month: string }) {
   );
 }
 
-export default async function PayrollDetailsMonthlyPage({
+export default function PayrollDetailsMonthlyPage({
   searchParams,
 }: PayrollDetailsMonthlyPageProps) {
-  const resolvedSearchParams = searchParams
-    ? await searchParams
-    : ({} as PayrollDetailsMonthlyPageSearchParams);
-  const month = resolveInitialMonth(resolvedSearchParams.month);
-
   return (
     <Suspense fallback={<MonthlyPageFallback />}>
-      <MonthlyPageContent month={month} />
+      <MonthlyPageContent searchParams={searchParams} />
     </Suspense>
   );
 }

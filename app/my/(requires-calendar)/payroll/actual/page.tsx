@@ -20,8 +20,7 @@ type ActualPayrollPageSearchParams = {
 
 type ActualPayrollPageProps = {
   searchParams?:
-    | ActualPayrollPageSearchParams
-    | Promise<ActualPayrollPageSearchParams>;
+    ActualPayrollPageSearchParams | Promise<ActualPayrollPageSearchParams>;
 };
 
 function resolveInitialMonth(
@@ -43,7 +42,13 @@ function ActualPayrollPageFallback() {
   return <ActualPayrollPageLoadingSkeleton />;
 }
 
-async function ActualPayrollPageContent({ month }: { month: string }) {
+async function ActualPayrollPageContent({
+  searchParams,
+}: ActualPayrollPageProps) {
+  const resolvedSearchParams = searchParams
+    ? await searchParams
+    : ({} as ActualPayrollPageSearchParams);
+  const month = resolveInitialMonth(resolvedSearchParams.month);
   const current = await requireCurrentUser();
   if ("response" in current) {
     redirect("/login");
@@ -67,17 +72,12 @@ async function ActualPayrollPageContent({ month }: { month: string }) {
   );
 }
 
-export default async function ActualPayrollPage({
+export default function ActualPayrollPage({
   searchParams,
 }: ActualPayrollPageProps) {
-  const resolvedSearchParams = searchParams
-    ? await searchParams
-    : ({} as ActualPayrollPageSearchParams);
-  const month = resolveInitialMonth(resolvedSearchParams.month);
-
   return (
     <Suspense fallback={<ActualPayrollPageFallback />}>
-      <ActualPayrollPageContent month={month} />
+      <ActualPayrollPageContent searchParams={searchParams} />
     </Suspense>
   );
 }

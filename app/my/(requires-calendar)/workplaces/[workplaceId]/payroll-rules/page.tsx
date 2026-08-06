@@ -1,4 +1,5 @@
 import { notFound, redirect } from "next/navigation";
+import { Suspense } from "react";
 import { PayrollRuleList } from "@/components/workplaces/payroll-rule-list";
 import { redirectToCalendarSetupIfNeeded } from "@/lib/api/calendar-setup-guard";
 import { requireCurrentUser } from "@/lib/api/current-user";
@@ -6,6 +7,7 @@ import {
   getCachedPayrollRulesForWorkplace,
   getCachedWorkplaceDetail,
 } from "@/lib/cache/workplace-read-cache";
+import Loading from "./loading";
 
 type PayrollRuleListPageParams = {
   workplaceId: string;
@@ -18,8 +20,7 @@ type PayrollRuleListSearchParams = {
 type PayrollRuleListPageProps = {
   params: PayrollRuleListPageParams | Promise<PayrollRuleListPageParams>;
   searchParams?:
-    | PayrollRuleListSearchParams
-    | Promise<PayrollRuleListSearchParams>;
+    PayrollRuleListSearchParams | Promise<PayrollRuleListSearchParams>;
 };
 
 function resolveWarning(value: string | string[] | undefined): string | null {
@@ -31,7 +32,18 @@ function resolveWarning(value: string | string[] | undefined): string | null {
   return trimmed.length > 0 ? trimmed : null;
 }
 
-export default async function PayrollRuleListPage({
+export default function PayrollRuleListPage({
+  params,
+  searchParams,
+}: PayrollRuleListPageProps) {
+  return (
+    <Suspense fallback={<Loading />}>
+      <PayrollRuleListPageContent params={params} searchParams={searchParams} />
+    </Suspense>
+  );
+}
+
+async function PayrollRuleListPageContent({
   params,
   searchParams,
 }: PayrollRuleListPageProps) {

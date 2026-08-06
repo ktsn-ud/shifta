@@ -1,3 +1,4 @@
+import { Suspense, type ReactElement, type ReactNode } from "react";
 import { redirect } from "next/navigation";
 import { requireCurrentUser } from "@/lib/api/current-user";
 
@@ -17,6 +18,16 @@ describe("app/my/calendar-setup/layout", () => {
     jest.resetAllMocks();
   });
 
+  type CalendarSetupContentElement = ReactElement<
+    { children: ReactNode },
+    (props: { children: ReactNode }) => Promise<ReactNode>
+  >;
+
+  function contentOf(layout: ReactElement<{ children?: ReactNode }>) {
+    expect(layout.type).toBe(Suspense);
+    return layout.props.children as CalendarSetupContentElement;
+  }
+
   it("calendarId が設定済みなら /my へ redirect する", async () => {
     requireCurrentUserMock.mockResolvedValue({
       user: {
@@ -27,9 +38,10 @@ describe("app/my/calendar-setup/layout", () => {
     const { default: CalendarSetupLayout } =
       await import("@/app/my/calendar-setup/layout");
 
-    await CalendarSetupLayout({
-      children: <div>child</div>,
-    });
+    const content = contentOf(
+      CalendarSetupLayout({ children: <div>child</div> }),
+    );
+    await content.type(content.props);
 
     expect(redirectMock).toHaveBeenCalledWith("/my");
   });
@@ -44,9 +56,10 @@ describe("app/my/calendar-setup/layout", () => {
     const { default: CalendarSetupLayout } =
       await import("@/app/my/calendar-setup/layout");
 
-    const result = await CalendarSetupLayout({
-      children: <div>child</div>,
-    });
+    const content = contentOf(
+      CalendarSetupLayout({ children: <div>child</div> }),
+    );
+    const result = await content.type(content.props);
 
     expect(redirectMock).not.toHaveBeenCalled();
     expect(result).toBeTruthy();
@@ -64,9 +77,12 @@ describe("app/my/calendar-setup/layout", () => {
       await import("@/app/my/calendar-setup/layout");
 
     await expect(
-      CalendarSetupLayout({
-        children: <div>child</div>,
-      }),
+      (async () => {
+        const content = contentOf(
+          CalendarSetupLayout({ children: <div>child</div> }),
+        );
+        await content.type(content.props);
+      })(),
     ).rejects.toThrow("NEXT_REDIRECT");
 
     expect(redirectMock).toHaveBeenCalledWith("/login");

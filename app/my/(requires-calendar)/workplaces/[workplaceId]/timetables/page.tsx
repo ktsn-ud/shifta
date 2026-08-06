@@ -1,4 +1,5 @@
 import { notFound, redirect } from "next/navigation";
+import { Suspense } from "react";
 import { TimetableList } from "@/components/workplaces/timetable-list";
 import { redirectToCalendarSetupIfNeeded } from "@/lib/api/calendar-setup-guard";
 import { requireCurrentUser } from "@/lib/api/current-user";
@@ -6,6 +7,7 @@ import {
   getCachedTimetableSetsForWorkplace,
   getCachedWorkplaceDetail,
 } from "@/lib/cache/workplace-read-cache";
+import Loading from "./loading";
 
 type TimetableListPageParams = {
   workplaceId: string;
@@ -15,9 +17,15 @@ type TimetableListPageProps = {
   params: TimetableListPageParams | Promise<TimetableListPageParams>;
 };
 
-export default async function TimetableListPage({
-  params,
-}: TimetableListPageProps) {
+export default function TimetableListPage({ params }: TimetableListPageProps) {
+  return (
+    <Suspense fallback={<Loading />}>
+      <TimetableListPageContent params={params} />
+    </Suspense>
+  );
+}
+
+async function TimetableListPageContent({ params }: TimetableListPageProps) {
   const current = await requireCurrentUser();
   if ("response" in current) {
     redirect("/login");

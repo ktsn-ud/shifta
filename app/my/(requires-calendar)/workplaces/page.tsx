@@ -1,16 +1,26 @@
 import type { Metadata } from "next";
 import { redirect } from "next/navigation";
+import { Suspense } from "react";
 import { WorkplaceList } from "@/components/workplaces/workplace-list";
 import { redirectToCalendarSetupIfNeeded } from "@/lib/api/calendar-setup-guard";
 import { requireCurrentUser } from "@/lib/api/current-user";
 import { getCachedWorkplaces } from "@/lib/cache/workplace-read-cache";
 import { createRequestTiming } from "@/lib/perf/request-timing";
+import Loading from "./loading";
 
 export const metadata: Metadata = {
   title: { absolute: "勤務先一覧｜Shifta" },
 };
 
-export default async function WorkplacesPage() {
+export default function WorkplacesPage() {
+  return (
+    <Suspense fallback={<Loading />}>
+      <WorkplacesPageContent />
+    </Suspense>
+  );
+}
+
+async function WorkplacesPageContent() {
   const timing = createRequestTiming("GET /my/workplaces");
   const current = await timing.measure("requireCurrentUser", () =>
     requireCurrentUser(),

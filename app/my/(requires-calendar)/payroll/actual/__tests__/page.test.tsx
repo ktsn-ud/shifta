@@ -18,8 +18,14 @@ jest.mock("@/components/payroll/actual-payroll-page-client", () => ({
 }));
 
 type ContentElement = ReactElement<
-  { month: string },
-  (props: { month: string }) => Promise<ReactElement>
+  {
+    searchParams?:
+      { month?: string | string[] } | Promise<{ month?: string | string[] }>;
+  },
+  (props: {
+    searchParams?:
+      { month?: string | string[] } | Promise<{ month?: string | string[] }>;
+  }) => Promise<ReactElement>
 >;
 
 describe("app/my/(requires-calendar)/payroll/actual/page", () => {

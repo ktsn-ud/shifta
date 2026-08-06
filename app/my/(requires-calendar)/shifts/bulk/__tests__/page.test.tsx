@@ -1,4 +1,4 @@
-import type { ComponentProps, ReactElement } from "react";
+import { Suspense, type ComponentProps, type ReactElement } from "react";
 import BulkShiftPage from "@/app/my/(requires-calendar)/shifts/bulk/page";
 import { BulkShiftFormLazy } from "@/components/shifts/BulkShiftFormLazy";
 import { connection } from "next/server";
@@ -16,6 +16,17 @@ type BulkShiftPageElement = ReactElement<
   typeof BulkShiftFormLazy
 >;
 
+type BulkShiftPageContentElement = ReactElement<
+  {
+    searchParams?:
+      { month?: string | string[] } | Promise<{ month?: string | string[] }>;
+  },
+  (props: {
+    searchParams?:
+      { month?: string | string[] } | Promise<{ month?: string | string[] }>;
+  }) => Promise<BulkShiftPageElement>
+>;
+
 describe("app/my/(requires-calendar)/shifts/bulk/page", () => {
   const connectionMock = jest.mocked(connection);
 
@@ -29,9 +40,12 @@ describe("app/my/(requires-calendar)/shifts/bulk/page", () => {
   });
 
   it("URL の有効な month を一括登録フォームの初期表示月へ渡す", async () => {
-    const result = (await BulkShiftPage({
+    const page = BulkShiftPage({
       searchParams: Promise.resolve({ month: "2026-12" }),
-    })) as BulkShiftPageElement;
+    });
+    expect(page.type).toBe(Suspense);
+    const content = page.props.children as BulkShiftPageContentElement;
+    const result = await content.type(content.props);
 
     expect(connectionMock).toHaveBeenCalledTimes(1);
     expect(result.type).toBe(BulkShiftFormLazy);
@@ -43,9 +57,11 @@ describe("app/my/(requires-calendar)/shifts/bulk/page", () => {
   });
 
   it("不正な month は現在月を初期表示にする", async () => {
-    const result = (await BulkShiftPage({
+    const page = BulkShiftPage({
       searchParams: Promise.resolve({ month: "invalid" }),
-    })) as BulkShiftPageElement;
+    });
+    const content = page.props.children as BulkShiftPageContentElement;
+    const result = await content.type(content.props);
 
     expect(result.props.initialMonthInputValue).toBe("2026-07");
   });
