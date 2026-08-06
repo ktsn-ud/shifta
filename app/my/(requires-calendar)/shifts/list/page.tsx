@@ -1,4 +1,5 @@
 import { redirect } from "next/navigation";
+import { Suspense } from "react";
 import { ShiftListPageClient } from "@/components/shifts/shift-list-page-client";
 import { redirectToCalendarSetupIfNeeded } from "@/lib/api/calendar-setup-guard";
 import { requireCurrentUser } from "@/lib/api/current-user";
@@ -10,6 +11,7 @@ import {
   toMonthInputValue,
 } from "@/lib/calendar/date";
 import { getMonthShifts } from "@/lib/shifts/month-shifts";
+import { ShiftListPageLoadingSkeleton } from "@/components/shifts/ShiftListLoadingSkeleton";
 
 type ShiftListPageSearchParams = {
   month?: string | string[];
@@ -34,9 +36,15 @@ function resolveInitialMonth(monthParam: string | string[] | undefined): Date {
   return startOfMonth(parsedMonth ?? new Date());
 }
 
-export default async function ShiftListPage({
-  searchParams,
-}: ShiftListPageProps) {
+export default function ShiftListPage({ searchParams }: ShiftListPageProps) {
+  return (
+    <Suspense fallback={<ShiftListPageLoadingSkeleton />}>
+      <ShiftListPageContent searchParams={searchParams} />
+    </Suspense>
+  );
+}
+
+async function ShiftListPageContent({ searchParams }: ShiftListPageProps) {
   const current = await requireCurrentUser();
   if ("response" in current) {
     redirect("/login");

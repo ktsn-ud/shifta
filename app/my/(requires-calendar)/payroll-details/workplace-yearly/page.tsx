@@ -45,7 +45,13 @@ function WorkplaceYearlyPageFallback() {
   return <PayrollDetailsWorkplaceYearlyPageLoadingSkeleton />;
 }
 
-async function WorkplaceYearlyPageContent({ year }: { year: number }) {
+async function WorkplaceYearlyPageContent({
+  searchParams,
+}: PayrollDetailsWorkplaceYearlyPageProps) {
+  const resolvedSearchParams = searchParams
+    ? await searchParams
+    : ({} as PayrollDetailsWorkplaceYearlyPageSearchParams);
+  const year = resolveInitialYear(resolvedSearchParams.year);
   const current = await requireCurrentUser();
   if ("response" in current) {
     redirect("/login");
@@ -72,17 +78,12 @@ async function WorkplaceYearlyPageContent({ year }: { year: number }) {
   );
 }
 
-export default async function PayrollDetailsWorkplaceYearlyPage({
+export default function PayrollDetailsWorkplaceYearlyPage({
   searchParams,
 }: PayrollDetailsWorkplaceYearlyPageProps) {
-  const resolvedSearchParams = searchParams
-    ? await searchParams
-    : ({} as PayrollDetailsWorkplaceYearlyPageSearchParams);
-  const year = resolveInitialYear(resolvedSearchParams.year);
-
   return (
     <Suspense fallback={<WorkplaceYearlyPageFallback />}>
-      <WorkplaceYearlyPageContent year={year} />
+      <WorkplaceYearlyPageContent searchParams={searchParams} />
     </Suspense>
   );
 }

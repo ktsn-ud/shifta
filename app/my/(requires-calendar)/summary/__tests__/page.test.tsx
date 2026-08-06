@@ -30,8 +30,14 @@ jest.mock("@/components/summary/summary-page-client", () => ({
 }));
 
 type SummaryPageContentElement = ReactElement<
-  { year: number },
-  (props: { year: number }) => Promise<ReactElement>
+  {
+    searchParams?:
+      { year?: string | string[] } | Promise<{ year?: string | string[] }>;
+  },
+  (props: {
+    searchParams?:
+      { year?: string | string[] } | Promise<{ year?: string | string[] }>;
+  }) => Promise<ReactElement>
 >;
 
 function createSummary(year: number) {
@@ -104,9 +110,16 @@ describe("app/my/(requires-calendar)/summary/page", () => {
   });
 
   it("不正な searchParams.year は当年へフォールバックする", async () => {
-    await Page({
+    redirectMock.mockImplementation(() => {
+      throw new Error("NEXT_REDIRECT");
+    });
+    const result = Page({
       searchParams: Promise.resolve({ year: "1999" }),
     });
+    const contentElement = result.props.children as SummaryPageContentElement;
+    await expect(contentElement.type(contentElement.props)).rejects.toThrow(
+      "NEXT_REDIRECT",
+    );
 
     expect(redirectMock).toHaveBeenCalledWith("/my/summary?year=2026");
     expect(getPayrollSummaryForUserMock).not.toHaveBeenCalled();

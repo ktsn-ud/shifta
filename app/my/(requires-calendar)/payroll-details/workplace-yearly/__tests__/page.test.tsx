@@ -21,8 +21,14 @@ jest.mock(
 );
 
 type ContentElement = ReactElement<
-  { year: number },
-  (props: { year: number }) => Promise<ReactElement>
+  {
+    searchParams?:
+      { year?: string | string[] } | Promise<{ year?: string | string[] }>;
+  },
+  (props: {
+    searchParams?:
+      { year?: string | string[] } | Promise<{ year?: string | string[] }>;
+  }) => Promise<ReactElement>
 >;
 
 describe("app/my/(requires-calendar)/payroll-details/workplace-yearly/page", () => {

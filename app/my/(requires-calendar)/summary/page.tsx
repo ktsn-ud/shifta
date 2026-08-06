@@ -58,7 +58,16 @@ function SummaryPageFallback() {
   return <SummaryPageLoadingSkeleton />;
 }
 
-async function SummaryPageContent({ year }: { year: number }) {
+async function SummaryPageContent({ searchParams }: SummaryPageProps) {
+  const resolvedSearchParams = searchParams
+    ? await searchParams
+    : ({} as SummaryPageSearchParams);
+  const { year, shouldRedirect } = resolveYearParam(resolvedSearchParams.year);
+
+  if (shouldRedirect) {
+    redirect(`/my/summary?year=${year}`);
+  }
+
   const timing = createRequestTiming("GET /my/summary");
   try {
     const current = await timing.measure("requireCurrentUser", () =>
@@ -89,19 +98,10 @@ async function SummaryPageContent({ year }: { year: number }) {
   }
 }
 
-export default async function SummaryPage({ searchParams }: SummaryPageProps) {
-  const resolvedSearchParams = searchParams
-    ? await searchParams
-    : ({} as SummaryPageSearchParams);
-  const { year, shouldRedirect } = resolveYearParam(resolvedSearchParams.year);
-
-  if (shouldRedirect) {
-    redirect(`/my/summary?year=${year}`);
-  }
-
+export default function SummaryPage({ searchParams }: SummaryPageProps) {
   return (
     <Suspense fallback={<SummaryPageFallback />}>
-      <SummaryPageContent year={year} />
+      <SummaryPageContent searchParams={searchParams} />
     </Suspense>
   );
 }

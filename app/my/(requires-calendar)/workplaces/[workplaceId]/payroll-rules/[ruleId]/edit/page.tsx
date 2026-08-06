@@ -1,4 +1,6 @@
 import { PayrollRuleForm } from "@/components/workplaces/payroll-rule-form";
+import { Suspense } from "react";
+import Loading from "./loading";
 
 type EditPayrollRulePageParams = {
   workplaceId: string;
@@ -9,7 +11,17 @@ type EditPayrollRulePageProps = {
   params: EditPayrollRulePageParams | Promise<EditPayrollRulePageParams>;
 };
 
-export default async function EditPayrollRulePage({
+export default function EditPayrollRulePage({
+  params,
+}: EditPayrollRulePageProps) {
+  return (
+    <Suspense fallback={<Loading />}>
+      <EditPayrollRulePageContent params={params} />
+    </Suspense>
+  );
+}
+
+async function EditPayrollRulePageContent({
   params,
 }: EditPayrollRulePageProps) {
   const resolvedParams = await params;

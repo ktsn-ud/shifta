@@ -39,7 +39,9 @@ function resolveInitialMonth(monthParam: string | string[] | undefined): Date {
   return startOfMonth(parsedMonth ?? new Date());
 }
 
-async function DashboardPageContent({ month }: { month: Date }) {
+async function DashboardPageContent({ searchParams }: DashboardPageProps) {
+  const resolvedSearchParams = searchParams ? await searchParams : {};
+  const month = resolveInitialMonth(resolvedSearchParams.month);
   const timing = createRequestTiming("GET /my");
   try {
     const current = await timing.measure("requireCurrentUser", () =>
@@ -112,13 +114,10 @@ type DashboardPageProps = {
   searchParams?: DashboardPageSearchParams | Promise<DashboardPageSearchParams>;
 };
 
-export default async function Page({ searchParams }: DashboardPageProps) {
-  const resolvedSearchParams = searchParams ? await searchParams : {};
-  const month = resolveInitialMonth(resolvedSearchParams.month);
-
+export default function Page({ searchParams }: DashboardPageProps) {
   return (
     <Suspense fallback={<DashboardPageFallback />}>
-      <DashboardPageContent month={month} />
+      <DashboardPageContent searchParams={searchParams} />
     </Suspense>
   );
 }

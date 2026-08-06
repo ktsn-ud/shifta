@@ -1,4 +1,9 @@
-import type { ComponentProps, ReactElement } from "react";
+import {
+  Suspense,
+  type ComponentProps,
+  type ReactElement,
+  type ReactNode,
+} from "react";
 import { render, screen } from "@testing-library/react";
 import { redirect } from "next/navigation";
 import Layout from "@/app/my/layout";
@@ -106,14 +111,39 @@ describe("app/my/(requires-calendar)/layout", () => {
     jest.clearAllMocks();
   });
 
-  it("requireCurrentUser() を通したうえで受け取った子要素を返す", async () => {
+  type RequiresCalendarContentElement = ReactElement<
+    { children: ReactNode },
+    (props: { children: ReactNode }) => Promise<ReactNode>
+  >;
+
+  async function renderProtectedContent(children: ReactNode) {
+    const layout = RequiresCalendarLayout({ children });
+    expect(layout.type).toBe(Suspense);
+
+    const content = layout.props.children as RequiresCalendarContentElement;
+    render(await content.type(content.props));
+  }
+
+  it("認証・calendar setup guard の待機中は loading panel を表示する", () => {
+    const layout = RequiresCalendarLayout({ children: <div>child</div> });
+
+    expect(layout.type).toBe(Suspense);
+    render(layout.props.fallback);
+
+    const loadingLabel = screen.getByText("ページを読み込み中...");
+    expect(loadingLabel).toBeInTheDocument();
+    expect(loadingLabel.parentElement).toHaveAttribute("aria-busy", "true");
+    expect(requireCurrentUserMock).not.toHaveBeenCalled();
+  });
+
+  it("Suspense 内で requireCurrentUser() を通したうえで受け取った子要素を返す", async () => {
     requireCurrentUserMock.mockResolvedValue({
       user: {
         calendarId: "calendar-1",
       },
     } as Awaited<ReturnType<typeof requireCurrentUser>>);
 
-    render(await RequiresCalendarLayout({ children: <div>child</div> }));
+    await renderProtectedContent(<div>child</div>);
 
     expect(screen.getByText("child")).toBeInTheDocument();
     expect(requireCurrentUserMock).toHaveBeenCalledTimes(1);
@@ -129,7 +159,7 @@ describe("app/my/(requires-calendar)/layout", () => {
       },
     } as Awaited<ReturnType<typeof requireCurrentUser>>);
 
-    await RequiresCalendarLayout({ children: <div>child</div> });
+    await renderProtectedContent(<div>child</div>);
 
     expect(redirectToCalendarSetupIfNeededMock).toHaveBeenCalledWith({
       calendarId: null,
@@ -145,7 +175,11 @@ describe("app/my/(requires-calendar)/layout", () => {
     } as Awaited<ReturnType<typeof requireCurrentUser>>);
 
     await expect(
-      RequiresCalendarLayout({ children: <div>child</div> }),
+      (async () => {
+        const layout = RequiresCalendarLayout({ children: <div>child</div> });
+        const content = layout.props.children as RequiresCalendarContentElement;
+        await content.type(content.props);
+      })(),
     ).rejects.toThrow("NEXT_REDIRECT");
 
     expect(redirectMock).toHaveBeenCalledWith("/login");

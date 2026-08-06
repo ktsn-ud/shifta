@@ -41,8 +41,14 @@ jest.mock("@/components/dashboard/dashboard-page-client", () => ({
 }));
 
 type DashboardPageContentElement = ReactElement<
-  { month: Date },
-  (props: { month: Date }) => Promise<ReactElement>
+  {
+    searchParams?:
+      { month?: string | string[] } | Promise<{ month?: string | string[] }>;
+  },
+  (props: {
+    searchParams?:
+      { month?: string | string[] } | Promise<{ month?: string | string[] }>;
+  }) => Promise<ReactElement>
 >;
 
 describe("app/my/(requires-calendar)/page", () => {
