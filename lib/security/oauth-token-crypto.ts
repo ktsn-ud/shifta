@@ -10,8 +10,7 @@ const TOKEN_PREFIX = "enc:v1:";
 const IV_LENGTH = 12;
 
 export type OAuthTokenCryptoErrorCode =
-  | "MISSING_ENCRYPTION_SECRET"
-  | "INVALID_TOKEN_FORMAT";
+  "MISSING_ENCRYPTION_SECRET" | "INVALID_TOKEN_FORMAT";
 
 export class OAuthTokenCryptoError extends Error {
   constructor(

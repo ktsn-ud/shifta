@@ -48,8 +48,7 @@ type ShiftFormBootstrapResponseInput = {
 
 declare global {
   var __shiftFormBootstrapResponseInput:
-    | ShiftFormBootstrapResponseInput
-    | undefined;
+    ShiftFormBootstrapResponseInput | undefined;
 }
 
 jest.mock("next/navigation", () => ({

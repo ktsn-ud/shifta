@@ -45,11 +45,7 @@ import { type MonthShift, useMonthShifts } from "@/hooks/use-month-shifts";
 import { useUndoableAction } from "@/hooks/use-undoable-action";
 
 type SortColumn =
-  | "date"
-  | "time"
-  | "workplace"
-  | "breakMinutes"
-  | "estimatedPay";
+  "date" | "time" | "workplace" | "breakMinutes" | "estimatedPay";
 type SortDirection = "asc" | "desc";
 
 type SortState = {

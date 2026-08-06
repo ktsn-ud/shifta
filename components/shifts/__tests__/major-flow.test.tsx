@@ -42,8 +42,7 @@ type ShiftFormBootstrapResponseInput = {
 
 declare global {
   var __majorFlowShiftBootstrapResponseInput:
-    | ShiftFormBootstrapResponseInput
-    | undefined;
+    ShiftFormBootstrapResponseInput | undefined;
   var timetableSetsData: unknown;
 }
 

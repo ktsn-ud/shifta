@@ -96,18 +96,16 @@ export async function getCachedWorkplaces(userId: string) {
     orderBy: { createdAt: "desc" },
   });
 
-  return workplaces.map(
-    (workplace): CachedWorkplace => ({
-      id: workplace.id,
-      name: workplace.name,
-      type: workplace.type,
-      color: workplace.color,
-      closingDayType: workplace.closingDayType,
-      closingDay: workplace.closingDay,
-      payday: workplace.payday,
-      _count: workplace._count,
-    }),
-  );
+  return workplaces.map((workplace): CachedWorkplace => ({
+    id: workplace.id,
+    name: workplace.name,
+    type: workplace.type,
+    color: workplace.color,
+    closingDayType: workplace.closingDayType,
+    closingDay: workplace.closingDay,
+    payday: workplace.payday,
+    _count: workplace._count,
+  }));
 }
 
 export async function getCachedWorkplaceDetail(
@@ -224,27 +222,25 @@ export async function getCachedTimetableSetsForWorkplace(
     orderBy: [{ sortOrder: "asc" }, { createdAt: "asc" }],
   });
 
-  return sets.map(
-    (set): CachedTimetableSet => ({
-      id: set.id,
-      workplaceId: set.workplaceId,
-      name: set.name,
-      sortOrder: set.sortOrder,
-      createdAt: set.createdAt.toISOString(),
-      updatedAt: set.updatedAt.toISOString(),
-      timetables: set.timetables.map((timetable) => {
-        const startTime = timetable.startTime.toISOString();
-        const endTime = timetable.endTime.toISOString();
-        return {
-          id: timetable.id,
-          timetableSetId: timetable.timetableSetId,
-          period: timetable.period,
-          startTime,
-          endTime,
-          startTimeLabel: startTime.slice(11, 16),
-          endTimeLabel: endTime.slice(11, 16),
-        };
-      }),
+  return sets.map((set): CachedTimetableSet => ({
+    id: set.id,
+    workplaceId: set.workplaceId,
+    name: set.name,
+    sortOrder: set.sortOrder,
+    createdAt: set.createdAt.toISOString(),
+    updatedAt: set.updatedAt.toISOString(),
+    timetables: set.timetables.map((timetable) => {
+      const startTime = timetable.startTime.toISOString();
+      const endTime = timetable.endTime.toISOString();
+      return {
+        id: timetable.id,
+        timetableSetId: timetable.timetableSetId,
+        period: timetable.period,
+        startTime,
+        endTime,
+        startTimeLabel: startTime.slice(11, 16),
+        endTimeLabel: endTime.slice(11, 16),
+      };
     }),
-  );
+  }));
 }
