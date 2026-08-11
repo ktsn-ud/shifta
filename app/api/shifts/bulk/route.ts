@@ -2,7 +2,11 @@ import { randomUUID } from "node:crypto";
 import { after } from "next/server";
 import { z } from "zod";
 import { requireCurrentUser } from "@/lib/api/current-user";
-import { DATE_ONLY_REGEX, TIME_ONLY_REGEX } from "@/lib/api/date-time";
+import {
+  DATE_ONLY_REGEX,
+  isValidDateOnly,
+  TIME_ONLY_REGEX,
+} from "@/lib/api/date-time";
 import { jsonError, parseJsonBody } from "@/lib/api/http";
 import { requireOwnedWorkplace } from "@/lib/api/workplace";
 import { syncShiftsAfterBulkCreate } from "@/lib/google-calendar/syncStatus";
@@ -24,7 +28,10 @@ import {
 export const maxDuration = 60;
 
 const bulkShiftItemSchema = z.strictObject({
-  date: z.string().regex(DATE_ONLY_REGEX, "YYYY-MM-DD形式で入力してください"),
+  date: z
+    .string()
+    .regex(DATE_ONLY_REGEX, "YYYY-MM-DD形式で入力してください")
+    .refine(isValidDateOnly, "実在する日付を入力してください"),
   shiftType: z.enum(["NORMAL", "LESSON"]),
   comment: shiftCommentSchema,
   startTime: z
