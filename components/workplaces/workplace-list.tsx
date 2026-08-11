@@ -288,7 +288,7 @@ export function WorkplaceList({
   ) => {
     try {
       const response = await deleteWorkplaceAction(deletingTarget.id);
-      if (typeof response.error === "string") throw new Error(response.error);
+      if ("error" in response) throw new Error(response.error);
 
       await invalidateAfterWorkplaceMutation(queryClient);
       queryClient.setQueryData<Workplace[]>(

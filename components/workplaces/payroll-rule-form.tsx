@@ -759,7 +759,7 @@ function usePayrollRuleEditorController({
       } else {
         responsePayload = await createPayrollRuleAction(workplaceId, payload);
       }
-      if (typeof responsePayload.error === "string") {
+      if ("error" in responsePayload) {
         const parsedError = {
           message: responsePayload.error,
           fieldErrors: actionFieldErrors(responsePayload.details),

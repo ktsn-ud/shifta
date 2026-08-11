@@ -893,8 +893,7 @@ function useTimetableEditorController({
       } else {
         responsePayload = await createTimetableAction(workplaceId, payload);
       }
-      if (typeof responsePayload.error === "string")
-        throw new Error(responsePayload.error);
+      if ("error" in responsePayload) throw new Error(responsePayload.error);
       const syncState = parseGoogleSyncStateFromPayload(
         responsePayload,
         messages.error.calendarSyncFailed,

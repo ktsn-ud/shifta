@@ -100,6 +100,9 @@ describe("POST /api/shifts/bulk invalid calendar dates", () => {
         ],
       }),
     );
+    if (!response) {
+      throw new Error("bulk shift route did not return a response");
+    }
 
     expect(response.status).toBe(400);
     await expect(response.json()).resolves.toEqual(
