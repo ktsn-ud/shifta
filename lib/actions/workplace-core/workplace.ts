@@ -1,11 +1,15 @@
-import { connection } from "next/server";
+import { after, connection } from "next/server";
 import { unstable_rethrow } from "next/navigation";
 import { z } from "zod";
 import { requireCurrentUser } from "@/lib/api/current-user";
 import { jsonError, parseJsonBody } from "@/lib/api/http";
 import { prisma } from "@/lib/prisma";
 import { jsonNoStore } from "@/lib/api/cache-control";
-import { buildSuccessSyncResponse } from "@/lib/google-calendar/sync-response";
+import {
+  buildPendingSyncResponse,
+  buildSuccessSyncResponse,
+} from "@/lib/google-calendar/sync-response";
+import { syncShiftDeletionsAfterWorkplaceDeletion } from "@/lib/google-calendar/syncStatus";
 import { createRequestTiming } from "@/lib/perf/request-timing";
 import { getCachedWorkplaceDetail } from "@/lib/cache/workplace-read-cache";
 
@@ -31,6 +35,21 @@ type WorkplaceWithCounts = {
     timetableSets: number;
   };
 };
+
+function isForeignKeyConstraintError(error: unknown): boolean {
+  return (
+    error instanceof Error &&
+    "code" in error &&
+    typeof error.code === "string" &&
+    error.code === "P2003"
+  );
+}
+
+function isWorkplaceDeleteConflictError(error: unknown): boolean {
+  return (
+    error instanceof Error && error.message === "WORKPLACE_DELETE_CONFLICT"
+  );
+}
 
 const updateWorkplaceSchema = z
   .strictObject({
@@ -236,13 +255,88 @@ export async function deleteWorkplaceRouteAction(_: Request, context: Context) {
       return jsonError("勤務先が見つかりません", 404);
     }
 
-    const relatedCounts = {
-      shifts: existing._count.shifts,
-      payrollRules: existing._count.payrollRules,
-      timetableSets: existing._count.timetableSets,
-    };
+    const deletedWorkplace = await prisma.$transaction(async (tx) => {
+      const latest = await tx.workplace.findFirst({
+        where: {
+          id: workplaceId,
+          userId: current.user.id,
+        },
+        select: {
+          shifts: {
+            where: {
+              googleEventId: {
+                not: null,
+              },
+            },
+            select: {
+              id: true,
+              googleEventId: true,
+            },
+          },
+          _count: {
+            select: {
+              shifts: true,
+              payrollRules: true,
+              timetableSets: true,
+              actualPayrolls: true,
+            },
+          },
+        },
+      });
 
-    await prisma.workplace.delete({ where: { id: workplaceId } });
+      if (!latest) {
+        throw new Error("WORKPLACE_DELETE_CONFLICT");
+      }
+
+      await tx.shiftLessonRange.deleteMany({
+        where: {
+          timetableSet: {
+            workplaceId,
+          },
+        },
+      });
+      await tx.workplace.delete({ where: { id: workplaceId } });
+
+      return latest;
+    });
+
+    const relatedCounts = {
+      shifts: deletedWorkplace._count.shifts,
+      payrollRules: deletedWorkplace._count.payrollRules,
+      timetableSets: deletedWorkplace._count.timetableSets,
+      actualPayrolls: deletedWorkplace._count.actualPayrolls,
+    };
+    const shiftDeletionTargets = deletedWorkplace.shifts.flatMap((shift) =>
+      shift.googleEventId === null
+        ? []
+        : [{ id: shift.id, googleEventId: shift.googleEventId }],
+    );
+
+    if (shiftDeletionTargets.length > 0) {
+      after(async () => {
+        try {
+          const summary = await syncShiftDeletionsAfterWorkplaceDeletion(
+            shiftDeletionTargets,
+            current.user.id,
+          );
+
+          if (summary.failed > 0) {
+            console.warn(
+              "DELETE /api/workplaces/:id background sync partially failed",
+              summary,
+            );
+          }
+        } catch {
+          console.warn(
+            "DELETE /api/workplaces/:id background sync partially failed",
+            {
+              total: shiftDeletionTargets.length,
+              failed: shiftDeletionTargets.length,
+            },
+          );
+        }
+      });
+    }
 
     return jsonNoStore({
       data: {
@@ -250,17 +344,28 @@ export async function deleteWorkplaceRouteAction(_: Request, context: Context) {
         deleted: true,
         relatedCounts,
       },
-      sync: buildSuccessSyncResponse(),
+      sync:
+        shiftDeletionTargets.length > 0
+          ? buildPendingSyncResponse()
+          : buildSuccessSyncResponse(),
       warning:
         relatedCounts.shifts +
           relatedCounts.payrollRules +
-          relatedCounts.timetableSets >
+          relatedCounts.timetableSets +
+          relatedCounts.actualPayrolls >
         0
           ? "関連データをCASCADE削除しました"
           : null,
     });
   } catch (error) {
     unstable_rethrow(error);
+    if (
+      isForeignKeyConstraintError(error) ||
+      isWorkplaceDeleteConflictError(error)
+    ) {
+      return jsonError("勤務先の削除中にデータ競合が発生しました", 409);
+    }
+
     console.error("DELETE /api/workplaces/:id failed", error);
     return jsonError("勤務先の削除に失敗しました", 500);
   }

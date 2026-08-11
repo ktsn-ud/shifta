@@ -18,7 +18,10 @@ import {
   updateWorkplaceAction,
   updateTimetableAction,
 } from "@/lib/actions/workplace";
-import { buildSuccessSyncResponse } from "@/lib/google-calendar/sync-response";
+import {
+  buildPendingSyncResponse,
+  buildSuccessSyncResponse,
+} from "@/lib/google-calendar/sync-response";
 
 jest.mock("next/cache", () => ({
   updateTag: jest.fn(),
@@ -291,7 +294,7 @@ describe("workplace server actions", () => {
         data: {
           id: "workplace-1",
           deleted: true,
-          relatedCounts: { shifts: 0, payrollRules: 0 },
+          relatedCounts: { shifts: 0, payrollRules: 0, timetableSets: 0 },
         },
         warning: null,
         sync: buildSuccessSyncResponse(),
@@ -443,5 +446,51 @@ describe("workplace server actions", () => {
         ["workplace:workplace-1:timetables"],
       ]),
     );
+  });
+
+  it("勤務先削除成功時は完全な CASCADE 削除 DTO を維持して対象タグを更新する", async () => {
+    authenticatedUser();
+    const deletedWorkplace = {
+      id: "workplace-1",
+      deleted: true as const,
+      relatedCounts: {
+        shifts: 2,
+        payrollRules: 1,
+        timetableSets: 3,
+        actualPayrolls: 4,
+      },
+    };
+    const sync = buildPendingSyncResponse();
+    deleteWorkplaceRouteActionMock.mockResolvedValue(
+      response({
+        data: deletedWorkplace,
+        sync,
+        warning: "関連データをCASCADE削除しました",
+      }),
+    );
+
+    await expect(deleteWorkplaceAction("workplace-1")).resolves.toEqual({
+      data: deletedWorkplace,
+      sync,
+      warning: "関連データをCASCADE削除しました",
+    });
+
+    expect(deleteWorkplaceRouteActionMock).toHaveBeenCalledWith(
+      expect.objectContaining({ method: "POST" }),
+      { params: expect.any(Promise) },
+    );
+    await expect(
+      deleteWorkplaceRouteActionMock.mock.calls[0][1].params,
+    ).resolves.toEqual({ workplaceId: "workplace-1" });
+    expect(updateTagMock.mock.calls).toEqual([
+      ["user:user-1:workplaces"],
+      ["user:user-1:actual-payroll"],
+      ["user:user-1:payroll-snapshot"],
+      ["user:user-1:summary"],
+      ["user:user-1:payroll-details"],
+      ["workplace:workplace-1:detail"],
+      ["workplace:workplace-1:payroll-rules"],
+      ["workplace:workplace-1:timetables"],
+    ]);
   });
 });

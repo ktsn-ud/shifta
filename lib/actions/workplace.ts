@@ -129,7 +129,8 @@ function isDeletedWorkplaceActionData(
     deleted === true &&
     typeof relatedCounts.shifts === "number" &&
     typeof relatedCounts.payrollRules === "number" &&
-    typeof relatedCounts.timetableSets === "number"
+    typeof relatedCounts.timetableSets === "number" &&
+    typeof relatedCounts.actualPayrolls === "number"
   );
 }
 

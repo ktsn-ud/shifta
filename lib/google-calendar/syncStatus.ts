@@ -279,6 +279,44 @@ async function mapWithConcurrency<T, R>(
   return results;
 }
 
+async function deleteCreatedCalendarEvent(
+  googleEventId: string,
+  shiftId: string,
+  user: User,
+): Promise<void> {
+  try {
+    await executeWithSyncRetry(
+      () => deleteCalendarEvent(googleEventId, shiftId, user),
+      {
+        action: "delete",
+        userId: user.id,
+        shiftId,
+        onRetryScheduled: () => {},
+      },
+    );
+  } catch {
+    console.warn("Google Calendar orphaned create compensation failed", {
+      action: "create",
+    });
+  }
+}
+
+async function compensateCreatedCalendarEvent(
+  googleEventId: string,
+  shiftId: string,
+  user: User,
+): Promise<void> {
+  try {
+    await withBulkShiftSyncPermit(() =>
+      deleteCreatedCalendarEvent(googleEventId, shiftId, user),
+    );
+  } catch {
+    console.warn("Google Calendar orphaned create compensation failed", {
+      action: "create",
+    });
+  }
+}
+
 async function runShiftSync(
   shiftId: string,
   userId: string,
@@ -338,11 +376,17 @@ async function runShiftSync(
     }
 
     let googleEventId = shift.googleEventId;
+    let createdGoogleEventId: string | null = null;
 
     googleEventId = await executeWithSyncRetry(
       async () => {
         if (action === "create") {
-          return createCalendarEvent(shift, shift.workplace, user);
+          createdGoogleEventId = await createCalendarEvent(
+            shift,
+            shift.workplace,
+            user,
+          );
+          return createdGoogleEventId;
         }
 
         if (shift.googleEventId) {
@@ -350,7 +394,12 @@ async function runShiftSync(
           return shift.googleEventId;
         }
 
-        return createCalendarEvent(shift, shift.workplace, user);
+        createdGoogleEventId = await createCalendarEvent(
+          shift,
+          shift.workplace,
+          user,
+        );
+        return createdGoogleEventId;
       },
       {
         action,
@@ -360,10 +409,37 @@ async function runShiftSync(
       },
     );
 
-    await updateSyncStatus(shiftId, userId, "SUCCESS", {
+    const succeeded = await updateSyncStatus(shiftId, userId, "SUCCESS", {
       googleEventId,
       error: null,
     });
+    if (!succeeded) {
+      if (createdGoogleEventId) {
+        await compensateCreatedCalendarEvent(
+          createdGoogleEventId,
+          shiftId,
+          user,
+        );
+      }
+
+      const errorMessage = "同期対象のシフトが見つかりません";
+      logSyncEvent({
+        userId,
+        shiftId,
+        action,
+        status: "FAILED",
+        error: errorMessage,
+        durationMs: Date.now() - startedAt,
+      });
+
+      return {
+        ok: false,
+        errorMessage,
+        errorCode: null,
+        requiresCalendarSetup: false,
+        requiresSignOut: false,
+      };
+    }
 
     logSyncEvent({
       userId,
@@ -605,10 +681,37 @@ export async function syncShiftsAfterBulkCreate(
               },
             );
 
-            await updateSyncStatus(shiftId, userId, "SUCCESS", {
-              googleEventId,
-              error: null,
-            });
+            const succeeded = await updateSyncStatus(
+              shiftId,
+              userId,
+              "SUCCESS",
+              {
+                googleEventId,
+                error: null,
+              },
+            );
+            if (!succeeded) {
+              await deleteCreatedCalendarEvent(googleEventId, shiftId, user);
+
+              const errorMessage = "同期対象のシフトが見つかりません";
+              logSyncEvent({
+                userId,
+                shiftId,
+                action: "create",
+                status: "FAILED",
+                error: errorMessage,
+                durationMs: Date.now() - startedAt,
+              });
+
+              return {
+                shiftId,
+                ok: false as const,
+                errorMessage,
+                errorCode: null,
+                requiresCalendarSetup: false,
+                requiresSignOut: false,
+              };
+            }
 
             logSyncEvent({
               userId,
@@ -777,6 +880,44 @@ export async function syncShiftDeletion(
       requiresSignOut: syncError.requiresSignOut,
     };
   }
+}
+
+export async function syncShiftDeletionsAfterWorkplaceDeletion(
+  shifts: ReadonlyArray<{ id: string; googleEventId: string }>,
+  userId: string,
+): Promise<{ total: number; failed: number }> {
+  const user = await findUserForSync(userId);
+  if (!user) {
+    return { total: shifts.length, failed: shifts.length };
+  }
+
+  const results = await mapWithConcurrency(
+    shifts,
+    BULK_SYNC_CONCURRENCY,
+    async (shift) => {
+      try {
+        await withBulkShiftSyncPermit(() =>
+          executeWithSyncRetry(
+            () => deleteCalendarEvent(shift.googleEventId, shift.id, user),
+            {
+              action: "delete",
+              userId,
+              shiftId: shift.id,
+              onRetryScheduled: () => {},
+            },
+          ),
+        );
+        return true;
+      } catch {
+        return false;
+      }
+    },
+  );
+
+  return {
+    total: results.length,
+    failed: results.filter((result) => !result).length,
+  };
 }
 
 export async function getOwnedShiftSyncStatus(shiftId: string, userId: string) {

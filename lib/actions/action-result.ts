@@ -32,6 +32,7 @@ export type WorkplaceDeletedActionData = DeletedActionData & {
     shifts: number;
     payrollRules: number;
     timetableSets: number;
+    actualPayrolls: number;
   };
 };
 

@@ -7,6 +7,7 @@ import {
   syncShiftAfterCreate,
   syncShiftAfterUpdate,
   syncShiftDeletion,
+  syncShiftDeletionsAfterWorkplaceDeletion,
   syncShiftsAfterBulkCreate,
 } from "@/lib/google-calendar/syncStatus";
 import { waitFor } from "@testing-library/react";
@@ -206,6 +207,258 @@ describe("shift sync cache revalidation", () => {
 
     expect(revalidateShiftSyncTagsMock).not.toHaveBeenCalled();
     expect(revalidateShiftDomainTagsMock).not.toHaveBeenCalled();
+  });
+
+  it("勤務先削除後のイベント同期は任意件数を最大3件ずつ処理し、失敗を要約する", async () => {
+    const shifts = [
+      { id: "shift-1", googleEventId: "google-event-1" },
+      { id: "shift-2", googleEventId: "google-event-2" },
+      { id: "shift-3", googleEventId: "google-event-3" },
+      { id: "shift-4", googleEventId: "google-event-4" },
+      { id: "shift-5", googleEventId: "google-event-5" },
+      { id: "shift-6", googleEventId: "google-event-6" },
+      { id: "shift-7", googleEventId: "google-event-7" },
+    ];
+    const syncErrorSpy = jest.spyOn(console, "error").mockImplementation();
+    const releaseDeletes: Array<() => void> = [];
+    let activeDeletes = 0;
+    let maximumActiveDeletes = 0;
+    deleteCalendarEvent.mockImplementation(
+      (googleEventId: string) =>
+        new Promise<void>((resolve, reject) => {
+          activeDeletes += 1;
+          maximumActiveDeletes = Math.max(maximumActiveDeletes, activeDeletes);
+          releaseDeletes.push(() => {
+            activeDeletes -= 1;
+            if (googleEventId === "google-event-4") {
+              reject(
+                Object.assign(new Error("invalid request"), { status: 400 }),
+              );
+              return;
+            }
+            resolve();
+          });
+        }),
+    );
+
+    const summary = syncShiftDeletionsAfterWorkplaceDeletion(shifts, "user-1");
+
+    await waitFor(() => {
+      expect(deleteCalendarEvent).toHaveBeenCalledTimes(3);
+    });
+    expect(maximumActiveDeletes).toBe(3);
+
+    for (let completedCount = 0; completedCount < 7; completedCount += 1) {
+      await waitFor(() => {
+        expect(releaseDeletes.length).toBeGreaterThan(0);
+      });
+      releaseDeletes.shift()?.();
+    }
+
+    await expect(summary).resolves.toEqual({ total: 7, failed: 1 });
+    expect(deleteCalendarEvent).toHaveBeenCalledTimes(7);
+    expect(userFindUniqueMock).toHaveBeenCalledTimes(1);
+    expect(maximumActiveDeletes).toBeLessThanOrEqual(3);
+    expect(syncErrorSpy).not.toHaveBeenCalled();
+    syncErrorSpy.mockRestore();
+  });
+
+  it("勤務先削除同期・複数 helper・一括作成で Google Calendar 操作の共有上限3件を維持する", async () => {
+    const deletionTargetsByCall = [
+      ["deleted-1", "deleted-2", "deleted-3"],
+      ["deleted-4", "deleted-5", "deleted-6"],
+    ].map((ids) => ids.map((id) => ({ id, googleEventId: `event-${id}` })));
+    const createdShiftId = "created-1";
+    shiftFindManyMock.mockResolvedValue([createBulkSyncShift(createdShiftId)]);
+
+    let activeOperations = 0;
+    let maximumActiveOperations = 0;
+    const releaseDeletions: Array<() => void> = [];
+    const releaseCreates: Array<() => void> = [];
+    const recordOperation = (releaseQueue: Array<() => void>, result: string) =>
+      new Promise<string>((resolve) => {
+        activeOperations += 1;
+        maximumActiveOperations = Math.max(
+          maximumActiveOperations,
+          activeOperations,
+        );
+        releaseQueue.push(() => {
+          activeOperations -= 1;
+          resolve(result);
+        });
+      });
+    deleteCalendarEvent.mockImplementation(() =>
+      recordOperation(releaseDeletions, "deleted"),
+    );
+    createCalendarEvent.mockImplementation(() =>
+      recordOperation(releaseCreates, "created-event-1"),
+    );
+
+    const workplaceDeletionSyncs = deletionTargetsByCall.map((targets) =>
+      syncShiftDeletionsAfterWorkplaceDeletion(targets, "user-1"),
+    );
+    const bulkCreateSync = syncShiftsAfterBulkCreate(
+      [createdShiftId],
+      "user-1",
+    );
+
+    await waitFor(() => {
+      expect(deleteCalendarEvent).toHaveBeenCalledTimes(3);
+    });
+    expect(createCalendarEvent).not.toHaveBeenCalled();
+    expect(maximumActiveOperations).toBe(3);
+
+    for (let completedCount = 0; completedCount < 6; completedCount += 1) {
+      await waitFor(() => {
+        expect(releaseDeletions.length).toBeGreaterThan(0);
+      });
+      releaseDeletions.shift()?.();
+    }
+
+    await waitFor(() => {
+      expect(createCalendarEvent).toHaveBeenCalledTimes(1);
+    });
+    releaseCreates.shift()?.();
+
+    await expect(
+      Promise.all([...workplaceDeletionSyncs, bulkCreateSync]),
+    ).resolves.toHaveLength(3);
+    expect(deleteCalendarEvent).toHaveBeenCalledTimes(6);
+    expect(maximumActiveOperations).toBeLessThanOrEqual(3);
+  });
+
+  it("勤務先削除同期は共有キュー容量超過を failed として要約し unhandled rejection を出さない", async () => {
+    shiftFindManyMock.mockResolvedValue([createBulkSyncShift("initial-1")]);
+    const initialVerifications = Array.from({ length: 3 }, () =>
+      createDeferred<Record<string, never>>(),
+    );
+    const threeVerificationsStarted = createDeferred<void>();
+    let verificationStarts = 0;
+    getVerifiedCalendarClient.mockImplementation(() => {
+      const verification = initialVerifications[verificationStarts];
+      verificationStarts += 1;
+      if (verificationStarts === 3) {
+        threeVerificationsStarted.resolve();
+      }
+      return verification ? verification.promise : Promise.resolve({});
+    });
+    const unhandledRejections: unknown[] = [];
+    const recordUnhandledRejection = (reason: unknown) => {
+      unhandledRejections.push(reason);
+    };
+    process.on("unhandledRejection", recordUnhandledRejection);
+
+    try {
+      const initialBulkSyncs = ["initial-1", "initial-2", "initial-3"].map(
+        (shiftId) => syncShiftsAfterBulkCreate([shiftId], "user-1"),
+      );
+      await threeVerificationsStarted.promise;
+      const workplaceDeletionSyncs = Array.from(
+        { length: 34 },
+        (_, batchIndex) =>
+          syncShiftDeletionsAfterWorkplaceDeletion(
+            Array.from({ length: 3 }, (_, shiftIndex) => ({
+              id: `deleted-${batchIndex}-${shiftIndex}`,
+              googleEventId: `event-${batchIndex}-${shiftIndex}`,
+            })),
+            "user-1",
+          ),
+      );
+
+      await waitFor(() => {
+        expect(userFindUniqueMock).toHaveBeenCalledTimes(37);
+      });
+      for (const verification of initialVerifications) {
+        verification.resolve({});
+      }
+
+      const deletionSummaries = await Promise.all(workplaceDeletionSyncs);
+      await expect(Promise.all(initialBulkSyncs)).resolves.toHaveLength(3);
+      expect(deletionSummaries.some((summary) => summary.failed > 0)).toBe(
+        true,
+      );
+      expect(unhandledRejections).toEqual([]);
+    } finally {
+      process.off("unhandledRejection", recordUnhandledRejection);
+    }
+  });
+
+  it("作成同期で SUCCESS 更新に失敗した新規イベントを削除し、補償失敗は安全なログに限定する", async () => {
+    shiftUpdateManyMock
+      .mockResolvedValueOnce({ count: 1 })
+      .mockResolvedValueOnce({ count: 0 });
+    createCalendarEvent.mockResolvedValue("created-event-1");
+    deleteCalendarEvent.mockRejectedValue(
+      Object.assign(new Error("upstream-token"), {
+        status: 400,
+        response: { data: { googleEventId: "created-event-1" } },
+      }),
+    );
+    const warnSpy = jest.spyOn(console, "warn").mockImplementation();
+
+    await expect(syncShiftAfterCreate("shift-1", "user-1")).resolves.toEqual({
+      ok: false,
+      errorMessage: "同期対象のシフトが見つかりません",
+      errorCode: null,
+      requiresCalendarSetup: false,
+      requiresSignOut: false,
+    });
+
+    expect(deleteCalendarEvent).toHaveBeenCalledWith(
+      "created-event-1",
+      "shift-1",
+      expect.objectContaining({ id: "user-1" }),
+    );
+    expect(warnSpy).toHaveBeenCalledWith(
+      "Google Calendar orphaned create compensation failed",
+      { action: "create" },
+    );
+    expect(JSON.stringify(warnSpy.mock.calls)).not.toContain("user-1");
+    expect(JSON.stringify(warnSpy.mock.calls)).not.toContain("shift-1");
+    expect(JSON.stringify(warnSpy.mock.calls)).not.toContain("created-event-1");
+    expect(JSON.stringify(warnSpy.mock.calls)).not.toContain("upstream-token");
+    warnSpy.mockRestore();
+  });
+
+  it("一括作成で SUCCESS 更新に失敗した新規イベントを削除する", async () => {
+    shiftFindManyMock.mockResolvedValue([createBulkSyncShift("shift-1")]);
+    shiftUpdateManyMock
+      .mockResolvedValueOnce({ count: 1 })
+      .mockResolvedValueOnce({ count: 0 });
+    createCalendarEvent.mockResolvedValue("created-event-1");
+
+    await expect(
+      syncShiftsAfterBulkCreate(["shift-1"], "user-1"),
+    ).resolves.toEqual([
+      expect.objectContaining({
+        shiftId: "shift-1",
+        ok: false,
+        errorMessage: "同期対象のシフトが見つかりません",
+      }),
+    ]);
+
+    expect(deleteCalendarEvent).toHaveBeenCalledWith(
+      "created-event-1",
+      "shift-1",
+      expect.objectContaining({ id: "user-1" }),
+    );
+  });
+
+  it("既存イベントの更新で SUCCESS 更新に失敗してもイベント削除による補償をしない", async () => {
+    shiftUpdateManyMock
+      .mockResolvedValueOnce({ count: 1 })
+      .mockResolvedValueOnce({ count: 0 });
+
+    await expect(syncShiftAfterUpdate("shift-1", "user-1")).resolves.toEqual({
+      ok: false,
+      errorMessage: "同期対象のシフトが見つかりません",
+      errorCode: null,
+      requiresCalendarSetup: false,
+      requiresSignOut: false,
+    });
+
+    expect(updateCalendarEvent).toHaveBeenCalledTimes(1);
+    expect(deleteCalendarEvent).not.toHaveBeenCalled();
   });
 
   it("所有していない shiftId では同期状態を書き換えない", async () => {

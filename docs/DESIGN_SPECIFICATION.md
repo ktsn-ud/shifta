@@ -257,7 +257,9 @@ Browser (React UI) → Next.js Routes → Prisma ORM → Neon DB
 - name は空でない
 - color は HEX カラーコード（#RRGGBB）形式
 - 1ユーザーあたり複数勤務先可能
-- 削除時は関連する Shift, PayrollRule も削除される（CASCADE）
+- 削除時は、関連する `Shift`、`ShiftLessonRange`、`PayrollRule`、`ActualPayroll`、`TimetableSet`、`Timetable` の件数を transaction 内で取得し、Google Calendar イベント識別子を捕捉したうえで削除する（CASCADE）。いずれかの DB 処理に失敗した場合は transaction を rollback し、勤務先と関連データを削除前の状態に戻す。削除競合時は `WORKPLACE_DELETE_CONFLICT` と HTTP 409 を返す。
+- DB commit 後、捕捉した Google Calendar イベントは、bulk同期と共有する instance-local semaphore（最大3並列、待機列最大100）を通じて `after()` で best-effort 削除する。削除対象イベントがある場合は同期状態を `pending` として返す。外部削除に失敗しても DB 削除は戻さず、安全な件数要約ログのみを記録し、永続的な自動 retry/job は行わない。single-user MVPでは、稀な競合、Google Calendar 障害、`after()` 実行消失などによりイベントが残る可能性を受容する。
+- Calendar イベント作成後に DB の成功更新件数が 0 件となった場合は、単体・一括とも所有確認付きの補償削除を best-effort で実行し、orphan イベントを抑制する。補償削除も永続 retry は行わない。
 
 **使用例**
 
@@ -2388,6 +2390,9 @@ GET /api/payroll/preview-baseline?months=YYYY-MM,YYYY-MM
 # 更新履歴（git log -p 確認済み）
 
 | 日時 | 変更概要 | 具体的な変更内容 |
+| 2026-08-11 00:00:00 +0000 | 勤務先 Calendar cleanup の best-effort 残存リスクを明記 | single-user MVP の勤務先削除では、稀な競合・Google Calendar 障害・`after()` 実行消失によりイベントが残り得ること、永続 retry/job を持たないことを仕様として明記。 |
+| 2026-08-11 00:00:00 +0000 | 勤務先 Calendar cleanup の共有制御と競合・補償処理を反映 | 勤務先削除後の Calendar cleanup を bulk 同期と共有する instance-local semaphore（最大3並列・待機列最大100）へ統一。`WORKPLACE_DELETE_CONFLICT`（409）、件数要約ログ、Calendar 作成後の DB 成功更新件数0件時に所有確認付き補償削除を行う契約を追記し、いずれも永続 retry しないことを明記。 |
+| 2026-08-11 00:00:00 +0000 | 勤務先削除の cascade と Google Calendar 後処理を実装へ同期 | 勤務先削除時の関連 `Shift`、`ShiftLessonRange`、`PayrollRule`、`ActualPayroll`、`TimetableSet`、`Timetable` の件数取得・イベント識別子捕捉・transaction rollback 契約を明記。DB commit 後は `after()` で捕捉イベントを最大3件並列に best-effort 削除し、対象イベントがある場合は `sync.pending`、外部失敗時は DB 成功を維持して要約ログのみ記録し、永続 retry は行わない仕様を追記。 |
 | 2026-08-11 00:00:00 +0000 | 時間割と通常シフトの日跨ぎ制約を明確化 | Timetable の新規作成・更新は API/UI ともに endTime > startTime を必須とし、同時刻・翌日跨ぎを許可しないこと、通常の新規保存で翌日跨ぎ入力を直接許可するのは NORMAL 型シフトであることを明記。既存 DB の翌日跨ぎ Timetable は read/resolver 互換で LESSON 計算に利用され得る旨を注記。 |
 | 2026-08-11 00:00:00 +0000 | 検証用 package scripts の利用方法を更新 | `typecheck`、`format:check`、`test:ci`、`check` の使い分けを開発手順へ反映。`format` はファイルを書き換え、`format:check` と `check` は非破壊で、`check` に build・migration を含めないことを明記。 |
 | 2026-08-11 00:00:00 +0000 | 一括シフト登録のレート制限と Google 同期共有キューを追加 | `POST /api/shifts/bulk` を認証済みユーザーごとに60秒5回の instance-local fixed-window 制御とし、CSRF 失敗では枠を消費しない。記録は expiry FIFO と最大10,000件の上限でメモリを制限し、超過時は `429`・`Retry-After`・private no-store JSON エラーを返す。Google Calendar の一括作成同期は、カレンダー初期化後の既存シフト同期を含め、同一 Node.js instance で共有する最大3件の permit と最大100件の待機列に制限する。待機列超過ジョブは明示的に `FAILED` として終了し、再スケジュールしない。permit と待機列は instance-local で、Google の `Retry-After` は既存待機以上・最大30秒で尊重し、リトライ待機中も permit を保持する。 |
