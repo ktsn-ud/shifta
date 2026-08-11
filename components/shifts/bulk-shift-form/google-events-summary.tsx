@@ -1,6 +1,6 @@
 "use client";
 
-import type { GoogleCalendarDay } from "@/components/shifts/BulkShiftForm";
+import type { GoogleCalendarDay } from "@/components/shifts/bulk-shift-form/google-events-parser";
 import {
   formatGoogleEventLabel,
   getGoogleEventBadgeColor,

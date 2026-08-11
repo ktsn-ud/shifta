@@ -2,12 +2,11 @@
 
 import { dateFromDateKey } from "@/lib/calendar/date";
 import { formatShiftType } from "@/lib/enum-labels";
+import type { ShiftType, Workplace } from "@/components/shifts/BulkShiftForm";
 import type {
   GoogleCalendarDay,
   GoogleCalendarEventItem,
-  ShiftType,
-  Workplace,
-} from "@/components/shifts/BulkShiftForm";
+} from "@/components/shifts/bulk-shift-form/google-events-parser";
 
 const selectedDateFormatter = new Intl.DateTimeFormat("ja-JP", {
   year: "numeric",
