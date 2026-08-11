@@ -2,6 +2,7 @@ import { z } from "zod";
 import {
   DATE_ONLY_REGEX,
   TIME_ONLY_REGEX,
+  isValidDateOnly,
   parseDateOnly,
   parseTimeOnly,
   toMinutes,
@@ -37,7 +38,10 @@ export const shiftCommentSchema = z
 
 export const shiftInputSchema = z.strictObject({
   workplaceId: z.string().min(1),
-  date: z.string().regex(DATE_ONLY_REGEX, "YYYY-MM-DD形式で入力してください"),
+  date: z
+    .string()
+    .regex(DATE_ONLY_REGEX, "YYYY-MM-DD形式で入力してください")
+    .refine(isValidDateOnly, "実在する日付を入力してください"),
   shiftType: z.enum(["NORMAL", "LESSON"]),
   comment: shiftCommentSchema,
   startTime: z

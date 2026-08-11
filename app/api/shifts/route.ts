@@ -1,7 +1,11 @@
 import { after, connection } from "next/server";
 import { z } from "zod";
 import { requireCurrentUser } from "@/lib/api/current-user";
-import { DATE_ONLY_REGEX, parseDateOnly } from "@/lib/api/date-time";
+import {
+  DATE_ONLY_REGEX,
+  isValidDateOnly,
+  parseDateOnly,
+} from "@/lib/api/date-time";
 import { jsonError, parseJsonBody } from "@/lib/api/http";
 import { requireOwnedWorkplace } from "@/lib/api/workplace";
 import { prisma } from "@/lib/prisma";
@@ -25,16 +29,25 @@ const shiftListQuerySchema = z
     startDate: z
       .string()
       .regex(DATE_ONLY_REGEX, "YYYY-MM-DD形式で入力してください")
+      .refine(isValidDateOnly, "実在する日付を入力してください")
       .optional(),
     endDate: z
       .string()
       .regex(DATE_ONLY_REGEX, "YYYY-MM-DD形式で入力してください")
+      .refine(isValidDateOnly, "実在する日付を入力してください")
       .optional(),
     includeEstimate: z.enum(["true", "false"]).optional(),
   })
   .refine(
     (value) => {
       if (!value.startDate || !value.endDate) {
+        return true;
+      }
+
+      if (
+        !isValidDateOnly(value.startDate) ||
+        !isValidDateOnly(value.endDate)
+      ) {
         return true;
       }
 
