@@ -20,7 +20,10 @@ import {
 import { parseMonthKeyToDate } from "@/lib/payroll/month-key";
 import { createRequestTiming } from "@/lib/perf/request-timing";
 import { prisma } from "@/lib/prisma";
-import { userPayrollSnapshotTag } from "@/lib/cache/tags";
+import {
+  userPayrollSnapshotMonthTag,
+  userPayrollSnapshotTag,
+} from "@/lib/cache/tags";
 
 type PayrollSnapshotRule = PayrollRule;
 
@@ -466,10 +469,16 @@ async function loadCachedPayrollSnapshotEntry(
   "use cache";
 
   cacheLife("minutes");
-  cacheTag(userPayrollSnapshotTag(userId));
 
   const monthKeys =
     monthKeysSignature.length > 0 ? monthKeysSignature.split(",") : [];
+
+  cacheTag(
+    userPayrollSnapshotTag(userId),
+    ...monthKeys.map((monthKey) =>
+      userPayrollSnapshotMonthTag(userId, monthKey),
+    ),
+  );
 
   return loadPayrollSnapshotSource({
     userId,

@@ -2,6 +2,7 @@ import { revalidateTag } from "next/cache";
 import {
   revalidateActualPayrollDomainTags,
   revalidateShiftDomainTags,
+  revalidateShiftSyncTags,
   revalidateWorkplaceDomainTags,
 } from "@/lib/cache/revalidate";
 
@@ -16,22 +17,53 @@ describe("cache revalidation", () => {
     jest.resetAllMocks();
   });
 
-  it("シフト更新系の再検証に payroll snapshot tag を含める", () => {
+  it("解決済み支給月のシフト更新は該当する月別 payroll snapshot tag だけを再検証する", () => {
     revalidateShiftDomainTags({
       userId: "user-1",
       workplaceId: "workplace-1",
+      paymentMonthKeys: ["2026-04", "2026-03", "2026-04"],
     });
 
     expect(revalidateTagMock.mock.calls).toEqual(
       expect.arrayContaining([
         ["user:user-1:shifts", "max"],
         ["user:user-1:actual-payroll", "max"],
-        ["user:user-1:payroll-snapshot", "max"],
+        ["user:user-1:payroll-snapshot:2026-03", "max"],
+        ["user:user-1:payroll-snapshot:2026-04", "max"],
         ["user:user-1:summary", "max"],
         ["user:user-1:payroll-details", "max"],
         ["user:user-1:workplaces", "max"],
         ["workplace:workplace-1:detail", "max"],
       ]),
+    );
+    expect(revalidateTagMock).not.toHaveBeenCalledWith(
+      "user:user-1:payroll-snapshot",
+      "max",
+    );
+    expect(revalidateTagMock).toHaveBeenCalledTimes(8);
+  });
+
+  it("支給月を解決できないシフト更新は broad payroll snapshot tag にフォールバックする", () => {
+    revalidateShiftDomainTags({
+      userId: "user-1",
+      paymentMonthKeys: [],
+    });
+
+    expect(revalidateTagMock).toHaveBeenCalledWith(
+      "user:user-1:payroll-snapshot",
+      "max",
+    );
+  });
+
+  it("同期ステータスだけの更新はシフト tag のみを再検証する", () => {
+    revalidateShiftSyncTags({ userId: "user-1" });
+
+    expect(revalidateTagMock.mock.calls).toEqual([
+      ["user:user-1:shifts", "max"],
+    ]);
+    expect(revalidateTagMock).not.toHaveBeenCalledWith(
+      "user:user-1:payroll-snapshot",
+      "max",
     );
   });
 
@@ -53,6 +85,10 @@ describe("cache revalidation", () => {
         ["workplace:workplace-1:timetables", "max"],
       ]),
     );
+    expect(revalidateTagMock).not.toHaveBeenCalledWith(
+      expect.stringMatching(/payroll-snapshot:\d{4}-\d{2}$/),
+      "max",
+    );
   });
 
   it("実給与更新でも payroll snapshot tag を再検証する", () => {
@@ -67,6 +103,10 @@ describe("cache revalidation", () => {
         ["user:user-1:summary", "max"],
         ["user:user-1:payroll-details", "max"],
       ]),
+    );
+    expect(revalidateTagMock).not.toHaveBeenCalledWith(
+      expect.stringMatching(/payroll-snapshot:\d{4}-\d{2}$/),
+      "max",
     );
   });
 });

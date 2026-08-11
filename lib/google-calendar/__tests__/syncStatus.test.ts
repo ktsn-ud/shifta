@@ -1,9 +1,18 @@
-import { revalidateShiftDomainTags } from "@/lib/cache/revalidate";
-import { retryShiftSync } from "@/lib/google-calendar/syncStatus";
+import {
+  revalidateShiftDomainTags,
+  revalidateShiftSyncTags,
+} from "@/lib/cache/revalidate";
+import {
+  retryShiftSync,
+  syncShiftAfterCreate,
+  syncShiftAfterUpdate,
+  syncShiftDeletion,
+} from "@/lib/google-calendar/syncStatus";
 import { prisma } from "@/lib/prisma";
 
 jest.mock("@/lib/cache/revalidate", () => ({
   revalidateShiftDomainTags: jest.fn(),
+  revalidateShiftSyncTags: jest.fn(),
 }));
 
 jest.mock("@/lib/prisma", () => ({
@@ -26,17 +35,19 @@ jest.mock("@/lib/google-calendar/syncEvent", () => ({
 }));
 
 const revalidateShiftDomainTagsMock = jest.mocked(revalidateShiftDomainTags);
+const revalidateShiftSyncTagsMock = jest.mocked(revalidateShiftSyncTags);
 const shiftUpdateManyMock = jest.mocked(prisma.shift.updateMany);
 const shiftFindFirstMock = jest.mocked(prisma.shift.findFirst);
 const userFindUniqueMock = jest.mocked(prisma.user.findUnique);
 
-const { updateCalendarEvent } = jest.requireMock(
-  "@/lib/google-calendar/syncEvent",
-) as {
-  updateCalendarEvent: jest.Mock;
-};
+const { createCalendarEvent, deleteCalendarEvent, updateCalendarEvent } =
+  jest.requireMock("@/lib/google-calendar/syncEvent") as {
+    createCalendarEvent: jest.Mock;
+    deleteCalendarEvent: jest.Mock;
+    updateCalendarEvent: jest.Mock;
+  };
 
-describe("retryShiftSync", () => {
+describe("shift sync cache revalidation", () => {
   beforeEach(() => {
     jest.resetAllMocks();
 
@@ -59,10 +70,12 @@ describe("retryShiftSync", () => {
       id: "user-1",
       calendarId: "calendar-1",
     } as unknown as Awaited<ReturnType<typeof prisma.user.findUnique>>);
+    createCalendarEvent.mockResolvedValue("google-event-1");
+    deleteCalendarEvent.mockResolvedValue(undefined);
     updateCalendarEvent.mockResolvedValue(undefined);
   });
 
-  it("同期状態更新のたびにシフト系 cache tag を再検証する", async () => {
+  it("再試行の同期ステータス更新ごとに専用のシフト tag だけを再検証する", async () => {
     await expect(retryShiftSync("shift-1", "user-1")).resolves.toEqual({
       ok: true,
       googleEventId: "google-event-1",
@@ -80,12 +93,45 @@ describe("retryShiftSync", () => {
         },
       }),
     );
-    expect(revalidateShiftDomainTagsMock).toHaveBeenNthCalledWith(1, {
+    expect(revalidateShiftSyncTagsMock).toHaveBeenNthCalledWith(1, {
       userId: "user-1",
     });
-    expect(revalidateShiftDomainTagsMock).toHaveBeenNthCalledWith(2, {
+    expect(revalidateShiftSyncTagsMock).toHaveBeenNthCalledWith(2, {
       userId: "user-1",
     });
+    expect(revalidateShiftDomainTagsMock).not.toHaveBeenCalled();
+  });
+
+  it("作成同期の PENDING/SUCCESS ステータス更新で給与 snapshot を再検証しない", async () => {
+    await expect(syncShiftAfterCreate("shift-1", "user-1")).resolves.toEqual({
+      ok: true,
+      googleEventId: "google-event-1",
+    });
+
+    expect(revalidateShiftSyncTagsMock).toHaveBeenCalledTimes(2);
+    expect(revalidateShiftSyncTagsMock).toHaveBeenNthCalledWith(1, {
+      userId: "user-1",
+    });
+    expect(revalidateShiftDomainTagsMock).not.toHaveBeenCalled();
+  });
+
+  it("更新同期の PENDING/SUCCESS ステータス更新で給与 snapshot を再検証しない", async () => {
+    await expect(syncShiftAfterUpdate("shift-1", "user-1")).resolves.toEqual({
+      ok: true,
+      googleEventId: "google-event-1",
+    });
+
+    expect(revalidateShiftSyncTagsMock).toHaveBeenCalledTimes(2);
+    expect(revalidateShiftDomainTagsMock).not.toHaveBeenCalled();
+  });
+
+  it("削除同期はローカルの同期ステータスを更新しないため cache 再検証を追加しない", async () => {
+    await expect(
+      syncShiftDeletion("shift-1", "user-1", "google-event-1"),
+    ).resolves.toEqual({ ok: true });
+
+    expect(revalidateShiftSyncTagsMock).not.toHaveBeenCalled();
+    expect(revalidateShiftDomainTagsMock).not.toHaveBeenCalled();
   });
 
   it("所有していない shiftId では同期状態を書き換えない", async () => {
@@ -100,6 +146,7 @@ describe("retryShiftSync", () => {
     });
 
     expect(shiftUpdateManyMock).not.toHaveBeenCalled();
+    expect(revalidateShiftSyncTagsMock).not.toHaveBeenCalled();
     expect(revalidateShiftDomainTagsMock).not.toHaveBeenCalled();
   });
 

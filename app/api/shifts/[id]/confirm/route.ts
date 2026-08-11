@@ -9,6 +9,7 @@ import { buildPendingSyncResponse } from "@/lib/google-calendar/sync-response";
 import { prisma } from "@/lib/prisma";
 import { jsonNoStore } from "@/lib/api/cache-control";
 import { revalidateShiftDomainTags } from "@/lib/cache/revalidate";
+import { resolveAffectedPaymentMonthKeys } from "@/lib/payroll/affected-payment-month";
 import {
   BREAK_MINUTES_INTEGER_MESSAGE,
   BREAK_MINUTES_RANGE_MESSAGE,
@@ -78,6 +79,15 @@ export async function PATCH(request: Request, context: Context) {
           userId: current.user.id,
         },
       },
+      include: {
+        workplace: {
+          select: {
+            closingDayType: true,
+            closingDay: true,
+            payday: true,
+          },
+        },
+      },
     });
     if (!existing) {
       return jsonError("シフトが見つかりません", 404);
@@ -112,9 +122,17 @@ export async function PATCH(request: Request, context: Context) {
       },
     });
 
+    const paymentMonthKeys = resolveAffectedPaymentMonthKeys([
+      {
+        date: existing.date,
+        payrollCycle: existing.workplace,
+      },
+    ]);
+
     revalidateShiftDomainTags({
       userId: current.user.id,
       workplaceId: updated.workplaceId,
+      ...(paymentMonthKeys ? { paymentMonthKeys } : {}),
     });
 
     after(async () => {

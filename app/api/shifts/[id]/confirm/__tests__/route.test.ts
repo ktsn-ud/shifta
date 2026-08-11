@@ -81,6 +81,11 @@ function createShiftEntity() {
     date: new Date("2026-03-18T00:00:00.000Z"),
     comment: null,
     isConfirmed: false,
+    workplace: {
+      closingDayType: "DAY_OF_MONTH" as const,
+      closingDay: 15,
+      payday: 25,
+    },
   };
 }
 
@@ -198,6 +203,7 @@ describe("PATCH /api/shifts/[id]/confirm", () => {
     expect(revalidateShiftDomainTagsMock).toHaveBeenCalledWith({
       userId: "user-1",
       workplaceId: "workplace-1",
+      paymentMonthKeys: ["2026-04"],
     });
   });
 });

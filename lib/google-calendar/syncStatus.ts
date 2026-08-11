@@ -4,7 +4,7 @@ import {
   resolvePayrollRuleDateRange,
 } from "@/lib/payroll/rule-query";
 import { prisma } from "@/lib/prisma";
-import { revalidateShiftDomainTags } from "@/lib/cache/revalidate";
+import { revalidateShiftSyncTags } from "@/lib/cache/revalidate";
 import type { GoogleSyncErrorCode } from "./syncErrors";
 import {
   executeWithSyncRetry,
@@ -126,7 +126,7 @@ async function updateSyncStatus(
     return false;
   }
 
-  revalidateShiftDomainTags({ userId });
+  revalidateShiftSyncTags({ userId });
   return true;
 }
 
@@ -410,7 +410,7 @@ export async function syncShiftsAfterBulkCreate(
       },
     });
 
-    revalidateShiftDomainTags({ userId });
+    revalidateShiftSyncTags({ userId });
   }
 
   let clearCalendarIdPromise: Promise<void> | null = null;
@@ -449,7 +449,7 @@ export async function syncShiftsAfterBulkCreate(
           },
         });
 
-        revalidateShiftDomainTags({ userId });
+        revalidateShiftSyncTags({ userId });
       }
 
       return mapWithConcurrency(
