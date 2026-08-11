@@ -112,6 +112,7 @@ Browser (React UI) → Next.js Routes → Prisma ORM → Neon DB
 ### サーバー側（Route Handler / Server Components）
 
 - API レスポンスは `lib/api/cache-control.ts` を経由し、機密データを含むレスポンスを `private, no-store` 中心で返却する。
+- `POST /api/shifts/bulk` は認証済みユーザー単位で60秒あたり5回までとする。CSRF 検証に失敗したリクエストは枠を消費しない。超過時は JSON エラーと `429`、`Retry-After`（残り秒数）、`private, no-store` を返す。制限は各 Node.js instance のメモリに保持する best effort 制御であり、instance 間では共有しない。期限切れのユーザー記録は expiry FIFO でアクセス時に削除し、記録数は最大10,000件に制限する。上限時は最も早く期限切れになる記録を破棄する。
 - `parseJsonBody` を利用するすべての更新リクエスト（Route Handler と Server Action）は、JSON 本文を 1 MiB（UTF-8 バイト数）までに制限する。上限を超える有効な `Content-Length` は本文読取前に、ヘッダー未指定・不正・chunked の本文はストリーム読取中に拒否し、いずれも `413` と `{ "error": "リクエスト本文が大きすぎます" }` を `private, no-store` で返す。JSON 構文・UTF-8・スキーマの既存エラー契約（400）は維持する。
 - `/my`・`/my/shifts/list` の初期月次シフト取得は `lib/shifts/month-shifts.ts` の共通 DAL で取得し、初回表示時の重複 fetch を避ける。
 - 勤務先・給与ルール・時間割の参照系は、ユーザーと関連 ID をキーにした serializable DTO を Server Cache（`cacheLife("max")` + tags）へ保存する。GET API は `private, no-store` のまま、このキャッシュ済み DAL を呼び出す。
@@ -1472,6 +1473,7 @@ H_total = (19:50 - 16:30) = 3時間20分 = 3.33時間
 - シフト作成/編集/削除/確定/一括登録は、DB更新完了時点でHTTPレスポンスを返し、Google同期は `after()` でバックグラウンド実行する。
 - 更新系レスポンスは `sync` オブジェクトを返し、`status=pending` と `pending=true` で「同期実行中」を表す。
 - クライアントは `sync.failure` がない限り遷移を継続し、`pending` の場合は非ブロッキング通知のみ表示する。
+- 一括シフト作成とカレンダー初期化後の既存シフト同期は、同一 Node.js instance 内で共有する最大3件の同期 permit と最大100件の待機列を利用する。Google Calendar の事前検証と、イベント作成およびそのリトライを含む各シフト同期単位で permit を取得し、複数のバックグラウンド同期呼び出しをまたいでも同時実行数を3件以下にする。待機列の上限を超えたジョブは明示的に `FAILED` として終了し、再スケジュールしない。Google の retryable な応答に `Retry-After` がある場合は、既存の待機時間以上かつ最大30秒として尊重し、待機中も permit を保持する。permit と待機列はいずれも instance-local であり、Node.js instance 間では共有しない。
 
 ---
 
@@ -2384,6 +2386,7 @@ GET /api/payroll/preview-baseline?months=YYYY-MM,YYYY-MM
 # 更新履歴（git log -p 確認済み）
 
 | 日時 | 変更概要 | 具体的な変更内容 |
+| 2026-08-11 00:00:00 +0000 | 一括シフト登録のレート制限と Google 同期共有キューを追加 | `POST /api/shifts/bulk` を認証済みユーザーごとに60秒5回の instance-local fixed-window 制御とし、CSRF 失敗では枠を消費しない。記録は expiry FIFO と最大10,000件の上限でメモリを制限し、超過時は `429`・`Retry-After`・private no-store JSON エラーを返す。Google Calendar の一括作成同期は、カレンダー初期化後の既存シフト同期を含め、同一 Node.js instance で共有する最大3件の permit と最大100件の待機列に制限する。待機列超過ジョブは明示的に `FAILED` として終了し、再スケジュールしない。permit と待機列は instance-local で、Google の `Retry-After` は既存待機以上・最大30秒で尊重し、リトライ待機中も permit を保持する。 |
 | 2026-08-11 00:00:00 +0000 | JSON 本文サイズ上限を追加 | `parseJsonBody` を利用する Route Handler と Server Action の更新リクエストを UTF-8 で 1 MiB までに制限。超過時は本文読取前またはストリーム読取中に `413` と private no-store JSON エラーを返し、既存の 400 検証契約を維持する。 |
 | 2026-08-11 00:00:00 +0000 | 一括登録・時間割の件数上限を追加 | シフト一括登録を最大31件、時間割セット内のコマを最大30件、時間割セット一括作成を最大20件に制限。UIとサーバー検証の両方で上限を適用し、DB更新・Google Calendar同期の前に拒否する。 |
 | 2026-08-11 00:00:00 +0000 | 給与詳細をV2計算・現行DTOへ同期 | 14章の給与内訳を、固定22:00〜05:00、基本時間と深夜時間の非重複、休日手当の独立加算、残業時間は参考値・金額0（総額加算なし）へ更新。旧 `nightMultiplier` 等の例を廃止。 |

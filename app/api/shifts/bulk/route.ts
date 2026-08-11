@@ -2,12 +2,17 @@ import { randomUUID } from "node:crypto";
 import { after } from "next/server";
 import { z } from "zod";
 import { requireCurrentUser } from "@/lib/api/current-user";
+import { consumeBulkShiftCreateRateLimit } from "@/lib/api/bulk-shift-rate-limit";
 import {
   DATE_ONLY_REGEX,
   isValidDateOnly,
   TIME_ONLY_REGEX,
 } from "@/lib/api/date-time";
-import { jsonError, parseJsonBody } from "@/lib/api/http";
+import {
+  jsonError,
+  parseJsonBody,
+  verifyMutationRequest,
+} from "@/lib/api/http";
 import { requireOwnedWorkplace } from "@/lib/api/workplace";
 import { syncShiftsAfterBulkCreate } from "@/lib/google-calendar/syncStatus";
 import { prisma } from "@/lib/prisma";
@@ -273,6 +278,25 @@ export async function POST(request: Request) {
     const current = await requireCurrentUser();
     if ("response" in current) {
       return current.response;
+    }
+
+    const csrfError = verifyMutationRequest(request);
+    if (csrfError) {
+      return csrfError;
+    }
+
+    const rateLimit = consumeBulkShiftCreateRateLimit(current.user.id);
+    if (!rateLimit.allowed) {
+      return jsonError(
+        "一括シフト登録の回数が多すぎます。しばらくしてからもう一度お試しください。",
+        429,
+        undefined,
+        {
+          headers: {
+            "Retry-After": String(rateLimit.retryAfterSeconds),
+          },
+        },
+      );
     }
 
     const body = await parseJsonBody(request, bulkCreateSchema);

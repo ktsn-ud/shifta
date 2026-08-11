@@ -26,6 +26,7 @@ type GoogleErrorWithMetadata = Error & {
   status?: number;
   response?: {
     status?: number;
+    headers?: GoogleErrorHeaders;
     data?: {
       error?: {
         message?: unknown;
@@ -39,8 +40,15 @@ type GoogleErrorWithMetadata = Error & {
   };
 };
 
+type GoogleErrorHeaders = {
+  get?: (name: string) => unknown;
+  "retry-after"?: unknown;
+  "Retry-After"?: unknown;
+};
+
 export const SYNC_RETRY_DELAYS_MS = [500, 1500] as const;
 export const RATE_LIMIT_RETRY_DELAYS_MS = [2000, 6000] as const;
+export const MAX_GOOGLE_RETRY_AFTER_DELAY_MS = 30_000;
 
 const RETRYABLE_STATUS_CODES = new Set([408, 409, 429]);
 const RETRYABLE_ERROR_CODES = [
@@ -179,6 +187,50 @@ export function isRetryableGoogleSyncError(error: unknown): boolean {
   return error.message.toLowerCase().includes("timeout");
 }
 
+function getRetryAfterHeaderValue(
+  headers: GoogleErrorHeaders | undefined,
+): unknown {
+  if (!headers) {
+    return undefined;
+  }
+
+  if (typeof headers.get === "function") {
+    return (
+      headers.get("retry-after") ??
+      headers["retry-after"] ??
+      headers["Retry-After"]
+    );
+  }
+
+  return headers["retry-after"] ?? headers["Retry-After"];
+}
+
+export function extractGoogleRetryAfterDelayMs(
+  error: unknown,
+  currentTime = Date.now(),
+): number | null {
+  if (!(error instanceof Error)) {
+    return null;
+  }
+
+  const candidate = error as GoogleErrorWithMetadata;
+  const value = getRetryAfterHeaderValue(candidate.response?.headers);
+  if (typeof value !== "string") {
+    return null;
+  }
+
+  const seconds = Number(value);
+  const delayMs = Number.isFinite(seconds)
+    ? seconds * 1000
+    : Date.parse(value) - currentTime;
+
+  if (!Number.isFinite(delayMs) || delayMs < 0) {
+    return null;
+  }
+
+  return Math.min(Math.ceil(delayMs), MAX_GOOGLE_RETRY_AFTER_DELAY_MS);
+}
+
 function wait(ms: number): Promise<void> {
   return new Promise((resolve) => {
     setTimeout(resolve, ms);
@@ -214,7 +266,9 @@ export async function executeWithSyncRetry<T>(
         throw error;
       }
 
-      const delayMs = delays[attempt] ?? 0;
+      const fallbackDelayMs = delays[attempt] ?? 0;
+      const retryAfterDelayMs = extractGoogleRetryAfterDelayMs(error);
+      const delayMs = Math.max(fallbackDelayMs, retryAfterDelayMs ?? 0);
       context.onRetryScheduled?.({
         action: context.action,
         userId: context.userId,

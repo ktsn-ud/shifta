@@ -1,5 +1,6 @@
 import { after } from "next/server";
 import { requireCurrentUser } from "@/lib/api/current-user";
+import { consumeBulkShiftCreateRateLimit } from "@/lib/api/bulk-shift-rate-limit";
 import { requireOwnedWorkplace } from "@/lib/api/workplace";
 import { prisma } from "@/lib/prisma";
 
@@ -42,6 +43,10 @@ jest.mock("@/lib/api/current-user", () => ({
   requireCurrentUser: jest.fn(),
 }));
 
+jest.mock("@/lib/api/bulk-shift-rate-limit", () => ({
+  consumeBulkShiftCreateRateLimit: jest.fn(),
+}));
+
 jest.mock("@/lib/api/workplace", () => ({
   requireOwnedWorkplace: jest.fn(),
 }));
@@ -57,19 +62,24 @@ jest.mock("@/lib/prisma", () => ({
 }));
 
 const requireCurrentUserMock = jest.mocked(requireCurrentUser);
+const consumeBulkShiftCreateRateLimitMock = jest.mocked(
+  consumeBulkShiftCreateRateLimit,
+);
 const requireOwnedWorkplaceMock = jest.mocked(requireOwnedWorkplace);
 const prismaTransactionMock = jest.mocked(prisma.$transaction);
 const prismaShiftCreateManyMock = jest.mocked(prisma.shift.createMany);
 const prismaShiftFindManyMock = jest.mocked(prisma.shift.findMany);
 const afterMock = jest.mocked(after);
 
-function createRequest(body: unknown): Request {
+function createRequest(body: unknown, options?: { origin?: string }): Request {
   return {
     method: "POST",
     url: "http://localhost/api/shifts/bulk",
     headers: {
       get: (name: string) =>
-        name.toLowerCase() === "origin" ? "http://localhost" : null,
+        name.toLowerCase() === "origin"
+          ? (options?.origin ?? "http://localhost")
+          : null,
     },
     text: async () => JSON.stringify(body),
   } as unknown as Request;
@@ -115,6 +125,7 @@ describe("POST /api/shifts/bulk invalid calendar dates", () => {
     requireCurrentUserMock.mockResolvedValue({
       user: { id: "user-1" },
     } as Awaited<ReturnType<typeof requireCurrentUser>>);
+    consumeBulkShiftCreateRateLimitMock.mockReturnValue({ allowed: true });
   });
 
   it("rejects an impossible date before workplace lookup or shift creation", async () => {
@@ -178,6 +189,7 @@ describe("POST /api/shifts/bulk batch size", () => {
     requireCurrentUserMock.mockResolvedValue({
       user: { id: "user-1" },
     } as Awaited<ReturnType<typeof requireCurrentUser>>);
+    consumeBulkShiftCreateRateLimitMock.mockReturnValue({ allowed: true });
     requireOwnedWorkplaceMock.mockResolvedValue({
       workplace: { type: "GENERAL" },
     } as Awaited<ReturnType<typeof requireOwnedWorkplace>>);
@@ -225,6 +237,82 @@ describe("POST /api/shifts/bulk batch size", () => {
     }
 
     await expectLimitValidationError(response, "一括登録は31件までです。");
+    expect(requireOwnedWorkplaceMock).not.toHaveBeenCalled();
+    expect(prismaTransactionMock).not.toHaveBeenCalled();
+    expect(prismaShiftCreateManyMock).not.toHaveBeenCalled();
+    expect(afterMock).not.toHaveBeenCalled();
+  });
+});
+
+describe("POST /api/shifts/bulk rate limit", () => {
+  beforeEach(() => {
+    jest.resetAllMocks();
+    requireCurrentUserMock.mockResolvedValue({
+      user: { id: "user-1" },
+    } as Awaited<ReturnType<typeof requireCurrentUser>>);
+    consumeBulkShiftCreateRateLimitMock.mockReturnValue({
+      allowed: false,
+      retryAfterSeconds: 42,
+    });
+  });
+
+  it("rejects an authenticated user before body parsing, database writes, or deferred sync", async () => {
+    const POST = await loadPost();
+    const response = await POST(
+      createRequest({
+        workplaceId: "workplace-1",
+        shifts: createNormalShifts(1),
+      }),
+    );
+    if (!response) {
+      throw new Error("bulk shift route did not return a response");
+    }
+
+    expect(response.status).toBe(429);
+    await expect(response.json()).resolves.toEqual({
+      error:
+        "一括シフト登録の回数が多すぎます。しばらくしてからもう一度お試しください。",
+    });
+    expect(response.headers.get("Retry-After")).toBe("42");
+    expect(response.headers.get("Cache-Control")).toContain("private");
+    expect(response.headers.get("Cache-Control")).toContain("no-store");
+    expect(consumeBulkShiftCreateRateLimitMock).toHaveBeenCalledWith("user-1");
+    expect(requireOwnedWorkplaceMock).not.toHaveBeenCalled();
+    expect(prismaTransactionMock).not.toHaveBeenCalled();
+    expect(prismaShiftCreateManyMock).not.toHaveBeenCalled();
+    expect(afterMock).not.toHaveBeenCalled();
+  });
+});
+
+describe("POST /api/shifts/bulk CSRF validation", () => {
+  beforeEach(() => {
+    jest.resetAllMocks();
+    requireCurrentUserMock.mockResolvedValue({
+      user: { id: "user-1" },
+    } as Awaited<ReturnType<typeof requireCurrentUser>>);
+    consumeBulkShiftCreateRateLimitMock.mockReturnValue({ allowed: true });
+  });
+
+  it("rejects a cross-origin request without consuming the authenticated user's rate-limit bucket", async () => {
+    const POST = await loadPost();
+    const response = await POST(
+      createRequest(
+        {
+          workplaceId: "workplace-1",
+          shifts: createNormalShifts(1),
+        },
+        { origin: "https://attacker.example" },
+      ),
+    );
+    if (!response) {
+      throw new Error("bulk shift route did not return a response");
+    }
+
+    expect(response.status).toBe(403);
+    await expect(response.json()).resolves.toEqual({
+      error: "不正なオリジンからのリクエストです",
+    });
+    expect(consumeBulkShiftCreateRateLimitMock).not.toHaveBeenCalled();
     expect(requireOwnedWorkplaceMock).not.toHaveBeenCalled();
     expect(prismaTransactionMock).not.toHaveBeenCalled();
     expect(prismaShiftCreateManyMock).not.toHaveBeenCalled();

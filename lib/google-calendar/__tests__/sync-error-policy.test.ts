@@ -3,9 +3,11 @@ import {
   extractGoogleErrorCode,
   extractGoogleErrorMessages,
   extractGoogleErrorReasons,
+  extractGoogleRetryAfterDelayMs,
   extractGoogleErrorStatus,
   isGoogleRateLimitError,
   isRetryableGoogleSyncError,
+  MAX_GOOGLE_RETRY_AFTER_DELAY_MS,
   RATE_LIMIT_RETRY_DELAYS_MS,
   resolveGoogleSyncError,
   SYNC_RETRY_DELAYS_MS,
@@ -69,6 +71,48 @@ describe("Google Calendar sync error policy", () => {
     expect(
       extractGoogleErrorStatus(googleError("missing", { code: "404" })),
     ).toBe(404);
+  });
+
+  it("Retry-After の秒数とHTTP日付を delay に変換し、不正値は無視する", () => {
+    const currentTime = Date.parse("2026-03-10T00:00:00.000Z");
+
+    expect(
+      extractGoogleRetryAfterDelayMs(
+        googleError("rate limited", {
+          response: { headers: { "retry-after": "7" } },
+        }),
+        currentTime,
+      ),
+    ).toBe(7000);
+    expect(
+      extractGoogleRetryAfterDelayMs(
+        googleError("rate limited", {
+          response: {
+            headers: {
+              get: (name: string) =>
+                name === "retry-after" ? "Tue, 10 Mar 2026 00:00:09 GMT" : null,
+            },
+          },
+        }),
+        currentTime,
+      ),
+    ).toBe(9000);
+    expect(
+      extractGoogleRetryAfterDelayMs(
+        googleError("rate limited", {
+          response: { headers: { "Retry-After": "not-a-delay" } },
+        }),
+        currentTime,
+      ),
+    ).toBeNull();
+    expect(
+      extractGoogleRetryAfterDelayMs(
+        googleError("rate limited", {
+          response: { headers: { "retry-after": "-1" } },
+        }),
+        currentTime,
+      ),
+    ).toBeNull();
   });
 
   it.each([
@@ -340,6 +384,72 @@ describe("Google Calendar sync error policy", () => {
     await jest.advanceTimersByTimeAsync(RATE_LIMIT_RETRY_DELAYS_MS[1]);
     await expect(result).resolves.toBe("event-1");
     expect(operation).toHaveBeenCalledTimes(3);
+  });
+
+  it("Google Retry-After が既定のレート制限 delay より長い場合はその値を待つ", async () => {
+    jest.useFakeTimers();
+    const operation = jest
+      .fn<Promise<string>, []>()
+      .mockRejectedValueOnce(
+        googleError("rate limited", {
+          status: 429,
+          response: { headers: { "retry-after": "12" } },
+        }),
+      )
+      .mockResolvedValue("event-1");
+    const onRetryScheduled = jest.fn();
+
+    const result = executeWithSyncRetry(operation, {
+      action: "create",
+      userId: "user-1",
+      shiftId: "shift-1",
+      onRetryScheduled,
+    });
+
+    await jest.advanceTimersByTimeAsync(0);
+    expect(onRetryScheduled).toHaveBeenCalledWith({
+      action: "create",
+      userId: "user-1",
+      shiftId: "shift-1",
+      attempt: 1,
+      nextDelayMs: 12_000,
+    });
+
+    await jest.advanceTimersByTimeAsync(12_000);
+    await expect(result).resolves.toBe("event-1");
+  });
+
+  it("Google Retry-After を上限値に丸めて retry callback と待機時間へ使う", async () => {
+    jest.useFakeTimers();
+    const operation = jest
+      .fn<Promise<string>, []>()
+      .mockRejectedValueOnce(
+        googleError("rate limited", {
+          status: 429,
+          response: { headers: { "retry-after": "3600" } },
+        }),
+      )
+      .mockResolvedValue("event-1");
+    const onRetryScheduled = jest.fn();
+
+    const result = executeWithSyncRetry(operation, {
+      action: "create",
+      userId: "user-1",
+      shiftId: "shift-1",
+      onRetryScheduled,
+    });
+
+    await jest.advanceTimersByTimeAsync(0);
+    expect(onRetryScheduled).toHaveBeenCalledWith({
+      action: "create",
+      userId: "user-1",
+      shiftId: "shift-1",
+      attempt: 1,
+      nextDelayMs: MAX_GOOGLE_RETRY_AFTER_DELAY_MS,
+    });
+
+    await jest.advanceTimersByTimeAsync(MAX_GOOGLE_RETRY_AFTER_DELAY_MS);
+    await expect(result).resolves.toBe("event-1");
   });
 
   it("再試行上限の後は最後のエラーを返す", async () => {
