@@ -46,6 +46,10 @@
 6. `reviewer`（`.codex/agents/reviewer.toml`）で correctness / regression / maintainability レビュー
 7. 必要な場合のみ `security_reviewer`（`.codex/agents/security-reviewer.toml`）と `docs_writer`（`.codex/agents/docs-writer.toml`）
 
+`reviewer` または `security_reviewer` のレビュー後、`Main` は具体的な修正内容が明確な指摘を `implementer_lite` に渡す。修正範囲が広い、または実装上の判断を要する場合は `implementer` に渡す。
+
+`tester` の検証が失敗した後も、失敗原因と修正内容が明確で局所的な場合は `implementer_lite` に渡す。原因調査が必要な場合は、必要に応じて修正前に `code_researcher` を使い、修正範囲が広い、または実装上の判断を要する場合は `implementer` に渡す。
+
 ### サブエージェント起動基準
 
 | Agent               | 使う場面                                                                                                                             | やらないこと                                                   |
