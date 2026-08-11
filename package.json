@@ -9,7 +9,11 @@
     "start": "next start",
     "lint": "eslint",
     "format": "prettier --write .",
+    "format:check": "prettier --check .",
+    "typecheck": "tsc --noEmit --incremental false",
     "test": "jest",
+    "test:ci": "jest --ci",
+    "check": "pnpm run format:check && pnpm run typecheck && pnpm run lint && pnpm run test:ci",
     "perf:collect": "node scripts/performance/collect-server-timing.mjs"
   },
   "dependencies": {

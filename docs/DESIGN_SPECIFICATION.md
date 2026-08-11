@@ -2274,7 +2274,7 @@ GET /api/payroll/preview-baseline?months=YYYY-MM,YYYY-MM
 - 実装タスクごとに、先に失敗するテストを書く。
 - その後に最小実装でテストを通す。
 - 対象は純粋関数、API、単体登録 UI、一括登録 UI の順に進める。
-- ドキュメント作成のみのタスクを除き、各タスクの完了前に `pnpm exec tsc --noEmit`, `pnpm lint`, `pnpm test`, `pnpm format` を実行する。
+- ドキュメント作成のみのタスクを除き、各タスクの完了前に `pnpm check`（`format:check`、`typecheck`、`lint`、`test:ci`）を実行する。`pnpm format` は整形のためファイルを書き換える。`pnpm check` は build や migration を含まない。
 
 ---
 
@@ -2388,6 +2388,7 @@ GET /api/payroll/preview-baseline?months=YYYY-MM,YYYY-MM
 # 更新履歴（git log -p 確認済み）
 
 | 日時 | 変更概要 | 具体的な変更内容 |
+| 2026-08-11 00:00:00 +0000 | 検証用 package scripts の利用方法を更新 | `typecheck`、`format:check`、`test:ci`、`check` の使い分けを開発手順へ反映。`format` はファイルを書き換え、`format:check` と `check` は非破壊で、`check` に build・migration を含めないことを明記。 |
 | 2026-08-11 00:00:00 +0000 | 一括シフト登録のレート制限と Google 同期共有キューを追加 | `POST /api/shifts/bulk` を認証済みユーザーごとに60秒5回の instance-local fixed-window 制御とし、CSRF 失敗では枠を消費しない。記録は expiry FIFO と最大10,000件の上限でメモリを制限し、超過時は `429`・`Retry-After`・private no-store JSON エラーを返す。Google Calendar の一括作成同期は、カレンダー初期化後の既存シフト同期を含め、同一 Node.js instance で共有する最大3件の permit と最大100件の待機列に制限する。待機列超過ジョブは明示的に `FAILED` として終了し、再スケジュールしない。permit と待機列は instance-local で、Google の `Retry-After` は既存待機以上・最大30秒で尊重し、リトライ待機中も permit を保持する。 |
 | 2026-08-11 00:00:00 +0000 | JSON 本文サイズ上限を追加 | `parseJsonBody` を利用する Route Handler と Server Action の更新リクエストを UTF-8 で 1 MiB までに制限。超過時は本文読取前またはストリーム読取中に `413` と private no-store JSON エラーを返し、既存の 400 検証契約を維持する。 |
 | 2026-08-11 00:00:00 +0000 | 時間割コマ番号・授業コマ範囲の入力上限を追加 | 時間割の period および LESSON の startPeriod/endPeriod は 1〜30 の整数へ制限する。既存の範囲外データは表示できるが、次回保存時に範囲内へ修正が必要。 |

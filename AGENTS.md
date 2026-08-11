@@ -42,7 +42,7 @@
 2. `Main` で計画確定
 3. 内容がほぼ確定した狭く局所的な実装は `implementer_lite`（`.codex/agents/implementer-lite.toml`）、曖昧さ・複数箇所横断・設計判断・セキュリティ/データ整合性リスクがある実装は `implementer`（`.codex/agents/implementer.toml`）で最小差分実装
 4. `test_writer`（`.codex/agents/test-writer.toml`）で必要なテスト追加・更新
-5. `tester`（`.codex/agents/tester.toml`）で `format` / `typecheck` / `lint` / `test` などの検証
+5. `tester`（`.codex/agents/tester.toml`）で `check`（`format:check` / `typecheck` / `lint` / `test:ci`）などの検証
 6. `reviewer`（`.codex/agents/reviewer.toml`）で correctness / regression / maintainability レビュー
 7. 必要な場合のみ `security_reviewer`（`.codex/agents/security-reviewer.toml`）と `docs_writer`（`.codex/agents/docs-writer.toml`）
 
@@ -58,7 +58,7 @@
 | `implementer_lite`  | 内容がほぼ確定し、狭く局所的な実装のみ。曖昧さ・複数箇所横断・設計判断・セキュリティ/データ整合性リスクがあれば `implementer` を使う | テスト実行、Lint/型チェック実行、レビュー、docs 判断の抱え込み |
 | `implementer`       | Plan 確定後、実装上の判断を要する本実装。曖昧さ・複数箇所横断・設計判断・セキュリティ/データ整合性リスクを伴う変更                   | テスト実行、Lint/型チェック実行、レビュー、docs 判断の抱え込み |
 | `test_writer`       | 振る舞い変更、バグ修正、境界値、回帰防止が必要                                                                                       | 本番コードの修正、検証コマンド実行                             |
-| `tester`            | 実装後の formatter / typecheck / lint / test / build 実行                                                                            | 検証失敗の修正、設計変更、レビュー                             |
+| `tester`            | 実装後の `check`（`format:check` / `typecheck` / `lint` / `test:ci`）実行。必要時のみ `build` を別途実行                             | 検証失敗の修正、設計変更、レビュー                             |
 | `reviewer`          | 実装と検証結果が揃った後の差分レビュー                                                                                               | 実装、検証代行、進行管理                                       |
 | `security_reviewer` | 認証・認可・API・DB・Google Calendar 連携・Cookie・Token・API key・環境変数・個人情報・勤務先情報・給与情報が絡む変更                | 一般レビューの重複、実装                                       |
 | `docs_writer`       | README、設計仕様、セットアップ手順などの更新が必要                                                                                   | アプリコード修正、不要な docs 作成                             |
@@ -104,12 +104,13 @@
 - 開発: `pnpm dev`
 - ビルド: `pnpm build`
 - 本番起動: `pnpm start`
-- 型チェック: `pnpm exec tsc --noEmit`
+- 型チェック: `pnpm typecheck`（`pnpm exec tsc --noEmit` と同等）
 - Lint: `pnpm lint`
-- Format: `pnpm format`
+- Format: `pnpm format`（ファイルを書き換え） / `pnpm format:check`（非破壊チェック）
 - Test: `pnpm test`
+- CI向け一括検証: `pnpm check`（`format:check` / `typecheck` / `lint` / `test:ci`。build・migrationは含まない）
 
-コードベースに触れる実装では、原則として `tester` が `pnpm format`、`pnpm exec tsc --noEmit`、`pnpm lint`、`pnpm test` を実行する。ドキュメントのみの変更では型チェック・Lint・テストを省略してよいが、可能なら `pnpm format` を実行する。
+コードベースに触れる実装では、原則として `tester` が `pnpm check` を実行する。整形が必要な場合のみ、先に `pnpm format` を実行し、その後 `pnpm check` を実行する。`pnpm check` は build や migration を含まないため、必要な場合は別途実行する。ドキュメントのみの変更では型チェック・Lint・テストを省略してよいが、可能なら `pnpm format` を実行する。
 
 ## Git 運用
 
