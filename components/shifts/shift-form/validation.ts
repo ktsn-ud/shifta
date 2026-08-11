@@ -5,6 +5,10 @@ import {
   shiftDateKeyAddDays,
   toComparableShiftRange,
 } from "@/lib/shifts/time";
+import {
+  calculateGrossMinutes,
+  getBreakMinutesValidationError,
+} from "@/lib/shifts/break-validation";
 import { parseShiftListResponse, toTimeOnly } from "./response";
 import type {
   FormErrors,
@@ -30,7 +34,7 @@ function resolveLessonTimeRange(
   timetableSet: TimetableSet | null,
   startPeriod: number,
   endPeriod: number,
-): ShiftTimePair | null {
+): (ShiftTimePair & { breakMinutes: number }) | null {
   if (!timetableSet || startPeriod > endPeriod) {
     return null;
   }
@@ -58,7 +62,41 @@ function resolveLessonTimeRange(
     return null;
   }
 
-  return { startTime, endTime };
+  let breakMinutes = 0;
+  let previousEndAbsoluteMinutes: number | null = null;
+
+  for (let period = startPeriod; period <= endPeriod; period += 1) {
+    const item = itemByPeriod.get(period);
+    if (!item) {
+      return null;
+    }
+
+    const itemStartTime = item.startTimeLabel ?? toTimeOnly(item.startTime);
+    const itemEndTime = item.endTimeLabel ?? toTimeOnly(item.endTime);
+    if (!itemStartTime || !itemEndTime) {
+      return null;
+    }
+
+    let startAbsoluteMinutes = calculateGrossMinutes("00:00", itemStartTime);
+    let endAbsoluteMinutes = calculateGrossMinutes("00:00", itemEndTime);
+    if (endAbsoluteMinutes <= startAbsoluteMinutes) {
+      endAbsoluteMinutes += 24 * 60;
+    }
+
+    if (previousEndAbsoluteMinutes !== null) {
+      while (startAbsoluteMinutes < previousEndAbsoluteMinutes) {
+        startAbsoluteMinutes += 24 * 60;
+        endAbsoluteMinutes += 24 * 60;
+      }
+      breakMinutes += Math.max(
+        0,
+        startAbsoluteMinutes - previousEndAbsoluteMinutes,
+      );
+    }
+    previousEndAbsoluteMinutes = endAbsoluteMinutes;
+  }
+
+  return { startTime, endTime, breakMinutes };
 }
 
 export function validateShiftForm(params: {
@@ -132,19 +170,31 @@ export function validateShiftForm(params: {
       nextErrors.endPeriod = "選択したコマ範囲の時間割が登録されていません。";
     }
 
+    if (resolved) {
+      const breakMinutesError = getBreakMinutesValidationError(
+        resolved.breakMinutes,
+        calculateGrossMinutes(resolved.startTime, resolved.endTime),
+      );
+      if (breakMinutesError) {
+        nextErrors.endPeriod = breakMinutesError;
+      }
+    }
+
     return {
       errors: nextErrors,
-      candidateTimes: resolved,
+      candidateTimes: resolved
+        ? { startTime: resolved.startTime, endTime: resolved.endTime }
+        : null,
     };
   }
 
   const breakMinutes = Number(form.breakMinutes);
-  if (Number.isFinite(breakMinutes) === false || breakMinutes < 0) {
-    nextErrors.breakMinutes = "休憩時間は0以上で入力してください";
-  }
-
-  if (breakMinutes > 240) {
-    nextErrors.breakMinutes = "休憩時間は240分以下で入力してください";
+  const basicBreakMinutesError = getBreakMinutesValidationError(
+    breakMinutes,
+    Number.POSITIVE_INFINITY,
+  );
+  if (basicBreakMinutesError) {
+    nextErrors.breakMinutes = basicBreakMinutesError;
   }
 
   if (!form.startTime) {
@@ -161,6 +211,21 @@ export function validateShiftForm(params: {
     isSameTimeShift(form.startTime, form.endTime)
   ) {
     nextErrors.endTime = "開始時刻と終了時刻は同じ時刻にできません。";
+  }
+
+  if (
+    !nextErrors.breakMinutes &&
+    !nextErrors.endTime &&
+    form.startTime &&
+    form.endTime
+  ) {
+    const breakMinutesError = getBreakMinutesValidationError(
+      breakMinutes,
+      calculateGrossMinutes(form.startTime, form.endTime),
+    );
+    if (breakMinutesError) {
+      nextErrors.breakMinutes = breakMinutesError;
+    }
   }
 
   if (Object.keys(nextErrors).length > 0) {

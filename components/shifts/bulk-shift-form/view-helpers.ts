@@ -30,7 +30,7 @@ export const WEEKDAY_LABELS = [
   "金",
   "土",
 ] as const;
-export const MAX_BREAK_MINUTES = 240;
+export { MAX_BREAK_MINUTES } from "@/lib/shifts/break-validation";
 
 export function getVisibleGoogleEvents(day: GoogleCalendarDay | undefined): {
   visible: GoogleCalendarEventItem[];

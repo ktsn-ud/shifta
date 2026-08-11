@@ -112,4 +112,30 @@ describe("POST /api/shifts/bulk invalid calendar dates", () => {
     expect(prismaTransactionMock).not.toHaveBeenCalled();
     expect(prismaShiftCreateManyMock).not.toHaveBeenCalled();
   });
+
+  it("rejects an out-of-range break before workplace lookup or shift creation", async () => {
+    const POST = await loadPost();
+    const response = await POST(
+      createRequest({
+        workplaceId: "workplace-1",
+        shifts: [
+          {
+            date: "2026-03-18",
+            shiftType: "NORMAL",
+            startTime: "09:00",
+            endTime: "18:00",
+            breakMinutes: 241,
+          },
+        ],
+      }),
+    );
+    if (!response) {
+      throw new Error("bulk shift route did not return a response");
+    }
+
+    expect(response.status).toBe(400);
+    expect(requireOwnedWorkplaceMock).not.toHaveBeenCalled();
+    expect(prismaTransactionMock).not.toHaveBeenCalled();
+    expect(prismaShiftCreateManyMock).not.toHaveBeenCalled();
+  });
 });

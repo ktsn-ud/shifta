@@ -63,6 +63,14 @@ describe("shift-form response parsers", () => {
     );
   });
 
+  it("keeps a legacy persisted break value readable", () => {
+    const legacyShift = { ...normalShift, breakMinutes: 480 };
+
+    expect(parseShiftDetailResponse({ data: legacyShift })).toEqual(
+      legacyShift,
+    );
+  });
+
   it.each([
     ["a non-object payload", null],
     ["a missing data property", {}],

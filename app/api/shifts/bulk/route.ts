@@ -15,6 +15,11 @@ import { jsonNoStore } from "@/lib/api/cache-control";
 import { revalidateShiftDomainTags } from "@/lib/cache/revalidate";
 import { buildPendingSyncResponse } from "@/lib/google-calendar/sync-response";
 import {
+  BREAK_MINUTES_INTEGER_MESSAGE,
+  BREAK_MINUTES_RANGE_MESSAGE,
+  MAX_BREAK_MINUTES,
+} from "@/lib/shifts/break-validation";
+import {
   buildShiftData,
   type BuiltShiftData,
   lessonRangeSchema,
@@ -42,7 +47,12 @@ const bulkShiftItemSchema = z.strictObject({
     .string()
     .regex(TIME_ONLY_REGEX, "HH:MM形式で入力してください")
     .optional(),
-  breakMinutes: z.coerce.number().int().min(0).default(0),
+  breakMinutes: z.coerce
+    .number()
+    .int(BREAK_MINUTES_INTEGER_MESSAGE)
+    .min(0, BREAK_MINUTES_RANGE_MESSAGE)
+    .max(MAX_BREAK_MINUTES, BREAK_MINUTES_RANGE_MESSAGE)
+    .default(0),
   lessonRange: lessonRangeSchema.optional(),
 });
 

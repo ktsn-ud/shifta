@@ -4,10 +4,12 @@ import {
   isOvernightShift,
   isSameTimeShift,
 } from "@/lib/shifts/time";
+import { formatSelectedDate } from "@/components/shifts/bulk-shift-form/view-helpers";
 import {
-  formatSelectedDate,
-  MAX_BREAK_MINUTES,
-} from "@/components/shifts/bulk-shift-form/view-helpers";
+  calculateGrossMinutes,
+  getBreakMinutesValidationError,
+} from "@/lib/shifts/break-validation";
+import { resolveLessonTimeRangeFromRows } from "@/lib/shifts/lesson-time-range";
 import type {
   BulkShiftPayload,
   BulkShiftRow,
@@ -16,6 +18,7 @@ import type {
   OvernightSummaryItem,
   RowErrorKey,
   RowErrors,
+  TimetableSet,
   Workplace,
 } from "@/components/shifts/bulk-shift-form/types";
 
@@ -29,6 +32,7 @@ const ROW_ERROR_FIELD_LABELS: Record<RowErrorKey, string> = {
   startPeriod: "開始コマ",
   endPeriod: "終了コマ",
 };
+const LESSON_TIMETABLE_ERROR = "塾の授業は時間割が登録されていません。";
 
 function getRowFieldId(dateKey: string, field: RowErrorKey) {
   const suffixByField: Record<RowErrorKey, string> = {
@@ -109,12 +113,63 @@ function hasRowErrors(errors: RowErrors): boolean {
   return Object.keys(errors).length > 0;
 }
 
+function getLessonBreakMinutesValidationError(input: {
+  timetableSets: TimetableSet[];
+  timetableSetId: string;
+  startPeriod: number;
+  endPeriod: number;
+}): string | null {
+  const timetableSet = input.timetableSets.find(
+    (set) => set.id === input.timetableSetId,
+  );
+  if (!timetableSet) {
+    return null;
+  }
+
+  const itemByPeriod = new Map(
+    timetableSet.items.map((item) => [item.period, item]),
+  );
+  const timetableRows: Array<{
+    period: number;
+    startTime: Date;
+    endTime: Date;
+  }> = [];
+  for (let period = input.startPeriod; period <= input.endPeriod; period += 1) {
+    const item = itemByPeriod.get(period);
+    if (!item) {
+      return null;
+    }
+    timetableRows.push({
+      period: item.period,
+      startTime: new Date(item.startTime),
+      endTime: new Date(item.endTime),
+    });
+  }
+
+  try {
+    const lessonTimeRange = resolveLessonTimeRangeFromRows(
+      {
+        startPeriod: input.startPeriod,
+        endPeriod: input.endPeriod,
+      },
+      timetableRows,
+    );
+    return getBreakMinutesValidationError(
+      lessonTimeRange.breakMinutes,
+      calculateGrossMinutes(lessonTimeRange.startTime, lessonTimeRange.endTime),
+    );
+  } catch {
+    return LESSON_TIMETABLE_ERROR;
+  }
+}
+
 export function validateAndBuildPayload(params: {
   selectedWorkplaceId: string;
   selectedWorkplaceType: Workplace["type"] | undefined;
   selectedDateKeys: string[];
   rowsByDate: Record<string, BulkShiftRow>;
   lessonPeriodsBySetId: Record<string, number[]>;
+  timetableSets?: TimetableSet[];
 }):
   | {
       success: true;
@@ -131,6 +186,7 @@ export function validateAndBuildPayload(params: {
     selectedDateKeys,
     rowsByDate,
     lessonPeriodsBySetId,
+    timetableSets = [],
   } = params;
   const nextErrors: FormErrors = { rows: {} };
 
@@ -193,7 +249,7 @@ export function validateAndBuildPayload(params: {
 
       const periods = lessonPeriodsBySetId[row.timetableSetId] ?? [];
       if (periods.length === 0) {
-        rowErrors.startPeriod = "塾の授業は時間割が登録されていません。";
+        rowErrors.startPeriod = LESSON_TIMETABLE_ERROR;
       } else if (
         Number.isInteger(startPeriod) &&
         Number.isInteger(endPeriod) &&
@@ -203,9 +259,21 @@ export function validateAndBuildPayload(params: {
 
         for (let period = startPeriod; period <= endPeriod; period += 1) {
           if (periodSet.has(period) === false) {
-            rowErrors.endPeriod = "塾の授業は時間割が登録されていません。";
+            rowErrors.endPeriod = LESSON_TIMETABLE_ERROR;
             break;
           }
+        }
+      }
+
+      if (!hasRowErrors(rowErrors)) {
+        const breakMinutesError = getLessonBreakMinutesValidationError({
+          timetableSets,
+          timetableSetId: row.timetableSetId,
+          startPeriod,
+          endPeriod,
+        });
+        if (breakMinutesError) {
+          rowErrors.endPeriod = breakMinutesError;
         }
       }
 
@@ -224,10 +292,12 @@ export function validateAndBuildPayload(params: {
       }
     } else {
       const breakMinutes = Number(row.breakMinutes);
-      if (!Number.isInteger(breakMinutes)) {
-        rowErrors.breakMinutes = "休憩時間は整数で入力してください。";
-      } else if (breakMinutes < 0 || breakMinutes > MAX_BREAK_MINUTES) {
-        rowErrors.breakMinutes = "休憩時間は0〜240分で入力してください。";
+      const basicBreakMinutesError = getBreakMinutesValidationError(
+        breakMinutes,
+        Number.POSITIVE_INFINITY,
+      );
+      if (basicBreakMinutesError) {
+        rowErrors.breakMinutes = basicBreakMinutesError;
       }
 
       if (!TIME_ONLY_REGEX.test(row.startTime)) {
@@ -244,6 +314,21 @@ export function validateAndBuildPayload(params: {
         isSameTimeShift(row.startTime, row.endTime)
       ) {
         rowErrors.endTime = "開始時刻と終了時刻は同じ時刻にできません。";
+      }
+
+      if (
+        !rowErrors.breakMinutes &&
+        !rowErrors.endTime &&
+        TIME_ONLY_REGEX.test(row.startTime) &&
+        TIME_ONLY_REGEX.test(row.endTime)
+      ) {
+        const breakMinutesError = getBreakMinutesValidationError(
+          breakMinutes,
+          calculateGrossMinutes(row.startTime, row.endTime),
+        );
+        if (breakMinutesError) {
+          rowErrors.breakMinutes = breakMinutesError;
+        }
       }
 
       if (!hasRowErrors(rowErrors)) {

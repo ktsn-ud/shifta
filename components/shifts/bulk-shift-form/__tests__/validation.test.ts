@@ -6,10 +6,30 @@ import {
 import type {
   BulkShiftRow,
   FormErrors,
+  TimetableSet,
 } from "@/components/shifts/bulk-shift-form/types";
 
 const generalWorkplaceId = "workplace-general";
 const cramSchoolWorkplaceId = "workplace-cram";
+
+function createTimetableSet(
+  items: Array<{ period: number; startTime: string; endTime: string }>,
+  timetableSetId = "set-1",
+): TimetableSet {
+  return {
+    id: timetableSetId,
+    workplaceId: cramSchoolWorkplaceId,
+    name: "通常期",
+    sortOrder: 0,
+    createdAt: "2026-03-01T00:00:00.000Z",
+    updatedAt: "2026-03-01T00:00:00.000Z",
+    items: items.map((item) => ({
+      id: `period-${item.period}`,
+      timetableSetId,
+      ...item,
+    })),
+  };
+}
 
 function createRow(
   date: string,
@@ -34,6 +54,7 @@ function validateRows(params: {
   selectedWorkplaceType?: "GENERAL" | "CRAM_SCHOOL";
   rows: BulkShiftRow[];
   lessonPeriodsBySetId?: Record<string, number[]>;
+  timetableSets?: TimetableSet[];
 }) {
   return validateAndBuildPayload({
     selectedWorkplaceId: params.selectedWorkplaceId ?? generalWorkplaceId,
@@ -41,6 +62,7 @@ function validateRows(params: {
     selectedDateKeys: params.rows.map((row) => row.date),
     rowsByDate: Object.fromEntries(params.rows.map((row) => [row.date, row])),
     lessonPeriodsBySetId: params.lessonPeriodsBySetId ?? {},
+    timetableSets: params.timetableSets,
   });
 }
 
@@ -173,6 +195,50 @@ describe("validateAndBuildPayload", () => {
     }
 
     expect(result).toMatchObject({ success: true });
+  });
+
+  it("uses the shared message when a NORMAL break leaves no actual work", () => {
+    expect(
+      validateRows({
+        rows: [
+          createRow("2026-03-18", {
+            startTime: "09:00",
+            endTime: "10:00",
+            breakMinutes: "60",
+          }),
+        ],
+      }),
+    ).toEqual({
+      success: false,
+      errors: {
+        rows: {
+          "2026-03-18": {
+            breakMinutes: "休憩時間は勤務時間より短く入力してください。",
+          },
+        },
+      },
+    });
+
+    expect(
+      validateRows({
+        rows: [
+          createRow("2026-03-18", {
+            startTime: "22:00",
+            endTime: "01:00",
+            breakMinutes: "180",
+          }),
+        ],
+      }),
+    ).toEqual({
+      success: false,
+      errors: {
+        rows: {
+          "2026-03-18": {
+            breakMinutes: "休憩時間は勤務時間より短く入力してください。",
+          },
+        },
+      },
+    });
   });
 
   it("rejects malformed times and identical NORMAL times", () => {
@@ -312,6 +378,162 @@ describe("validateAndBuildPayload", () => {
             timetableSetId: "set-1",
             startPeriod: "1",
             endPeriod: "3",
+          }),
+        ],
+      }),
+    ).toEqual({
+      success: false,
+      errors: {
+        rows: {
+          "2026-03-18": {
+            endPeriod: "塾の授業は時間割が登録されていません。",
+          },
+        },
+      },
+    });
+  });
+
+  it("reports derived LESSON break errors on the end-period field", () => {
+    const invalidBreakRows = [
+      {
+        timetableSets: [
+          createTimetableSet([
+            {
+              period: 1,
+              startTime: "1970-01-01T09:00:00.000Z",
+              endTime: "1970-01-01T09:10:00.000Z",
+            },
+            {
+              period: 2,
+              startTime: "1970-01-01T13:11:00.000Z",
+              endTime: "1970-01-01T13:20:00.000Z",
+            },
+          ]),
+        ],
+        message: "休憩時間は0〜240分で入力してください。",
+      },
+      {
+        timetableSets: [
+          createTimetableSet([
+            {
+              period: 1,
+              startTime: "1970-01-01T09:00:00.000Z",
+              endTime: "1970-01-01T09:00:00.000Z",
+            },
+            {
+              period: 2,
+              startTime: "1970-01-01T10:00:00.000Z",
+              endTime: "1970-01-01T10:00:00.000Z",
+            },
+          ]),
+        ],
+        message: "休憩時間は勤務時間より短く入力してください。",
+      },
+    ];
+
+    for (const { timetableSets, message } of invalidBreakRows) {
+      expect(
+        validateRows({
+          selectedWorkplaceId: cramSchoolWorkplaceId,
+          selectedWorkplaceType: "CRAM_SCHOOL",
+          lessonPeriodsBySetId: { "set-1": [1, 2] },
+          timetableSets,
+          rows: [
+            createRow("2026-03-18", {
+              shiftType: "LESSON",
+              timetableSetId: "set-1",
+              startPeriod: "1",
+              endPeriod: "2",
+            }),
+          ],
+        }),
+      ).toEqual({
+        success: false,
+        errors: {
+          rows: {
+            "2026-03-18": {
+              endPeriod: message,
+            },
+          },
+        },
+      });
+    }
+  });
+
+  it("builds a LESSON payload when its derived break is below 240 minutes", () => {
+    expect(
+      validateRows({
+        selectedWorkplaceId: cramSchoolWorkplaceId,
+        selectedWorkplaceType: "CRAM_SCHOOL",
+        lessonPeriodsBySetId: { "set-1": [1, 2] },
+        timetableSets: [
+          createTimetableSet([
+            {
+              period: 1,
+              startTime: "1970-01-01T09:00:00.000Z",
+              endTime: "1970-01-01T10:00:00.000Z",
+            },
+            {
+              period: 2,
+              startTime: "1970-01-01T12:00:00.000Z",
+              endTime: "1970-01-01T13:00:00.000Z",
+            },
+          ]),
+        ],
+        rows: [
+          createRow("2026-03-18", {
+            shiftType: "LESSON",
+            timetableSetId: "set-1",
+            startPeriod: "1",
+            endPeriod: "2",
+          }),
+        ],
+      }),
+    ).toEqual({
+      success: true,
+      payload: [
+        {
+          date: "2026-03-18",
+          shiftType: "LESSON",
+          comment: "",
+          breakMinutes: 0,
+          lessonRange: {
+            timetableSetId: "set-1",
+            startPeriod: 1,
+            endPeriod: 2,
+          },
+        },
+      ],
+      overnightSummaries: [],
+    });
+  });
+
+  it("rejects a one-period LESSON whose derived start and end time are equal", () => {
+    const timetableSetId = "same-time-set";
+
+    expect(
+      validateRows({
+        selectedWorkplaceId: cramSchoolWorkplaceId,
+        selectedWorkplaceType: "CRAM_SCHOOL",
+        lessonPeriodsBySetId: { [timetableSetId]: [1] },
+        timetableSets: [
+          createTimetableSet(
+            [
+              {
+                period: 1,
+                startTime: "1970-01-01T09:00:00.000Z",
+                endTime: "1970-01-01T09:00:00.000Z",
+              },
+            ],
+            timetableSetId,
+          ),
+        ],
+        rows: [
+          createRow("2026-03-18", {
+            shiftType: "LESSON",
+            timetableSetId,
+            startPeriod: "1",
+            endPeriod: "1",
           }),
         ],
       }),

@@ -1431,6 +1431,7 @@ function useBulkShiftFormController({
       selectedDateKeys: state.selectedDateKeys,
       rowsByDate,
       lessonPeriodsBySetId,
+      timetableSets,
     });
     if (!validated.success) {
       dispatch({

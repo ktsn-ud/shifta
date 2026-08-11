@@ -74,15 +74,15 @@ export async function PUT(request: Request, context: Context) {
       return current.response;
     }
 
+    const body = await parseJsonBody(request, shiftInputSchema);
+    if (!body.success) {
+      return body.response;
+    }
+
     const { id } = await context.params;
     const existing = await findOwnedShift(id, current.user.id);
     if (!existing) {
       return jsonError("シフトが見つかりません", 404);
-    }
-
-    const body = await parseJsonBody(request, shiftInputSchema);
-    if (!body.success) {
-      return body.response;
     }
 
     const workplaceResult = await requireOwnedWorkplace(

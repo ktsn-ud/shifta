@@ -95,7 +95,9 @@ describe("validateShiftForm", () => {
   it.each([
     ["0", undefined],
     ["240", undefined],
-    ["241", "休憩時間は240分以下で入力してください"],
+    ["-1", "休憩時間は0〜240分で入力してください。"],
+    ["241", "休憩時間は0〜240分で入力してください。"],
+    ["30.5", "休憩時間は整数で入力してください。"],
   ])("enforces the break-minute boundary at %s", (breakMinutes, expected) => {
     expect(
       validateShiftForm({
@@ -104,6 +106,32 @@ describe("validateShiftForm", () => {
         timetableSets: [],
       }).errors.breakMinutes,
     ).toBe(expected);
+  });
+
+  it("uses the shared message when NORMAL break minutes leave no actual work", () => {
+    expect(
+      validateShiftForm({
+        form: createForm({
+          startTime: "09:00",
+          endTime: "10:00",
+          breakMinutes: "60",
+        }),
+        selectedWorkplace: generalWorkplace,
+        timetableSets: [],
+      }).errors.breakMinutes,
+    ).toBe("休憩時間は勤務時間より短く入力してください。");
+
+    expect(
+      validateShiftForm({
+        form: createForm({
+          startTime: "22:00",
+          endTime: "01:00",
+          breakMinutes: "180",
+        }),
+        selectedWorkplace: generalWorkplace,
+        timetableSets: [],
+      }).errors.breakMinutes,
+    ).toBe("休憩時間は勤務時間より短く入力してください。");
   });
 
   it("rejects equal times but accepts an overnight NORMAL shift", () => {

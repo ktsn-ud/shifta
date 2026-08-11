@@ -118,6 +118,27 @@ describe("/api/shifts invalid calendar dates", () => {
     expect(prismaShiftCreateMock).not.toHaveBeenCalled();
   });
 
+  it("POST rejects an out-of-range break before workplace lookup or shift creation", async () => {
+    const { POST } = await loadRouteModule();
+    const response = await POST(
+      createMutationRequest({
+        workplaceId: "workplace-1",
+        date: "2026-03-18",
+        shiftType: "NORMAL",
+        startTime: "09:00",
+        endTime: "18:00",
+        breakMinutes: 241,
+      }),
+    );
+    if (!response) {
+      throw new Error("response is undefined");
+    }
+
+    expect(response.status).toBe(400);
+    expect(prismaWorkplaceFindFirstMock).not.toHaveBeenCalled();
+    expect(prismaShiftCreateMock).not.toHaveBeenCalled();
+  });
+
   it("GET rejects an impossible date before fetching shifts", async () => {
     const { GET } = await loadRouteModule();
     const response = await GET(

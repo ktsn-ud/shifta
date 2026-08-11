@@ -95,6 +95,42 @@ describe("calculateOtherShiftWage", () => {
     });
   });
 
+  it("休憩位置を持たない深夜勤務では実勤務時間を深夜時間の上限にする", () => {
+    const result = calculateOtherShiftWage(
+      createShift({
+        date: date("2026-03-20"),
+        startTime: time("22:00"),
+        endTime: time("06:00"),
+        breakMinutes: 240,
+      }),
+      createRule({ holidayType: "NONE" }),
+    );
+
+    expect(result).toMatchObject({
+      workHours: 4,
+      nightHours: 4,
+      baseHours: 0,
+    });
+  });
+
+  it("保存済みの過大な休憩時間でも実勤務時間を0未満にしない", () => {
+    const shift = createShift({
+      startTime: time("09:00"),
+      endTime: time("10:00"),
+      breakMinutes: 60,
+    });
+
+    const result = calculateOtherShiftWage(shift, createRule());
+
+    expect(result).toMatchObject({
+      totalWage: 0,
+      workHours: 0,
+      baseHours: 0,
+      holidayHours: 0,
+      nightHours: 0,
+    });
+  });
+
   it("残業時間がある場合は残業給を加算する", () => {
     const shift = createShift({
       startTime: time("09:00"),

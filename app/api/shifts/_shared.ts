@@ -13,6 +13,13 @@ import {
   type LessonRangeInput,
   type LessonTimeRange,
 } from "@/lib/shifts/lesson-time-range";
+import {
+  BREAK_MINUTES_INTEGER_MESSAGE,
+  BREAK_MINUTES_RANGE_MESSAGE,
+  MAX_BREAK_MINUTES,
+  calculateGrossMinutes,
+  getBreakMinutesValidationError,
+} from "@/lib/shifts/break-validation";
 
 export class ShiftValidationError extends Error {
   constructor(message: string) {
@@ -52,7 +59,12 @@ export const shiftInputSchema = z.strictObject({
     .string()
     .regex(TIME_ONLY_REGEX, "HH:MM形式で入力してください")
     .optional(),
-  breakMinutes: z.coerce.number().int().min(0).default(0),
+  breakMinutes: z.coerce
+    .number()
+    .int(BREAK_MINUTES_INTEGER_MESSAGE)
+    .min(0, BREAK_MINUTES_RANGE_MESSAGE)
+    .max(MAX_BREAK_MINUTES, BREAK_MINUTES_RANGE_MESSAGE)
+    .default(0),
   lessonRange: lessonRangeSchema.optional(),
 });
 
@@ -142,6 +154,20 @@ export function resolveLessonTimeRangeFromRows(
   );
 }
 
+function validateBuiltBreakMinutes(input: {
+  startTime: Date;
+  endTime: Date;
+  breakMinutes: number;
+}): void {
+  const message = getBreakMinutesValidationError(
+    input.breakMinutes,
+    calculateGrossMinutes(input.startTime, input.endTime),
+  );
+  if (message) {
+    throw new ShiftValidationError(message);
+  }
+}
+
 async function resolveLessonTimeRangeFromDatabase(
   workplaceId: string,
   lessonRange: z.infer<typeof lessonRangeSchema>,
@@ -211,6 +237,8 @@ export async function buildShiftData(
       lessonRange,
     );
 
+    validateBuiltBreakMinutes(lessonTimes);
+
     return {
       shiftData: {
         workplaceId: input.workplaceId,
@@ -231,6 +259,12 @@ export async function buildShiftData(
 
   const startTime = parseTimeOnly(input.startTime ?? "00:00");
   const endTime = parseTimeOnly(input.endTime ?? "00:00");
+
+  validateBuiltBreakMinutes({
+    startTime,
+    endTime,
+    breakMinutes: input.breakMinutes,
+  });
 
   return {
     shiftData: {
