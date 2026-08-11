@@ -1,4 +1,5 @@
 import type { Prisma } from "@/lib/generated/prisma/client";
+import { decimalToNumber, roundCurrency } from "@/lib/payroll/numeric";
 import { prisma } from "@/lib/prisma";
 
 export type ActualPayrollAmount = {
@@ -25,10 +26,6 @@ export type ActualPayrollCoverage = ActualPayrollAmount & {
   isPartial: boolean;
 };
 
-function roundCurrency(value: number): number {
-  return Math.round(value);
-}
-
 export function startOfMonthUtc(date: Date): Date {
   return new Date(Date.UTC(date.getUTCFullYear(), date.getUTCMonth(), 1));
 }
@@ -44,22 +41,6 @@ export function buildWorkplaceMonthKey(
   monthKey: string,
 ): string {
   return `${workplaceId}:${monthKey}`;
-}
-
-function decimalToNumber(
-  value: number | string | { toString: () => string } | null | undefined,
-  fallback = 0,
-): number {
-  if (value === null || value === undefined) {
-    return fallback;
-  }
-
-  const numeric = Number(value.toString());
-  if (Number.isFinite(numeric) === false) {
-    return fallback;
-  }
-
-  return numeric;
 }
 
 function toActualPayrollAmount(

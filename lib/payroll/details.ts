@@ -9,6 +9,11 @@ import {
   type PayrollDisplayValue,
 } from "@/lib/payroll/actual-payroll";
 import {
+  decimalToNumber,
+  roundCurrency,
+  roundHours,
+} from "@/lib/payroll/numeric";
+import {
   calculateShiftPayrollResultByRule,
   findApplicablePayrollRule,
   groupPayrollRulesByWorkplace,
@@ -113,22 +118,6 @@ export type PayrollDetailsWorkplaceYearlyResult = {
 
 export type PayrollDetailBreakdownResult = PayrollBreakdownDisplay;
 
-function decimalToNumber(
-  value: number | string | { toString: () => string } | null | undefined,
-  fallback = 0,
-): number {
-  if (value === null || value === undefined) {
-    return fallback;
-  }
-
-  const numeric = Number(value.toString());
-  if (Number.isFinite(numeric) === false) {
-    return fallback;
-  }
-
-  return numeric;
-}
-
 function startOfMonthUtc(date: Date): Date {
   return new Date(Date.UTC(date.getUTCFullYear(), date.getUTCMonth(), 1));
 }
@@ -170,14 +159,6 @@ function createEmptyBreakdownAccumulator(): PayrollBreakdownAccumulator {
     holidayHoursAllowanceBase: 0,
     nightHoursWageBase: 0,
   };
-}
-
-function roundHours(value: number): number {
-  return Math.round(value * 100) / 100;
-}
-
-function roundCurrency(value: number): number {
-  return Math.round(value);
 }
 
 function formatDurationHours(hours: number): string {

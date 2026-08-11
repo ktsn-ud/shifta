@@ -8,6 +8,7 @@ import {
   calculateShiftWage,
   type PayrollResult,
 } from "@/lib/payroll/calculateShiftWage";
+import { roundHours } from "@/lib/payroll/numeric";
 
 export type ShiftWithSummaryRelations = Shift & {
   lessonRange: ShiftLessonRange | null;
@@ -35,10 +36,6 @@ export type SummaryResult = {
   totalOvertimeHours: number;
   byWorkplace: SummaryByWorkplace[];
 };
-
-function roundHours(value: number): number {
-  return Math.round(value * 100) / 100;
-}
 
 function isWithin(date: Date, startDate: Date, endDate: Date): boolean {
   const time = date.getTime();

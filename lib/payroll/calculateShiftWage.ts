@@ -4,8 +4,12 @@ import {
   calculateOvertimeHours,
   isHolidayDate,
 } from "@/lib/payroll/timeClassification";
-
-type DecimalLike = number | string | { toString: () => string };
+import {
+  decimalToNumber,
+  roundCurrency,
+  roundHours,
+  type DecimalLike,
+} from "@/lib/payroll/numeric";
 
 export type ShiftWageInput = {
   date: Date;
@@ -37,30 +41,6 @@ export type PayrollResult = {
   dayWage: number;
   lessonCount?: number;
 };
-
-function decimalToNumber(
-  value: DecimalLike | null | undefined,
-  fallback = 0,
-): number {
-  if (value === null || value === undefined) {
-    return fallback;
-  }
-
-  const numeric = Number(value.toString());
-  if (Number.isFinite(numeric) === false) {
-    return fallback;
-  }
-
-  return numeric;
-}
-
-function roundCurrency(value: number): number {
-  return Math.round(value);
-}
-
-function roundHours(value: number): number {
-  return Math.round(value * 100) / 100;
-}
 
 function toMinutes(time: Date): number {
   return time.getUTCHours() * 60 + time.getUTCMinutes();

@@ -8,6 +8,7 @@ import {
   type ActualPayrollRecord,
   type PayrollDisplayValue,
 } from "@/lib/payroll/actual-payroll";
+import { roundCurrency, roundHours } from "@/lib/payroll/numeric";
 import {
   calculateShiftPayrollResult,
   type PayrollRulesByWorkplace,
@@ -144,14 +145,6 @@ function toDateOnlyUtc(date: Date): string {
   const month = String(date.getUTCMonth() + 1).padStart(2, "0");
   const day = String(date.getUTCDate()).padStart(2, "0");
   return `${year}-${month}-${day}`;
-}
-
-function roundCurrency(value: number): number {
-  return Math.round(value);
-}
-
-function roundHours(value: number): number {
-  return Math.round(value * 100) / 100;
 }
 
 function createActualPayrollAmount(
