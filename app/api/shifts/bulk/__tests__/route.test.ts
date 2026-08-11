@@ -181,6 +181,42 @@ describe("POST /api/shifts/bulk invalid calendar dates", () => {
     expect(prismaTransactionMock).not.toHaveBeenCalled();
     expect(prismaShiftCreateManyMock).not.toHaveBeenCalled();
   });
+
+  it.each([
+    ["startPeriod", { startPeriod: 31, endPeriod: 30 }],
+    ["endPeriod", { startPeriod: 30, endPeriod: 31 }],
+  ])(
+    "rejects lessonRange.%s above period 30 before workplace lookup or transaction work",
+    async (_field, lessonRange) => {
+      const POST = await loadPost();
+      const response = await POST(
+        createRequest({
+          workplaceId: "workplace-1",
+          shifts: [
+            {
+              date: "2026-03-18",
+              shiftType: "LESSON",
+              lessonRange: {
+                timetableSetId: "set-1",
+                ...lessonRange,
+              },
+            },
+          ],
+        }),
+      );
+      if (!response) {
+        throw new Error("bulk shift route did not return a response");
+      }
+
+      await expectLimitValidationError(
+        response,
+        "コマ番号は30以下の整数で入力してください。",
+      );
+      expect(requireOwnedWorkplaceMock).not.toHaveBeenCalled();
+      expect(prismaTransactionMock).not.toHaveBeenCalled();
+      expect(prismaShiftCreateManyMock).not.toHaveBeenCalled();
+    },
+  );
 });
 
 describe("POST /api/shifts/bulk batch size", () => {

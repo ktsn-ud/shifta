@@ -179,3 +179,37 @@ describe("shift break input", () => {
     ).rejects.toThrow(BREAK_TOO_LONG_MESSAGE);
   });
 });
+
+describe("lesson period input", () => {
+  it("accepts a one-period lesson at period 30", () => {
+    expect(
+      shiftInputSchema.safeParse({
+        workplaceId: "workplace-1",
+        date: "2026-05-01",
+        shiftType: "LESSON",
+        lessonRange: {
+          timetableSetId: "set-1",
+          startPeriod: 30,
+          endPeriod: 30,
+        },
+      }).success,
+    ).toBe(true);
+  });
+
+  it.each([
+    ["startPeriod", { startPeriod: 31, endPeriod: 30 }],
+    ["endPeriod", { startPeriod: 30, endPeriod: 31 }],
+  ])("rejects lessonRange.%s above period 30", (_field, lessonRange) => {
+    expect(
+      shiftInputSchema.safeParse({
+        workplaceId: "workplace-1",
+        date: "2026-05-01",
+        shiftType: "LESSON",
+        lessonRange: {
+          timetableSetId: "set-1",
+          ...lessonRange,
+        },
+      }).success,
+    ).toBe(false);
+  });
+});

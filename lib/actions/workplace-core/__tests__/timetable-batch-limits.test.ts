@@ -67,6 +67,19 @@ function createSet(itemCount: number, index = 1) {
   };
 }
 
+function createSetWithPeriod(period: number) {
+  return {
+    name: "時間割",
+    items: [
+      {
+        period,
+        startTime: "09:00",
+        endTime: "10:00",
+      },
+    ],
+  };
+}
+
 function createdSet(id = "set-1") {
   return {
     id,
@@ -140,6 +153,49 @@ describe("timetable batch limits in route actions", () => {
       await expectLimitValidationError(
         response,
         "時間割セットのコマは30件までです。",
+      );
+      expect(prismaTransactionMock).not.toHaveBeenCalled();
+    },
+  );
+
+  it.each([
+    ["single", (period: number) => createSetWithPeriod(period)],
+    ["bulk", (period: number) => ({ sets: [createSetWithPeriod(period)] })],
+  ])(
+    "accepts a %s input whose only timetable item is period 30",
+    async (_, buildPayload) => {
+      prismaTransactionMock.mockResolvedValue([createdSet()] as never);
+
+      const response = await createTimetableRouteAction(
+        createRequest(buildPayload(30)),
+        { params: Promise.resolve({ workplaceId: "workplace-1" }) },
+      );
+      if (!response) {
+        throw new Error("create timetable route did not return a response");
+      }
+
+      expect(response.status).toBe(201);
+      expect(prismaTransactionMock).toHaveBeenCalledTimes(1);
+    },
+  );
+
+  it.each([
+    ["single", (period: number) => createSetWithPeriod(period)],
+    ["bulk", (period: number) => ({ sets: [createSetWithPeriod(period)] })],
+  ])(
+    "rejects a %s input whose timetable item is period 31 before its transaction",
+    async (_, buildPayload) => {
+      const response = await createTimetableRouteAction(
+        createRequest(buildPayload(31)),
+        { params: Promise.resolve({ workplaceId: "workplace-1" }) },
+      );
+      if (!response) {
+        throw new Error("create timetable route did not return a response");
+      }
+
+      await expectLimitValidationError(
+        response,
+        "コマ番号は30以下の整数で入力してください。",
       );
       expect(prismaTransactionMock).not.toHaveBeenCalled();
     },
@@ -225,6 +281,50 @@ describe("timetable batch limits in route actions", () => {
     await expectLimitValidationError(
       response,
       "時間割セットのコマは30件までです。",
+    );
+    expect(prismaTransactionMock).not.toHaveBeenCalled();
+  });
+
+  it("accepts an update whose only timetable item is period 30", async () => {
+    timetableSetFindFirstMock.mockResolvedValue({
+      id: "set-1",
+      sortOrder: 0,
+    } as never);
+    prismaTransactionMock.mockResolvedValue(createdSet() as never);
+
+    const response = await updateTimetableRouteAction(
+      createRequest(createSetWithPeriod(30)),
+      {
+        params: Promise.resolve({ workplaceId: "workplace-1", id: "set-1" }),
+      },
+    );
+    if (!response) {
+      throw new Error("update timetable route did not return a response");
+    }
+
+    expect(response.status).toBe(200);
+    expect(prismaTransactionMock).toHaveBeenCalledTimes(1);
+  });
+
+  it("rejects an update whose only timetable item is period 31 before its transaction", async () => {
+    timetableSetFindFirstMock.mockResolvedValue({
+      id: "set-1",
+      sortOrder: 0,
+    } as never);
+
+    const response = await updateTimetableRouteAction(
+      createRequest(createSetWithPeriod(31)),
+      {
+        params: Promise.resolve({ workplaceId: "workplace-1", id: "set-1" }),
+      },
+    );
+    if (!response) {
+      throw new Error("update timetable route did not return a response");
+    }
+
+    await expectLimitValidationError(
+      response,
+      "コマ番号は30以下の整数で入力してください。",
     );
     expect(prismaTransactionMock).not.toHaveBeenCalled();
   });

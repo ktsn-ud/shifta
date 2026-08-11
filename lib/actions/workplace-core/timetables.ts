@@ -13,12 +13,18 @@ import { getCachedTimetableSetsForWorkplace } from "@/lib/cache/workplace-read-c
 import {
   BULK_TIMETABLE_SET_COUNT_LIMIT_MESSAGE,
   MAX_BULK_TIMETABLE_SET_COUNT,
+  MAX_TIMETABLE_PERIOD,
   MAX_TIMETABLE_ITEMS_PER_SET,
+  TIMETABLE_PERIOD_LIMIT_MESSAGE,
   TIMETABLE_ITEMS_PER_SET_LIMIT_MESSAGE,
 } from "@/lib/validation/batch-limits";
 
 const timetableItemSchema = z.strictObject({
-  period: z.coerce.number().int().positive(),
+  period: z.coerce
+    .number()
+    .int()
+    .positive()
+    .max(MAX_TIMETABLE_PERIOD, TIMETABLE_PERIOD_LIMIT_MESSAGE),
   startTime: z.string().regex(TIME_ONLY_REGEX, "HH:MM形式で入力してください"),
   endTime: z.string().regex(TIME_ONLY_REGEX, "HH:MM形式で入力してください"),
 });

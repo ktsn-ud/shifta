@@ -9,6 +9,10 @@ import {
   calculateGrossMinutes,
   getBreakMinutesValidationError,
 } from "@/lib/shifts/break-validation";
+import {
+  MAX_TIMETABLE_PERIOD,
+  TIMETABLE_PERIOD_LIMIT_MESSAGE,
+} from "@/lib/validation/batch-limits";
 import { parseShiftListResponse, toTimeOnly } from "./response";
 import type {
   FormErrors,
@@ -142,6 +146,25 @@ export function validateShiftForm(params: {
 
     const startPeriod = Number(form.startPeriod);
     const endPeriod = Number(form.endPeriod);
+    const hasPeriodOverLimit =
+      (Number.isFinite(startPeriod) && startPeriod > MAX_TIMETABLE_PERIOD) ||
+      (Number.isFinite(endPeriod) && endPeriod > MAX_TIMETABLE_PERIOD);
+
+    if (Number.isFinite(startPeriod) && startPeriod > MAX_TIMETABLE_PERIOD) {
+      nextErrors.startPeriod = TIMETABLE_PERIOD_LIMIT_MESSAGE;
+    }
+
+    if (Number.isFinite(endPeriod) && endPeriod > MAX_TIMETABLE_PERIOD) {
+      nextErrors.endPeriod = TIMETABLE_PERIOD_LIMIT_MESSAGE;
+    }
+
+    if (hasPeriodOverLimit) {
+      return {
+        errors: nextErrors,
+        candidateTimes: null,
+      };
+    }
+
     if (
       Number.isFinite(startPeriod) &&
       Number.isFinite(endPeriod) &&

@@ -139,6 +139,37 @@ describe("/api/shifts invalid calendar dates", () => {
     expect(prismaShiftCreateMock).not.toHaveBeenCalled();
   });
 
+  it.each([
+    ["startPeriod", { startPeriod: 31, endPeriod: 30 }],
+    ["endPeriod", { startPeriod: 30, endPeriod: 31 }],
+  ])(
+    "POST rejects lessonRange.%s above period 30 before workplace lookup or shift creation",
+    async (_field, lessonRange) => {
+      const { POST } = await loadRouteModule();
+      const response = await POST(
+        createMutationRequest({
+          workplaceId: "workplace-1",
+          date: "2026-03-18",
+          shiftType: "LESSON",
+          lessonRange: {
+            timetableSetId: "set-1",
+            ...lessonRange,
+          },
+        }),
+      );
+      if (!response) {
+        throw new Error("response is undefined");
+      }
+
+      expect(response.status).toBe(400);
+      await expect(response.json()).resolves.toEqual(
+        expect.objectContaining({ error: "入力値が不正です" }),
+      );
+      expect(prismaWorkplaceFindFirstMock).not.toHaveBeenCalled();
+      expect(prismaShiftCreateMock).not.toHaveBeenCalled();
+    },
+  );
+
   it("GET rejects an impossible date before fetching shifts", async () => {
     const { GET } = await loadRouteModule();
     const response = await GET(

@@ -41,6 +41,8 @@ import {
   BULK_TIMETABLE_SET_COUNT_LIMIT_MESSAGE,
   MAX_BULK_TIMETABLE_SET_COUNT,
   MAX_TIMETABLE_ITEMS_PER_SET,
+  MAX_TIMETABLE_PERIOD,
+  TIMETABLE_PERIOD_LIMIT_MESSAGE,
   TIMETABLE_ITEMS_PER_SET_LIMIT_MESSAGE,
 } from "@/lib/validation/batch-limits";
 
@@ -384,6 +386,8 @@ function validateRows(items: FormItemValues[]): {
 
     if (!item.period || Number.isInteger(period) === false || period <= 0) {
       errors.period = "コマ番号は1以上の整数で入力してください。";
+    } else if (period > MAX_TIMETABLE_PERIOD) {
+      errors.period = TIMETABLE_PERIOD_LIMIT_MESSAGE;
     }
 
     if (!timeRegex.test(item.startTime)) {
@@ -632,6 +636,7 @@ function TimetableItemsSection({
                     <Input
                       type="number"
                       min={1}
+                      max={MAX_TIMETABLE_PERIOD}
                       value={item.period}
                       onChange={(event) =>
                         onUpdateItem(item.id, {
@@ -1093,7 +1098,7 @@ function TimetableEditorForm({
         }
         className="rounded-xl"
       >
-        <Form className="space-y-6" onSubmit={controller.submit}>
+        <Form className="space-y-6" noValidate onSubmit={controller.submit}>
           <FieldGroup className="grid gap-4">
             <Field data-invalid={Boolean(controller.errors.name)}>
               <FieldLabel htmlFor="timetable-set-name">

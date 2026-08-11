@@ -230,6 +230,71 @@ describe("validateShiftForm", () => {
       candidateTimes: null,
     });
   });
+
+  it.each([
+    ["start", "31", "30"],
+    ["end", "30", "31"],
+    ["huge end", "1", String(Number.MAX_SAFE_INTEGER)],
+  ])(
+    "rejects a lesson range with an out-of-range %s period",
+    (_description, startPeriod, endPeriod) => {
+      const result = validateShiftForm({
+        form: createForm({
+          workplaceId: cramSchoolWorkplace.id,
+          shiftType: "LESSON",
+          timetableSetId: "set-1",
+          startPeriod,
+          endPeriod,
+        }),
+        selectedWorkplace: cramSchoolWorkplace,
+        timetableSets,
+      });
+
+      expect(result.errors).toEqual(
+        expect.objectContaining({
+          ...(Number(startPeriod) > 30
+            ? { startPeriod: "コマ番号は30以下の整数で入力してください。" }
+            : {}),
+          ...(Number(endPeriod) > 30
+            ? { endPeriod: "コマ番号は30以下の整数で入力してください。" }
+            : {}),
+        }),
+      );
+      expect(result.candidateTimes).toBeNull();
+    },
+  );
+
+  it("accepts a one-period lesson at period 30", () => {
+    const periodThirtySet: TimetableSet = {
+      ...timetableSets[0]!,
+      items: [
+        {
+          id: "period-30",
+          timetableSetId: "set-1",
+          period: 30,
+          startTime: "1970-01-01T19:00:00.000Z",
+          endTime: "1970-01-01T20:00:00.000Z",
+        },
+      ],
+    };
+
+    expect(
+      validateShiftForm({
+        form: createForm({
+          workplaceId: cramSchoolWorkplace.id,
+          shiftType: "LESSON",
+          timetableSetId: "set-1",
+          startPeriod: "30",
+          endPeriod: "30",
+        }),
+        selectedWorkplace: cramSchoolWorkplace,
+        timetableSets: [periodThirtySet],
+      }),
+    ).toEqual({
+      errors: {},
+      candidateTimes: { startTime: "19:00", endTime: "20:00" },
+    });
+  });
 });
 
 describe("shift-form submission helpers", () => {

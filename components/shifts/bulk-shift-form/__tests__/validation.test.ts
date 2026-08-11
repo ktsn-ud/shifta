@@ -418,6 +418,40 @@ describe("validateAndBuildPayload", () => {
     });
   });
 
+  it.each([
+    ["start", "31", "30", "startPeriod"],
+    ["end", "30", "31", "endPeriod"],
+    ["huge end", "1", String(Number.MAX_SAFE_INTEGER), "endPeriod"],
+  ])(
+    "rejects a LESSON row with an out-of-range %s period before resolving its range",
+    (_description, startPeriod, endPeriod, invalidField) => {
+      const result = validateRows({
+        selectedWorkplaceId: cramSchoolWorkplaceId,
+        selectedWorkplaceType: "CRAM_SCHOOL",
+        lessonPeriodsBySetId: { "set-1": [1, 30] },
+        rows: [
+          createRow("2026-03-18", {
+            shiftType: "LESSON",
+            timetableSetId: "set-1",
+            startPeriod,
+            endPeriod,
+          }),
+        ],
+      });
+
+      expect(result).toMatchObject({
+        success: false,
+        errors: {
+          rows: {
+            "2026-03-18": {
+              [invalidField]: "コマ番号は30以下の整数で入力してください。",
+            },
+          },
+        },
+      });
+    },
+  );
+
   it("reports derived LESSON break errors on the end-period field", () => {
     const invalidBreakRows = [
       {

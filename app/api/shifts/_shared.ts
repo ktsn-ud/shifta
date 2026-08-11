@@ -20,6 +20,10 @@ import {
   calculateGrossMinutes,
   getBreakMinutesValidationError,
 } from "@/lib/shifts/break-validation";
+import {
+  MAX_TIMETABLE_PERIOD,
+  TIMETABLE_PERIOD_LIMIT_MESSAGE,
+} from "@/lib/validation/batch-limits";
 
 export class ShiftValidationError extends Error {
   constructor(message: string) {
@@ -30,8 +34,16 @@ export class ShiftValidationError extends Error {
 
 export const lessonRangeSchema = z.strictObject({
   timetableSetId: z.string().min(1),
-  startPeriod: z.coerce.number().int().positive(),
-  endPeriod: z.coerce.number().int().positive(),
+  startPeriod: z.coerce
+    .number()
+    .int()
+    .positive()
+    .max(MAX_TIMETABLE_PERIOD, TIMETABLE_PERIOD_LIMIT_MESSAGE),
+  endPeriod: z.coerce
+    .number()
+    .int()
+    .positive()
+    .max(MAX_TIMETABLE_PERIOD, TIMETABLE_PERIOD_LIMIT_MESSAGE),
 });
 
 export const shiftCommentSchema = z

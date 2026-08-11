@@ -99,6 +99,37 @@ describe("PUT /api/shifts/:id break validation", () => {
   );
 
   it.each([
+    ["startPeriod", { startPeriod: 31, endPeriod: 30 }],
+    ["endPeriod", { startPeriod: 30, endPeriod: 31 }],
+  ])(
+    "rejects lessonRange.%s above period 30 before looking up the target shift",
+    async (_field, lessonRange) => {
+      const PUT = await loadPut();
+      const response = await PUT(
+        createRequest({
+          workplaceId: "workplace-1",
+          date: "2026-03-18",
+          shiftType: "LESSON",
+          lessonRange: {
+            timetableSetId: "set-1",
+            ...lessonRange,
+          },
+        }),
+        { params: Promise.resolve({ id: "shift-1" }) },
+      );
+      if (!response) {
+        throw new Error("response is undefined");
+      }
+
+      const payload = (await response.json()) as { error?: string };
+      expect(response.status).toBe(400);
+      expect(payload.error).toBe("入力値が不正です");
+      expect(prismaShiftFindFirstMock).not.toHaveBeenCalled();
+      expect(prismaTransactionMock).not.toHaveBeenCalled();
+    },
+  );
+
+  it.each([
     ["equal to gross working time", "09:00", "10:00", 60],
     ["overnight gross working time", "22:00", "01:00", 180],
   ])(

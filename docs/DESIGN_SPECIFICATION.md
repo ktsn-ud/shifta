@@ -385,6 +385,7 @@ Browser (React UI) → Next.js Routes → Prisma ORM → Neon DB
 - workplaceId は `CRAM_SCHOOL`
 - `(workplaceId, name)` は一意
 - `(timetableSetId, period)` は一意
+- period は 1〜30 の整数。既存の範囲外データは表示できるが、次回保存時に範囲内へ修正が必要
 - startTime と endTime は同時刻不可
 - endTime は startTime より後でなければならない
 
@@ -488,6 +489,7 @@ Browser (React UI) → Next.js Routes → Prisma ORM → Neon DB
 - shiftId の Shift.shiftType = LESSON
 - timetableSetId は Shift の勤務先に紐づく TimetableSet を参照する
 - startPeriod ≤ endPeriod
+- startPeriod, endPeriod は 1〜30 の整数。既存の範囲外データは表示できるが、次回保存時に範囲内へ修正が必要
 - startPeriod, endPeriod は `timetableSetId` で指定した Timetable の period に存在する
 - 1シフトあたり1件（複数コマの授業を1つのシフトで表現）
 
@@ -1222,7 +1224,7 @@ H_total = (19:50 - 16:30) = 3時間20分 = 3.33時間
 | フィールド | 型     | 必須 | 仕様                                                                 |
 | ---------- | ------ | ---- | -------------------------------------------------------------------- |
 | セット名   | TEXT   | ○    | 1〜50文字。同一勤務先内で一意                                        |
-| コマ番号   | NUMBER | ○    | 正の整数; 同一セット内で一意                                         |
+| コマ番号   | NUMBER | ○    | 1〜30の整数; 同一セット内で一意                                      |
 | 開始時刻   | TIME   | ○    | HH:MM 形式                                                           |
 | 終了時刻   | TIME   | ○    | HH:MM 形式; 開始時刻と同時刻は不可。開始時刻より後でなければならない |
 
@@ -2388,6 +2390,7 @@ GET /api/payroll/preview-baseline?months=YYYY-MM,YYYY-MM
 | 日時 | 変更概要 | 具体的な変更内容 |
 | 2026-08-11 00:00:00 +0000 | 一括シフト登録のレート制限と Google 同期共有キューを追加 | `POST /api/shifts/bulk` を認証済みユーザーごとに60秒5回の instance-local fixed-window 制御とし、CSRF 失敗では枠を消費しない。記録は expiry FIFO と最大10,000件の上限でメモリを制限し、超過時は `429`・`Retry-After`・private no-store JSON エラーを返す。Google Calendar の一括作成同期は、カレンダー初期化後の既存シフト同期を含め、同一 Node.js instance で共有する最大3件の permit と最大100件の待機列に制限する。待機列超過ジョブは明示的に `FAILED` として終了し、再スケジュールしない。permit と待機列は instance-local で、Google の `Retry-After` は既存待機以上・最大30秒で尊重し、リトライ待機中も permit を保持する。 |
 | 2026-08-11 00:00:00 +0000 | JSON 本文サイズ上限を追加 | `parseJsonBody` を利用する Route Handler と Server Action の更新リクエストを UTF-8 で 1 MiB までに制限。超過時は本文読取前またはストリーム読取中に `413` と private no-store JSON エラーを返し、既存の 400 検証契約を維持する。 |
+| 2026-08-11 00:00:00 +0000 | 時間割コマ番号・授業コマ範囲の入力上限を追加 | 時間割の period および LESSON の startPeriod/endPeriod は 1〜30 の整数へ制限する。既存の範囲外データは表示できるが、次回保存時に範囲内へ修正が必要。 |
 | 2026-08-11 00:00:00 +0000 | 一括登録・時間割の件数上限を追加 | シフト一括登録を最大31件、時間割セット内のコマを最大30件、時間割セット一括作成を最大20件に制限。UIとサーバー検証の両方で上限を適用し、DB更新・Google Calendar同期の前に拒否する。 |
 | 2026-08-11 00:00:00 +0000 | 給与詳細をV2計算・現行DTOへ同期 | 14章の給与内訳を、固定22:00〜05:00、基本時間と深夜時間の非重複、休日手当の独立加算、残業時間は参考値・金額0（総額加算なし）へ更新。旧 `nightMultiplier` 等の例を廃止。 |
 | 2026-08-11 00:00:00 +0000 | シフト休憩時間の実勤務ゼロ防止を追加 | 新規・更新・一括登録・確定で、休憩時間を整数の0～240分かつ日跨ぎ補正後の総勤務時間未満に統一。LESSON は時間割から導出した休憩時間も保存前に検証し、休憩位置を保持しない現行の深夜時間計算上の制約を8.3へ明記。 |

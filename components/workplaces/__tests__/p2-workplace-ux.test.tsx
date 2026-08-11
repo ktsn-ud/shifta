@@ -685,4 +685,81 @@ describe("勤務先管理のP2 UX", () => {
     expect(screen.getByText("保存待ちの時間割セット (19)")).toBeInTheDocument();
     expect(queueButton).toBeEnabled();
   });
+
+  it("時間割フォームは31限を送信せず、コマ番号入力の上限を表示する", () => {
+    mockedUseQuery.mockReturnValue({
+      data: { id: "workplace-1", name: "青葉塾", type: "CRAM_SCHOOL" },
+      isPending: false,
+      isFetching: false,
+      error: null,
+    } as unknown as ReturnType<typeof useQuery>);
+
+    const timetable = render(
+      <TimetableForm mode="create" workplaceId="workplace-1" />,
+    );
+    const periodInput = screen.getByRole("spinbutton");
+    expect(periodInput).toHaveAttribute("max", "30");
+
+    fireEvent.change(screen.getByLabelText("時間割セット名"), {
+      target: { value: "夏期時間割" },
+    });
+    const timeInputs =
+      timetable.container.querySelectorAll<HTMLInputElement>(
+        'input[type="time"]',
+      );
+    fireEvent.change(timeInputs[0]!, { target: { value: "09:00" } });
+    fireEvent.change(timeInputs[1]!, { target: { value: "10:00" } });
+    fireEvent.change(periodInput, { target: { value: "31" } });
+    fireEvent.click(screen.getByRole("button", { name: "保存して完了" }));
+
+    expect(
+      screen.getByText("コマ番号は30以下の整数で入力してください。"),
+    ).toBeInTheDocument();
+    expect(createTimetableActionMock).not.toHaveBeenCalled();
+  });
+
+  it("既存の31限の時間割を編集フォームに表示できる", () => {
+    mockedUseQuery
+      .mockReturnValueOnce({
+        data: { id: "workplace-1", name: "青葉塾", type: "CRAM_SCHOOL" },
+        isPending: false,
+        isFetching: false,
+        error: null,
+      } as unknown as ReturnType<typeof useQuery>)
+      .mockReturnValueOnce({
+        data: [
+          {
+            id: "set-legacy",
+            workplaceId: "workplace-1",
+            name: "旧時間割",
+            sortOrder: 0,
+            createdAt: "2026-03-01T00:00:00.000Z",
+            updatedAt: "2026-03-01T00:00:00.000Z",
+            items: [
+              {
+                id: "period-31",
+                timetableSetId: "set-legacy",
+                period: 31,
+                startTime: "1970-01-01T19:00:00.000Z",
+                endTime: "1970-01-01T20:00:00.000Z",
+              },
+            ],
+          },
+        ],
+        isPending: false,
+        isFetching: false,
+        error: null,
+      } as unknown as ReturnType<typeof useQuery>);
+
+    render(
+      <TimetableForm
+        mode="edit"
+        workplaceId="workplace-1"
+        timetableId="set-legacy"
+      />,
+    );
+
+    expect(screen.getByLabelText("時間割セット名")).toHaveValue("旧時間割");
+    expect(screen.getByRole("spinbutton")).toHaveValue(31);
+  });
 });

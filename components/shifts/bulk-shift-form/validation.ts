@@ -13,6 +13,8 @@ import { resolveLessonTimeRangeFromRows } from "@/lib/shifts/lesson-time-range";
 import {
   BULK_SHIFT_LIMIT_MESSAGE,
   MAX_BULK_SHIFT_COUNT,
+  MAX_TIMETABLE_PERIOD,
+  TIMETABLE_PERIOD_LIMIT_MESSAGE,
 } from "@/lib/validation/batch-limits";
 import type {
   BulkShiftPayload,
@@ -236,13 +238,25 @@ export function validateAndBuildPayload(params: {
 
       const startPeriod = Number(row.startPeriod);
       const endPeriod = Number(row.endPeriod);
+      const hasPeriodOverLimit =
+        (Number.isInteger(startPeriod) && startPeriod > MAX_TIMETABLE_PERIOD) ||
+        (Number.isInteger(endPeriod) && endPeriod > MAX_TIMETABLE_PERIOD);
 
       if (!Number.isInteger(startPeriod) || startPeriod <= 0) {
         rowErrors.startPeriod = "開始コマは1以上の整数で入力してください。";
+      } else if (startPeriod > MAX_TIMETABLE_PERIOD) {
+        rowErrors.startPeriod = TIMETABLE_PERIOD_LIMIT_MESSAGE;
       }
 
       if (!Number.isInteger(endPeriod) || endPeriod <= 0) {
         rowErrors.endPeriod = "終了コマは1以上の整数で入力してください。";
+      } else if (endPeriod > MAX_TIMETABLE_PERIOD) {
+        rowErrors.endPeriod = TIMETABLE_PERIOD_LIMIT_MESSAGE;
+      }
+
+      if (hasPeriodOverLimit) {
+        nextErrors.rows![dateKey] = rowErrors;
+        continue;
       }
 
       if (
