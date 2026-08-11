@@ -1689,7 +1689,7 @@ function useShiftFormController(
           body: JSON.stringify(payload),
         });
 
-        if (response.ok === false) {
+        if (!response.ok) {
           const apiError = await readGoogleSyncFailureFromErrorResponse(
             response,
             "シフトの保存に失敗しました",

@@ -104,6 +104,19 @@ type DashboardCalendarSectionProps = {
   onDateClick: (date: Date) => void;
 };
 
+type DashboardShiftListModalProps = {
+  open: boolean;
+  onOpenChange: (open: boolean) => void;
+  targetDate: Date;
+  shifts: MonthShift[];
+  displayMonth: Date;
+  queryClient: QueryClient;
+  isSignOutScheduled: boolean;
+  scheduleSignOut: () => void;
+  reload: () => Promise<void> | void;
+  onCreateShift: (date: Date) => void;
+};
+
 type BulkRetrySyncParams = {
   failedShiftIds: string[];
   isBulkRetrying: boolean;
@@ -321,7 +334,7 @@ async function deleteDashboardShift({
       method: "DELETE",
     });
 
-    if (response.ok === false) {
+    if (!response.ok) {
       const apiError = await readGoogleSyncFailureFromErrorResponse(
         response,
         "シフトの削除に失敗しました",
@@ -398,7 +411,7 @@ async function retryDashboardShiftSync({
     method: "POST",
   });
 
-  if (response.ok === false) {
+  if (!response.ok) {
     const apiError = await readGoogleSyncFailureFromErrorResponse(
       response,
       "Google Calendar への再同期に失敗しました",
@@ -623,6 +636,119 @@ function DashboardCalendarSection({
   );
 }
 
+function DashboardShiftListModal({
+  open,
+  onOpenChange,
+  targetDate,
+  shifts,
+  displayMonth,
+  queryClient,
+  isSignOutScheduled,
+  scheduleSignOut,
+  reload,
+  onCreateShift,
+}: DashboardShiftListModalProps) {
+  const router = useRouter();
+  const pendingShiftDeletionIdsRef = useRef(new Set<string>());
+  const isMountedRef = useRef(false);
+  const { schedule: scheduleUndoableAction } = useUndoableAction();
+
+  useEffect(() => {
+    const pendingShiftDeletionIds = pendingShiftDeletionIdsRef.current;
+    isMountedRef.current = true;
+
+    return () => {
+      isMountedRef.current = false;
+      pendingShiftDeletionIds.clear();
+    };
+  }, []);
+
+  return (
+    <ShiftListModal
+      open={open}
+      onOpenChange={onOpenChange}
+      targetDate={targetDate}
+      shifts={shifts}
+      onCreateShift={onCreateShift}
+      onEditShift={(shiftId) => {
+        const params = new URLSearchParams({
+          month: toMonthInputValue(displayMonth),
+        });
+        router.push(`/my/shifts/${shiftId}/edit?${params.toString()}`);
+      }}
+      onDeleteShift={async (shiftId) => {
+        if (pendingShiftDeletionIdsRef.current.has(shiftId)) {
+          return;
+        }
+
+        pendingShiftDeletionIdsRef.current.add(shiftId);
+        let isScheduled = false;
+
+        try {
+          await queryClient.cancelQueries({
+            queryKey: queryKeys.shifts.monthScope(),
+          });
+
+          if (!isMountedRef.current) {
+            return;
+          }
+
+          const rollback = removeShiftsFromMonthCachesOptimistically(
+            queryClient,
+            [shiftId],
+          );
+          isScheduled = scheduleUndoableAction({
+            id: "dashboard-shift-" + shiftId,
+            message: "シフトを削除しました。",
+            onUndo: () => {
+              pendingShiftDeletionIdsRef.current.delete(shiftId);
+              rollback();
+            },
+            onCommit: async () => {
+              try {
+                await deleteDashboardShift({
+                  shiftId,
+                  isSignOutScheduled,
+                  queryClient,
+                  rollback,
+                  scheduleSignOut,
+                  navigateToCalendarSetup: () => {
+                    router.push(CALENDAR_SETUP_PATH);
+                  },
+                });
+              } finally {
+                pendingShiftDeletionIdsRef.current.delete(shiftId);
+              }
+            },
+          });
+
+          if (!isScheduled) {
+            rollback();
+          }
+        } catch (error) {
+          console.error("failed to cancel month shift queries", { error });
+        } finally {
+          if (!isScheduled) {
+            pendingShiftDeletionIdsRef.current.delete(shiftId);
+          }
+        }
+      }}
+      onRetrySync={async (shiftId) => {
+        await retryDashboardShiftSync({
+          shiftId,
+          isSignOutScheduled,
+          queryClient,
+          reload,
+          scheduleSignOut,
+          navigateToCalendarSetup: () => {
+            router.push(CALENDAR_SETUP_PATH);
+          },
+        });
+      }}
+    />
+  );
+}
+
 export function DashboardPageLoadingSkeleton() {
   return (
     <section className="space-y-6 p-4 md:p-6 lg:p-8">
@@ -670,20 +796,6 @@ export function DashboardPageClient({
 }: DashboardPageClientProps) {
   const router = useRouter();
   const queryClient = getBrowserQueryClient();
-  const pendingShiftDeletionIdsRef = useRef(new Set<string>());
-  const isMountedRef = useRef(false);
-
-  useEffect(() => {
-    const pendingShiftDeletionIds = pendingShiftDeletionIdsRef.current;
-    isMountedRef.current = true;
-
-    return () => {
-      isMountedRef.current = false;
-      pendingShiftDeletionIds.clear();
-    };
-  }, []);
-
-  const { schedule: scheduleUndoableAction } = useUndoableAction();
   const [month, setMonth] = useState(() => {
     const initialMonthDate = dateFromDateKey(initialMonthStartDate);
     return startOfMonth(initialMonthDate ?? new Date());
@@ -893,87 +1005,17 @@ export function DashboardPageClient({
         />
       ) : null}
 
-      <ShiftListModal
+      <DashboardShiftListModal
         open={modalOpen}
         onOpenChange={setModalOpen}
         targetDate={selectedDate}
         shifts={selectedDateShifts}
+        displayMonth={displayMonth}
+        queryClient={queryClient}
+        isSignOutScheduled={isSignOutScheduled}
+        scheduleSignOut={scheduleSignOut}
+        reload={reload}
         onCreateShift={handleCreateShift}
-        onEditShift={(shiftId) => {
-          const params = new URLSearchParams({
-            month: toMonthInputValue(displayMonth),
-          });
-          router.push(`/my/shifts/${shiftId}/edit?${params.toString()}`);
-        }}
-        onDeleteShift={async (shiftId) => {
-          if (pendingShiftDeletionIdsRef.current.has(shiftId)) {
-            return;
-          }
-
-          pendingShiftDeletionIdsRef.current.add(shiftId);
-          let isScheduled = false;
-
-          try {
-            await queryClient.cancelQueries({
-              queryKey: queryKeys.shifts.monthScope(),
-            });
-
-            if (!isMountedRef.current) {
-              return;
-            }
-
-            const rollback = removeShiftsFromMonthCachesOptimistically(
-              queryClient,
-              [shiftId],
-            );
-            isScheduled = scheduleUndoableAction({
-              id: "dashboard-shift-" + shiftId,
-              message: "シフトを削除しました。",
-              onUndo: () => {
-                pendingShiftDeletionIdsRef.current.delete(shiftId);
-                rollback();
-              },
-              onCommit: async () => {
-                try {
-                  await deleteDashboardShift({
-                    shiftId,
-                    isSignOutScheduled,
-                    queryClient,
-                    rollback,
-                    scheduleSignOut,
-                    navigateToCalendarSetup: () => {
-                      router.push(CALENDAR_SETUP_PATH);
-                    },
-                  });
-                } finally {
-                  pendingShiftDeletionIdsRef.current.delete(shiftId);
-                }
-              },
-            });
-
-            if (!isScheduled) {
-              rollback();
-            }
-          } catch (error) {
-            console.error("failed to cancel month shift queries", { error });
-          } finally {
-            if (!isScheduled) {
-              pendingShiftDeletionIdsRef.current.delete(shiftId);
-            }
-          }
-        }}
-        onRetrySync={async (shiftId) => {
-          await retryDashboardShiftSync({
-            shiftId,
-            isSignOutScheduled,
-            queryClient,
-            reload,
-            scheduleSignOut,
-            navigateToCalendarSetup: () => {
-              router.push(CALENDAR_SETUP_PATH);
-            },
-          });
-        }}
       />
     </section>
   );

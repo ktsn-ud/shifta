@@ -288,7 +288,7 @@ export async function checkShiftOverlapWarning(params: {
     const response = await fetch(`/api/shifts?${searchParams.toString()}`, {
       cache: "no-store",
     });
-    if (response.ok === false) {
+    if (!response.ok) {
       return null;
     }
 

@@ -976,7 +976,7 @@ function useBulkShiftFormController({
         },
       );
 
-      if (response.ok === false) {
+      if (!response.ok) {
         const resolved = await resolveUserFacingErrorFromResponse(
           response,
           "Google予定の取得に失敗しました。",
@@ -1319,7 +1319,7 @@ function useBulkShiftFormController({
         }),
       });
 
-      if (response.ok === false) {
+      if (!response.ok) {
         const apiError = await readGoogleSyncFailureFromErrorResponse(
           response,
           "シフト一括登録に失敗しました。",
