@@ -23,6 +23,17 @@ type CalendarClientControls = {
   client: CalendarClientMock;
 };
 
+function createDeferred<T>() {
+  let resolve!: (value: T) => void;
+  let reject!: (reason?: unknown) => void;
+  const promise = new Promise<T>((resolvePromise, rejectPromise) => {
+    resolve = resolvePromise;
+    reject = rejectPromise;
+  });
+
+  return { promise, resolve, reject };
+}
+
 function createCalendarClient(
   overrides: Partial<
     Pick<
@@ -165,59 +176,126 @@ describe("calendar events service", () => {
     );
   });
 
-  it("レスポンス後の書き込みまではliveを返し、書き込み後はfresh cacheを返す", async () => {
+  it("同一キーの同時live取得を共有し、レスポンス後の書き込みまではliveを返す", async () => {
     const service = await loadCalendarEventsModule();
     const calendarClient = createCalendarClient();
-    getReadCalendarClientByUserIdMock.mockResolvedValue(calendarClient.client);
+    const client = createDeferred<CalendarClientMock>();
+    getReadCalendarClientByUserIdMock.mockReturnValue(client.promise);
     const range = service.parseCalendarEventsMonth("2026-05");
     if (!range) throw new Error("expected valid month range");
+    const request = {
+      userId: "user-1",
+      range,
+      requestedCalendarIds: ["calendar-1"],
+    };
 
-    const first = await service.getCalendarEvents({
-      userId: "user-1",
-      range,
-      requestedCalendarIds: ["calendar-1"],
-    });
-    const pending = await service.getCalendarEvents({
-      userId: "user-1",
-      range,
-      requestedCalendarIds: ["calendar-1"],
-    });
+    const firstRequest = service.getCalendarEvents(request);
+    const secondRequest = service.getCalendarEvents(request);
+
+    expect(getReadCalendarClientByUserIdMock).toHaveBeenCalledTimes(1);
+    client.resolve(calendarClient.client);
+
+    const [first, second] = await Promise.all([firstRequest, secondRequest]);
     first.writeCacheAfterResponse();
     const hit = await service.getCalendarEvents({
       userId: "user-1",
       range,
       requestedCalendarIds: ["calendar-1"],
     });
-    const differentUser = await service.getCalendarEvents({
-      userId: "user-2",
-      range,
-      requestedCalendarIds: ["calendar-1"],
-    });
-    const differentMonth = await service.getCalendarEvents({
-      userId: "user-1",
-      range: {
-        ...range,
-        month: "2026-06",
-        startDateKey: "2026-06-01",
-        endDateKeyExclusive: "2026-07-01",
-        timeMin: "2026-06-01T00:00:00+09:00",
-        timeMax: "2026-07-01T00:00:00+09:00",
-      },
-      requestedCalendarIds: ["calendar-1"],
-    });
-    const differentSelection = await service.getCalendarEvents({
-      userId: "user-1",
-      range,
-      requestedCalendarIds: ["calendar-2"],
-    });
 
     expect(first.cacheStatus).toBe("live");
-    expect(pending.cacheStatus).toBe("live");
+    expect(second.cacheStatus).toBe("live");
+    expect(second.data).toEqual(first.data);
     expect(hit.cacheStatus).toBe("hit");
-    expect(differentUser.cacheStatus).toBe("live");
-    expect(differentMonth.cacheStatus).toBe("live");
-    expect(differentSelection.cacheStatus).toBe("live");
-    expect(getReadCalendarClientByUserIdMock).toHaveBeenCalledTimes(5);
+    expect(calendarClient.eventsList).toHaveBeenCalledTimes(1);
+    expect(getReadCalendarClientByUserIdMock).toHaveBeenCalledTimes(1);
+  });
+
+  it("失敗した同一キーのlive取得を共有し、完了後は再試行できる", async () => {
+    const service = await loadCalendarEventsModule();
+    const failedClient = createDeferred<CalendarClientMock>();
+    const error = new Error("Google Calendar unavailable");
+    getReadCalendarClientByUserIdMock.mockReturnValueOnce(failedClient.promise);
+    const range = service.parseCalendarEventsMonth("2026-05");
+    if (!range) throw new Error("expected valid month range");
+    const request = {
+      userId: "user-1",
+      range,
+      requestedCalendarIds: ["calendar-1"],
+    };
+
+    const firstRequest = service.getCalendarEvents(request);
+    const secondRequest = service.getCalendarEvents(request);
+    const firstFailure = expect(firstRequest).rejects.toBe(error);
+    const secondFailure = expect(secondRequest).rejects.toBe(error);
+
+    expect(getReadCalendarClientByUserIdMock).toHaveBeenCalledTimes(1);
+    failedClient.reject(error);
+    await Promise.all([firstFailure, secondFailure]);
+
+    const calendarClient = createCalendarClient();
+    getReadCalendarClientByUserIdMock.mockResolvedValue(calendarClient.client);
+    const retry = await service.getCalendarEvents(request);
+
+    expect(retry.cacheStatus).toBe("live");
+    expect(getReadCalendarClientByUserIdMock).toHaveBeenCalledTimes(2);
+    expect(calendarClient.eventsList).toHaveBeenCalledTimes(1);
+  });
+
+  it("ユーザー、月、選択が異なる同時live取得は独立して開始する", async () => {
+    const service = await loadCalendarEventsModule();
+    const calendarClient = createCalendarClient();
+    const clients = [
+      createDeferred<CalendarClientMock>(),
+      createDeferred<CalendarClientMock>(),
+      createDeferred<CalendarClientMock>(),
+      createDeferred<CalendarClientMock>(),
+    ];
+    let clientIndex = 0;
+    getReadCalendarClientByUserIdMock.mockImplementation(
+      () => clients[clientIndex++]!.promise,
+    );
+    const mayRange = service.parseCalendarEventsMonth("2026-05");
+    const juneRange = service.parseCalendarEventsMonth("2026-06");
+    if (!mayRange || !juneRange) throw new Error("expected valid month ranges");
+
+    const resultsPromise = Promise.all([
+      service.getCalendarEvents({
+        userId: "user-1",
+        range: mayRange,
+        requestedCalendarIds: ["calendar-1"],
+      }),
+      service.getCalendarEvents({
+        userId: "user-2",
+        range: mayRange,
+        requestedCalendarIds: ["calendar-1"],
+      }),
+      service.getCalendarEvents({
+        userId: "user-1",
+        range: juneRange,
+        requestedCalendarIds: ["calendar-1"],
+      }),
+      service.getCalendarEvents({
+        userId: "user-1",
+        range: mayRange,
+        requestedCalendarIds: ["calendar-2"],
+      }),
+    ]);
+
+    expect(getReadCalendarClientByUserIdMock).toHaveBeenCalledTimes(4);
+    for (const client of clients) client.resolve(calendarClient.client);
+    const [sameKey, differentUser, differentMonth, differentSelection] =
+      await resultsPromise;
+
+    expect(new Set([sameKey.cacheKey, differentUser.cacheKey]).size).toBe(2);
+    expect(new Set([sameKey.cacheKey, differentMonth.cacheKey]).size).toBe(2);
+    expect(new Set([sameKey.cacheKey, differentSelection.cacheKey]).size).toBe(
+      2,
+    );
+    expect(differentUser.data.month).toBe("2026-05");
+    expect(differentMonth.data.month).toBe("2026-06");
+    expect(differentSelection.data.selectedCalendarIds).toEqual(["calendar-2"]);
+    expect(calendarClient.eventsList).toHaveBeenCalledTimes(4);
   });
 
   it("fresh、stale、期限切れのキャッシュを区別する", async () => {

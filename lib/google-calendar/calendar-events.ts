@@ -74,6 +74,10 @@ export type GoogleCalendarErrorClassification =
 
 // This module singleton is intentionally scoped by user, month, and normalized selection.
 const calendarEventsCache = new Map<string, CacheEntry>();
+const calendarEventsInFlight = new Map<
+  string,
+  Promise<CalendarEventsResponseData>
+>();
 const dateKeyFormatter = new Intl.DateTimeFormat("en-CA", {
   timeZone: SHIFTA_CALENDAR_TIMEZONE,
   year: "numeric",
@@ -435,7 +439,8 @@ export type CalendarEventsFetchResult = {
   cacheKey: string;
   writeCacheAfterResponse: () => void;
 };
-export async function getCalendarEvents({
+
+async function fetchCalendarEventsLive({
   userId,
   range,
   requestedCalendarIds,
@@ -443,20 +448,7 @@ export async function getCalendarEvents({
   userId: string;
   range: MonthRange;
   requestedCalendarIds: string[];
-}): Promise<CalendarEventsFetchResult> {
-  const cacheKey = getCalendarEventsCacheKey(
-    userId,
-    range.month,
-    requestedCalendarIds,
-  );
-  const cached = readFresh(cacheKey);
-  if (cached)
-    return {
-      data: cached,
-      cacheStatus: "hit",
-      cacheKey,
-      writeCacheAfterResponse: () => pruneCache(Date.now()),
-    };
+}): Promise<CalendarEventsResponseData> {
   const calendar = await getReadCalendarClientByUserId(userId);
   let palettes: GoogleColorPalettes = { calendar: new Map(), event: new Map() };
   try {
@@ -490,6 +482,50 @@ export async function getCalendarEvents({
       left.date.localeCompare(right.date),
     ),
   };
+  return data;
+}
+
+function getOrCreateCalendarEventsInFlight(
+  cacheKey: string,
+  load: () => Promise<CalendarEventsResponseData>,
+): Promise<CalendarEventsResponseData> {
+  const existing = calendarEventsInFlight.get(cacheKey);
+  if (existing) return existing;
+
+  const inFlight = load().finally(() => {
+    if (calendarEventsInFlight.get(cacheKey) === inFlight)
+      calendarEventsInFlight.delete(cacheKey);
+  });
+  calendarEventsInFlight.set(cacheKey, inFlight);
+  return inFlight;
+}
+
+export async function getCalendarEvents({
+  userId,
+  range,
+  requestedCalendarIds,
+}: {
+  userId: string;
+  range: MonthRange;
+  requestedCalendarIds: string[];
+}): Promise<CalendarEventsFetchResult> {
+  const cacheKey = getCalendarEventsCacheKey(
+    userId,
+    range.month,
+    requestedCalendarIds,
+  );
+  const cached = readFresh(cacheKey);
+  if (cached)
+    return {
+      data: cached,
+      cacheStatus: "hit",
+      cacheKey,
+      writeCacheAfterResponse: () => pruneCache(Date.now()),
+    };
+
+  const data = await getOrCreateCalendarEventsInFlight(cacheKey, () =>
+    fetchCalendarEventsLive({ userId, range, requestedCalendarIds }),
+  );
   return {
     data,
     cacheStatus: "live",
