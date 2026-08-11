@@ -102,4 +102,41 @@ describe("retryShiftSync", () => {
     expect(shiftUpdateManyMock).not.toHaveBeenCalled();
     expect(revalidateShiftDomainTagsMock).not.toHaveBeenCalled();
   });
+
+  it("上流エラーの token/config を同期結果やログに含めない", async () => {
+    const error = Object.assign(new Error("raw-token"), {
+      response: {
+        status: 400,
+        config: {
+          headers: {
+            Authorization: "Bearer raw-token",
+          },
+        },
+      },
+    });
+    const errorSpy = jest.spyOn(console, "error").mockImplementation();
+    const infoSpy = jest.spyOn(console, "info").mockImplementation();
+    updateCalendarEvent.mockRejectedValue(error);
+
+    await expect(retryShiftSync("shift-1", "user-1")).resolves.toEqual({
+      ok: false,
+      errorMessage: "Google Calendar との同期に失敗しました",
+      errorCode: null,
+      requiresCalendarSetup: false,
+      requiresSignOut: false,
+    });
+
+    expect(errorSpy).toHaveBeenCalledWith(
+      "Google Calendar shift sync failed",
+      expect.objectContaining({
+        action: "retry",
+        userId: "user-1",
+        shiftId: "shift-1",
+        error: "Google Calendar との同期に失敗しました",
+        errorCode: null,
+      }),
+    );
+    expect(JSON.stringify(errorSpy.mock.calls)).not.toContain("raw-token");
+    expect(JSON.stringify(infoSpy.mock.calls)).not.toContain("raw-token");
+  });
 });
