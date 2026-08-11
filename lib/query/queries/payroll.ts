@@ -1,6 +1,16 @@
 import { useQuery } from "@tanstack/react-query";
+import type { z } from "zod";
 import { fetchJson } from "@/lib/query/fetch-json";
 import { queryKeys } from "@/lib/query/query-keys";
+import {
+  actualPayrollResponseSchema,
+  payrollDetailsMonthlyResponseSchema,
+  payrollDetailsWorkplaceYearlyResponseSchema,
+  payrollPreviewBaselineResponseSchema,
+  payrollSummaryAmountResponseSchema,
+  payrollSummaryResponseSchema,
+  payrollSummaryYearContextResponseSchema,
+} from "@/lib/query/dto-schemas/payroll";
 import { type ActualPayrollEditorResult } from "@/lib/payroll/actual-editor";
 import { type PayrollDetailsMonthlyResult } from "@/lib/payroll/details";
 import { type PayrollDetailsWorkplaceYearlyResult } from "@/lib/payroll/details";
@@ -14,122 +24,178 @@ import {
 const PAYROLL_STALE_TIME_MS = 2 * 60 * 1000;
 const PAYROLL_GC_TIME_MS = 10 * 60 * 1000;
 
-function parsePayrollSummaryPayload(payload: unknown): PayrollSummaryResult {
-  if (
-    typeof payload !== "object" ||
-    payload === null ||
-    typeof (payload as { year?: unknown }).year !== "number" ||
-    !Array.isArray((payload as { workplaces?: unknown[] }).workplaces) ||
-    !Array.isArray((payload as { months?: unknown[] }).months) ||
-    typeof (payload as { yearlyTotals?: unknown }).yearlyTotals !== "object" ||
-    (payload as { yearlyTotals?: unknown }).yearlyTotals === null ||
-    !Array.isArray(
-      (payload as { yearlyTotals?: { byWorkplace?: unknown[] } }).yearlyTotals
-        ?.byWorkplace,
-    ) ||
-    typeof (payload as { yearlyTotals?: { grandTotals?: unknown } })
-      .yearlyTotals?.grandTotals !== "object" ||
-    (payload as { yearlyTotals?: { grandTotals?: unknown } }).yearlyTotals
-      ?.grandTotals === null
-  ) {
-    throw new Error("PAYROLL_SUMMARY_RESPONSE_INVALID");
+function parsePayload<TData>(
+  schema: z.ZodType<TData>,
+  payload: unknown,
+  errorCode: string,
+): TData {
+  const result = schema.safeParse(payload);
+  if (!result.success) {
+    throw new Error(errorCode);
   }
 
-  return payload as PayrollSummaryResult;
+  return result.data;
+}
+
+function hasCompleteMonthRows(
+  rows: Array<{ month: number; monthKey: string }>,
+  expectedYear: number,
+): boolean {
+  if (rows.length !== 12) {
+    return false;
+  }
+
+  for (const [index, row] of rows.entries()) {
+    const expectedMonth = index + 1;
+    if (
+      row.month !== expectedMonth ||
+      row.monthKey !==
+        `${expectedYear}-${String(expectedMonth).padStart(2, "0")}`
+    ) {
+      return false;
+    }
+  }
+
+  return true;
+}
+
+function hasExactOrderedMonths(
+  receivedMonths: string[],
+  expectedMonths: string[],
+): boolean {
+  return (
+    receivedMonths.length === expectedMonths.length &&
+    receivedMonths.every((month, index) => month === expectedMonths[index])
+  );
+}
+
+function parsePayrollSummaryPayload(
+  expectedYear: number,
+): (payload: unknown) => PayrollSummaryResult {
+  return (payload) => {
+    const result = parsePayload(
+      payrollSummaryResponseSchema,
+      payload,
+      "PAYROLL_SUMMARY_RESPONSE_INVALID",
+    );
+
+    if (
+      result.year !== expectedYear ||
+      !hasCompleteMonthRows(result.months, expectedYear)
+    ) {
+      throw new Error("PAYROLL_SUMMARY_RESPONSE_INVALID");
+    }
+
+    return result;
+  };
 }
 
 function parsePayrollSummaryYearContextPayload(
-  payload: unknown,
-): PayrollSummaryYearContextResult {
-  if (
-    typeof payload !== "object" ||
-    payload === null ||
-    typeof (payload as { month?: unknown }).month !== "string" ||
-    typeof (payload as { currentMonthCumulative?: unknown })
-      .currentMonthCumulative !== "number" ||
-    typeof (payload as { yearlyTotal?: unknown }).yearlyTotal !== "number"
-  ) {
-    throw new Error("PAYROLL_SUMMARY_YEAR_CONTEXT_RESPONSE_INVALID");
-  }
+  expectedMonth: string,
+): (payload: unknown) => PayrollSummaryYearContextResult {
+  return (payload) => {
+    const result = parsePayload(
+      payrollSummaryYearContextResponseSchema,
+      payload,
+      "PAYROLL_SUMMARY_YEAR_CONTEXT_RESPONSE_INVALID",
+    );
+    if (result.month !== expectedMonth) {
+      throw new Error("PAYROLL_SUMMARY_YEAR_CONTEXT_RESPONSE_INVALID");
+    }
 
-  return payload as PayrollSummaryYearContextResult;
+    return result;
+  };
 }
 
 function parsePayrollSummaryAmountPayload(
-  payload: unknown,
-): PayrollSummaryAmountResult {
-  if (
-    typeof payload !== "object" ||
-    payload === null ||
-    typeof (payload as { month?: unknown }).month !== "string" ||
-    typeof (payload as { totalWage?: unknown }).totalWage !== "number"
-  ) {
-    throw new Error("PAYROLL_SUMMARY_AMOUNT_RESPONSE_INVALID");
-  }
+  expectedMonth: string,
+): (payload: unknown) => PayrollSummaryAmountResult {
+  return (payload) => {
+    const result = parsePayload(
+      payrollSummaryAmountResponseSchema,
+      payload,
+      "PAYROLL_SUMMARY_AMOUNT_RESPONSE_INVALID",
+    );
+    if (result.month !== expectedMonth) {
+      throw new Error("PAYROLL_SUMMARY_AMOUNT_RESPONSE_INVALID");
+    }
 
-  return payload as PayrollSummaryAmountResult;
+    return result;
+  };
 }
 
 function parseActualPayrollPayload(
-  payload: unknown,
-): ActualPayrollEditorResult {
-  if (
-    typeof payload !== "object" ||
-    payload === null ||
-    typeof (payload as { month?: unknown }).month !== "string" ||
-    !Array.isArray((payload as { rows?: unknown[] }).rows)
-  ) {
-    throw new Error("ACTUAL_PAYROLL_RESPONSE_INVALID");
-  }
+  expectedMonth: string,
+): (payload: unknown) => ActualPayrollEditorResult {
+  return (payload) => {
+    const result = parsePayload(
+      actualPayrollResponseSchema,
+      payload,
+      "ACTUAL_PAYROLL_RESPONSE_INVALID",
+    );
+    if (result.month !== expectedMonth) {
+      throw new Error("ACTUAL_PAYROLL_RESPONSE_INVALID");
+    }
 
-  return payload as ActualPayrollEditorResult;
+    return result;
+  };
 }
 
 function parsePayrollDetailsMonthlyPayload(
-  payload: unknown,
-): PayrollDetailsMonthlyResult {
-  if (
-    typeof payload !== "object" ||
-    payload === null ||
-    typeof (payload as { month?: unknown }).month !== "string" ||
-    typeof (payload as { totals?: { totalWage?: unknown } }).totals
-      ?.totalWage !== "number"
-  ) {
-    throw new Error("PAYROLL_DETAILS_MONTHLY_RESPONSE_INVALID");
-  }
+  expectedMonth: string,
+): (payload: unknown) => PayrollDetailsMonthlyResult {
+  return (payload) => {
+    const result = parsePayload(
+      payrollDetailsMonthlyResponseSchema,
+      payload,
+      "PAYROLL_DETAILS_MONTHLY_RESPONSE_INVALID",
+    );
+    if (result.month !== expectedMonth) {
+      throw new Error("PAYROLL_DETAILS_MONTHLY_RESPONSE_INVALID");
+    }
 
-  return payload as PayrollDetailsMonthlyResult;
+    return result;
+  };
 }
 
 function parsePayrollDetailsWorkplaceYearlyPayload(
-  payload: unknown,
-): PayrollDetailsWorkplaceYearlyResult {
-  if (
-    typeof payload !== "object" ||
-    payload === null ||
-    typeof (payload as { year?: unknown }).year !== "number" ||
-    !Array.isArray((payload as { workplaces?: unknown[] }).workplaces)
-  ) {
-    throw new Error("PAYROLL_DETAILS_WORKPLACE_YEARLY_RESPONSE_INVALID");
-  }
+  expectedYear: number,
+): (payload: unknown) => PayrollDetailsWorkplaceYearlyResult {
+  return (payload) => {
+    const result = parsePayload(
+      payrollDetailsWorkplaceYearlyResponseSchema,
+      payload,
+      "PAYROLL_DETAILS_WORKPLACE_YEARLY_RESPONSE_INVALID",
+    );
+    if (
+      result.year !== expectedYear ||
+      !result.workplaces.every((workplace) =>
+        hasCompleteMonthRows(workplace.months, expectedYear),
+      )
+    ) {
+      throw new Error("PAYROLL_DETAILS_WORKPLACE_YEARLY_RESPONSE_INVALID");
+    }
 
-  return payload as PayrollDetailsWorkplaceYearlyResult;
+    return result;
+  };
 }
 
 function parsePayrollPreviewBaselinePayload(
-  payload: unknown,
-): PayrollPreviewBaselineResult {
-  if (
-    typeof payload !== "object" ||
-    payload === null ||
-    typeof (payload as { data?: unknown }).data !== "object" ||
-    (payload as { data?: { months?: unknown } }).data === null ||
-    !Array.isArray((payload as { data?: { months?: unknown[] } }).data?.months)
-  ) {
-    throw new Error("PAYROLL_PREVIEW_BASELINE_RESPONSE_INVALID");
-  }
+  expectedMonths: string[],
+): (payload: unknown) => PayrollPreviewBaselineResult {
+  return (payload) => {
+    const result = parsePayload(
+      payrollPreviewBaselineResponseSchema,
+      payload,
+      "PAYROLL_PREVIEW_BASELINE_RESPONSE_INVALID",
+    );
+    const receivedMonths = result.data.months.map((item) => item.month);
+    if (!hasExactOrderedMonths(receivedMonths, expectedMonths)) {
+      throw new Error("PAYROLL_PREVIEW_BASELINE_RESPONSE_INVALID");
+    }
 
-  return payload as PayrollPreviewBaselineResult;
+    return result;
+  };
 }
 
 export function usePayrollSummaryQuery(input: {
@@ -150,7 +216,7 @@ export function usePayrollSummaryQuery(input: {
           cache: "no-store",
         },
         fallbackMessage: "給与集計の取得に失敗しました。",
-        parse: parsePayrollSummaryPayload,
+        parse: parsePayrollSummaryPayload(year),
       });
     },
     enabled,
@@ -181,7 +247,7 @@ export function usePayrollSummaryYearContextQuery(input: {
             cache: "no-store",
           },
           fallbackMessage: "給与集計の累計情報取得に失敗しました。",
-          parse: parsePayrollSummaryYearContextPayload,
+          parse: parsePayrollSummaryYearContextPayload(month),
         },
       );
     },
@@ -211,7 +277,7 @@ export function usePayrollSummaryAmountQuery(input: {
           cache: "no-store",
         },
         fallbackMessage: "次回支給額の取得に失敗しました。",
-        parse: parsePayrollSummaryAmountPayload,
+        parse: parsePayrollSummaryAmountPayload(month),
       });
     },
     enabled,
@@ -240,7 +306,7 @@ export function useActualPayrollQuery(input: {
           cache: "no-store",
         },
         fallbackMessage: "実給与の取得に失敗しました。",
-        parse: parseActualPayrollPayload,
+        parse: parseActualPayrollPayload(month),
       });
     },
     enabled,
@@ -269,7 +335,7 @@ export function usePayrollDetailsMonthlyQuery(input: {
           cache: "no-store",
         },
         fallbackMessage: "給与詳細（月毎表示）の取得に失敗しました。",
-        parse: parsePayrollDetailsMonthlyPayload,
+        parse: parsePayrollDetailsMonthlyPayload(month),
       });
     },
     enabled,
@@ -304,7 +370,7 @@ export function usePayrollDetailsWorkplaceYearlyQuery(input: {
             cache: "no-store",
           },
           fallbackMessage: "給与詳細（勤務先毎表示）の取得に失敗しました。",
-          parse: parsePayrollDetailsWorkplaceYearlyPayload,
+          parse: parsePayrollDetailsWorkplaceYearlyPayload(year),
         },
       );
     },
@@ -342,7 +408,7 @@ export function usePayrollPreviewBaselineQuery(input: {
           cache: "no-store",
         },
         fallbackMessage: "プレビュー用支給見込の取得に失敗しました。",
-        parse: parsePayrollPreviewBaselinePayload,
+        parse: parsePayrollPreviewBaselinePayload(normalizedMonths),
       });
     },
     enabled: enabled && normalizedMonths.length > 0,
