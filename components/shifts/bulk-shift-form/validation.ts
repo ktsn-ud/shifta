@@ -10,6 +10,10 @@ import {
   getBreakMinutesValidationError,
 } from "@/lib/shifts/break-validation";
 import { resolveLessonTimeRangeFromRows } from "@/lib/shifts/lesson-time-range";
+import {
+  BULK_SHIFT_LIMIT_MESSAGE,
+  MAX_BULK_SHIFT_COUNT,
+} from "@/lib/validation/batch-limits";
 import type {
   BulkShiftPayload,
   BulkShiftRow,
@@ -196,6 +200,8 @@ export function validateAndBuildPayload(params: {
 
   if (selectedDateKeys.length === 0) {
     nextErrors.selectedDates = "1日以上選択してください。";
+  } else if (selectedDateKeys.length > MAX_BULK_SHIFT_COUNT) {
+    nextErrors.selectedDates = BULK_SHIFT_LIMIT_MESSAGE;
   }
 
   const payload: BulkShiftPayload[] = [];
@@ -362,6 +368,10 @@ export function validateAndBuildPayload(params: {
 
   if (Object.keys(nextErrors.rows ?? {}).length === 0) {
     delete nextErrors.rows;
+  }
+
+  if (payload.length > MAX_BULK_SHIFT_COUNT) {
+    nextErrors.selectedDates = BULK_SHIFT_LIMIT_MESSAGE;
   }
 
   if (nextErrors.workplaceId || nextErrors.selectedDates || nextErrors.rows) {

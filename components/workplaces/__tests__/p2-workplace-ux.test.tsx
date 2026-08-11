@@ -631,4 +631,58 @@ describe("勤務先管理のP2 UX", () => {
       ),
     ).toBeInTheDocument();
   });
+
+  it("時間割フォームでは30コマと20セットで追加操作を停止し、上限を表示する", () => {
+    mockedUseQuery.mockReturnValue({
+      data: { id: "workplace-1", name: "青葉塾", type: "CRAM_SCHOOL" },
+      isPending: false,
+      isFetching: false,
+      error: null,
+    } as unknown as ReturnType<typeof useQuery>);
+
+    const timetable = render(
+      <TimetableForm mode="create" workplaceId="workplace-1" />,
+    );
+    const addItemButton = screen.getByRole("button", {
+      name: "行を追加",
+    });
+    for (let index = 0; index < 29; index += 1) {
+      fireEvent.click(addItemButton);
+    }
+
+    expect(screen.getByText("30/30件")).toBeInTheDocument();
+    expect(addItemButton).toBeDisabled();
+    timetable.unmount();
+
+    const queued = render(
+      <TimetableForm mode="create" workplaceId="workplace-1" />,
+    );
+    const queueButton = screen.getByRole("button", {
+      name: "追加して続ける",
+    });
+    for (let index = 0; index < 20; index += 1) {
+      fireEvent.change(screen.getByLabelText("時間割セット名"), {
+        target: { value: `時間割${index + 1}` },
+      });
+      const timeInputs =
+        queued.container.querySelectorAll<HTMLInputElement>(
+          'input[type="time"]',
+        );
+      fireEvent.change(timeInputs[0]!, { target: { value: "09:00" } });
+      fireEvent.change(timeInputs[1]!, { target: { value: "10:00" } });
+      fireEvent.change(screen.getByRole("spinbutton"), {
+        target: { value: "1" },
+      });
+      fireEvent.click(queueButton);
+    }
+
+    expect(screen.getByText("保存待ちの時間割セット (20)")).toBeInTheDocument();
+    expect(queueButton).toBeDisabled();
+    expect(screen.getByText("最大20件")).toBeInTheDocument();
+
+    fireEvent.click(screen.getByRole("button", { name: "作成予定1を削除" }));
+
+    expect(screen.getByText("保存待ちの時間割セット (19)")).toBeInTheDocument();
+    expect(queueButton).toBeEnabled();
+  });
 });

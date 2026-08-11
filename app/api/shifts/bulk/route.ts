@@ -16,6 +16,10 @@ import { revalidateShiftDomainTags } from "@/lib/cache/revalidate";
 import { resolveAffectedPaymentMonthKeys } from "@/lib/payroll/affected-payment-month";
 import { buildPendingSyncResponse } from "@/lib/google-calendar/sync-response";
 import {
+  BULK_SHIFT_LIMIT_MESSAGE,
+  MAX_BULK_SHIFT_COUNT,
+} from "@/lib/validation/batch-limits";
+import {
   BREAK_MINUTES_INTEGER_MESSAGE,
   BREAK_MINUTES_RANGE_MESSAGE,
   MAX_BREAK_MINUTES,
@@ -59,7 +63,10 @@ const bulkShiftItemSchema = z.strictObject({
 
 const bulkCreateSchema = z.strictObject({
   workplaceId: z.string().min(1),
-  shifts: z.array(bulkShiftItemSchema).min(1),
+  shifts: z
+    .array(bulkShiftItemSchema)
+    .min(1)
+    .max(MAX_BULK_SHIFT_COUNT, BULK_SHIFT_LIMIT_MESSAGE),
 });
 
 type CreatedShift = {

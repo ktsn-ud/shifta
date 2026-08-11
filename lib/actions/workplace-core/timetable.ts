@@ -8,6 +8,10 @@ import { requireOwnedWorkplace } from "@/lib/api/workplace";
 import { prisma } from "@/lib/prisma";
 import { jsonNoStore } from "@/lib/api/cache-control";
 import { buildSuccessSyncResponse } from "@/lib/google-calendar/sync-response";
+import {
+  MAX_TIMETABLE_ITEMS_PER_SET,
+  TIMETABLE_ITEMS_PER_SET_LIMIT_MESSAGE,
+} from "@/lib/validation/batch-limits";
 
 const timetableItemSchema = z.strictObject({
   period: z.coerce.number().int().positive(),
@@ -18,7 +22,10 @@ const timetableItemSchema = z.strictObject({
 const timetableSetSchema = z.strictObject({
   name: z.string().trim().min(1).max(50),
   sortOrder: z.coerce.number().int().min(0).optional(),
-  items: z.array(timetableItemSchema).min(1),
+  items: z
+    .array(timetableItemSchema)
+    .min(1)
+    .max(MAX_TIMETABLE_ITEMS_PER_SET, TIMETABLE_ITEMS_PER_SET_LIMIT_MESSAGE),
 });
 
 type Context = {

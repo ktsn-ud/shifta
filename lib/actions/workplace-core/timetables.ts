@@ -10,6 +10,12 @@ import { prisma } from "@/lib/prisma";
 import { jsonNoStore } from "@/lib/api/cache-control";
 import { buildSuccessSyncResponse } from "@/lib/google-calendar/sync-response";
 import { getCachedTimetableSetsForWorkplace } from "@/lib/cache/workplace-read-cache";
+import {
+  BULK_TIMETABLE_SET_COUNT_LIMIT_MESSAGE,
+  MAX_BULK_TIMETABLE_SET_COUNT,
+  MAX_TIMETABLE_ITEMS_PER_SET,
+  TIMETABLE_ITEMS_PER_SET_LIMIT_MESSAGE,
+} from "@/lib/validation/batch-limits";
 
 const timetableItemSchema = z.strictObject({
   period: z.coerce.number().int().positive(),
@@ -20,11 +26,17 @@ const timetableItemSchema = z.strictObject({
 const timetableSetSchema = z.strictObject({
   name: z.string().trim().min(1).max(50),
   sortOrder: z.coerce.number().int().min(0).optional(),
-  items: z.array(timetableItemSchema).min(1),
+  items: z
+    .array(timetableItemSchema)
+    .min(1)
+    .max(MAX_TIMETABLE_ITEMS_PER_SET, TIMETABLE_ITEMS_PER_SET_LIMIT_MESSAGE),
 });
 
 const timetableSetBulkSchema = z.strictObject({
-  sets: z.array(timetableSetSchema).min(1),
+  sets: z
+    .array(timetableSetSchema)
+    .min(1)
+    .max(MAX_BULK_TIMETABLE_SET_COUNT, BULK_TIMETABLE_SET_COUNT_LIMIT_MESSAGE),
 });
 
 const timetableSetCreateSchema = z.union([

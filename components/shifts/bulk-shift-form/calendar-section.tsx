@@ -11,6 +11,10 @@ import { SpinnerPanel } from "@/components/ui/spinner";
 import { formatMonthLabel } from "@/lib/calendar/date";
 import { cn } from "@/lib/utils";
 import {
+  BULK_SHIFT_LIMIT_MESSAGE,
+  MAX_BULK_SHIFT_COUNT,
+} from "@/lib/validation/batch-limits";
+import {
   formatGoogleEventLabel,
   getGoogleEventBadgeColor,
   getVisibleGoogleEvents,
@@ -64,8 +68,12 @@ export function BulkShiftCalendarSection(
       <div className="flex flex-wrap items-center justify-between gap-2">
         <h3 className="text-base font-semibold">2. 日付選択</h3>
         <div className="flex items-center gap-2">
-          <span className="text-sm text-muted-foreground">
-            選択中: {selectedDateKeys.length}日
+          <span
+            className="text-sm text-muted-foreground"
+            aria-live="polite"
+            aria-atomic="true"
+          >
+            選択中: {selectedDateKeys.length}/{MAX_BULK_SHIFT_COUNT}日
           </span>
           <Button
             type="button"
@@ -78,6 +86,10 @@ export function BulkShiftCalendarSection(
           </Button>
         </div>
       </div>
+
+      <p id="bulk-shift-selection-limit-description" className="sr-only">
+        {BULK_SHIFT_LIMIT_MESSAGE}
+      </p>
 
       {isInitialGoogleCalendarLoading ? (
         <SpinnerPanel
@@ -179,6 +191,10 @@ export function BulkShiftCalendarSection(
               <div className="grid grid-cols-7">
                 {calendarCells.map((cell) => {
                   const isSelected = selectedDateKeys.includes(cell.key);
+                  const hasReachedSelectionLimit =
+                    selectedDateKeys.length >= MAX_BULK_SHIFT_COUNT;
+                  const isDisabledBySelectionLimit =
+                    !isSelected && hasReachedSelectionLimit;
                   const isToday = cell.key === todayKey;
                   const dayOfWeek = cell.date.getDay();
                   const isHoliday = holidayJp.isHoliday(cell.key);
@@ -205,8 +221,15 @@ export function BulkShiftCalendarSection(
                         isSelected &&
                           "bg-zinc-200 font-semibold ring-2 ring-zinc-400 ring-inset hover:bg-zinc-200 dark:bg-zinc-800/50 dark:ring-zinc-600 dark:hover:bg-zinc-800/50",
                       )}
-                      disabled={!cell.isCurrentMonth}
+                      disabled={
+                        !cell.isCurrentMonth || isDisabledBySelectionLimit
+                      }
                       aria-label={String(cell.date.getDate())}
+                      aria-describedby={
+                        isDisabledBySelectionLimit
+                          ? "bulk-shift-selection-limit-description"
+                          : undefined
+                      }
                     >
                       {isToday ? (
                         <span className="pointer-events-none absolute top-0.5 left-1/2 size-8 -translate-x-1/2 rounded-full bg-primary/20" />

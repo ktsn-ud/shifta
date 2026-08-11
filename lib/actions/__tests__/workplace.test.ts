@@ -8,6 +8,7 @@ import {
 import { createPayrollRuleRouteAction } from "@/lib/actions/workplace-core/payroll-rules";
 import { deletePayrollRuleRouteAction } from "@/lib/actions/workplace-core/payroll-rule";
 import { createTimetableRouteAction } from "@/lib/actions/workplace-core/timetables";
+import { updateTimetableRouteAction } from "@/lib/actions/workplace-core/timetable";
 import {
   createWorkplaceAction,
   createPayrollRuleAction,
@@ -15,6 +16,7 @@ import {
   deletePayrollRuleAction,
   deleteWorkplaceAction,
   updateWorkplaceAction,
+  updateTimetableAction,
 } from "@/lib/actions/workplace";
 import { buildSuccessSyncResponse } from "@/lib/google-calendar/sync-response";
 
@@ -67,6 +69,7 @@ const deletePayrollRuleRouteActionMock = jest.mocked(
   deletePayrollRuleRouteAction,
 );
 const createTimetableRouteActionMock = jest.mocked(createTimetableRouteAction);
+const updateTimetableRouteActionMock = jest.mocked(updateTimetableRouteAction);
 
 type RouteActionResponse = NonNullable<
   Awaited<ReturnType<typeof createWorkplaceRouteAction>>
@@ -371,6 +374,31 @@ describe("workplace server actions", () => {
       error: "操作に失敗しました",
       details: "metadata",
     });
+
+    expect(updateTagMock).not.toHaveBeenCalled();
+  });
+
+  it("時間割 Server Action も上限エラーの message と details を保持する", async () => {
+    authenticatedUser();
+    const details = {
+      fieldErrors: { items: ["時間割セットのコマは30件までです。"] },
+    };
+    createTimetableRouteActionMock.mockResolvedValue(
+      response({ error: "入力値が不正です", details }, 400),
+    );
+    updateTimetableRouteActionMock.mockResolvedValue(
+      response({ error: "入力値が不正です", details }, 400),
+    );
+
+    await expect(
+      createTimetableAction("workplace-1", { name: "通常期", items: [] }),
+    ).resolves.toEqual({ error: "入力値が不正です", details });
+    await expect(
+      updateTimetableAction("workplace-1", "set-1", {
+        name: "通常期",
+        items: [],
+      }),
+    ).resolves.toEqual({ error: "入力値が不正です", details });
 
     expect(updateTagMock).not.toHaveBeenCalled();
   });

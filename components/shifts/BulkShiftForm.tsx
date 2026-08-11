@@ -54,6 +54,10 @@ import {
 import { useGoogleTokenExpiredSignOut } from "@/hooks/use-google-token-expired-signout";
 import { type MonthShift, normalizeMonthShift } from "@/hooks/use-month-shifts";
 import { useResetOnRouteHidden } from "@/hooks/use-reset-on-route-hidden";
+import {
+  BULK_SHIFT_LIMIT_MESSAGE,
+  MAX_BULK_SHIFT_COUNT,
+} from "@/lib/validation/batch-limits";
 
 const LAST_WORKPLACE_ID_KEY = "shifta:last-workplace-id";
 const BULK_CALENDAR_SELECTION_STORAGE_KEY = "shifta:bulk-calendar-selection";
@@ -1280,6 +1284,16 @@ function useBulkShiftFormController({
 
   const submitBulk = async (payloadItems: BulkShiftPayload[]) => {
     if (isSignOutScheduled) {
+      return;
+    }
+
+    if (payloadItems.length > MAX_BULK_SHIFT_COUNT) {
+      dispatch({
+        type: "setErrors",
+        errors: {
+          form: BULK_SHIFT_LIMIT_MESSAGE,
+        },
+      });
       return;
     }
 

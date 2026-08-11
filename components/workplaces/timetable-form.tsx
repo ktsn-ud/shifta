@@ -37,6 +37,12 @@ import { buildMutationSuccessDescription } from "@/lib/query/mutation-toast";
 import { getBrowserQueryClient } from "@/lib/query/query-client";
 import { queryKeys } from "@/lib/query/query-keys";
 import { toUserFacingMessage } from "@/lib/user-facing-error";
+import {
+  BULK_TIMETABLE_SET_COUNT_LIMIT_MESSAGE,
+  MAX_BULK_TIMETABLE_SET_COUNT,
+  MAX_TIMETABLE_ITEMS_PER_SET,
+  TIMETABLE_ITEMS_PER_SET_LIMIT_MESSAGE,
+} from "@/lib/validation/batch-limits";
 
 const timeRegex = /^([01]\d|2[0-3]):([0-5]\d)$/;
 
@@ -136,6 +142,8 @@ type TimetableItemsSectionProps = {
   rowErrors: RowErrorMap;
   isSubmitting: boolean;
   isEdit: boolean;
+  hasReachedItemLimit: boolean;
+  hasReachedQueuedSetLimit: boolean;
   onUpdateItem: (
     itemId: string,
     patch: Partial<Pick<FormItemValues, "period" | "startTime" | "endTime">>,
@@ -160,6 +168,8 @@ type TimetableEditorController = {
   rowErrors: RowErrorMap;
   isSubmitting: boolean;
   formErrorMessage: string | null;
+  hasReachedItemLimit: boolean;
+  hasReachedQueuedSetLimit: boolean;
   updateName: (name: string) => void;
   updateItem: (
     itemId: string,
@@ -432,6 +442,10 @@ function validateForm(target: FormValues): {
     formErrors.name = "時間割セット名は50文字以内で入力してください。";
   }
 
+  if (target.items.length > MAX_TIMETABLE_ITEMS_PER_SET) {
+    formErrors.form = TIMETABLE_ITEMS_PER_SET_LIMIT_MESSAGE;
+  }
+
   const rowValidation = validateRows(target.items);
 
   return {
@@ -496,6 +510,9 @@ function timetableFormReducer(
         rowErrors: clearRowError(state.rowErrors, action.itemId),
       };
     case "appendItem":
+      if (state.values.items.length >= MAX_TIMETABLE_ITEMS_PER_SET) {
+        return state;
+      }
       return {
         ...state,
         values: {
@@ -570,6 +587,8 @@ function TimetableItemsSection({
   rowErrors,
   isSubmitting,
   isEdit,
+  hasReachedItemLimit,
+  hasReachedQueuedSetLimit,
   onUpdateItem,
   onRemoveItem,
   onAppendItem,
@@ -577,7 +596,12 @@ function TimetableItemsSection({
 }: TimetableItemsSectionProps) {
   return (
     <div className="space-y-3">
-      <h3 className="text-sm font-semibold">コマ設定</h3>
+      <div className="flex flex-wrap items-center justify-between gap-2">
+        <h3 className="text-sm font-semibold">コマ設定</h3>
+        <p className="text-xs text-muted-foreground">
+          {items.length}/{MAX_TIMETABLE_ITEMS_PER_SET}件
+        </p>
+      </div>
 
       <div className="space-y-3">
         {items.map((item, index) => {
@@ -666,7 +690,7 @@ function TimetableItemsSection({
             variant="outline"
             size="sm"
             onClick={onAppendItem}
-            disabled={isSubmitting}
+            disabled={isSubmitting || hasReachedItemLimit}
           >
             <PlusIcon className="size-4" />
             行を追加
@@ -677,7 +701,7 @@ function TimetableItemsSection({
               variant="outline"
               size="sm"
               onClick={onQueueCurrentSet}
-              disabled={isSubmitting}
+              disabled={isSubmitting || hasReachedQueuedSetLimit}
             >
               追加して続ける
             </Button>
@@ -695,9 +719,14 @@ function QueuedSetsSection({
 }: QueuedSetsSectionProps) {
   return (
     <div className="space-y-3">
-      <h3 className="text-sm font-semibold">
-        保存待ちの時間割セット ({queuedSets.length})
-      </h3>
+      <div className="flex flex-wrap items-center justify-between gap-2">
+        <h3 className="text-sm font-semibold">
+          保存待ちの時間割セット ({queuedSets.length})
+        </h3>
+        <p className="text-xs text-muted-foreground">
+          最大{MAX_BULK_TIMETABLE_SET_COUNT}件
+        </p>
+      </div>
 
       {queuedSets.length === 0 ? (
         <p className="rounded-md border px-3 py-2 text-sm text-muted-foreground">
@@ -763,6 +792,13 @@ function useTimetableEditorController({
   const { markForResetOnRouteHidden } = useResetOnRouteHidden(resetFormState);
 
   function queueCurrentSet() {
+    if (state.queuedSets.length >= MAX_BULK_TIMETABLE_SET_COUNT) {
+      dispatch({
+        type: "setFormError",
+        message: BULK_TIMETABLE_SET_COUNT_LIMIT_MESSAGE,
+      });
+      return;
+    }
     const validation = validateForm(state.values);
     const hasFormError = Object.keys(validation.formErrors).length > 0;
     const hasRowError = Object.keys(validation.rowErrors).length > 0;
@@ -864,6 +900,14 @@ function useTimetableEditorController({
       }
     }
 
+    if (!isEdit && createTargets.length > MAX_BULK_TIMETABLE_SET_COUNT) {
+      dispatch({
+        type: "setFormError",
+        message: BULK_TIMETABLE_SET_COUNT_LIMIT_MESSAGE,
+      });
+      return;
+    }
+
     const payload =
       isEdit || createTargets.length <= 1
         ? toCreatePayload(isEdit ? state.values : createTargets[0]!)
@@ -939,6 +983,10 @@ function useTimetableEditorController({
     rowErrors: state.rowErrors,
     isSubmitting: state.isSubmitting,
     formErrorMessage: state.errors.form ?? externalFormError ?? null,
+    hasReachedItemLimit:
+      state.values.items.length >= MAX_TIMETABLE_ITEMS_PER_SET,
+    hasReachedQueuedSetLimit:
+      state.queuedSets.length >= MAX_BULK_TIMETABLE_SET_COUNT,
     updateName: (name) => {
       dispatch({
         type: "updateName",
@@ -1071,6 +1119,8 @@ function TimetableEditorForm({
             rowErrors={controller.rowErrors}
             isSubmitting={controller.isSubmitting}
             isEdit={controller.isEdit}
+            hasReachedItemLimit={controller.hasReachedItemLimit}
+            hasReachedQueuedSetLimit={controller.hasReachedQueuedSetLimit}
             onUpdateItem={controller.updateItem}
             onRemoveItem={controller.removeItem}
             onAppendItem={controller.appendItem}

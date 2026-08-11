@@ -66,7 +66,32 @@ function validateRows(params: {
   });
 }
 
+function createConsecutiveRows(count: number): BulkShiftRow[] {
+  return Array.from({ length: count }, (_, index) => {
+    const date = new Date(Date.UTC(2026, 0, index + 1));
+    return createRow(date.toISOString().slice(0, 10));
+  });
+}
+
 describe("validateAndBuildPayload", () => {
+  it("accepts 31 selected dates", () => {
+    const result = validateRows({ rows: createConsecutiveRows(31) });
+
+    expect(result).toMatchObject({ success: true });
+    if (result.success) {
+      expect(result.payload).toHaveLength(31);
+    }
+  });
+
+  it("rejects 32 selected dates with the shared limit message", () => {
+    expect(validateRows({ rows: createConsecutiveRows(32) })).toEqual({
+      success: false,
+      errors: {
+        selectedDates: "一括登録は31件までです。",
+      },
+    });
+  });
+
   it("builds the mutation payload for valid NORMAL and LESSON rows", () => {
     const result = validateRows({
       selectedWorkplaceId: cramSchoolWorkplaceId,
