@@ -17,9 +17,7 @@ export type ShiftWageInput = {
 export type PayrollRuleWageInput = {
   baseHourlyWage: DecimalLike;
   holidayAllowanceHourly?: DecimalLike;
-  holidayHourlyWage?: DecimalLike;
   nightPremiumRate?: DecimalLike;
-  nightMultiplier?: DecimalLike;
   overtimePremiumRate?: DecimalLike;
   dailyOvertimeThreshold: DecimalLike;
   holidayType: HolidayType;
@@ -76,29 +74,6 @@ function calculateWorkedHours(shift: ShiftWageInput): number {
   return workedMinutes / 60;
 }
 
-function readPayrollRuleDecimal(
-  payrollRule: PayrollRuleWageInput,
-  keys: string[],
-  fallback = 0,
-): number {
-  const raw = payrollRule as unknown as Record<string, unknown>;
-  for (const key of keys) {
-    const value = raw[key];
-    if (
-      typeof value === "number" ||
-      typeof value === "string" ||
-      (typeof value === "object" &&
-        value !== null &&
-        "toString" in value &&
-        typeof (value as { toString: unknown }).toString === "function")
-    ) {
-      return decimalToNumber(value as DecimalLike, fallback);
-    }
-  }
-
-  return fallback;
-}
-
 export function calculateShiftWage(
   shift: ShiftWageInput,
   payrollRule: PayrollRuleWageInput,
@@ -116,16 +91,10 @@ export function calculateShiftWage(
   );
 
   const baseHourlyWage = decimalToNumber(payrollRule.baseHourlyWage);
-  const holidayAllowanceHourly = readPayrollRuleDecimal(
-    payrollRule,
-    ["holidayAllowanceHourly", "holidayHourlyWage"],
-    0,
+  const holidayAllowanceHourly = decimalToNumber(
+    payrollRule.holidayAllowanceHourly,
   );
-  const nightPremiumRate = readPayrollRuleDecimal(
-    payrollRule,
-    ["nightPremiumRate", "nightMultiplier"],
-    0,
-  );
+  const nightPremiumRate = decimalToNumber(payrollRule.nightPremiumRate);
 
   const baseWageRounded = roundCurrency(baseHourlyWage * baseHours);
   const nightWageRounded = roundCurrency(

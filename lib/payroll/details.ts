@@ -281,32 +281,6 @@ function groupShiftsByWorkplace(
   return grouped;
 }
 
-function readRuleDecimal(
-  rule: PayrollRule,
-  keys: string[],
-  fallback = 0,
-): number {
-  const record = rule as unknown as Record<string, unknown>;
-  for (const key of keys) {
-    const value = record[key];
-    if (
-      typeof value === "number" ||
-      typeof value === "string" ||
-      (typeof value === "object" &&
-        value !== null &&
-        "toString" in value &&
-        typeof (value as { toString: unknown }).toString === "function")
-    ) {
-      return decimalToNumber(
-        value as number | string | { toString: () => string },
-        fallback,
-      );
-    }
-  }
-
-  return fallback;
-}
-
 function summarizeWorkplaceByPeriod(
   workplaceId: string,
   period: PayrollPeriod,
@@ -344,11 +318,7 @@ function summarizeWorkplaceByPeriod(
 
     const result = calculateShiftPayrollResultByRule(shift, rule);
     const baseHourlyWage = decimalToNumber(rule.baseHourlyWage);
-    const holidayAllowanceHourly = readRuleDecimal(
-      rule,
-      ["holidayAllowanceHourly", "holidayHourlyWage"],
-      0,
-    );
+    const holidayAllowanceHourly = decimalToNumber(rule.holidayAllowanceHourly);
 
     summary.totalWorkHours += result.workHours;
     summary.baseHours += result.baseHours;
