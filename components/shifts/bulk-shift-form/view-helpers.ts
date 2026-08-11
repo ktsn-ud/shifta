@@ -2,7 +2,10 @@
 
 import { dateFromDateKey } from "@/lib/calendar/date";
 import { formatShiftType } from "@/lib/enum-labels";
-import type { ShiftType, Workplace } from "@/components/shifts/BulkShiftForm";
+import type {
+  ShiftType,
+  Workplace,
+} from "@/components/shifts/bulk-shift-form/types";
 import type {
   GoogleCalendarDay,
   GoogleCalendarEventItem,

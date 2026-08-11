@@ -1,12 +1,12 @@
 "use client";
 
+import type { BulkShiftFormController } from "@/components/shifts/BulkShiftForm";
 import type {
-  BulkShiftFormController,
   BulkShiftRow,
   RowErrors,
   ShiftType,
   Workplace,
-} from "@/components/shifts/BulkShiftForm";
+} from "@/components/shifts/bulk-shift-form/types";
 import { FormErrorMessage } from "@/components/form/form-error-message";
 import {
   Field,
