@@ -388,10 +388,11 @@ function aggregateEvent(
 ): void {
   if (event.status === "cancelled") return;
   const title = event.summary?.trim() || "(タイトルなし)";
-  const color =
-    (typeof event.colorId === "string"
+  const eventColor: string | null =
+    typeof event.colorId === "string"
       ? (palettes.event.get(event.colorId) ?? null)
-      : null) ?? calendar.color;
+      : null;
+  const color: string | null = eventColor ?? calendar.color ?? null;
   const allDayStart = event.start?.date;
   const allDayEnd = event.end?.date;
   if (allDayStart) {

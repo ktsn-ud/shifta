@@ -463,6 +463,67 @@ describe("calendar events service", () => {
     });
   });
 
+  it("未定義のイベント色はカレンダー色にフォールバックし、色がなければnullにする", async () => {
+    const service = await loadCalendarEventsModule();
+    const calendarClient = createCalendarClient({
+      colorsGet: jest.fn().mockResolvedValue({
+        data: { calendar: {}, event: {} },
+      }),
+      calendarListList: jest.fn().mockResolvedValue({
+        data: {
+          items: [
+            { id: "calendar-without-color", summary: "色なし" },
+            {
+              id: "calendar-with-color",
+              summary: "色あり",
+              backgroundColor: "#445566",
+            },
+          ],
+        },
+      }),
+      eventsList: jest.fn(({ calendarId }: { calendarId: string }) =>
+        Promise.resolve({
+          data: {
+            items: [
+              {
+                summary: calendarId,
+                colorId: "unknown-event-color",
+                start: { date: "2026-05-10" },
+                end: { date: "2026-05-11" },
+              },
+            ],
+          },
+        }),
+      ),
+    });
+    getReadCalendarClientByUserIdMock.mockResolvedValue(calendarClient.client);
+    const range = service.parseCalendarEventsMonth("2026-05");
+    if (!range) throw new Error("expected valid month range");
+
+    const result = await service.getCalendarEvents({
+      userId: "user-1",
+      range,
+      requestedCalendarIds: ["calendar-without-color", "calendar-with-color"],
+    });
+
+    expect(result.data.calendars).toEqual([
+      { id: "calendar-without-color", summary: "色なし", color: null },
+      { id: "calendar-with-color", summary: "色あり", color: "#445566" },
+    ]);
+    expect(result.data.dates[0].items).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          calendarId: "calendar-without-color",
+          calendarColor: null,
+        }),
+        expect.objectContaining({
+          calendarId: "calendar-with-color",
+          calendarColor: "#445566",
+        }),
+      ]),
+    );
+  });
+
   it("選択指定がない場合は先頭の3カレンダーだけを既定で取得する", async () => {
     const service = await loadCalendarEventsModule();
     const calendarClient = createCalendarClient({
