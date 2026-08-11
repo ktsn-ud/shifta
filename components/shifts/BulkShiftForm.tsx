@@ -45,6 +45,7 @@ import { invalidateAfterShiftMutation } from "@/lib/query/invalidation";
 import { upsertMonthShiftsInCachesOptimistically } from "@/lib/query/optimistic-shifts";
 import { buildMutationSuccessDescription } from "@/lib/query/mutation-toast";
 import { getBrowserQueryClient } from "@/lib/query/query-client";
+import { queryKeys } from "@/lib/query/query-keys";
 import { useWorkplaceShiftFormBootstrapQuery } from "@/lib/query/queries/workplaces";
 import {
   resolveUserFacingErrorFromResponse,
@@ -947,14 +948,11 @@ function useBulkShiftFormController({
     isPending: isGoogleCalendarEventsPending,
     isFetching: isGoogleCalendarEventsFetching,
   } = useQuery({
-    queryKey: [
-      "bulk-google-calendar-events",
+    queryKey: queryKeys.calendar.googleEvents(
       requestedMonthInputValue,
       state.calendarSelectionMode,
-      state.calendarSelectionMode === "custom"
-        ? state.selectedCalendarIds.join(",")
-        : "default",
-    ],
+      state.selectedCalendarIds,
+    ),
     queryFn: async ({ signal }) => {
       const searchParams = new URLSearchParams({
         month: requestedMonthInputValue,

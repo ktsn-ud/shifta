@@ -39,6 +39,7 @@ import { messages } from "@/lib/messages";
 import { invalidateAfterShiftMutation } from "@/lib/query/invalidation";
 import { removeShiftsFromMonthCachesOptimistically } from "@/lib/query/optimistic-shifts";
 import { getBrowserQueryClient } from "@/lib/query/query-client";
+import { queryKeys } from "@/lib/query/query-keys";
 import { toUserFacingMessage } from "@/lib/user-facing-error";
 import { usePayrollSummaryAmountQuery } from "@/lib/query/queries/payroll";
 import { useUnconfirmedShiftCountQuery } from "@/lib/query/queries/shift-confirmation";
@@ -914,7 +915,7 @@ export function DashboardPageClient({
 
           try {
             await queryClient.cancelQueries({
-              queryKey: ["shifts", "month"],
+              queryKey: queryKeys.shifts.monthScope(),
             });
 
             if (!isMountedRef.current) {
