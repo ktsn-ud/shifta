@@ -386,8 +386,8 @@ Browser (React UI) → Next.js Routes → Prisma ORM → Neon DB
 - `(workplaceId, name)` は一意
 - `(timetableSetId, period)` は一意
 - period は 1〜30 の整数。既存の範囲外データは表示できるが、次回保存時に範囲内へ修正が必要
-- startTime と endTime は同時刻不可
-- endTime は startTime より後でなければならない
+- startTime と endTime は同時刻不可。新規作成・更新の API と UI の双方で、endTime は startTime より後でなければならず、同時刻および翌日跨ぎは許可しない
+- 既存 DB に保存済みの翌日跨ぎ Timetable は、後方互換の read/resolver で LESSON の時刻計算に利用される場合がある。新規作成・更新の保存契約では翌日跨ぎを許可しない
 
 **使用例**
 
@@ -443,7 +443,7 @@ Browser (React UI) → Next.js Routes → Prisma ORM → Neon DB
 
 - 同一勤務先の時間帯重複は、日跨ぎ解釈後の開始日時・終了日時で判定する（バリデーション段階で警告）
 - startTime と endTime は同時刻不可
-- endTime < startTime の場合、翌日終了のシフトとして扱う
+- NORMAL型では endTime < startTime の場合、翌日終了のシフトとして扱う。LESSON型の時刻は Timetable から導出し、新規・更新時の Timetable 保存契約では翌日跨ぎを許可しない（既存の翌日跨ぎ Timetable は read/resolver 互換で計算される場合がある）
 - breakMinutes は整数で 0 ～ 240 分とし、日跨ぎ補正後の総勤務時間より短くする（実勤務時間 0 は保存しない）
 - comment は任意。未入力・空文字・空白のみは NULL として保存
 - comment は最大100文字、改行不可
@@ -2388,6 +2388,7 @@ GET /api/payroll/preview-baseline?months=YYYY-MM,YYYY-MM
 # 更新履歴（git log -p 確認済み）
 
 | 日時 | 変更概要 | 具体的な変更内容 |
+| 2026-08-11 00:00:00 +0000 | 時間割と通常シフトの日跨ぎ制約を明確化 | Timetable の新規作成・更新は API/UI ともに endTime > startTime を必須とし、同時刻・翌日跨ぎを許可しないこと、通常の新規保存で翌日跨ぎ入力を直接許可するのは NORMAL 型シフトであることを明記。既存 DB の翌日跨ぎ Timetable は read/resolver 互換で LESSON 計算に利用され得る旨を注記。 |
 | 2026-08-11 00:00:00 +0000 | 検証用 package scripts の利用方法を更新 | `typecheck`、`format:check`、`test:ci`、`check` の使い分けを開発手順へ反映。`format` はファイルを書き換え、`format:check` と `check` は非破壊で、`check` に build・migration を含めないことを明記。 |
 | 2026-08-11 00:00:00 +0000 | 一括シフト登録のレート制限と Google 同期共有キューを追加 | `POST /api/shifts/bulk` を認証済みユーザーごとに60秒5回の instance-local fixed-window 制御とし、CSRF 失敗では枠を消費しない。記録は expiry FIFO と最大10,000件の上限でメモリを制限し、超過時は `429`・`Retry-After`・private no-store JSON エラーを返す。Google Calendar の一括作成同期は、カレンダー初期化後の既存シフト同期を含め、同一 Node.js instance で共有する最大3件の permit と最大100件の待機列に制限する。待機列超過ジョブは明示的に `FAILED` として終了し、再スケジュールしない。permit と待機列は instance-local で、Google の `Retry-After` は既存待機以上・最大30秒で尊重し、リトライ待機中も permit を保持する。 |
 | 2026-08-11 00:00:00 +0000 | JSON 本文サイズ上限を追加 | `parseJsonBody` を利用する Route Handler と Server Action の更新リクエストを UTF-8 で 1 MiB までに制限。超過時は本文読取前またはストリーム読取中に `413` と private no-store JSON エラーを返し、既存の 400 検証契約を維持する。 |
