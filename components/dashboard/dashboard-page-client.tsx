@@ -321,7 +321,7 @@ async function deleteDashboardShift({
       method: "DELETE",
     });
 
-    if (response.ok === false) {
+    if (!response.ok) {
       const apiError = await readGoogleSyncFailureFromErrorResponse(
         response,
         "シフトの削除に失敗しました",
@@ -398,7 +398,7 @@ async function retryDashboardShiftSync({
     method: "POST",
   });
 
-  if (response.ok === false) {
+  if (!response.ok) {
     const apiError = await readGoogleSyncFailureFromErrorResponse(
       response,
       "Google Calendar への再同期に失敗しました",

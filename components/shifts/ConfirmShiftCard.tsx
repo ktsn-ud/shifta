@@ -131,7 +131,7 @@ function ConfirmShiftCardContent({
         body: JSON.stringify(data),
       });
 
-      if (response.ok === false) {
+      if (!response.ok) {
         const apiError = await readGoogleSyncFailureFromErrorResponse(
           response,
           messages.error.shiftConfirmFailed,
