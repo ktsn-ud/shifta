@@ -112,6 +112,7 @@ Browser (React UI) → Next.js Routes → Prisma ORM → Neon DB
 ### サーバー側（Route Handler / Server Components）
 
 - API レスポンスは `lib/api/cache-control.ts` を経由し、機密データを含むレスポンスを `private, no-store` 中心で返却する。
+- `parseJsonBody` を利用するすべての更新リクエスト（Route Handler と Server Action）は、JSON 本文を 1 MiB（UTF-8 バイト数）までに制限する。上限を超える有効な `Content-Length` は本文読取前に、ヘッダー未指定・不正・chunked の本文はストリーム読取中に拒否し、いずれも `413` と `{ "error": "リクエスト本文が大きすぎます" }` を `private, no-store` で返す。JSON 構文・UTF-8・スキーマの既存エラー契約（400）は維持する。
 - `/my`・`/my/shifts/list` の初期月次シフト取得は `lib/shifts/month-shifts.ts` の共通 DAL で取得し、初回表示時の重複 fetch を避ける。
 - 勤務先・給与ルール・時間割の参照系は、ユーザーと関連 ID をキーにした serializable DTO を Server Cache（`cacheLife("max")` + tags）へ保存する。GET API は `private, no-store` のまま、このキャッシュ済み DAL を呼び出す。
 - 勤務先・給与ルール・時間割の作成/更新/削除は公開 Mutation REST Route を持たず、共通認証・既存 Zod 検証・所有確認を行う Server Action 経由で実行する。DB 更新後は `updateTag` で勤務先および給与関連タグを即時無効化する。
@@ -2383,6 +2384,7 @@ GET /api/payroll/preview-baseline?months=YYYY-MM,YYYY-MM
 # 更新履歴（git log -p 確認済み）
 
 | 日時 | 変更概要 | 具体的な変更内容 |
+| 2026-08-11 00:00:00 +0000 | JSON 本文サイズ上限を追加 | `parseJsonBody` を利用する Route Handler と Server Action の更新リクエストを UTF-8 で 1 MiB までに制限。超過時は本文読取前またはストリーム読取中に `413` と private no-store JSON エラーを返し、既存の 400 検証契約を維持する。 |
 | 2026-08-11 00:00:00 +0000 | 一括登録・時間割の件数上限を追加 | シフト一括登録を最大31件、時間割セット内のコマを最大30件、時間割セット一括作成を最大20件に制限。UIとサーバー検証の両方で上限を適用し、DB更新・Google Calendar同期の前に拒否する。 |
 | 2026-08-11 00:00:00 +0000 | 給与詳細をV2計算・現行DTOへ同期 | 14章の給与内訳を、固定22:00〜05:00、基本時間と深夜時間の非重複、休日手当の独立加算、残業時間は参考値・金額0（総額加算なし）へ更新。旧 `nightMultiplier` 等の例を廃止。 |
 | 2026-08-11 00:00:00 +0000 | シフト休憩時間の実勤務ゼロ防止を追加 | 新規・更新・一括登録・確定で、休憩時間を整数の0～240分かつ日跨ぎ補正後の総勤務時間未満に統一。LESSON は時間割から導出した休憩時間も保存前に検証し、休憩位置を保持しない現行の深夜時間計算上の制約を8.3へ明記。 |
