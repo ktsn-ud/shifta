@@ -38,7 +38,7 @@
 
 1. `code_researcher`（`.codex/agents/code-researcher.toml`）で既存コードと仕様の調査
 2. `Main` で計画確定
-3. `implementer`（`.codex/agents/implementer.toml`）で最小差分実装
+3. 内容がほぼ確定した狭く局所的な実装は `implementer_lite`（`.codex/agents/implementer-lite.toml`）、曖昧さ・複数箇所横断・設計判断・セキュリティ/データ整合性リスクがある実装は `implementer`（`.codex/agents/implementer.toml`）で最小差分実装
 4. `test_writer`（`.codex/agents/test-writer.toml`）で必要なテスト追加・更新
 5. `tester`（`.codex/agents/tester.toml`）で `format` / `typecheck` / `lint` / `test` などの検証
 6. `reviewer`（`.codex/agents/reviewer.toml`）で correctness / regression / maintainability レビュー
@@ -46,15 +46,16 @@
 
 ### サブエージェント起動基準
 
-| Agent               | 使う場面                                                                                                              | やらないこと                                                   |
-| ------------------- | --------------------------------------------------------------------------------------------------------------------- | -------------------------------------------------------------- |
-| `code_researcher`   | 非自明な既存挙動確認、関連ファイル特定、類似実装調査                                                                  | 実装、検証、レビュー確定                                       |
-| `implementer`       | Plan 確定後の本実装                                                                                                   | テスト実行、Lint/型チェック実行、レビュー、docs 判断の抱え込み |
-| `test_writer`       | 振る舞い変更、バグ修正、境界値、回帰防止が必要                                                                        | 本番コードの修正、検証コマンド実行                             |
-| `tester`            | 実装後の formatter / typecheck / lint / test / build 実行                                                             | 検証失敗の修正、設計変更、レビュー                             |
-| `reviewer`          | 実装と検証結果が揃った後の差分レビュー                                                                                | 実装、検証代行、進行管理                                       |
-| `security_reviewer` | 認証・認可・API・DB・Google Calendar 連携・Cookie・Token・API key・環境変数・個人情報・勤務先情報・給与情報が絡む変更 | 一般レビューの重複、実装                                       |
-| `docs_writer`       | README、設計仕様、セットアップ手順などの更新が必要                                                                    | アプリコード修正、不要な docs 作成                             |
+| Agent               | 使う場面                                                                                                                             | やらないこと                                                   |
+| ------------------- | ------------------------------------------------------------------------------------------------------------------------------------ | -------------------------------------------------------------- |
+| `code_researcher`   | 非自明な既存挙動確認、関連ファイル特定、類似実装調査                                                                                 | 実装、検証、レビュー確定                                       |
+| `implementer_lite`  | 内容がほぼ確定し、狭く局所的な実装のみ。曖昧さ・複数箇所横断・設計判断・セキュリティ/データ整合性リスクがあれば `implementer` を使う | テスト実行、Lint/型チェック実行、レビュー、docs 判断の抱え込み |
+| `implementer`       | Plan 確定後、実装上の判断を要する本実装。曖昧さ・複数箇所横断・設計判断・セキュリティ/データ整合性リスクを伴う変更                   | テスト実行、Lint/型チェック実行、レビュー、docs 判断の抱え込み |
+| `test_writer`       | 振る舞い変更、バグ修正、境界値、回帰防止が必要                                                                                       | 本番コードの修正、検証コマンド実行                             |
+| `tester`            | 実装後の formatter / typecheck / lint / test / build 実行                                                                            | 検証失敗の修正、設計変更、レビュー                             |
+| `reviewer`          | 実装と検証結果が揃った後の差分レビュー                                                                                               | 実装、検証代行、進行管理                                       |
+| `security_reviewer` | 認証・認可・API・DB・Google Calendar 連携・Cookie・Token・API key・環境変数・個人情報・勤務先情報・給与情報が絡む変更                | 一般レビューの重複、実装                                       |
+| `docs_writer`       | README、設計仕様、セットアップ手順などの更新が必要                                                                                   | アプリコード修正、不要な docs 作成                             |
 
 ### 省略可能なケース
 
