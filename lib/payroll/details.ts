@@ -20,10 +20,10 @@ import {
   type PayrollRulesByWorkplace,
 } from "@/lib/payroll/summarizeByPeriod";
 import { type PayrollPeriod } from "@/lib/payroll/pay-period";
+import { createPayrollPeriodSummaryGetter } from "@/lib/payroll/period-summary";
 import {
   loadPayrollSnapshot,
   toPayrollPeriodMapKey,
-  type PayrollSnapshotWorkplace,
 } from "@/lib/payroll/snapshot";
 
 type ShiftWithPayrollRelations = Prisma.ShiftGetPayload<{
@@ -31,8 +31,6 @@ type ShiftWithPayrollRelations = Prisma.ShiftGetPayload<{
     lessonRange: true;
   };
 }>;
-
-type WorkplaceWithPayrollCycle = PayrollSnapshotWorkplace;
 
 type PayrollBreakdownAccumulator = {
   shiftCount: number;
@@ -458,32 +456,17 @@ export async function getPayrollDetailsWorkplaceYearlyForUser(
     };
   }
 
-  const monthSummaryCache = new Map<string, PayrollBreakdownAccumulator>();
-
-  const getMonthSummary = (
-    workplace: WorkplaceWithPayrollCycle,
-    monthKey: string,
-  ): PayrollBreakdownAccumulator => {
-    const cacheKey = toPayrollPeriodMapKey(workplace.id, monthKey);
-    const cached = monthSummaryCache.get(cacheKey);
-    if (cached) {
-      return cached;
-    }
-
-    const period = periodByWorkplaceMonth.get(cacheKey);
-    if (!period) {
-      throw new Error(`PAYROLL_PERIOD_NOT_FOUND: ${cacheKey}`);
-    }
-
-    const summary = summarizeWorkplaceByPeriod(
-      workplace.id,
-      period,
-      shiftsByWorkplace,
-      rulesByWorkplace,
-    );
-    monthSummaryCache.set(cacheKey, summary);
-    return summary;
-  };
+  const getMonthSummary =
+    createPayrollPeriodSummaryGetter<PayrollBreakdownAccumulator>({
+      periodByWorkplaceMonth,
+      summarize: (workplaceId, period) =>
+        summarizeWorkplaceByPeriod(
+          workplaceId,
+          period,
+          shiftsByWorkplace,
+          rulesByWorkplace,
+        ),
+    });
 
   const yearlyByWorkplace = workplaces.map((workplace) => {
     const yearlyTotals = createEmptyBreakdownAccumulator();

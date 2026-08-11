@@ -14,6 +14,7 @@ import {
   type PayrollRulesByWorkplace,
 } from "@/lib/payroll/summarizeByPeriod";
 import { type PayrollPeriod } from "@/lib/payroll/pay-period";
+import { createPayrollPeriodSummaryGetter } from "@/lib/payroll/period-summary";
 import {
   loadPayrollSnapshot,
   toPayrollPeriodMapKey,
@@ -294,39 +295,6 @@ function createEmptyPayrollSummaryResult(year: number): PayrollSummaryResult {
       byWorkplace: [],
       grandTotals: createEmptyPayrollSummaryMonthTotals(),
     },
-  };
-}
-
-function createWorkplaceMonthSummaryGetter(params: {
-  periodByWorkplaceMonth: Map<string, PayrollPeriod>;
-  shiftsByWorkplace: Map<string, ShiftWithSummaryRelations[]>;
-  rulesByWorkplace: PayrollRulesByWorkplace;
-}) {
-  const monthSummaryByWorkplace = new Map<string, WorkplacePeriodSummary>();
-
-  return (
-    workplace: WorkplaceWithPayrollCycle,
-    monthKey: string,
-  ): WorkplacePeriodSummary => {
-    const cacheKey = toPayrollPeriodMapKey(workplace.id, monthKey);
-    const cached = monthSummaryByWorkplace.get(cacheKey);
-    if (cached) {
-      return cached;
-    }
-
-    const period = params.periodByWorkplaceMonth.get(cacheKey);
-    if (!period) {
-      throw new Error(`PAYROLL_PERIOD_NOT_FOUND: ${cacheKey}`);
-    }
-
-    const summarized = summarizeWorkplaceByPeriod(
-      workplace.id,
-      period,
-      params.shiftsByWorkplace,
-      params.rulesByWorkplace,
-    );
-    monthSummaryByWorkplace.set(cacheKey, summarized);
-    return summarized;
   };
 }
 
@@ -820,10 +788,15 @@ export async function getPayrollSummaryCoreForUser(
     const getWorkplaceMonthSummary = await timing.measure(
       "summaryGetterBuild",
       () =>
-        createWorkplaceMonthSummaryGetter({
+        createPayrollPeriodSummaryGetter<WorkplacePeriodSummary>({
           periodByWorkplaceMonth,
-          shiftsByWorkplace,
-          rulesByWorkplace,
+          summarize: (workplaceId, period) =>
+            summarizeWorkplaceByPeriod(
+              workplaceId,
+              period,
+              shiftsByWorkplace,
+              rulesByWorkplace,
+            ),
         }),
     );
 
@@ -873,10 +846,15 @@ export async function getPayrollSummaryYearContextForUser(
     const getWorkplaceMonthSummary = await timing.measure(
       "summaryGetterBuild",
       () =>
-        createWorkplaceMonthSummaryGetter({
+        createPayrollPeriodSummaryGetter<WorkplacePeriodSummary>({
           periodByWorkplaceMonth,
-          shiftsByWorkplace,
-          rulesByWorkplace,
+          summarize: (workplaceId, period) =>
+            summarizeWorkplaceByPeriod(
+              workplaceId,
+              period,
+              shiftsByWorkplace,
+              rulesByWorkplace,
+            ),
         }),
     );
 
@@ -923,10 +901,15 @@ export async function getPayrollSummaryAmountForUser(
     const getWorkplaceMonthSummary = await timing.measure(
       "summaryGetterBuild",
       () =>
-        createWorkplaceMonthSummaryGetter({
+        createPayrollPeriodSummaryGetter<WorkplacePeriodSummary>({
           periodByWorkplaceMonth,
-          shiftsByWorkplace,
-          rulesByWorkplace,
+          summarize: (workplaceId, period) =>
+            summarizeWorkplaceByPeriod(
+              workplaceId,
+              period,
+              shiftsByWorkplace,
+              rulesByWorkplace,
+            ),
         }),
     );
 
@@ -972,10 +955,15 @@ export async function getPayrollSummaryForUser(
     const getWorkplaceMonthSummary = await timing.measure(
       "summaryGetterBuild",
       () =>
-        createWorkplaceMonthSummaryGetter({
+        createPayrollPeriodSummaryGetter<WorkplacePeriodSummary>({
           periodByWorkplaceMonth,
-          shiftsByWorkplace,
-          rulesByWorkplace,
+          summarize: (workplaceId, period) =>
+            summarizeWorkplaceByPeriod(
+              workplaceId,
+              period,
+              shiftsByWorkplace,
+              rulesByWorkplace,
+            ),
         }),
     );
 

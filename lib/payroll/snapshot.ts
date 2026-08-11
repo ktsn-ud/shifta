@@ -12,6 +12,7 @@ import {
   type ClosingDayType,
   type PayrollPeriod,
 } from "@/lib/payroll/pay-period";
+import { toPayrollPeriodMapKey } from "@/lib/payroll/period-key";
 import {
   groupPayrollRulesByWorkplace,
   type PayrollRulesByWorkplace,
@@ -477,12 +478,7 @@ async function loadCachedPayrollSnapshotEntry(
   });
 }
 
-export function toPayrollPeriodMapKey(
-  workplaceId: string,
-  monthKey: string,
-): string {
-  return `${workplaceId}:${monthKey}`;
-}
+export { toPayrollPeriodMapKey } from "@/lib/payroll/period-key";
 
 export async function loadPayrollSnapshot(
   params: LoadPayrollSnapshotParams,

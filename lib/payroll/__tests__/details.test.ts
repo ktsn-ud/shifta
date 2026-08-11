@@ -4,13 +4,29 @@ import type {
   ShiftLessonRange,
 } from "@/lib/generated/prisma/client";
 import { Prisma } from "@/lib/generated/prisma/client";
+import type { PayrollSnapshot } from "@/lib/payroll/snapshot";
+import { loadPayrollSnapshot } from "@/lib/payroll/snapshot";
 
 jest.mock("next/cache", () => ({
   cacheLife: jest.fn(),
   cacheTag: jest.fn(),
 }));
 
-import { summarizeWorkplacePayrollDetailsByPeriod } from "@/lib/payroll/details";
+jest.mock("@/lib/payroll/snapshot", () => {
+  const actual = jest.requireActual("@/lib/payroll/snapshot");
+
+  return {
+    ...actual,
+    loadPayrollSnapshot: jest.fn(),
+  };
+});
+
+import {
+  getPayrollDetailsWorkplaceYearlyForUser,
+  summarizeWorkplacePayrollDetailsByPeriod,
+} from "@/lib/payroll/details";
+
+const loadPayrollSnapshotMock = jest.mocked(loadPayrollSnapshot);
 
 function date(value: string): Date {
   return new Date(`${value}T00:00:00.000Z`);
@@ -151,6 +167,159 @@ describe("summarizeWorkplacePayrollDetailsByPeriod", () => {
       effectiveHolidayAllowanceHourly: null,
       effectiveNightHourlyWage: null,
       effectiveNightPremiumRate: null,
+    });
+  });
+});
+
+function createYearlyDetailsSnapshot(monthDates: Date[]): PayrollSnapshot {
+  const monthKeys = monthDates.map(
+    (monthDate) =>
+      `${monthDate.getUTCFullYear()}-${String(
+        monthDate.getUTCMonth() + 1,
+      ).padStart(2, "0")}`,
+  );
+  const payrollRule = createRule({
+    baseHourlyWage: new Prisma.Decimal(1000),
+    holidayAllowanceHourly: new Prisma.Decimal(0),
+    nightPremiumRate: new Prisma.Decimal(0),
+    overtimePremiumRate: new Prisma.Decimal(0),
+    dailyOvertimeThreshold: new Prisma.Decimal(8),
+    holidayType: "NONE",
+  });
+
+  return {
+    workplaces: [
+      {
+        id: "workplace-1",
+        name: "勤務先A",
+        color: "#3366FF",
+        closingDayType: "END_OF_MONTH",
+        closingDay: null,
+        payday: 25,
+      },
+    ],
+    workplaceIds: ["workplace-1"],
+    monthKeys,
+    periodByWorkplaceMonth: new Map(
+      monthKeys.map((monthKey) => {
+        const [year, month] = monthKey.split("-").map(Number);
+
+        return [
+          `workplace-1:${monthKey}`,
+          {
+            paymentDate: date(`${monthKey}-25`),
+            periodStartDate: date(`${monthKey}-01`),
+            periodEndDate: new Date(Date.UTC(year, month, 0)),
+          },
+        ];
+      }),
+    ),
+    shiftsByWorkplace: new Map([
+      [
+        "workplace-1",
+        [
+          createShift({
+            id: "january-shift",
+            date: date("2026-01-15"),
+            startTime: time("09:00"),
+            endTime: time("12:00"),
+            breakMinutes: 0,
+          }),
+          createShift({
+            id: "february-shift",
+            date: date("2026-02-12"),
+            startTime: time("09:00"),
+            endTime: time("14:00"),
+            breakMinutes: 60,
+          }),
+        ],
+      ],
+    ]),
+    rulesByWorkplace: new Map([["workplace-1", [payrollRule]]]),
+    actualPayrollByWorkplaceMonth: new Map(
+      monthKeys.map((monthKey) => [
+        `workplace-1:${monthKey}`,
+        {
+          taxableAmount: 3000,
+          nonTaxableAmount: 500,
+          totalAmount: 3500,
+          note: `${monthKey} 実給与`,
+        },
+      ]),
+    ),
+  };
+}
+
+describe("payroll details yearly service", () => {
+  beforeEach(() => {
+    jest.resetAllMocks();
+    loadPayrollSnapshotMock.mockImplementation(async ({ monthDates }) =>
+      createYearlyDetailsSnapshot(monthDates),
+    );
+  });
+
+  it("年次詳細は月次・年合計とも実給与を優先しつつ概算の時間内訳を維持する", async () => {
+    const result = await getPayrollDetailsWorkplaceYearlyForUser(
+      "user-1",
+      2026,
+    );
+
+    expect(result).toMatchObject({
+      year: 2026,
+      shiftCount: 2,
+    });
+    expect(result.workplaces).toHaveLength(1);
+
+    const workplace = result.workplaces[0];
+    expect(workplace.months[0]).toMatchObject({
+      monthKey: "2026-01",
+      totalWorkHours: 3,
+      totalWage: 3000,
+      displayValue: {
+        estimatedAmount: 3000,
+        actualAmount: {
+          taxableAmount: 3000,
+          nonTaxableAmount: 500,
+          totalAmount: 3500,
+        },
+        displayAmount: 3500,
+        differenceAmount: 500,
+        isActualApplied: true,
+      },
+    });
+    expect(workplace.months[1]).toMatchObject({
+      monthKey: "2026-02",
+      totalWorkHours: 4,
+      totalWage: 4000,
+      displayValue: {
+        estimatedAmount: 4000,
+        displayAmount: 3500,
+        differenceAmount: -500,
+        isActualApplied: true,
+      },
+    });
+    expect(workplace.yearlyTotals).toMatchObject({
+      totalWorkHours: 7,
+      totalWage: 7000,
+    });
+    expect(workplace.yearlyDisplayValue).toEqual({
+      estimatedAmount: 7000,
+      actualAmount: {
+        taxableAmount: 36000,
+        nonTaxableAmount: 6000,
+        totalAmount: 42000,
+      },
+      displayAmount: 42000,
+      differenceAmount: 35000,
+      isActualApplied: true,
+    });
+    expect(workplace.actualCoverage).toEqual({
+      taxableAmount: 36000,
+      nonTaxableAmount: 6000,
+      totalAmount: 42000,
+      registeredWorkplaceCount: 12,
+      totalWorkplaceCount: 12,
+      isPartial: false,
     });
   });
 });
