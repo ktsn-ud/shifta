@@ -59,6 +59,33 @@ function createWrapper(queryClient: QueryClient) {
   };
 }
 
+type QueryResultWithError = Readonly<{ error: unknown }>;
+
+function createInvalidResponseRun(input: {
+  fallbackMessage: string;
+  payload: unknown;
+  useQuery: () => QueryResultWithError;
+}): () => Promise<void> {
+  return async () => {
+    const queryClient = createQueryClient();
+    const fetchMock = global.fetch as jest.Mock;
+    fetchMock.mockResolvedValue(createMockResponse(input.payload));
+
+    const { result } = renderHook(input.useQuery, {
+      wrapper: createWrapper(queryClient),
+    });
+
+    await waitFor(() => {
+      expect(result.current.error).toMatchObject({
+        name: "UserFacingError",
+        kind: "server",
+        status: 500,
+        message: expect.stringContaining(input.fallbackMessage),
+      });
+    });
+  };
+}
+
 describe("未確定シフトクエリ DTO スキーマ", () => {
   it.each([
     [
@@ -160,7 +187,7 @@ describe("未確定シフトクエリの fetchJson 境界", () => {
     global.fetch = originalFetch;
   });
 
-  it.each([
+  const invalidResponseCases = [
     {
       name: "確定済み行を含む未確定シフト一覧",
       fallbackMessage: "未確定シフトの取得に失敗しました。",
@@ -186,25 +213,15 @@ describe("未確定シフトクエリの fetchJson 境界", () => {
           initialData: 0,
         }),
     },
-  ])(
+  ].map(({ name, fallbackMessage, payload, useQuery }) => ({
+    name,
+    run: createInvalidResponseRun({ fallbackMessage, payload, useQuery }),
+  }));
+
+  it.each(invalidResponseCases)(
     "$name を server エラーへ変換する",
-    async ({ fallbackMessage, payload, useQuery }) => {
-      const queryClient = createQueryClient();
-      const fetchMock = global.fetch as jest.Mock;
-      fetchMock.mockResolvedValue(createMockResponse(payload));
-
-      const { result } = renderHook(useQuery, {
-        wrapper: createWrapper(queryClient),
-      });
-
-      await waitFor(() => {
-        expect(result.current.error).toMatchObject({
-          name: "UserFacingError",
-          kind: "server",
-          status: 500,
-          message: expect.stringContaining(fallbackMessage),
-        });
-      });
+    async ({ run }) => {
+      await run();
     },
   );
 });

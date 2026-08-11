@@ -208,6 +208,33 @@ function createWrapper(queryClient: QueryClient) {
   };
 }
 
+type QueryResultWithError = Readonly<{ error: unknown }>;
+
+function createInvalidResponseRun(input: {
+  fallbackMessage: string;
+  payload: unknown;
+  useQuery: () => QueryResultWithError;
+}): () => Promise<void> {
+  return async () => {
+    const queryClient = createQueryClient();
+    const fetchMock = global.fetch as jest.Mock;
+    fetchMock.mockResolvedValue(createMockResponse(input.payload));
+
+    const { result } = renderHook(input.useQuery, {
+      wrapper: createWrapper(queryClient),
+    });
+
+    await waitFor(() => {
+      expect(result.current.error).toMatchObject({
+        name: "UserFacingError",
+        kind: "server",
+        status: 500,
+        message: expect.stringContaining(input.fallbackMessage),
+      });
+    });
+  };
+}
+
 describe("給与クエリ DTO スキーマ", () => {
   it.each([
     ["年次サマリー", payrollSummaryResponseSchema, payrollSummaryPayload],
@@ -381,7 +408,7 @@ describe("給与クエリの fetchJson 境界", () => {
     });
   });
 
-  it.each([
+  const requestedValueMismatchCases = [
     {
       name: "年次サマリーのレスポンス年",
       fallbackMessage: "給与集計の取得に失敗しました。",
@@ -445,29 +472,19 @@ describe("給与クエリの fetchJson 境界", () => {
           months: ["2026-01"],
         }),
     },
-  ])(
+  ].map(({ name, fallbackMessage, payload, useQuery }) => ({
+    name,
+    run: createInvalidResponseRun({ fallbackMessage, payload, useQuery }),
+  }));
+
+  it.each(requestedValueMismatchCases)(
     "$name が要求値と一致しない場合は fallback 付きの server エラーに変換する",
-    async ({ fallbackMessage, payload, useQuery }) => {
-      const queryClient = createQueryClient();
-      const fetchMock = global.fetch as jest.Mock;
-      fetchMock.mockResolvedValue(createMockResponse(payload));
-
-      const { result } = renderHook(useQuery, {
-        wrapper: createWrapper(queryClient),
-      });
-
-      await waitFor(() => {
-        expect(result.current.error).toMatchObject({
-          name: "UserFacingError",
-          kind: "server",
-          status: 500,
-          message: expect.stringContaining(fallbackMessage),
-        });
-      });
+    async ({ run }) => {
+      await run();
     },
   );
 
-  it.each([
+  const responseIntegrityMismatchCases = [
     {
       name: "年次サマリーが12か月未満",
       fallbackMessage: "給与集計の取得に失敗しました。",
@@ -609,22 +626,15 @@ describe("給与クエリの fetchJson 境界", () => {
           months: ["2026-01"],
         }),
     },
-  ])("$name を拒否する", async ({ fallbackMessage, payload, useQuery }) => {
-    const queryClient = createQueryClient();
-    const fetchMock = global.fetch as jest.Mock;
-    fetchMock.mockResolvedValue(createMockResponse(payload));
+  ].map(({ name, fallbackMessage, payload, useQuery }) => ({
+    name,
+    run: createInvalidResponseRun({ fallbackMessage, payload, useQuery }),
+  }));
 
-    const { result } = renderHook(useQuery, {
-      wrapper: createWrapper(queryClient),
-    });
-
-    await waitFor(() => {
-      expect(result.current.error).toMatchObject({
-        name: "UserFacingError",
-        kind: "server",
-        status: 500,
-        message: expect.stringContaining(fallbackMessage),
-      });
-    });
-  });
+  it.each(responseIntegrityMismatchCases)(
+    "$name を拒否する",
+    async ({ run }) => {
+      await run();
+    },
+  );
 });
