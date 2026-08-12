@@ -108,9 +108,13 @@
 - Lint: `pnpm lint`
 - Format: `pnpm format`（ファイルを書き換え） / `pnpm format:check`（非破壊チェック）
 - Test: `pnpm test`
+- React Doctor（変更差分+untrackedのverbose診断）: `pnpm doctor`
+- React Doctor（全体診断）: `pnpm doctor:full`
+- React Doctor（変更差分のerror blocking/non-score）: `pnpm doctor:ci`
 - CI向け一括検証: `pnpm check`（`format:check` / `typecheck` / `lint` / `test:ci`。build・migrationは含まない）
 
 コードベースに触れる実装では、原則として `tester` が `pnpm check` を実行する。整形が必要な場合のみ、先に `pnpm format` を実行し、その後 `pnpm check` を実行する。`pnpm check` は build や migration を含まないため、必要な場合は別途実行する。ドキュメントのみの変更では型チェック・Lint・テストを省略してよいが、可能なら `pnpm format` を実行する。
+Reactコード変更後は、原則として `pnpm doctor` も実行する。
 
 ## Git 運用
 
