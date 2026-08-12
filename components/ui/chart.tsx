@@ -68,6 +68,17 @@ type ChartLegendContentProps = React.ComponentProps<"div"> & {
   nameKey?: string;
 };
 
+function getChartPayloadItemKey(item: ChartPayloadItem): string {
+  return JSON.stringify([
+    item.dataKey,
+    item.name,
+    item.value,
+    item.color,
+    item.payload?.fill,
+    item.type,
+  ]);
+}
+
 const ChartContext = React.createContext<ChartContextProps | null>(null);
 
 function useChart() {
@@ -239,7 +250,7 @@ function ChartTooltipContent({
 
     tooltipRows.push(
       <div
-        key={String(item.dataKey ?? itemName ?? index)}
+        key={getChartPayloadItemKey(item)}
         className={cn(
           "flex w-full flex-wrap items-stretch gap-2 [&>svg]:h-2.5 [&>svg]:w-2.5 [&>svg]:text-muted-foreground",
           indicator === "dot" && "items-center",
