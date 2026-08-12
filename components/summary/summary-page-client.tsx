@@ -539,9 +539,7 @@ export function SummaryPageLoadingSkeleton() {
         <p className="text-xs font-medium uppercase tracking-[0.12em] text-muted-foreground">
           Summary
         </p>
-        <h2 className="mt-2 text-2xl font-semibold">
-          給与サマリー
-        </h2>
+        <h2 className="mt-2 text-2xl font-semibold">給与サマリー</h2>
         <p className="mt-2 text-sm text-muted-foreground">
           年次給与サマリーを読み込み中です。
         </p>

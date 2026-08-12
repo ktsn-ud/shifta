@@ -448,9 +448,7 @@ function DashboardHeader({
         <p className="text-xs font-medium uppercase tracking-[0.12em] text-muted-foreground">
           Home
         </p>
-        <h2 className="text-2xl font-semibold">
-          ダッシュボード
-        </h2>
+        <h2 className="text-2xl font-semibold">ダッシュボード</h2>
         <p className="text-sm text-muted-foreground">
           当月のシフト状況と概算値を確認できます。
         </p>
@@ -757,9 +755,7 @@ export function DashboardPageLoadingSkeleton() {
           <p className="text-xs font-medium uppercase tracking-[0.12em] text-muted-foreground">
             Home
           </p>
-          <h2 className="text-2xl font-semibold">
-            ダッシュボード
-          </h2>
+          <h2 className="text-2xl font-semibold">ダッシュボード</h2>
           <p className="text-sm text-muted-foreground">
             当月のシフト状況と概算値を確認できます。
           </p>

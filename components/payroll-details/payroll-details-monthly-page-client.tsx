@@ -81,9 +81,7 @@ export function PayrollDetailsMonthlyPageLoadingSkeleton() {
         <p className="text-xs font-medium uppercase tracking-[0.12em] text-muted-foreground">
           Payroll Details
         </p>
-        <h2 className="mt-2 text-2xl font-semibold">
-          給与詳細（月毎表示）
-        </h2>
+        <h2 className="mt-2 text-2xl font-semibold">給与詳細（月毎表示）</h2>
         <p className="mt-2 text-sm text-muted-foreground">
           月毎の実績優先金額と計算根拠を読み込み中です。
         </p>
@@ -112,9 +110,7 @@ function PayrollDetailsMonthlyHeader({
         <p className="text-xs font-medium uppercase tracking-[0.12em] text-muted-foreground">
           Payroll Details
         </p>
-        <h2 className="text-2xl font-semibold">
-          給与詳細（月毎表示）
-        </h2>
+        <h2 className="text-2xl font-semibold">給与詳細（月毎表示）</h2>
         <p className="text-sm text-muted-foreground">
           {selectedMonthLabel}支給分の実績優先内訳を確認できます。
         </p>
