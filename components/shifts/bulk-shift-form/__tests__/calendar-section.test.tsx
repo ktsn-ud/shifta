@@ -1,12 +1,16 @@
 import { render, screen } from "@testing-library/react";
 import { BulkShiftCalendarSection } from "@/components/shifts/bulk-shift-form/calendar-section";
+import { toDateKey } from "@/lib/calendar/date";
 
-function createCalendarCells(count: number) {
+function createCalendarCells(
+  count: number,
+  createDate = (index: number) => new Date(2026, 2, index + 1),
+) {
   return Array.from({ length: count }, (_, index) => {
-    const date = new Date(2026, 2, index + 1);
+    const date = createDate(index);
     return {
       date,
-      key: date.toISOString().slice(0, 10),
+      key: toDateKey(date),
       isCurrentMonth: true,
     };
   });
@@ -14,7 +18,18 @@ function createCalendarCells(count: number) {
 
 describe("BulkShiftCalendarSection", () => {
   it("shows the selected-date limit and disables an unselected 32nd day", () => {
-    const calendarCells = createCalendarCells(32);
+    const calendarCells = createCalendarCells(32, (index) => {
+      const date = new Date(2026, 2, index + 1);
+
+      if (index === 0) {
+        // A JST midnight date serializes to the previous UTC date.
+        Object.defineProperty(date, "toISOString", {
+          value: () => "2026-02-28T15:00:00.000Z",
+        });
+      }
+
+      return date;
+    });
     const selectedDateKeys = calendarCells.slice(0, 31).map((cell) => cell.key);
     const handleToggleDateSelection = jest.fn();
     const { container } = render(
