@@ -9,7 +9,7 @@ export default function Loading() {
           <p className="text-xs font-medium uppercase tracking-[0.12em] text-muted-foreground">
             Timetable
           </p>
-          <h2 className="text-2xl font-semibold tracking-tight">時間割</h2>
+          <h2 className="text-2xl font-semibold">時間割</h2>
           <p className="text-sm text-muted-foreground">
             勤務先ごとの塾時間割を管理します。
           </p>

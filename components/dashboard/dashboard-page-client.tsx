@@ -448,9 +448,7 @@ function DashboardHeader({
         <p className="text-xs font-medium uppercase tracking-[0.12em] text-muted-foreground">
           Home
         </p>
-        <h2 className="text-2xl font-semibold tracking-tight">
-          ダッシュボード
-        </h2>
+        <h2 className="text-2xl font-semibold">ダッシュボード</h2>
         <p className="text-sm text-muted-foreground">
           当月のシフト状況と概算値を確認できます。
         </p>
@@ -572,7 +570,7 @@ function DashboardSummaryCards({
         <CardContent
           className={
             nextPaymentErrorMessage === null
-              ? "text-3xl font-semibold tracking-tight"
+              ? "text-3xl font-semibold"
               : "text-sm font-medium text-destructive"
           }
         >
@@ -591,7 +589,7 @@ function DashboardSummaryCards({
           </CardTitle>
           <CardDescription>休憩控除後の合計時間</CardDescription>
         </CardHeader>
-        <CardContent className="text-2xl font-semibold tracking-tight">
+        <CardContent className="text-2xl font-semibold">
           {(summary.totalWorkedMinutes / 60).toFixed(1)} 時間
         </CardContent>
       </Card>
@@ -603,7 +601,7 @@ function DashboardSummaryCards({
           </CardTitle>
           <CardDescription>登録済み件数</CardDescription>
         </CardHeader>
-        <CardContent className="text-2xl font-semibold tracking-tight">
+        <CardContent className="text-2xl font-semibold">
           {summary.shiftCount} 件
         </CardContent>
       </Card>
@@ -757,9 +755,7 @@ export function DashboardPageLoadingSkeleton() {
           <p className="text-xs font-medium uppercase tracking-[0.12em] text-muted-foreground">
             Home
           </p>
-          <h2 className="text-2xl font-semibold tracking-tight">
-            ダッシュボード
-          </h2>
+          <h2 className="text-2xl font-semibold">ダッシュボード</h2>
           <p className="text-sm text-muted-foreground">
             当月のシフト状況と概算値を確認できます。
           </p>

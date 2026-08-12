@@ -1529,6 +1529,14 @@ H_total = (19:50 - 16:30) = 3時間20分 = 3.33時間
 
 ---
 
+## 11.5 タイポグラフィ
+
+- 本文および UI は `Gen Interface JP` を使用する。
+- `h1`・`h2` は `Gen Interface JP Display` を使用する。
+- 既存の font weight は維持し、通常書体は 400 / 500 / 600 / 700、Display 書体は 600 のみを読み込む。
+- フォントは `gen-interface-jp@0.8.0` の公式 jsDelivr サブセット CSS から配信する。
+- `Geist Mono` は使用しない。文字間隔の調整は本仕様の対象外とする。
+
 # 12. 今後の拡張可能性
 
 将来的に以下を追加可能
@@ -2390,6 +2398,7 @@ GET /api/payroll/preview-baseline?months=YYYY-MM,YYYY-MM
 # 更新履歴（git log -p 確認済み）
 
 | 日時 | 変更概要 | 具体的な変更内容 |
+| 2026-08-12 00:00:00 +0000 | 全体タイポグラフィ仕様を追加 | 本文/UI に `Gen Interface JP`、`h1`/`h2` に `Gen Interface JP Display` を使用し、`gen-interface-jp@0.8.0` の公式 jsDelivr サブセット CSS から通常 400/500/600/700・Display 600 のみを配信する仕様を追加。`Geist Mono` は未使用とし、文字間隔調整は対象外とした。 |
 | 2026-08-11 00:00:00 +0000 | 勤務先 Calendar cleanup の best-effort 残存リスクを明記 | single-user MVP の勤務先削除では、稀な競合・Google Calendar 障害・`after()` 実行消失によりイベントが残り得ること、永続 retry/job を持たないことを仕様として明記。 |
 | 2026-08-11 00:00:00 +0000 | 勤務先 Calendar cleanup の共有制御と競合・補償処理を反映 | 勤務先削除後の Calendar cleanup を bulk 同期と共有する instance-local semaphore（最大3並列・待機列最大100）へ統一。`WORKPLACE_DELETE_CONFLICT`（409）、件数要約ログ、Calendar 作成後の DB 成功更新件数0件時に所有確認付き補償削除を行う契約を追記し、いずれも永続 retry しないことを明記。 |
 | 2026-08-11 00:00:00 +0000 | 勤務先削除の cascade と Google Calendar 後処理を実装へ同期 | 勤務先削除時の `relatedCounts` は `Shift`、`PayrollRule`、`TimetableSet`、`ActualPayroll` の4項目とし、`ShiftLessonRange` と `Timetable` は CASCADE 削除対象だが件数返却対象外であることを明記。イベント識別子捕捉・transaction rollback 契約、DB commit 後の `after()` による best-effort 削除、`sync.pending`、外部失敗時の DB 成功維持と永続 retry を行わない仕様は維持。 |

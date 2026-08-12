@@ -68,7 +68,7 @@ function LoginCard({
             <p className="text-xs font-medium uppercase tracking-[0.12em] text-muted-foreground">
               Shift & Payroll Hub
             </p>
-            <CardTitle className="text-3xl font-semibold tracking-tight">
+            <CardTitle className="text-3xl font-semibold">
               {isTokenExpiredReason
                 ? "Google 連携の再ログインが必要です"
                 : "Shifta へようこそ"}
