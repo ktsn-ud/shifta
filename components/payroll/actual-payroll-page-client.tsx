@@ -411,7 +411,7 @@ function ActualPayrollHeader({
         <p className="text-xs font-medium uppercase tracking-[0.12em] text-muted-foreground">
           Actual Payroll
         </p>
-        <h2 className="text-2xl font-semibold tracking-tight">実給与編集</h2>
+        <h2 className="text-2xl font-semibold">実給与編集</h2>
         <p className="text-sm text-muted-foreground">
           {selectedMonthLabel}支給分の実績金額を勤務先ごとに登録します。
         </p>
@@ -579,7 +579,7 @@ export function ActualPayrollPageLoadingSkeleton() {
         <p className="text-xs font-medium uppercase tracking-[0.12em] text-muted-foreground">
           Actual Payroll
         </p>
-        <h2 className="mt-2 text-2xl font-semibold tracking-tight">
+        <h2 className="mt-2 text-2xl font-semibold">
           実給与編集
         </h2>
         <p className="mt-2 text-sm text-muted-foreground">

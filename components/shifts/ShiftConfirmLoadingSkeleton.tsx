@@ -7,7 +7,7 @@ export function ShiftConfirmPageLoadingSkeleton() {
         <p className="text-xs font-medium uppercase tracking-[0.12em] text-muted-foreground">
           Shift Confirm
         </p>
-        <h2 className="text-2xl font-semibold tracking-tight">シフト確定</h2>
+        <h2 className="text-2xl font-semibold">シフト確定</h2>
         <p className="text-sm text-muted-foreground">
           未確定シフトの時刻調整と確定を行えます。
         </p>

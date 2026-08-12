@@ -116,7 +116,7 @@ export function PayrollDetailsWorkplaceYearlyPageLoadingSkeleton() {
         <p className="text-xs font-medium uppercase tracking-[0.12em] text-muted-foreground">
           Payroll Details
         </p>
-        <h2 className="mt-2 text-2xl font-semibold tracking-tight">
+        <h2 className="mt-2 text-2xl font-semibold">
           給与詳細（勤務先毎表示）
         </h2>
         <p className="mt-2 text-sm text-muted-foreground">
@@ -148,7 +148,7 @@ function PayrollDetailsYearlyHeader({
         <p className="text-xs font-medium uppercase tracking-[0.12em] text-muted-foreground">
           Payroll Details
         </p>
-        <h2 className="text-2xl font-semibold tracking-tight">
+        <h2 className="text-2xl font-semibold">
           給与詳細（勤務先毎表示）
         </h2>
         <p className="text-sm text-muted-foreground">

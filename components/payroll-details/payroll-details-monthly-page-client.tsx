@@ -81,7 +81,7 @@ export function PayrollDetailsMonthlyPageLoadingSkeleton() {
         <p className="text-xs font-medium uppercase tracking-[0.12em] text-muted-foreground">
           Payroll Details
         </p>
-        <h2 className="mt-2 text-2xl font-semibold tracking-tight">
+        <h2 className="mt-2 text-2xl font-semibold">
           給与詳細（月毎表示）
         </h2>
         <p className="mt-2 text-sm text-muted-foreground">
@@ -112,7 +112,7 @@ function PayrollDetailsMonthlyHeader({
         <p className="text-xs font-medium uppercase tracking-[0.12em] text-muted-foreground">
           Payroll Details
         </p>
-        <h2 className="text-2xl font-semibold tracking-tight">
+        <h2 className="text-2xl font-semibold">
           給与詳細（月毎表示）
         </h2>
         <p className="text-sm text-muted-foreground">
@@ -176,7 +176,7 @@ function PayrollDetailsMonthlySummaryCards({
           <CardDescription>{selectedMonthLabel}支給分</CardDescription>
         </CardHeader>
         <CardContent className="space-y-1">
-          <p className="text-3xl font-semibold tracking-tight">
+          <p className="text-3xl font-semibold">
             {formatCurrency(details.totalsDisplayValue.displayAmount)}
           </p>
           <p className="text-xs text-muted-foreground">

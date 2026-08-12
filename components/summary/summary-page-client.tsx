@@ -153,7 +153,7 @@ function SummaryHeader({
         <p className="text-xs font-medium uppercase tracking-[0.12em] text-muted-foreground">
           Summary
         </p>
-        <h2 className="text-2xl font-semibold tracking-tight">給与サマリー</h2>
+        <h2 className="text-2xl font-semibold">給与サマリー</h2>
         <p className="text-sm text-muted-foreground">
           {displayYearValue}年受取分の所得と勤務時間を年次表で確認できます。
         </p>
@@ -539,7 +539,7 @@ export function SummaryPageLoadingSkeleton() {
         <p className="text-xs font-medium uppercase tracking-[0.12em] text-muted-foreground">
           Summary
         </p>
-        <h2 className="mt-2 text-2xl font-semibold tracking-tight">
+        <h2 className="mt-2 text-2xl font-semibold">
           給与サマリー
         </h2>
         <p className="mt-2 text-sm text-muted-foreground">

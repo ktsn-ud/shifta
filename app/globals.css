@@ -150,6 +150,8 @@
   body {
     @apply bg-background text-foreground antialiased;
     text-rendering: optimizeLegibility;
+    font-feature-settings: "kern" 1, "palt" 1;
+    letter-spacing: 0.02em;
   }
   html {
     @apply scroll-smooth font-sans;
@@ -157,6 +159,7 @@
   h1,
   h2 {
     font-family: "Gen Interface JP Display", sans-serif;
+    letter-spacing: 0.06em;
   }
   button:not(:disabled),
   input[type="button"]:not(:disabled),

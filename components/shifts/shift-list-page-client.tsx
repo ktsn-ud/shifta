@@ -436,7 +436,7 @@ function ShiftListHeader({
         <p className="text-xs font-medium uppercase tracking-[0.12em] text-muted-foreground">
           Shift List
         </p>
-        <h2 className="text-2xl font-semibold tracking-tight">シフト一覧</h2>
+        <h2 className="text-2xl font-semibold">シフト一覧</h2>
         <p className="text-sm text-muted-foreground">
           月ごとのシフトを確認し、並び替え・一括削除できます。
         </p>
