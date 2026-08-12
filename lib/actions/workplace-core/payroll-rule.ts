@@ -1,14 +1,19 @@
 import { connection } from "next/server";
-import { type Prisma } from "@/lib/generated/prisma/client";
 import { z } from "zod";
 import { requireCurrentUser } from "@/lib/api/current-user";
-import { parseDateOnly, DATE_ONLY_REGEX } from "@/lib/api/date-time";
+import { DATE_ONLY_REGEX } from "@/lib/api/date-time";
 import { jsonError, parseJsonBody } from "@/lib/api/http";
 import { requireOwnedWorkplace } from "@/lib/api/workplace";
 import { prisma } from "@/lib/prisma";
 import { jsonNoStore } from "@/lib/api/cache-control";
 import { buildSuccessSyncResponse } from "@/lib/google-calendar/sync-response";
 import { getCachedPayrollRule } from "@/lib/cache/workplace-read-cache";
+import {
+  buildOverlappingPayrollRuleWhere,
+  normalizePayrollRule,
+  type NormalizedPayrollRule,
+  validatePayrollRuleForWorkplaceType,
+} from "@/lib/actions/workplace-core/payroll-rule-utils";
 
 const payrollRuleSchema = z.strictObject({
   startDate: z
@@ -31,65 +36,6 @@ type Context = {
   params: Promise<{ workplaceId: string; id: string }>;
 };
 
-type NormalizedPayrollRule = {
-  startDate: Date;
-  endDate: Date | null;
-  baseHourlyWage: number;
-  holidayAllowanceHourly: number;
-  nightPremiumRate: number;
-  overtimePremiumRate: number;
-  dailyOvertimeThreshold: number;
-  holidayType: "NONE" | "WEEKEND" | "HOLIDAY" | "WEEKEND_HOLIDAY";
-};
-
-function normalizePayrollRule(
-  input: z.infer<typeof payrollRuleSchema>,
-): NormalizedPayrollRule {
-  const startDate = parseDateOnly(input.startDate);
-  const endDate = input.endDate ? parseDateOnly(input.endDate) : null;
-
-  if (endDate && endDate <= startDate) {
-    throw new Error("DATE_RANGE_INVALID");
-  }
-
-  return {
-    startDate,
-    endDate,
-    baseHourlyWage: input.baseHourlyWage,
-    holidayAllowanceHourly: input.holidayAllowanceHourly,
-    nightPremiumRate: input.nightPremiumRate,
-    overtimePremiumRate: input.overtimePremiumRate,
-    dailyOvertimeThreshold: input.dailyOvertimeThreshold,
-    holidayType: input.holidayType,
-  };
-}
-
-function buildOverlappingPayrollRuleWhere(
-  workplaceId: string,
-  normalized: NormalizedPayrollRule,
-  excludeId?: string,
-): Prisma.PayrollRuleWhereInput {
-  return {
-    workplaceId,
-    ...(excludeId ? { id: { not: excludeId } } : {}),
-    ...(normalized.endDate
-      ? {
-          startDate: {
-            lt: normalized.endDate,
-          },
-        }
-      : {}),
-    OR: [
-      { endDate: null },
-      {
-        endDate: {
-          gt: normalized.startDate,
-        },
-      },
-    ],
-  };
-}
-
 async function findOverlappingRules(
   workplaceId: string,
   normalized: NormalizedPayrollRule,
@@ -101,17 +47,6 @@ async function findOverlappingRules(
       id: true,
     },
   });
-}
-
-function validateByWorkplaceType(
-  workplaceType: "GENERAL" | "CRAM_SCHOOL",
-  normalized: NormalizedPayrollRule,
-): string | null {
-  if (normalized.baseHourlyWage <= 0) {
-    return `${workplaceType}勤務先では baseHourlyWage を正の数で指定してください`;
-  }
-
-  return null;
 }
 
 async function findPayrollRule(id: string, workplaceId: string) {
@@ -197,7 +132,7 @@ export async function updatePayrollRuleRouteAction(
       return jsonError("日付の形式が不正です", 400);
     }
 
-    const typeValidationError = validateByWorkplaceType(
+    const typeValidationError = validatePayrollRuleForWorkplaceType(
       workplaceResult.workplace.type,
       normalized,
     );

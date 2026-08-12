@@ -47,6 +47,13 @@ export type PayrollRuleListItem = {
   holidayType: HolidayType;
 };
 
+export type PayrollRuleDetailItem = Omit<
+  PayrollRuleListItem,
+  "holidayAllowanceHourly"
+> & {
+  holidayAllowanceHourly: number | string | null;
+};
+
 export type TimetableSetItem = {
   id: string;
   workplaceId: string;
@@ -72,7 +79,10 @@ export type WorkplaceShiftFormBootstrapData = {
   timetableSets: TimetableSetItem[];
 };
 
-function parseListPayload<TData>(payload: unknown): TData[] {
+function parseListPayload<TData>(
+  payload: unknown,
+  isItem?: (value: unknown) => value is TData,
+): TData[] {
   if (
     typeof payload !== "object" ||
     payload === null ||
@@ -81,10 +91,18 @@ function parseListPayload<TData>(payload: unknown): TData[] {
     throw new Error("WORKPLACE_LIST_RESPONSE_INVALID");
   }
 
-  return (payload as { data: TData[] }).data;
+  const { data } = payload as { data: unknown[] };
+  if (isItem && !data.every(isItem)) {
+    throw new Error("WORKPLACE_LIST_RESPONSE_INVALID");
+  }
+
+  return data as TData[];
 }
 
-function parseItemPayload<TData>(payload: unknown): TData {
+function parseItemPayload<TData>(
+  payload: unknown,
+  isItem?: (value: unknown) => value is TData,
+): TData {
   if (
     typeof payload !== "object" ||
     payload === null ||
@@ -94,7 +112,12 @@ function parseItemPayload<TData>(payload: unknown): TData {
     throw new Error("WORKPLACE_ITEM_RESPONSE_INVALID");
   }
 
-  return (payload as { data: TData }).data;
+  const { data } = payload as { data: unknown };
+  if (isItem && !isItem(data)) {
+    throw new Error("WORKPLACE_ITEM_RESPONSE_INVALID");
+  }
+
+  return data as TData;
 }
 
 function isRecord(value: unknown): value is Record<string, unknown> {
@@ -164,6 +187,30 @@ function isPayrollRuleListItem(value: unknown): value is PayrollRuleListItem {
   );
 }
 
+function isPayrollRuleDetailItem(
+  value: unknown,
+): value is PayrollRuleDetailItem {
+  return (
+    isRecord(value) &&
+    typeof value.id === "string" &&
+    typeof value.workplaceId === "string" &&
+    typeof value.startDate === "string" &&
+    (typeof value.endDate === "string" || value.endDate === null) &&
+    (typeof value.baseHourlyWage === "number" ||
+      typeof value.baseHourlyWage === "string") &&
+    (typeof value.holidayAllowanceHourly === "number" ||
+      typeof value.holidayAllowanceHourly === "string" ||
+      value.holidayAllowanceHourly === null) &&
+    (typeof value.nightPremiumRate === "number" ||
+      typeof value.nightPremiumRate === "string") &&
+    (typeof value.overtimePremiumRate === "number" ||
+      typeof value.overtimePremiumRate === "string") &&
+    (typeof value.dailyOvertimeThreshold === "number" ||
+      typeof value.dailyOvertimeThreshold === "string") &&
+    isHolidayType(value.holidayType)
+  );
+}
+
 function isTimetableSetItem(value: unknown): value is TimetableSetItem {
   return (
     isRecord(value) &&
@@ -182,6 +229,7 @@ function isTimetableSetItem(value: unknown): value is TimetableSetItem {
         typeof item.timetableSetId === "string" &&
         typeof item.period === "number" &&
         Number.isInteger(item.period) &&
+        item.period > 0 &&
         typeof item.startTime === "string" &&
         typeof item.endTime === "string" &&
         (item.startTimeLabel === undefined ||
@@ -266,20 +314,34 @@ export function useWorkplacesQuery(input: {
 export function useWorkplaceDetailQuery(input: {
   workplaceId: string;
   initialData?: WorkplaceDetailItem | null;
+  requestCache?: RequestCache;
+  fallbackMessage?: string;
+  refetchOnWindowFocus?: boolean;
+  refetchOnReconnect?: boolean;
 }) {
-  const { initialData, workplaceId } = input;
+  const {
+    initialData,
+    fallbackMessage = "勤務先の取得に失敗しました。",
+    refetchOnReconnect,
+    refetchOnWindowFocus,
+    requestCache,
+    workplaceId,
+  } = input;
 
+  // eslint-disable-next-line @tanstack/query/exhaustive-deps -- requestCache and fallbackMessage are transport/UI options, not query identity.
   return useQuery({
     queryKey: queryKeys.workplaces.detailSummary({ workplaceId }),
     queryFn: ({ signal }) =>
       fetchJson(`/api/workplaces/${workplaceId}?includeCounts=true`, {
-        init: { signal },
-        fallbackMessage: "勤務先の取得に失敗しました。",
-        parse: (payload) => parseItemPayload<WorkplaceDetailItem>(payload),
+        init: { signal, cache: requestCache },
+        fallbackMessage,
+        parse: (payload) => parseItemPayload(payload, isWorkplaceDetailItem),
       }),
     initialData: initialData ?? undefined,
     staleTime: 5 * 60 * 1000,
     gcTime: 15 * 60 * 1000,
+    refetchOnWindowFocus,
+    refetchOnReconnect,
   });
 }
 
@@ -329,8 +391,16 @@ export function useWorkplaceTimetablesQuery(input: {
   workplaceId: string;
   enabled?: boolean;
   initialData?: TimetableSetItem[];
+  refetchOnWindowFocus?: boolean;
+  refetchOnReconnect?: boolean;
 }) {
-  const { enabled = true, initialData, workplaceId } = input;
+  const {
+    enabled = true,
+    initialData,
+    refetchOnReconnect,
+    refetchOnWindowFocus,
+    workplaceId,
+  } = input;
 
   return useQuery({
     queryKey: queryKeys.workplaces.timetables({ workplaceId }),
@@ -338,12 +408,55 @@ export function useWorkplaceTimetablesQuery(input: {
       fetchJson(`/api/workplaces/${workplaceId}/timetables`, {
         init: { signal },
         fallbackMessage: "時間割一覧の取得に失敗しました。",
-        parse: (payload) => parseListPayload<TimetableSetItem>(payload),
+        parse: (payload) => parseListPayload(payload, isTimetableSetItem),
       }),
     enabled,
     initialData,
     staleTime: 5 * 60 * 1000,
     gcTime: 15 * 60 * 1000,
+    refetchOnWindowFocus,
+    refetchOnReconnect,
+  });
+}
+
+export function useWorkplacePayrollRuleDetailQuery(input: {
+  workplaceId: string;
+  ruleId: string;
+  enabled?: boolean;
+  requestCache?: RequestCache;
+  refetchOnWindowFocus?: boolean;
+  refetchOnReconnect?: boolean;
+}) {
+  const {
+    enabled = true,
+    refetchOnReconnect,
+    refetchOnWindowFocus,
+    requestCache,
+    ruleId,
+    workplaceId,
+  } = input;
+
+  // eslint-disable-next-line @tanstack/query/exhaustive-deps -- requestCache is a transport option, not query identity.
+  return useQuery({
+    queryKey: queryKeys.workplaces.payrollRuleDetail({ workplaceId, ruleId }),
+    queryFn: ({ signal }) =>
+      fetchJson(`/api/workplaces/${workplaceId}/payroll-rules/${ruleId}`, {
+        init: { signal, cache: requestCache },
+        fallbackMessage: "給与ルールの取得に失敗しました。",
+        parse: (payload) => {
+          const item = parseItemPayload<unknown>(payload);
+          if (!isPayrollRuleDetailItem(item)) {
+            throw new Error("PAYROLL_RULE_RESPONSE_INVALID");
+          }
+
+          return item;
+        },
+      }),
+    enabled,
+    staleTime: 5 * 60 * 1000,
+    gcTime: 15 * 60 * 1000,
+    refetchOnWindowFocus,
+    refetchOnReconnect,
   });
 }
 

@@ -14,11 +14,11 @@ import { PayrollRuleList } from "@/components/workplaces/payroll-rule-list";
 import {
   useWorkplaceDetailQuery,
   useWorkplaceEditDetailQuery,
+  useWorkplacePayrollRuleDetailQuery,
   useWorkplacePayrollRulesQuery,
   useWorkplacesQuery,
   useWorkplaceTimetablesQuery,
 } from "@/lib/query/queries/workplaces";
-import { useQuery } from "@tanstack/react-query";
 import {
   createWorkplaceAction,
   createPayrollRuleAction,
@@ -37,10 +37,6 @@ jest.mock("next/navigation", () => ({
   useRouter: () => ({ push: pushMock }),
 }));
 
-jest.mock("@tanstack/react-query", () => ({
-  useQuery: jest.fn(),
-}));
-
 jest.mock("@/hooks/use-reset-on-route-hidden", () => ({
   useResetOnRouteHidden: () => ({ markForResetOnRouteHidden: jest.fn() }),
 }));
@@ -48,6 +44,7 @@ jest.mock("@/hooks/use-reset-on-route-hidden", () => ({
 jest.mock("@/lib/query/queries/workplaces", () => ({
   useWorkplaceDetailQuery: jest.fn(),
   useWorkplaceEditDetailQuery: jest.fn(),
+  useWorkplacePayrollRuleDetailQuery: jest.fn(),
   useWorkplacePayrollRulesQuery: jest.fn(),
   useWorkplacesQuery: jest.fn(),
   useWorkplaceTimetablesQuery: jest.fn(),
@@ -76,7 +73,6 @@ jest.mock("@/hooks/use-undoable-action", () => ({
   useUndoableAction: jest.fn(),
 }));
 
-const mockedUseQuery = useQuery as jest.MockedFunction<typeof useQuery>;
 const mockedUseWorkplaceDetailQuery =
   useWorkplaceDetailQuery as jest.MockedFunction<
     typeof useWorkplaceDetailQuery
@@ -84,6 +80,10 @@ const mockedUseWorkplaceDetailQuery =
 const mockedUseWorkplaceEditDetailQuery =
   useWorkplaceEditDetailQuery as jest.MockedFunction<
     typeof useWorkplaceEditDetailQuery
+  >;
+const mockedUseWorkplacePayrollRuleDetailQuery =
+  useWorkplacePayrollRuleDetailQuery as jest.MockedFunction<
+    typeof useWorkplacePayrollRuleDetailQuery
   >;
 const mockedUseWorkplacePayrollRulesQuery =
   useWorkplacePayrollRulesQuery as jest.MockedFunction<
@@ -123,7 +123,6 @@ const successfulSync = {
 describe("勤務先管理のP2 UX", () => {
   beforeEach(() => {
     pushMock.mockReset();
-    mockedUseQuery.mockReset();
     mockedUseWorkplacesQuery.mockReturnValue({
       data: [],
       isLoading: false,
@@ -147,6 +146,12 @@ describe("勤務先管理のP2 UX", () => {
       isFetching: false,
       error: null,
     } as unknown as ReturnType<typeof useWorkplaceEditDetailQuery>);
+    mockedUseWorkplacePayrollRuleDetailQuery.mockReturnValue({
+      data: undefined,
+      isPending: false,
+      isFetching: false,
+      error: null,
+    } as unknown as ReturnType<typeof useWorkplacePayrollRuleDetailQuery>);
     mockedUseWorkplacePayrollRulesQuery.mockReturnValue({
       data: [],
       isLoading: false,
@@ -316,25 +321,6 @@ describe("勤務先管理のP2 UX", () => {
   });
 
   it("給与ルールと時間割の作成成功時は、完全な同期結果を受けて各一覧へ遷移する", async () => {
-    mockedUseQuery
-      .mockReturnValue({
-        data: { id: "workplace-1", name: "青葉塾", type: "CRAM_SCHOOL" },
-        isPending: false,
-        isFetching: false,
-        error: null,
-      } as unknown as ReturnType<typeof useQuery>)
-      .mockReturnValueOnce({
-        data: { id: "workplace-1", name: "青葉塾", type: "CRAM_SCHOOL" },
-        isPending: false,
-        isFetching: false,
-        error: null,
-      } as unknown as ReturnType<typeof useQuery>)
-      .mockReturnValueOnce({
-        data: undefined,
-        isPending: false,
-        isFetching: false,
-        error: null,
-      } as unknown as ReturnType<typeof useQuery>);
     createPayrollRuleActionMock.mockResolvedValue({
       data: { id: "rule-1", workplaceId: "workplace-1" },
       warning: null,
@@ -394,25 +380,6 @@ describe("勤務先管理のP2 UX", () => {
   });
 
   it("各フォームは error union を受けた場合に遷移せず、既存のエラー表示を維持する", async () => {
-    mockedUseQuery
-      .mockReturnValue({
-        data: { id: "workplace-1", name: "青葉塾", type: "CRAM_SCHOOL" },
-        isPending: false,
-        isFetching: false,
-        error: null,
-      } as unknown as ReturnType<typeof useQuery>)
-      .mockReturnValueOnce({
-        data: { id: "workplace-1", name: "青葉塾", type: "CRAM_SCHOOL" },
-        isPending: false,
-        isFetching: false,
-        error: null,
-      } as unknown as ReturnType<typeof useQuery>)
-      .mockReturnValueOnce({
-        data: undefined,
-        isPending: false,
-        isFetching: false,
-        error: null,
-      } as unknown as ReturnType<typeof useQuery>);
     createWorkplaceActionMock.mockResolvedValue({
       error: "勤務先を保存できません",
     });
@@ -541,17 +508,6 @@ describe("勤務先管理のP2 UX", () => {
   });
 
   it("給与ルールの終了日が当日まで適用されることをフォームと一覧で明示する", () => {
-    mockedUseQuery.mockReturnValue({
-      data: {
-        id: "workplace-1",
-        name: "青葉塾",
-        type: "CRAM_SCHOOL",
-      },
-      isPending: false,
-      isFetching: false,
-      error: null,
-    } as unknown as ReturnType<typeof useQuery>);
-
     const { rerender } = render(
       <PayrollRuleForm mode="create" workplaceId="workplace-1" />,
     );
@@ -603,20 +559,6 @@ describe("勤務先管理のP2 UX", () => {
   });
 
   it("時間割作成で追加継続と保存完了の役割を明示する", () => {
-    mockedUseQuery
-      .mockReturnValueOnce({
-        data: { id: "workplace-1", name: "青葉塾", type: "CRAM_SCHOOL" },
-        isPending: false,
-        isFetching: false,
-        error: null,
-      } as unknown as ReturnType<typeof useQuery>)
-      .mockReturnValueOnce({
-        data: undefined,
-        isPending: false,
-        isFetching: false,
-        error: null,
-      } as unknown as ReturnType<typeof useQuery>);
-
     render(<TimetableForm mode="create" workplaceId="workplace-1" />);
 
     expect(
@@ -633,13 +575,6 @@ describe("勤務先管理のP2 UX", () => {
   });
 
   it("時間割フォームでは30コマと20セットで追加操作を停止し、上限を表示する", () => {
-    mockedUseQuery.mockReturnValue({
-      data: { id: "workplace-1", name: "青葉塾", type: "CRAM_SCHOOL" },
-      isPending: false,
-      isFetching: false,
-      error: null,
-    } as unknown as ReturnType<typeof useQuery>);
-
     const timetable = render(
       <TimetableForm mode="create" workplaceId="workplace-1" />,
     );
@@ -687,13 +622,6 @@ describe("勤務先管理のP2 UX", () => {
   });
 
   it("時間割フォームは31限を送信せず、コマ番号入力の上限を表示する", () => {
-    mockedUseQuery.mockReturnValue({
-      data: { id: "workplace-1", name: "青葉塾", type: "CRAM_SCHOOL" },
-      isPending: false,
-      isFetching: false,
-      error: null,
-    } as unknown as ReturnType<typeof useQuery>);
-
     const timetable = render(
       <TimetableForm mode="create" workplaceId="workplace-1" />,
     );
@@ -719,37 +647,36 @@ describe("勤務先管理のP2 UX", () => {
   });
 
   it("既存の31限の時間割を編集フォームに表示できる", () => {
-    mockedUseQuery
-      .mockReturnValueOnce({
-        data: { id: "workplace-1", name: "青葉塾", type: "CRAM_SCHOOL" },
-        isPending: false,
-        isFetching: false,
-        error: null,
-      } as unknown as ReturnType<typeof useQuery>)
-      .mockReturnValueOnce({
-        data: [
-          {
-            id: "set-legacy",
-            workplaceId: "workplace-1",
-            name: "旧時間割",
-            sortOrder: 0,
-            createdAt: "2026-03-01T00:00:00.000Z",
-            updatedAt: "2026-03-01T00:00:00.000Z",
-            items: [
-              {
-                id: "period-31",
-                timetableSetId: "set-legacy",
-                period: 31,
-                startTime: "1970-01-01T19:00:00.000Z",
-                endTime: "1970-01-01T20:00:00.000Z",
-              },
-            ],
-          },
-        ],
-        isPending: false,
-        isFetching: false,
-        error: null,
-      } as unknown as ReturnType<typeof useQuery>);
+    mockedUseWorkplaceDetailQuery.mockReturnValue({
+      data: { id: "workplace-1", name: "青葉塾", type: "CRAM_SCHOOL" },
+      isPending: false,
+      isFetching: false,
+      error: null,
+    } as unknown as ReturnType<typeof useWorkplaceDetailQuery>);
+    mockedUseWorkplaceTimetablesQuery.mockReturnValue({
+      data: [
+        {
+          id: "set-legacy",
+          workplaceId: "workplace-1",
+          name: "旧時間割",
+          sortOrder: 0,
+          createdAt: "2026-03-01T00:00:00.000Z",
+          updatedAt: "2026-03-01T00:00:00.000Z",
+          items: [
+            {
+              id: "period-31",
+              timetableSetId: "set-legacy",
+              period: 31,
+              startTime: "1970-01-01T19:00:00.000Z",
+              endTime: "1970-01-01T20:00:00.000Z",
+            },
+          ],
+        },
+      ],
+      isPending: false,
+      isFetching: false,
+      error: null,
+    } as unknown as ReturnType<typeof useWorkplaceTimetablesQuery>);
 
     render(
       <TimetableForm

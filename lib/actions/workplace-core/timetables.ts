@@ -3,13 +3,17 @@ import { randomUUID } from "node:crypto";
 import { Prisma } from "@/lib/generated/prisma/client";
 import { z } from "zod";
 import { requireCurrentUser } from "@/lib/api/current-user";
-import { parseTimeOnly, toMinutes, TIME_ONLY_REGEX } from "@/lib/api/date-time";
+import { parseTimeOnly, TIME_ONLY_REGEX } from "@/lib/api/date-time";
 import { jsonError, parseJsonBody } from "@/lib/api/http";
 import { requireOwnedWorkplace } from "@/lib/api/workplace";
 import { prisma } from "@/lib/prisma";
 import { jsonNoStore } from "@/lib/api/cache-control";
 import { buildSuccessSyncResponse } from "@/lib/google-calendar/sync-response";
 import { getCachedTimetableSetsForWorkplace } from "@/lib/cache/workplace-read-cache";
+import {
+  toTimeOnly,
+  validateTimetableItems,
+} from "@/lib/actions/workplace-core/timetable-utils";
 import {
   BULK_TIMETABLE_SET_COUNT_LIMIT_MESSAGE,
   MAX_BULK_TIMETABLE_SET_COUNT,
@@ -69,40 +73,6 @@ type TimetableSetWithItems = {
     endTime: Date;
   }>;
 };
-
-function toTimeOnly(value: Date): string {
-  const hour = String(value.getUTCHours()).padStart(2, "0");
-  const minute = String(value.getUTCMinutes()).padStart(2, "0");
-  return `${hour}:${minute}`;
-}
-
-function validateTimeRange(startTime: string, endTime: string): boolean {
-  return toMinutes(startTime) < toMinutes(endTime);
-}
-
-function validateItems(items: Array<z.infer<typeof timetableItemSchema>>) {
-  for (const item of items) {
-    if (!validateTimeRange(item.startTime, item.endTime)) {
-      return "startTime は endTime より前にしてください";
-    }
-  }
-
-  const duplicated = new Set<number>();
-  const seen = new Set<number>();
-
-  for (const item of items) {
-    if (seen.has(item.period)) {
-      duplicated.add(item.period);
-    }
-    seen.add(item.period);
-  }
-
-  if (duplicated.size > 0) {
-    return "同じ時間割セット内で period が重複しています";
-  }
-
-  return null;
-}
 
 function buildSetResponse(sets: TimetableSetWithItems[]) {
   return sets.map((set) => ({
@@ -164,7 +134,7 @@ export async function createTimetableRouteAction(
 
     const inputs = normalizeCreateInputs(body.data);
     for (const input of inputs) {
-      const validationError = validateItems(input.items);
+      const validationError = validateTimetableItems(input.items);
       if (validationError) {
         return jsonError(validationError, 400);
       }

@@ -1,7 +1,6 @@
 "use client";
 
 import { useCallback, useReducer } from "react";
-import { useQuery } from "@tanstack/react-query";
 import { useRouter } from "next/navigation";
 import { toast } from "sonner";
 import { FormErrorMessage } from "@/components/form/form-error-message";
@@ -27,14 +26,17 @@ import { dateKeyFromApiDate } from "@/lib/calendar/date";
 import { formatHolidayType, formatWorkplaceType } from "@/lib/enum-labels";
 import { parseGoogleSyncStateFromPayload } from "@/lib/google-calendar/clientSync";
 import { messages, toErrorMessage } from "@/lib/messages";
-import { fetchJson } from "@/lib/query/fetch-json";
 import { invalidateAfterPayrollRuleMutation } from "@/lib/query/invalidation";
 import { buildMutationSuccessDescription } from "@/lib/query/mutation-toast";
 import { getBrowserQueryClient } from "@/lib/query/query-client";
-import { queryKeys } from "@/lib/query/query-keys";
+import {
+  type PayrollRuleDetailItem,
+  type WorkplaceDetailItem,
+  useWorkplaceDetailQuery,
+  useWorkplacePayrollRuleDetailQuery,
+} from "@/lib/query/queries/workplaces";
 import { toUserFacingMessage } from "@/lib/user-facing-error";
 
-type WorkplaceType = "GENERAL" | "CRAM_SCHOOL";
 type HolidayType = "NONE" | "WEEKEND" | "HOLIDAY" | "WEEKEND_HOLIDAY";
 type PayrollRuleFormMode = "create" | "edit";
 
@@ -56,27 +58,6 @@ type FormValues = {
 };
 
 type FormErrors = Partial<Record<keyof FormValues | "form", string>>;
-type NumericValue = string | number;
-
-type WorkplaceSummary = {
-  id: string;
-  name: string;
-  type: WorkplaceType;
-};
-
-type PayrollRuleDetail = {
-  id: string;
-  workplaceId: string;
-  startDate: string;
-  endDate: string | null;
-  baseHourlyWage: NumericValue;
-  holidayAllowanceHourly: NumericValue | null;
-  nightPremiumRate: NumericValue;
-  overtimePremiumRate: NumericValue;
-  dailyOvertimeThreshold: NumericValue;
-  holidayType: HolidayType;
-};
-
 type PayrollRuleFormState = {
   values: FormValues;
   errors: FormErrors;
@@ -99,7 +80,7 @@ type PayrollRuleEditorFormProps = {
   mode: PayrollRuleFormMode;
   workplaceId: string;
   ruleId?: string;
-  workplace?: WorkplaceSummary | null;
+  workplace?: WorkplaceDetailItem | null;
   initialValues: FormValues | null;
   listHref: string;
   externalFormError?: string;
@@ -151,10 +132,6 @@ function isRecord(value: unknown): value is Record<string, unknown> {
   return typeof value === "object" && value !== null;
 }
 
-function isWorkplaceType(value: unknown): value is WorkplaceType {
-  return value === "GENERAL" || value === "CRAM_SCHOOL";
-}
-
 function isHolidayType(value: unknown): value is HolidayType {
   return (
     value === "NONE" ||
@@ -162,67 +139,6 @@ function isHolidayType(value: unknown): value is HolidayType {
     value === "HOLIDAY" ||
     value === "WEEKEND_HOLIDAY"
   );
-}
-
-function isNumericValue(value: unknown): value is NumericValue {
-  return typeof value === "number" || typeof value === "string";
-}
-
-function parseWorkplaceResponse(payload: unknown): WorkplaceSummary | null {
-  if (!isRecord(payload) || !isRecord(payload.data)) {
-    return null;
-  }
-
-  const data = payload.data;
-  if (
-    typeof data.id !== "string" ||
-    typeof data.name !== "string" ||
-    !isWorkplaceType(data.type)
-  ) {
-    return null;
-  }
-
-  return {
-    id: data.id,
-    name: data.name,
-    type: data.type,
-  };
-}
-
-function parsePayrollRuleResponse(payload: unknown): PayrollRuleDetail | null {
-  if (!isRecord(payload) || !isRecord(payload.data)) {
-    return null;
-  }
-
-  const data = payload.data;
-  if (
-    typeof data.id !== "string" ||
-    typeof data.workplaceId !== "string" ||
-    typeof data.startDate !== "string" ||
-    (typeof data.endDate !== "string" && data.endDate !== null) ||
-    !isNumericValue(data.baseHourlyWage) ||
-    (!isNumericValue(data.holidayAllowanceHourly) &&
-      data.holidayAllowanceHourly !== null) ||
-    !isNumericValue(data.nightPremiumRate) ||
-    !isNumericValue(data.overtimePremiumRate) ||
-    !isNumericValue(data.dailyOvertimeThreshold) ||
-    !isHolidayType(data.holidayType)
-  ) {
-    return null;
-  }
-
-  return {
-    id: data.id,
-    workplaceId: data.workplaceId,
-    startDate: data.startDate,
-    endDate: data.endDate,
-    baseHourlyWage: data.baseHourlyWage,
-    holidayAllowanceHourly: data.holidayAllowanceHourly,
-    nightPremiumRate: data.nightPremiumRate,
-    overtimePremiumRate: data.overtimePremiumRate,
-    dailyOvertimeThreshold: data.dailyOvertimeThreshold,
-    holidayType: data.holidayType,
-  };
 }
 
 function parseUpsertWarningMessage(payload: unknown): string | null {
@@ -278,7 +194,9 @@ function createInitialPayrollRuleValues(): FormValues {
   };
 }
 
-function createFormValuesFromPayrollRule(rule: PayrollRuleDetail): FormValues {
+function createFormValuesFromPayrollRule(
+  rule: PayrollRuleDetailItem,
+): FormValues {
   return {
     startDate: dateKeyFromApiDate(rule.startDate),
     endDate: rule.endDate
@@ -978,24 +896,10 @@ export function PayrollRuleForm({
     error: workplaceError,
     isPending: isWorkplacePending,
     isFetching: isWorkplaceFetching,
-  } = useQuery({
-    queryKey: queryKeys.workplaces.detailSummary({
-      workplaceId,
-    }),
-    queryFn: ({ signal }) =>
-      fetchJson(`/api/workplaces/${workplaceId}`, {
-        init: { signal, cache: "no-store" },
-        fallbackMessage: "勤務先情報の取得に失敗しました。",
-        parse: (payload) => {
-          const parsed = parseWorkplaceResponse(payload);
-          if (!parsed) {
-            throw new Error("WORKPLACE_RESPONSE_INVALID");
-          }
-          return parsed;
-        },
-      }),
-    staleTime: 5 * 60 * 1000,
-    gcTime: 15 * 60 * 1000,
+  } = useWorkplaceDetailQuery({
+    workplaceId,
+    requestCache: "no-store",
+    fallbackMessage: "勤務先情報の取得に失敗しました。",
     refetchOnWindowFocus: false,
     refetchOnReconnect: false,
   });
@@ -1005,26 +909,11 @@ export function PayrollRuleForm({
     error: payrollRuleError,
     isPending: isPayrollRulePending,
     isFetching: isPayrollRuleFetching,
-  } = useQuery({
-    queryKey: queryKeys.workplaces.payrollRuleDetail({
-      workplaceId,
-      ruleId: ruleId ?? "",
-    }),
-    queryFn: ({ signal }) =>
-      fetchJson(`/api/workplaces/${workplaceId}/payroll-rules/${ruleId}`, {
-        init: { signal, cache: "no-store" },
-        fallbackMessage: "給与ルールの取得に失敗しました。",
-        parse: (payload) => {
-          const parsed = parsePayrollRuleResponse(payload);
-          if (!parsed) {
-            throw new Error("PAYROLL_RULE_RESPONSE_INVALID");
-          }
-          return parsed;
-        },
-      }),
+  } = useWorkplacePayrollRuleDetailQuery({
+    workplaceId,
+    ruleId: ruleId ?? "",
     enabled: isEdit && Boolean(ruleId),
-    staleTime: 5 * 60 * 1000,
-    gcTime: 15 * 60 * 1000,
+    requestCache: "no-store",
     refetchOnWindowFocus: false,
     refetchOnReconnect: false,
   });

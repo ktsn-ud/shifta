@@ -1,7 +1,6 @@
 "use client";
 
 import { useCallback, useReducer } from "react";
-import { useQuery } from "@tanstack/react-query";
 import { useRouter } from "next/navigation";
 import { PlusIcon, Trash2Icon } from "lucide-react";
 import { toast } from "sonner";
@@ -31,11 +30,14 @@ import {
 } from "@/lib/actions/workplace";
 import { parseGoogleSyncStateFromPayload } from "@/lib/google-calendar/clientSync";
 import { messages, toErrorMessage } from "@/lib/messages";
-import { fetchJson } from "@/lib/query/fetch-json";
 import { invalidateAfterTimetableMutation } from "@/lib/query/invalidation";
 import { buildMutationSuccessDescription } from "@/lib/query/mutation-toast";
 import { getBrowserQueryClient } from "@/lib/query/query-client";
-import { queryKeys } from "@/lib/query/query-keys";
+import {
+  type TimetableSetItem,
+  useWorkplaceDetailQuery,
+  useWorkplaceTimetablesQuery,
+} from "@/lib/query/queries/workplaces";
 import { toUserFacingMessage } from "@/lib/user-facing-error";
 import {
   BULK_TIMETABLE_SET_COUNT_LIMIT_MESSAGE,
@@ -54,32 +56,6 @@ type TimetableFormProps = {
   mode: TimetableFormMode;
   workplaceId: string;
   timetableId?: string;
-};
-
-type WorkplaceSummary = {
-  id: string;
-  name: string;
-  type: "GENERAL" | "CRAM_SCHOOL";
-};
-
-type TimetableItem = {
-  id: string;
-  timetableSetId: string;
-  period: number;
-  startTime: string;
-  endTime: string;
-  startTimeLabel?: string;
-  endTimeLabel?: string;
-};
-
-type TimetableSet = {
-  id: string;
-  workplaceId: string;
-  name: string;
-  sortOrder: number;
-  createdAt: string;
-  updatedAt: string;
-  items: TimetableItem[];
 };
 
 type FormItemValues = {
@@ -192,81 +168,6 @@ function createDraftEntityId(prefix: string): string {
   return `${prefix}-${nextDraftEntityId}`;
 }
 
-function isRecord(value: unknown): value is Record<string, unknown> {
-  return typeof value === "object" && value !== null;
-}
-
-function parseWorkplaceResponse(payload: unknown): WorkplaceSummary | null {
-  if (!isRecord(payload) || !isRecord(payload.data)) {
-    return null;
-  }
-
-  const data = payload.data;
-  if (
-    typeof data.id !== "string" ||
-    typeof data.name !== "string" ||
-    (data.type !== "GENERAL" && data.type !== "CRAM_SCHOOL")
-  ) {
-    return null;
-  }
-
-  return {
-    id: data.id,
-    name: data.name,
-    type: data.type,
-  };
-}
-
-function isTimetableItem(value: unknown): value is TimetableItem {
-  if (!isRecord(value)) {
-    return false;
-  }
-
-  return (
-    typeof value.id === "string" &&
-    typeof value.timetableSetId === "string" &&
-    typeof value.period === "number" &&
-    Number.isInteger(value.period) &&
-    value.period > 0 &&
-    typeof value.startTime === "string" &&
-    typeof value.endTime === "string" &&
-    (value.startTimeLabel === undefined ||
-      typeof value.startTimeLabel === "string") &&
-    (value.endTimeLabel === undefined || typeof value.endTimeLabel === "string")
-  );
-}
-
-function isTimetableSet(value: unknown): value is TimetableSet {
-  if (!isRecord(value) || !Array.isArray(value.items)) {
-    return false;
-  }
-
-  return (
-    typeof value.id === "string" &&
-    typeof value.workplaceId === "string" &&
-    typeof value.name === "string" &&
-    typeof value.sortOrder === "number" &&
-    Number.isInteger(value.sortOrder) &&
-    typeof value.createdAt === "string" &&
-    typeof value.updatedAt === "string" &&
-    value.items.every(isTimetableItem)
-  );
-}
-
-function parseTimetableSetListResponse(
-  payload: unknown,
-): TimetableSet[] | null {
-  if (!isRecord(payload) || !Array.isArray(payload.data)) {
-    return null;
-  }
-
-  if (payload.data.every(isTimetableSet) === false) {
-    return null;
-  }
-
-  return payload.data;
-}
-
 function toTimeOnly(value: string): string {
   const date = new Date(value);
   if (Number.isNaN(date.getTime())) {
@@ -307,7 +208,7 @@ function cloneFormValues(values: FormValues): FormValues {
 }
 
 function createFormValuesFromTimetableSet(
-  timetableSet: TimetableSet,
+  timetableSet: TimetableSetItem,
 ): FormValues {
   const items = timetableSet.items
     .slice()
@@ -1179,24 +1080,9 @@ export function TimetableForm({
     error: workplaceError,
     isPending: isWorkplacePending,
     isFetching: isWorkplaceFetching,
-  } = useQuery({
-    queryKey: queryKeys.workplaces.detailSummary({
-      workplaceId,
-    }),
-    queryFn: ({ signal }) =>
-      fetchJson(`/api/workplaces/${workplaceId}`, {
-        init: { signal },
-        fallbackMessage: "勤務先情報の取得に失敗しました。",
-        parse: (payload) => {
-          const parsed = parseWorkplaceResponse(payload);
-          if (!parsed) {
-            throw new Error("WORKPLACE_RESPONSE_INVALID");
-          }
-          return parsed;
-        },
-      }),
-    staleTime: 5 * 60 * 1000,
-    gcTime: 15 * 60 * 1000,
+  } = useWorkplaceDetailQuery({
+    workplaceId,
+    fallbackMessage: "勤務先情報の取得に失敗しました。",
     refetchOnWindowFocus: false,
     refetchOnReconnect: false,
   });
@@ -1206,26 +1092,10 @@ export function TimetableForm({
     error: timetableError,
     isPending: isTimetablePending,
     isFetching: isTimetableFetching,
-  } = useQuery({
-    queryKey: queryKeys.workplaces.timetables({
-      workplaceId,
-    }),
-    queryFn: ({ signal }) =>
-      fetchJson(`/api/workplaces/${workplaceId}/timetables`, {
-        init: { signal },
-        fallbackMessage: "時間割一覧の取得に失敗しました。",
-        parse: (payload) => {
-          const parsed = parseTimetableSetListResponse(payload);
-          if (!parsed) {
-            throw new Error("TIMETABLE_LIST_RESPONSE_INVALID");
-          }
-          return parsed;
-        },
-      }),
+  } = useWorkplaceTimetablesQuery({
+    workplaceId,
     enabled:
       isEdit && Boolean(timetableId) && workplace?.type === "CRAM_SCHOOL",
-    staleTime: 5 * 60 * 1000,
-    gcTime: 15 * 60 * 1000,
     refetchOnWindowFocus: false,
     refetchOnReconnect: false,
   });
