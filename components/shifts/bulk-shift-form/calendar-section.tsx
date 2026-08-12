@@ -62,6 +62,8 @@ export function BulkShiftCalendarSection(
     handleToggleDateSelection,
     handleClearSelectedDates,
   } = props;
+  const selectedCalendarIdSet = new Set(selectedCalendarIds);
+  const selectedDateKeySet = new Set(selectedDateKeys);
 
   return (
     <section className="space-y-4 rounded-xl border p-4">
@@ -125,7 +127,7 @@ export function BulkShiftCalendarSection(
                       className="flex items-center gap-2 rounded-md border px-2 py-1.5 text-xs"
                     >
                       <Checkbox
-                        checked={selectedCalendarIds.includes(calendar.id)}
+                        checked={selectedCalendarIdSet.has(calendar.id)}
                         onCheckedChange={(checked) =>
                           handleToggleCalendarSelection(
                             calendar.id,
@@ -190,7 +192,7 @@ export function BulkShiftCalendarSection(
 
               <div className="grid grid-cols-7">
                 {calendarCells.map((cell) => {
-                  const isSelected = selectedDateKeys.includes(cell.key);
+                  const isSelected = selectedDateKeySet.has(cell.key);
                   const hasReachedSelectionLimit =
                     selectedDateKeys.length >= MAX_BULK_SHIFT_COUNT;
                   const isDisabledBySelectionLimit =

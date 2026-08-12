@@ -126,7 +126,12 @@ export function parseCalendarEventsMonth(
 
 export function normalizeRequestedCalendarIds(values: string[]): string[] {
   return Array.from(
-    new Set(values.map((value) => value.trim()).filter(Boolean)),
+    new Set(
+      values.flatMap((value) => {
+        const trimmed = value.trim();
+        return trimmed ? [trimmed] : [];
+      }),
+    ),
   )
     .sort((left, right) => left.localeCompare(right))
     .slice(0, MAX_SELECTED_CALENDAR_COUNT);

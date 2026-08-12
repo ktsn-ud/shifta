@@ -9,30 +9,30 @@ import {
   useUnconfirmedShiftsQuery,
 } from "@/lib/query/queries/shift-confirmation";
 
-const unconfirmedShiftsPayload = {
-  shifts: [
-    {
-      id: "shift-1",
-      workplaceId: "workplace-1",
-      comment: null,
-      date: "2026-01-15",
-      startTime: "09:00",
-      endTime: "10:00",
-      breakMinutes: 0,
-      isConfirmed: false,
-      workplace: {
-        id: "workplace-1",
-        name: "勤務先A",
-        color: "#3366FF",
+function createUnconfirmedShiftsPayload() {
+  return {
+    shifts: [
+      {
+        id: "shift-1",
+        workplaceId: "workplace-1",
+        comment: null,
+        date: "2026-01-15",
+        startTime: "09:00",
+        endTime: "10:00",
+        breakMinutes: 0,
+        isConfirmed: false,
+        workplace: {
+          id: "workplace-1",
+          name: "勤務先A",
+          color: "#3366FF",
+        },
       },
-    },
-  ],
-};
+    ],
+  };
+}
 
-const unconfirmedShiftCountPayload = { count: 1 };
-
-function copy<T>(value: T): T {
-  return JSON.parse(JSON.stringify(value)) as T;
+function createUnconfirmedShiftCountPayload() {
+  return { count: 1 };
 }
 
 function createMockResponse(payload: unknown): Response {
@@ -91,23 +91,23 @@ describe("未確定シフトクエリ DTO スキーマ", () => {
     [
       "未確定シフト一覧",
       unconfirmedShiftsResponseSchema,
-      unconfirmedShiftsPayload,
+      createUnconfirmedShiftsPayload(),
     ],
     [
       "未確定シフト件数",
       unconfirmedShiftCountResponseSchema,
-      unconfirmedShiftCountPayload,
+      createUnconfirmedShiftCountPayload(),
     ],
   ])("実際の DTO 形状の %s レスポンスを受理する", (_name, schema, payload) => {
     expect(schema.safeParse(payload).success).toBe(true);
   });
 
   it("未知キー、null 行、勤務先ネストの欠落を拒否する", () => {
-    const unknownKeyPayload = copy(unconfirmedShiftsPayload);
+    const unknownKeyPayload = createUnconfirmedShiftsPayload();
     Reflect.set(unknownKeyPayload.shifts[0].workplace, "unexpected", true);
-    const nullRowPayload = copy(unconfirmedShiftsPayload);
+    const nullRowPayload = createUnconfirmedShiftsPayload();
     nullRowPayload.shifts[0] = null as never;
-    const missingWorkplacePayload = copy(unconfirmedShiftsPayload);
+    const missingWorkplacePayload = createUnconfirmedShiftsPayload();
     Reflect.deleteProperty(missingWorkplacePayload.shifts[0], "workplace");
 
     expect(
@@ -123,11 +123,11 @@ describe("未確定シフトクエリ DTO スキーマ", () => {
   });
 
   it("未確定フラグ、日付、時刻が欠落または不正な行を拒否する", () => {
-    const missingConfirmedPayload = copy(unconfirmedShiftsPayload);
+    const missingConfirmedPayload = createUnconfirmedShiftsPayload();
     Reflect.deleteProperty(missingConfirmedPayload.shifts[0], "isConfirmed");
-    const invalidDatePayload = copy(unconfirmedShiftsPayload);
+    const invalidDatePayload = createUnconfirmedShiftsPayload();
     invalidDatePayload.shifts[0].date = "2026-02-30";
-    const invalidTimePayload = copy(unconfirmedShiftsPayload);
+    const invalidTimePayload = createUnconfirmedShiftsPayload();
     invalidTimePayload.shifts[0].endTime = "24:00";
 
     expect(
@@ -143,7 +143,7 @@ describe("未確定シフトクエリ DTO スキーマ", () => {
   });
 
   it("確定済みの行を未確定シフト一覧レスポンスとして拒否する", () => {
-    const confirmedShiftPayload = copy(unconfirmedShiftsPayload);
+    const confirmedShiftPayload = createUnconfirmedShiftsPayload();
     confirmedShiftPayload.shifts[0].isConfirmed = true;
 
     expect(
@@ -152,9 +152,9 @@ describe("未確定シフトクエリ DTO スキーマ", () => {
   });
 
   it("休憩分数と未確定件数は非負の整数だけを受理する", () => {
-    const negativeBreakPayload = copy(unconfirmedShiftsPayload);
+    const negativeBreakPayload = createUnconfirmedShiftsPayload();
     negativeBreakPayload.shifts[0].breakMinutes = -1;
-    const fractionalBreakPayload = copy(unconfirmedShiftsPayload);
+    const fractionalBreakPayload = createUnconfirmedShiftsPayload();
     fractionalBreakPayload.shifts[0].breakMinutes = 0.5;
     const negativeCountPayload = { count: -1 };
     const fractionalCountPayload = { count: 0.5 };
@@ -192,7 +192,7 @@ describe("未確定シフトクエリの fetchJson 境界", () => {
       name: "確定済み行を含む未確定シフト一覧",
       fallbackMessage: "未確定シフトの取得に失敗しました。",
       payload: (() => {
-        const payload = copy(unconfirmedShiftsPayload);
+        const payload = createUnconfirmedShiftsPayload();
         payload.shifts[0].isConfirmed = true;
         return payload;
       })(),

@@ -20,168 +20,192 @@ import {
   usePayrollSummaryYearContextQuery,
 } from "@/lib/query/queries/payroll";
 
-const workplace = {
-  workplaceId: "workplace-1",
-  workplaceName: "勤務先A",
-  workplaceColor: "#3366FF",
-};
+function createWorkplace() {
+  return {
+    workplaceId: "workplace-1",
+    workplaceName: "勤務先A",
+    workplaceColor: "#3366FF",
+  };
+}
 
-const amounts = {
-  taxableAmount: 1200,
-  nonTaxableAmount: 0,
-  totalAmount: 1200,
-};
+function createAmounts() {
+  return {
+    taxableAmount: 1200,
+    nonTaxableAmount: 0,
+    totalAmount: 1200,
+  };
+}
 
-const coverage = {
-  ...amounts,
-  registeredWorkplaceCount: 1,
-  totalWorkplaceCount: 1,
-  isPartial: false,
-};
+function createCoverage() {
+  return {
+    ...createAmounts(),
+    registeredWorkplaceCount: 1,
+    totalWorkplaceCount: 1,
+    isPartial: false,
+  };
+}
 
-const displayValue = {
-  estimatedAmount: 1200,
-  actualAmount: null,
-  displayAmount: 1200,
-  differenceAmount: 0,
-  isActualApplied: false,
-};
+function createDisplayValue() {
+  return {
+    estimatedAmount: 1200,
+    actualAmount: null,
+    displayAmount: 1200,
+    differenceAmount: 0,
+    isActualApplied: false,
+  };
+}
 
-const breakdown = {
-  totalWorkHours: 1,
-  baseHours: 1,
-  holidayHours: 0,
-  nightHours: 0,
-  overtimeHours: 0,
-  totalWage: 1200,
-  baseWage: 1200,
-  holidayWage: 0,
-  nightWage: 0,
-  workDuration: "1:00",
-  baseDuration: "1:00",
-  holidayDuration: "0:00",
-  nightDuration: "0:00",
-  overtimeDuration: "0:00",
-  effectiveBaseHourlyWage: 1200,
-  effectiveHolidayAllowanceHourly: null,
-  effectiveNightHourlyWage: null,
-  effectiveNightPremiumRate: null,
-};
+function createBreakdown() {
+  return {
+    totalWorkHours: 1,
+    baseHours: 1,
+    holidayHours: 0,
+    nightHours: 0,
+    overtimeHours: 0,
+    totalWage: 1200,
+    baseWage: 1200,
+    holidayWage: 0,
+    nightWage: 0,
+    workDuration: "1:00",
+    baseDuration: "1:00",
+    holidayDuration: "0:00",
+    nightDuration: "0:00",
+    overtimeDuration: "0:00",
+    effectiveBaseHourlyWage: 1200,
+    effectiveHolidayAllowanceHourly: null,
+    effectiveNightHourlyWage: null,
+    effectiveNightPremiumRate: null,
+  };
+}
 
-const payrollSummaryPayload = {
-  year: 2026,
-  workplaces: [workplace],
-  months: Array.from({ length: 12 }, (_, index) => ({
-    month: index + 1,
-    monthKey: `2026-${String(index + 1).padStart(2, "0")}`,
-    incomeByWorkplace: [{ workplaceId: "workplace-1", ...amounts }],
-    hoursByWorkplace: [{ workplaceId: "workplace-1", totalWorkHours: 1 }],
-    totals: { ...amounts, totalWorkHours: 1 },
-  })),
-  yearlyTotals: {
-    byWorkplace: [
-      { workplaceId: "workplace-1", ...amounts, totalWorkHours: 1 },
-    ],
-    grandTotals: { ...amounts, totalWorkHours: 1 },
-  },
-};
-
-const payrollSummaryYearContextPayload = {
-  month: "2026-01",
-  currentMonthCumulative: 1200,
-  yearlyTotal: 1200,
-  currentMonthActualCoverage: coverage,
-  yearlyActualCoverage: coverage,
-  estimatedCurrentMonthCumulative: 1200,
-  estimatedYearlyTotal: 1200,
-};
-
-const payrollSummaryAmountPayload = {
-  month: "2026-01",
-  totalWage: 1200,
-};
-
-const actualPayrollPayload = {
-  month: "2026-01",
-  rows: [
-    {
-      ...workplace,
-      periodStartDate: "2025-12-16",
-      periodEndDate: "2026-01-15",
-      estimatedAmount: 1200,
-      taxableAmount: null,
-      nonTaxableAmount: null,
-      totalActualAmount: null,
-      displayAmount: 1200,
-      differenceAmount: 0,
-      note: null,
-      hasActualPayroll: false,
+function createPayrollSummaryPayload() {
+  return {
+    year: 2026,
+    workplaces: [createWorkplace()],
+    months: Array.from({ length: 12 }, (_, index) => ({
+      month: index + 1,
+      monthKey: `2026-${String(index + 1).padStart(2, "0")}`,
+      incomeByWorkplace: [{ workplaceId: "workplace-1", ...createAmounts() }],
+      hoursByWorkplace: [{ workplaceId: "workplace-1", totalWorkHours: 1 }],
+      totals: { ...createAmounts(), totalWorkHours: 1 },
+    })),
+    yearlyTotals: {
+      byWorkplace: [
+        {
+          workplaceId: "workplace-1",
+          ...createAmounts(),
+          totalWorkHours: 1,
+        },
+      ],
+      grandTotals: { ...createAmounts(), totalWorkHours: 1 },
     },
-  ],
-};
+  };
+}
 
-const payrollDetailsMonthlyPayload = {
-  month: "2026-01",
-  shiftCount: 1,
-  totals: breakdown,
-  totalsDisplayValue: displayValue,
-  actualCoverage: coverage,
-  byWorkplace: [
-    {
-      ...workplace,
-      periodStartDate: "2025-12-16",
-      periodEndDate: "2026-01-15",
-      displayValue,
-      actualPayroll: null,
-      ...breakdown,
-    },
-  ],
-};
+function createPayrollSummaryYearContextPayload() {
+  return {
+    month: "2026-01",
+    currentMonthCumulative: 1200,
+    yearlyTotal: 1200,
+    currentMonthActualCoverage: createCoverage(),
+    yearlyActualCoverage: createCoverage(),
+    estimatedCurrentMonthCumulative: 1200,
+    estimatedYearlyTotal: 1200,
+  };
+}
 
-const payrollDetailsWorkplaceYearlyPayload = {
-  year: 2026,
-  shiftCount: 1,
-  workplaces: [
-    {
-      ...workplace,
-      shiftCount: 1,
-      yearlyTotals: breakdown,
-      yearlyDisplayValue: displayValue,
-      actualCoverage: coverage,
-      months: Array.from({ length: 12 }, (_, index) => ({
-        month: index + 1,
-        monthKey: `2026-${String(index + 1).padStart(2, "0")}`,
+function createPayrollSummaryAmountPayload() {
+  return {
+    month: "2026-01",
+    totalWage: 1200,
+  };
+}
+
+function createActualPayrollPayload() {
+  return {
+    month: "2026-01",
+    rows: [
+      {
+        ...createWorkplace(),
         periodStartDate: "2025-12-16",
         periodEndDate: "2026-01-15",
-        displayValue,
-        actualPayroll: null,
-        ...breakdown,
-      })),
-    },
-  ],
-};
-
-const payrollPreviewBaselinePayload = {
-  data: {
-    months: [
-      {
-        month: "2026-01",
-        totalWage: 1200,
-        byWorkplace: [
-          {
-            workplaceId: "workplace-1",
-            wage: 1200,
-            periodStartDate: "2025-12-16",
-            periodEndDate: "2026-01-15",
-          },
-        ],
+        estimatedAmount: 1200,
+        taxableAmount: null,
+        nonTaxableAmount: null,
+        totalActualAmount: null,
+        displayAmount: 1200,
+        differenceAmount: 0,
+        note: null,
+        hasActualPayroll: false,
       },
     ],
-  },
-};
+  };
+}
 
-function copy<T>(value: T): T {
-  return JSON.parse(JSON.stringify(value)) as T;
+function createPayrollDetailsMonthlyPayload() {
+  return {
+    month: "2026-01",
+    shiftCount: 1,
+    totals: createBreakdown(),
+    totalsDisplayValue: createDisplayValue(),
+    actualCoverage: createCoverage(),
+    byWorkplace: [
+      {
+        ...createWorkplace(),
+        periodStartDate: "2025-12-16",
+        periodEndDate: "2026-01-15",
+        displayValue: createDisplayValue(),
+        actualPayroll: null,
+        ...createBreakdown(),
+      },
+    ],
+  };
+}
+
+function createPayrollDetailsWorkplaceYearlyPayload() {
+  return {
+    year: 2026,
+    shiftCount: 1,
+    workplaces: [
+      {
+        ...createWorkplace(),
+        shiftCount: 1,
+        yearlyTotals: createBreakdown(),
+        yearlyDisplayValue: createDisplayValue(),
+        actualCoverage: createCoverage(),
+        months: Array.from({ length: 12 }, (_, index) => ({
+          month: index + 1,
+          monthKey: `2026-${String(index + 1).padStart(2, "0")}`,
+          periodStartDate: "2025-12-16",
+          periodEndDate: "2026-01-15",
+          displayValue: createDisplayValue(),
+          actualPayroll: null,
+          ...createBreakdown(),
+        })),
+      },
+    ],
+  };
+}
+
+function createPayrollPreviewBaselinePayload() {
+  return {
+    data: {
+      months: [
+        {
+          month: "2026-01",
+          totalWage: 1200,
+          byWorkplace: [
+            {
+              workplaceId: "workplace-1",
+              wage: 1200,
+              periodStartDate: "2025-12-16",
+              periodEndDate: "2026-01-15",
+            },
+          ],
+        },
+      ],
+    },
+  };
 }
 
 function createMockResponse(payload: unknown): Response {
@@ -237,41 +261,45 @@ function createInvalidResponseRun(input: {
 
 describe("給与クエリ DTO スキーマ", () => {
   it.each([
-    ["年次サマリー", payrollSummaryResponseSchema, payrollSummaryPayload],
+    [
+      "年次サマリー",
+      payrollSummaryResponseSchema,
+      createPayrollSummaryPayload(),
+    ],
     [
       "年次サマリー累計",
       payrollSummaryYearContextResponseSchema,
-      payrollSummaryYearContextPayload,
+      createPayrollSummaryYearContextPayload(),
     ],
     [
       "次回支給額",
       payrollSummaryAmountResponseSchema,
-      payrollSummaryAmountPayload,
+      createPayrollSummaryAmountPayload(),
     ],
-    ["実給与編集", actualPayrollResponseSchema, actualPayrollPayload],
+    ["実給与編集", actualPayrollResponseSchema, createActualPayrollPayload()],
     [
       "給与詳細（月毎）",
       payrollDetailsMonthlyResponseSchema,
-      payrollDetailsMonthlyPayload,
+      createPayrollDetailsMonthlyPayload(),
     ],
     [
       "給与詳細（勤務先毎）",
       payrollDetailsWorkplaceYearlyResponseSchema,
-      payrollDetailsWorkplaceYearlyPayload,
+      createPayrollDetailsWorkplaceYearlyPayload(),
     ],
     [
       "支給見込プレビュー",
       payrollPreviewBaselineResponseSchema,
-      payrollPreviewBaselinePayload,
+      createPayrollPreviewBaselinePayload(),
     ],
   ])("実際の DTO 形状の %s レスポンスを受理する", (_name, schema, payload) => {
     expect(schema.safeParse(payload).success).toBe(true);
   });
 
   it("未知キーと必須ネスト項目の欠落を拒否する", () => {
-    const unknownKeyPayload = copy(payrollSummaryPayload);
+    const unknownKeyPayload = createPayrollSummaryPayload();
     Reflect.set(unknownKeyPayload.months[0].totals, "unexpected", true);
-    const missingNestedPayload = copy(payrollDetailsMonthlyPayload);
+    const missingNestedPayload = createPayrollDetailsMonthlyPayload();
     Reflect.deleteProperty(missingNestedPayload.byWorkplace[0], "displayValue");
 
     expect(
@@ -284,11 +312,11 @@ describe("給与クエリ DTO スキーマ", () => {
   });
 
   it("null の行と非有限数を含むネスト値を拒否する", () => {
-    const nullRowPayload = copy(actualPayrollPayload);
+    const nullRowPayload = createActualPayrollPayload();
     nullRowPayload.rows[0] = null as never;
-    const infiniteAmountPayload = copy(payrollSummaryYearContextPayload);
+    const infiniteAmountPayload = createPayrollSummaryYearContextPayload();
     infiniteAmountPayload.currentMonthActualCoverage.totalAmount = Infinity;
-    const nanBreakdownPayload = copy(payrollDetailsMonthlyPayload);
+    const nanBreakdownPayload = createPayrollDetailsMonthlyPayload();
     nanBreakdownPayload.totals.totalWorkHours = Number.NaN;
 
     expect(actualPayrollResponseSchema.safeParse(nullRowPayload).success).toBe(
@@ -305,9 +333,9 @@ describe("給与クエリ DTO スキーマ", () => {
   });
 
   it("件数は非負の整数だけを受理する", () => {
-    const negativeCountPayload = copy(payrollDetailsMonthlyPayload);
+    const negativeCountPayload = createPayrollDetailsMonthlyPayload();
     negativeCountPayload.shiftCount = -1;
-    const fractionalCountPayload = copy(payrollDetailsWorkplaceYearlyPayload);
+    const fractionalCountPayload = createPayrollDetailsWorkplaceYearlyPayload();
     fractionalCountPayload.workplaces[0].shiftCount = 0.5;
 
     expect(
@@ -322,13 +350,13 @@ describe("給与クエリ DTO スキーマ", () => {
   });
 
   it("月番号は 1 から 12、月キーと日付は正しい形式だけを受理する", () => {
-    const zeroMonthPayload = copy(payrollSummaryPayload);
+    const zeroMonthPayload = createPayrollSummaryPayload();
     zeroMonthPayload.months[0].month = 0;
-    const thirteenthMonthPayload = copy(payrollDetailsWorkplaceYearlyPayload);
+    const thirteenthMonthPayload = createPayrollDetailsWorkplaceYearlyPayload();
     thirteenthMonthPayload.workplaces[0].months[0].month = 13;
-    const invalidMonthKeyPayload = copy(payrollSummaryAmountPayload);
+    const invalidMonthKeyPayload = createPayrollSummaryAmountPayload();
     invalidMonthKeyPayload.month = "2026-13";
-    const invalidDatePayload = copy(payrollPreviewBaselinePayload);
+    const invalidDatePayload = createPayrollPreviewBaselinePayload();
     invalidDatePayload.data.months[0].byWorkplace[0].periodEndDate =
       "2026-02-30";
 
@@ -351,20 +379,21 @@ describe("給与クエリ DTO スキーマ", () => {
   });
 
   it("nullable な実給与値は null を受理し、不正な値を拒否する", () => {
-    const invalidActualValuePayload = copy(actualPayrollPayload);
+    const invalidActualValuePayload = createActualPayrollPayload();
     invalidActualValuePayload.rows[0].taxableAmount = "1200" as never;
-    const invalidActualRecordPayload = copy(payrollDetailsMonthlyPayload);
+    const invalidActualRecordPayload = createPayrollDetailsMonthlyPayload();
     invalidActualRecordPayload.byWorkplace[0].actualPayroll = {
-      ...amounts,
+      ...createAmounts(),
       note: 1,
     } as never;
 
     expect(
-      actualPayrollResponseSchema.safeParse(actualPayrollPayload).success,
+      actualPayrollResponseSchema.safeParse(createActualPayrollPayload())
+        .success,
     ).toBe(true);
     expect(
       payrollDetailsMonthlyResponseSchema.safeParse(
-        payrollDetailsMonthlyPayload,
+        createPayrollDetailsMonthlyPayload(),
       ).success,
     ).toBe(true);
     expect(
@@ -412,13 +441,16 @@ describe("給与クエリの fetchJson 境界", () => {
     {
       name: "年次サマリーのレスポンス年",
       fallbackMessage: "給与集計の取得に失敗しました。",
-      payload: { ...copy(payrollSummaryPayload), year: 2027 },
+      payload: { ...createPayrollSummaryPayload(), year: 2027 },
       useQuery: () => usePayrollSummaryQuery({ userId: "user-1", year: 2026 }),
     },
     {
       name: "年次サマリー累計のレスポンス月",
       fallbackMessage: "給与集計の累計情報取得に失敗しました。",
-      payload: { ...copy(payrollSummaryYearContextPayload), month: "2026-02" },
+      payload: {
+        ...createPayrollSummaryYearContextPayload(),
+        month: "2026-02",
+      },
       useQuery: () =>
         usePayrollSummaryYearContextQuery({
           userId: "user-1",
@@ -428,28 +460,28 @@ describe("給与クエリの fetchJson 境界", () => {
     {
       name: "次回支給額のレスポンス月",
       fallbackMessage: "次回支給額の取得に失敗しました。",
-      payload: { ...copy(payrollSummaryAmountPayload), month: "2026-02" },
+      payload: { ...createPayrollSummaryAmountPayload(), month: "2026-02" },
       useQuery: () =>
         usePayrollSummaryAmountQuery({ userId: "user-1", month: "2026-01" }),
     },
     {
       name: "実給与編集のレスポンス月",
       fallbackMessage: "実給与の取得に失敗しました。",
-      payload: { ...copy(actualPayrollPayload), month: "2026-02" },
+      payload: { ...createActualPayrollPayload(), month: "2026-02" },
       useQuery: () =>
         useActualPayrollQuery({ userId: "user-1", month: "2026-01" }),
     },
     {
       name: "給与詳細（月毎）のレスポンス月",
       fallbackMessage: "給与詳細（月毎表示）の取得に失敗しました。",
-      payload: { ...copy(payrollDetailsMonthlyPayload), month: "2026-02" },
+      payload: { ...createPayrollDetailsMonthlyPayload(), month: "2026-02" },
       useQuery: () =>
         usePayrollDetailsMonthlyQuery({ userId: "user-1", month: "2026-01" }),
     },
     {
       name: "給与詳細（勤務先毎）のレスポンス年",
       fallbackMessage: "給与詳細（勤務先毎表示）の取得に失敗しました。",
-      payload: { ...copy(payrollDetailsWorkplaceYearlyPayload), year: 2027 },
+      payload: { ...createPayrollDetailsWorkplaceYearlyPayload(), year: 2027 },
       useQuery: () =>
         usePayrollDetailsWorkplaceYearlyQuery({ userId: "user-1", year: 2026 }),
     },
@@ -460,7 +492,7 @@ describe("給与クエリの fetchJson 境界", () => {
         data: {
           months: [
             {
-              ...copy(payrollPreviewBaselinePayload).data.months[0],
+              ...createPayrollPreviewBaselinePayload().data.months[0],
               month: "2026-02",
             },
           ],
@@ -489,8 +521,8 @@ describe("給与クエリの fetchJson 境界", () => {
       name: "年次サマリーが12か月未満",
       fallbackMessage: "給与集計の取得に失敗しました。",
       payload: {
-        ...copy(payrollSummaryPayload),
-        months: copy(payrollSummaryPayload).months.slice(0, 11),
+        ...createPayrollSummaryPayload(),
+        months: createPayrollSummaryPayload().months.slice(0, 11),
       },
       useQuery: () => usePayrollSummaryQuery({ userId: "user-1", year: 2026 }),
     },
@@ -498,8 +530,8 @@ describe("給与クエリの fetchJson 境界", () => {
       name: "年次サマリーの月番号重複",
       fallbackMessage: "給与集計の取得に失敗しました。",
       payload: (() => {
-        const payload = copy(payrollSummaryPayload);
-        payload.months[11] = copy(payload.months[0]);
+        const payload = createPayrollSummaryPayload();
+        payload.months[11] = { ...payload.months[0] };
         return payload;
       })(),
       useQuery: () => usePayrollSummaryQuery({ userId: "user-1", year: 2026 }),
@@ -508,7 +540,7 @@ describe("給与クエリの fetchJson 境界", () => {
       name: "年次サマリーの1月と2月が並び替わっている",
       fallbackMessage: "給与集計の取得に失敗しました。",
       payload: (() => {
-        const payload = copy(payrollSummaryPayload);
+        const payload = createPayrollSummaryPayload();
         [payload.months[0], payload.months[1]] = [
           payload.months[1],
           payload.months[0],
@@ -521,7 +553,7 @@ describe("給与クエリの fetchJson 境界", () => {
       name: "年次サマリーの月番号と月キー不一致",
       fallbackMessage: "給与集計の取得に失敗しました。",
       payload: (() => {
-        const payload = copy(payrollSummaryPayload);
+        const payload = createPayrollSummaryPayload();
         payload.months[0].monthKey = "2026-02";
         return payload;
       })(),
@@ -531,7 +563,7 @@ describe("給与クエリの fetchJson 境界", () => {
       name: "勤務先別年次詳細が12か月未満",
       fallbackMessage: "給与詳細（勤務先毎表示）の取得に失敗しました。",
       payload: (() => {
-        const payload = copy(payrollDetailsWorkplaceYearlyPayload);
+        const payload = createPayrollDetailsWorkplaceYearlyPayload();
         payload.workplaces[0].months = payload.workplaces[0].months.slice(
           0,
           11,
@@ -545,10 +577,10 @@ describe("給与クエリの fetchJson 境界", () => {
       name: "勤務先別年次詳細の月番号重複",
       fallbackMessage: "給与詳細（勤務先毎表示）の取得に失敗しました。",
       payload: (() => {
-        const payload = copy(payrollDetailsWorkplaceYearlyPayload);
-        payload.workplaces[0].months[11] = copy(
-          payload.workplaces[0].months[0],
-        );
+        const payload = createPayrollDetailsWorkplaceYearlyPayload();
+        payload.workplaces[0].months[11] = {
+          ...payload.workplaces[0].months[0],
+        };
         return payload;
       })(),
       useQuery: () =>
@@ -558,7 +590,7 @@ describe("給与クエリの fetchJson 境界", () => {
       name: "勤務先別年次詳細の1月と2月が並び替わっている",
       fallbackMessage: "給与詳細（勤務先毎表示）の取得に失敗しました。",
       payload: (() => {
-        const payload = copy(payrollDetailsWorkplaceYearlyPayload);
+        const payload = createPayrollDetailsWorkplaceYearlyPayload();
         [payload.workplaces[0].months[0], payload.workplaces[0].months[1]] = [
           payload.workplaces[0].months[1],
           payload.workplaces[0].months[0],
@@ -572,7 +604,7 @@ describe("給与クエリの fetchJson 境界", () => {
       name: "勤務先別年次詳細の月番号と月キー不一致",
       fallbackMessage: "給与詳細（勤務先毎表示）の取得に失敗しました。",
       payload: (() => {
-        const payload = copy(payrollDetailsWorkplaceYearlyPayload);
+        const payload = createPayrollDetailsWorkplaceYearlyPayload();
         payload.workplaces[0].months[0].monthKey = "2026-02";
         return payload;
       })(),
@@ -595,9 +627,9 @@ describe("給与クエリの fetchJson 境界", () => {
       payload: {
         data: {
           months: [
-            copy(payrollPreviewBaselinePayload).data.months[0],
+            { ...createPayrollPreviewBaselinePayload().data.months[0] },
             {
-              ...copy(payrollPreviewBaselinePayload).data.months[0],
+              ...createPayrollPreviewBaselinePayload().data.months[0],
               month: "2026-02",
             },
           ],
@@ -615,8 +647,8 @@ describe("給与クエリの fetchJson 境界", () => {
       payload: {
         data: {
           months: [
-            copy(payrollPreviewBaselinePayload).data.months[0],
-            copy(payrollPreviewBaselinePayload).data.months[0],
+            { ...createPayrollPreviewBaselinePayload().data.months[0] },
+            { ...createPayrollPreviewBaselinePayload().data.months[0] },
           ],
         },
       },
