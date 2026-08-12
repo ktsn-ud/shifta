@@ -62,10 +62,13 @@ pnpm dev
 pnpm dev                  # 開発サーバー
 pnpm build                # 本番ビルド
 pnpm start                # 本番起動
-pnpm exec tsc --noEmit    # 型チェック
+pnpm typecheck            # 型チェック（pnpm exec tsc --noEmit と同等）
 pnpm lint                 # Lint
-pnpm format               # 整形
+pnpm format               # 整形（ファイルを書き換え）
+pnpm format:check         # 整形チェック（ファイルを変更しない）
 pnpm test                 # Jest テスト
+pnpm test:ci              # CI向け Jest テスト
+pnpm check                # format:check / typecheck / lint / test:ci（build・migrationは含まない）
 ```
 
 ## 主要ルート

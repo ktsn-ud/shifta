@@ -2,15 +2,29 @@ import { randomUUID } from "node:crypto";
 import { Prisma } from "@/lib/generated/prisma/client";
 import { z } from "zod";
 import { requireCurrentUser } from "@/lib/api/current-user";
-import { parseTimeOnly, toMinutes, TIME_ONLY_REGEX } from "@/lib/api/date-time";
+import { parseTimeOnly, TIME_ONLY_REGEX } from "@/lib/api/date-time";
 import { jsonError, parseJsonBody } from "@/lib/api/http";
 import { requireOwnedWorkplace } from "@/lib/api/workplace";
 import { prisma } from "@/lib/prisma";
 import { jsonNoStore } from "@/lib/api/cache-control";
 import { buildSuccessSyncResponse } from "@/lib/google-calendar/sync-response";
+import {
+  toTimeOnly,
+  validateTimetableItems,
+} from "@/lib/actions/workplace-core/timetable-utils";
+import {
+  MAX_TIMETABLE_PERIOD,
+  MAX_TIMETABLE_ITEMS_PER_SET,
+  TIMETABLE_PERIOD_LIMIT_MESSAGE,
+  TIMETABLE_ITEMS_PER_SET_LIMIT_MESSAGE,
+} from "@/lib/validation/batch-limits";
 
 const timetableItemSchema = z.strictObject({
-  period: z.coerce.number().int().positive(),
+  period: z.coerce
+    .number()
+    .int()
+    .positive()
+    .max(MAX_TIMETABLE_PERIOD, TIMETABLE_PERIOD_LIMIT_MESSAGE),
   startTime: z.string().regex(TIME_ONLY_REGEX, "HH:MM形式で入力してください"),
   endTime: z.string().regex(TIME_ONLY_REGEX, "HH:MM形式で入力してください"),
 });
@@ -18,7 +32,10 @@ const timetableItemSchema = z.strictObject({
 const timetableSetSchema = z.strictObject({
   name: z.string().trim().min(1).max(50),
   sortOrder: z.coerce.number().int().min(0).optional(),
-  items: z.array(timetableItemSchema).min(1),
+  items: z
+    .array(timetableItemSchema)
+    .min(1)
+    .max(MAX_TIMETABLE_ITEMS_PER_SET, TIMETABLE_ITEMS_PER_SET_LIMIT_MESSAGE),
 });
 
 type Context = {
@@ -40,30 +57,6 @@ type TimetableSetWithItems = {
     endTime: Date;
   }>;
 };
-
-function toTimeOnly(value: Date): string {
-  const hour = String(value.getUTCHours()).padStart(2, "0");
-  const minute = String(value.getUTCMinutes()).padStart(2, "0");
-  return `${hour}:${minute}`;
-}
-
-function validateItems(items: Array<z.infer<typeof timetableItemSchema>>) {
-  for (const item of items) {
-    if (toMinutes(item.startTime) >= toMinutes(item.endTime)) {
-      return "startTime は endTime より前にしてください";
-    }
-  }
-
-  const seen = new Set<number>();
-  for (const item of items) {
-    if (seen.has(item.period)) {
-      return "同じ時間割セット内で period が重複しています";
-    }
-    seen.add(item.period);
-  }
-
-  return null;
-}
 
 function buildSetResponse(set: TimetableSetWithItems) {
   return {
@@ -131,7 +124,7 @@ export async function updateTimetableRouteAction(
       return body.response;
     }
 
-    const validationError = validateItems(body.data.items);
+    const validationError = validateTimetableItems(body.data.items);
     if (validationError) {
       return jsonError(validationError, 400);
     }

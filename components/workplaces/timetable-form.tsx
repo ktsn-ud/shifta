@@ -1,7 +1,6 @@
 "use client";
 
 import { useCallback, useReducer } from "react";
-import { useQuery } from "@tanstack/react-query";
 import { useRouter } from "next/navigation";
 import { PlusIcon, Trash2Icon } from "lucide-react";
 import { toast } from "sonner";
@@ -31,12 +30,23 @@ import {
 } from "@/lib/actions/workplace";
 import { parseGoogleSyncStateFromPayload } from "@/lib/google-calendar/clientSync";
 import { messages, toErrorMessage } from "@/lib/messages";
-import { fetchJson } from "@/lib/query/fetch-json";
 import { invalidateAfterTimetableMutation } from "@/lib/query/invalidation";
 import { buildMutationSuccessDescription } from "@/lib/query/mutation-toast";
 import { getBrowserQueryClient } from "@/lib/query/query-client";
-import { queryKeys } from "@/lib/query/query-keys";
+import {
+  type TimetableSetItem,
+  useWorkplaceDetailQuery,
+  useWorkplaceTimetablesQuery,
+} from "@/lib/query/queries/workplaces";
 import { toUserFacingMessage } from "@/lib/user-facing-error";
+import {
+  BULK_TIMETABLE_SET_COUNT_LIMIT_MESSAGE,
+  MAX_BULK_TIMETABLE_SET_COUNT,
+  MAX_TIMETABLE_ITEMS_PER_SET,
+  MAX_TIMETABLE_PERIOD,
+  TIMETABLE_PERIOD_LIMIT_MESSAGE,
+  TIMETABLE_ITEMS_PER_SET_LIMIT_MESSAGE,
+} from "@/lib/validation/batch-limits";
 
 const timeRegex = /^([01]\d|2[0-3]):([0-5]\d)$/;
 
@@ -46,32 +56,6 @@ type TimetableFormProps = {
   mode: TimetableFormMode;
   workplaceId: string;
   timetableId?: string;
-};
-
-type WorkplaceSummary = {
-  id: string;
-  name: string;
-  type: "GENERAL" | "CRAM_SCHOOL";
-};
-
-type TimetableItem = {
-  id: string;
-  timetableSetId: string;
-  period: number;
-  startTime: string;
-  endTime: string;
-  startTimeLabel?: string;
-  endTimeLabel?: string;
-};
-
-type TimetableSet = {
-  id: string;
-  workplaceId: string;
-  name: string;
-  sortOrder: number;
-  createdAt: string;
-  updatedAt: string;
-  items: TimetableItem[];
 };
 
 type FormItemValues = {
@@ -132,10 +116,11 @@ type TimetableEditorFormProps = {
 };
 
 type TimetableItemsSectionProps = {
+  mode: TimetableFormMode;
   items: FormItemValues[];
+  queuedSetCount: number;
   rowErrors: RowErrorMap;
   isSubmitting: boolean;
-  isEdit: boolean;
   onUpdateItem: (
     itemId: string,
     patch: Partial<Pick<FormItemValues, "period" | "startTime" | "endTime">>,
@@ -180,81 +165,6 @@ function createDraftEntityId(prefix: string): string {
   return `${prefix}-${nextDraftEntityId}`;
 }
 
-function isRecord(value: unknown): value is Record<string, unknown> {
-  return typeof value === "object" && value !== null;
-}
-
-function parseWorkplaceResponse(payload: unknown): WorkplaceSummary | null {
-  if (!isRecord(payload) || !isRecord(payload.data)) {
-    return null;
-  }
-
-  const data = payload.data;
-  if (
-    typeof data.id !== "string" ||
-    typeof data.name !== "string" ||
-    (data.type !== "GENERAL" && data.type !== "CRAM_SCHOOL")
-  ) {
-    return null;
-  }
-
-  return {
-    id: data.id,
-    name: data.name,
-    type: data.type,
-  };
-}
-
-function isTimetableItem(value: unknown): value is TimetableItem {
-  if (!isRecord(value)) {
-    return false;
-  }
-
-  return (
-    typeof value.id === "string" &&
-    typeof value.timetableSetId === "string" &&
-    typeof value.period === "number" &&
-    Number.isInteger(value.period) &&
-    value.period > 0 &&
-    typeof value.startTime === "string" &&
-    typeof value.endTime === "string" &&
-    (value.startTimeLabel === undefined ||
-      typeof value.startTimeLabel === "string") &&
-    (value.endTimeLabel === undefined || typeof value.endTimeLabel === "string")
-  );
-}
-
-function isTimetableSet(value: unknown): value is TimetableSet {
-  if (!isRecord(value) || !Array.isArray(value.items)) {
-    return false;
-  }
-
-  return (
-    typeof value.id === "string" &&
-    typeof value.workplaceId === "string" &&
-    typeof value.name === "string" &&
-    typeof value.sortOrder === "number" &&
-    Number.isInteger(value.sortOrder) &&
-    typeof value.createdAt === "string" &&
-    typeof value.updatedAt === "string" &&
-    value.items.every(isTimetableItem)
-  );
-}
-
-function parseTimetableSetListResponse(
-  payload: unknown,
-): TimetableSet[] | null {
-  if (!isRecord(payload) || !Array.isArray(payload.data)) {
-    return null;
-  }
-
-  if (payload.data.every(isTimetableSet) === false) {
-    return null;
-  }
-
-  return payload.data;
-}
-
 function toTimeOnly(value: string): string {
   const date = new Date(value);
   if (Number.isNaN(date.getTime())) {
@@ -295,7 +205,7 @@ function cloneFormValues(values: FormValues): FormValues {
 }
 
 function createFormValuesFromTimetableSet(
-  timetableSet: TimetableSet,
+  timetableSet: TimetableSetItem,
 ): FormValues {
   const items = timetableSet.items
     .slice()
@@ -374,6 +284,8 @@ function validateRows(items: FormItemValues[]): {
 
     if (!item.period || Number.isInteger(period) === false || period <= 0) {
       errors.period = "コマ番号は1以上の整数で入力してください。";
+    } else if (period > MAX_TIMETABLE_PERIOD) {
+      errors.period = TIMETABLE_PERIOD_LIMIT_MESSAGE;
     }
 
     if (!timeRegex.test(item.startTime)) {
@@ -430,6 +342,10 @@ function validateForm(target: FormValues): {
     formErrors.name = "時間割セット名は必須です。";
   } else if (target.name.trim().length > 50) {
     formErrors.name = "時間割セット名は50文字以内で入力してください。";
+  }
+
+  if (target.items.length > MAX_TIMETABLE_ITEMS_PER_SET) {
+    formErrors.form = TIMETABLE_ITEMS_PER_SET_LIMIT_MESSAGE;
   }
 
   const rowValidation = validateRows(target.items);
@@ -496,6 +412,9 @@ function timetableFormReducer(
         rowErrors: clearRowError(state.rowErrors, action.itemId),
       };
     case "appendItem":
+      if (state.values.items.length >= MAX_TIMETABLE_ITEMS_PER_SET) {
+        return state;
+      }
       return {
         ...state,
         values: {
@@ -566,18 +485,29 @@ function timetableFormReducer(
 }
 
 function TimetableItemsSection({
+  mode,
   items,
+  queuedSetCount,
   rowErrors,
   isSubmitting,
-  isEdit,
   onUpdateItem,
   onRemoveItem,
   onAppendItem,
   onQueueCurrentSet,
 }: TimetableItemsSectionProps) {
+  const isEdit = mode === "edit";
+  const hasReachedItemLimit = items.length >= MAX_TIMETABLE_ITEMS_PER_SET;
+  const hasReachedQueuedSetLimit =
+    queuedSetCount >= MAX_BULK_TIMETABLE_SET_COUNT;
+
   return (
     <div className="space-y-3">
-      <h3 className="text-sm font-semibold">コマ設定</h3>
+      <div className="flex flex-wrap items-center justify-between gap-2">
+        <h3 className="text-sm font-semibold">コマ設定</h3>
+        <p className="text-xs text-muted-foreground">
+          {items.length}/{MAX_TIMETABLE_ITEMS_PER_SET}件
+        </p>
+      </div>
 
       <div className="space-y-3">
         {items.map((item, index) => {
@@ -608,6 +538,7 @@ function TimetableItemsSection({
                     <Input
                       type="number"
                       min={1}
+                      max={MAX_TIMETABLE_PERIOD}
                       value={item.period}
                       onChange={(event) =>
                         onUpdateItem(item.id, {
@@ -666,7 +597,7 @@ function TimetableItemsSection({
             variant="outline"
             size="sm"
             onClick={onAppendItem}
-            disabled={isSubmitting}
+            disabled={isSubmitting || hasReachedItemLimit}
           >
             <PlusIcon className="size-4" />
             行を追加
@@ -677,7 +608,7 @@ function TimetableItemsSection({
               variant="outline"
               size="sm"
               onClick={onQueueCurrentSet}
-              disabled={isSubmitting}
+              disabled={isSubmitting || hasReachedQueuedSetLimit}
             >
               追加して続ける
             </Button>
@@ -695,9 +626,14 @@ function QueuedSetsSection({
 }: QueuedSetsSectionProps) {
   return (
     <div className="space-y-3">
-      <h3 className="text-sm font-semibold">
-        保存待ちの時間割セット ({queuedSets.length})
-      </h3>
+      <div className="flex flex-wrap items-center justify-between gap-2">
+        <h3 className="text-sm font-semibold">
+          保存待ちの時間割セット ({queuedSets.length})
+        </h3>
+        <p className="text-xs text-muted-foreground">
+          最大{MAX_BULK_TIMETABLE_SET_COUNT}件
+        </p>
+      </div>
 
       {queuedSets.length === 0 ? (
         <p className="rounded-md border px-3 py-2 text-sm text-muted-foreground">
@@ -763,6 +699,13 @@ function useTimetableEditorController({
   const { markForResetOnRouteHidden } = useResetOnRouteHidden(resetFormState);
 
   function queueCurrentSet() {
+    if (state.queuedSets.length >= MAX_BULK_TIMETABLE_SET_COUNT) {
+      dispatch({
+        type: "setFormError",
+        message: BULK_TIMETABLE_SET_COUNT_LIMIT_MESSAGE,
+      });
+      return;
+    }
     const validation = validateForm(state.values);
     const hasFormError = Object.keys(validation.formErrors).length > 0;
     const hasRowError = Object.keys(validation.rowErrors).length > 0;
@@ -864,6 +807,14 @@ function useTimetableEditorController({
       }
     }
 
+    if (!isEdit && createTargets.length > MAX_BULK_TIMETABLE_SET_COUNT) {
+      dispatch({
+        type: "setFormError",
+        message: BULK_TIMETABLE_SET_COUNT_LIMIT_MESSAGE,
+      });
+      return;
+    }
+
     const payload =
       isEdit || createTargets.length <= 1
         ? toCreatePayload(isEdit ? state.values : createTargets[0]!)
@@ -893,8 +844,7 @@ function useTimetableEditorController({
       } else {
         responsePayload = await createTimetableAction(workplaceId, payload);
       }
-      if (typeof responsePayload.error === "string")
-        throw new Error(responsePayload.error);
+      if ("error" in responsePayload) throw new Error(responsePayload.error);
       const syncState = parseGoogleSyncStateFromPayload(
         responsePayload,
         messages.error.calendarSyncFailed,
@@ -1046,7 +996,7 @@ function TimetableEditorForm({
         }
         className="rounded-xl"
       >
-        <Form className="space-y-6" onSubmit={controller.submit}>
+        <Form className="space-y-6" noValidate onSubmit={controller.submit}>
           <FieldGroup className="grid gap-4">
             <Field data-invalid={Boolean(controller.errors.name)}>
               <FieldLabel htmlFor="timetable-set-name">
@@ -1068,10 +1018,11 @@ function TimetableEditorForm({
           </FieldGroup>
 
           <TimetableItemsSection
+            mode={mode}
             items={controller.values.items}
+            queuedSetCount={controller.queuedSets.length}
             rowErrors={controller.rowErrors}
             isSubmitting={controller.isSubmitting}
-            isEdit={controller.isEdit}
             onUpdateItem={controller.updateItem}
             onRemoveItem={controller.removeItem}
             onAppendItem={controller.appendItem}
@@ -1125,24 +1076,9 @@ export function TimetableForm({
     error: workplaceError,
     isPending: isWorkplacePending,
     isFetching: isWorkplaceFetching,
-  } = useQuery({
-    queryKey: queryKeys.workplaces.detailSummary({
-      workplaceId,
-    }),
-    queryFn: ({ signal }) =>
-      fetchJson(`/api/workplaces/${workplaceId}`, {
-        init: { signal },
-        fallbackMessage: "勤務先情報の取得に失敗しました。",
-        parse: (payload) => {
-          const parsed = parseWorkplaceResponse(payload);
-          if (!parsed) {
-            throw new Error("WORKPLACE_RESPONSE_INVALID");
-          }
-          return parsed;
-        },
-      }),
-    staleTime: 5 * 60 * 1000,
-    gcTime: 15 * 60 * 1000,
+  } = useWorkplaceDetailQuery({
+    workplaceId,
+    fallbackMessage: "勤務先情報の取得に失敗しました。",
     refetchOnWindowFocus: false,
     refetchOnReconnect: false,
   });
@@ -1152,26 +1088,10 @@ export function TimetableForm({
     error: timetableError,
     isPending: isTimetablePending,
     isFetching: isTimetableFetching,
-  } = useQuery({
-    queryKey: queryKeys.workplaces.timetables({
-      workplaceId,
-    }),
-    queryFn: ({ signal }) =>
-      fetchJson(`/api/workplaces/${workplaceId}/timetables`, {
-        init: { signal },
-        fallbackMessage: "時間割一覧の取得に失敗しました。",
-        parse: (payload) => {
-          const parsed = parseTimetableSetListResponse(payload);
-          if (!parsed) {
-            throw new Error("TIMETABLE_LIST_RESPONSE_INVALID");
-          }
-          return parsed;
-        },
-      }),
+  } = useWorkplaceTimetablesQuery({
+    workplaceId,
     enabled:
       isEdit && Boolean(timetableId) && workplace?.type === "CRAM_SCHOOL",
-    staleTime: 5 * 60 * 1000,
-    gcTime: 15 * 60 * 1000,
     refetchOnWindowFocus: false,
     refetchOnReconnect: false,
   });

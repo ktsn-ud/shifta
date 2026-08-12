@@ -1,12 +1,17 @@
 import { after, connection } from "next/server";
 import { z } from "zod";
 import { requireCurrentUser } from "@/lib/api/current-user";
-import { DATE_ONLY_REGEX, parseDateOnly } from "@/lib/api/date-time";
+import {
+  DATE_ONLY_REGEX,
+  isValidDateOnly,
+  parseDateOnly,
+} from "@/lib/api/date-time";
 import { jsonError, parseJsonBody } from "@/lib/api/http";
 import { requireOwnedWorkplace } from "@/lib/api/workplace";
 import { prisma } from "@/lib/prisma";
 import { jsonNoStore } from "@/lib/api/cache-control";
 import { revalidateShiftDomainTags } from "@/lib/cache/revalidate";
+import { resolveAffectedPaymentMonthKeys } from "@/lib/payroll/affected-payment-month";
 import { getMonthShifts } from "@/lib/shifts/month-shifts";
 import {
   syncShiftAfterCreate,
@@ -25,16 +30,25 @@ const shiftListQuerySchema = z
     startDate: z
       .string()
       .regex(DATE_ONLY_REGEX, "YYYY-MM-DD形式で入力してください")
+      .refine(isValidDateOnly, "実在する日付を入力してください")
       .optional(),
     endDate: z
       .string()
       .regex(DATE_ONLY_REGEX, "YYYY-MM-DD形式で入力してください")
+      .refine(isValidDateOnly, "実在する日付を入力してください")
       .optional(),
     includeEstimate: z.enum(["true", "false"]).optional(),
   })
   .refine(
     (value) => {
       if (!value.startDate || !value.endDate) {
+        return true;
+      }
+
+      if (
+        !isValidDateOnly(value.startDate) ||
+        !isValidDateOnly(value.endDate)
+      ) {
         return true;
       }
 
@@ -52,13 +66,15 @@ const shiftBulkDeleteSchema = z.strictObject({
 function revalidateShiftMutationTags(input: {
   userId: string;
   workplaceIds?: string[];
+  paymentMonthKeys?: string[];
 }): void {
-  revalidateShiftDomainTags({ userId: input.userId });
-
-  const workplaceIds = input.workplaceIds ?? [];
-  for (const workplaceId of new Set(workplaceIds)) {
-    revalidateShiftDomainTags({ userId: input.userId, workplaceId });
-  }
+  revalidateShiftDomainTags({
+    userId: input.userId,
+    ...(input.workplaceIds ? { workplaceIds: input.workplaceIds } : {}),
+    ...(input.paymentMonthKeys
+      ? { paymentMonthKeys: input.paymentMonthKeys }
+      : {}),
+  });
 }
 
 export async function POST(request: Request) {
@@ -133,9 +149,17 @@ export async function POST(request: Request) {
       });
     }
 
+    const paymentMonthKeys = resolveAffectedPaymentMonthKeys([
+      {
+        date: built.shiftData.date,
+        payrollCycle: workplaceResult.workplace,
+      },
+    ]);
+
     revalidateShiftMutationTags({
       userId: current.user.id,
       workplaceIds: [body.data.workplaceId],
+      ...(paymentMonthKeys ? { paymentMonthKeys } : {}),
     });
 
     return jsonNoStore(
@@ -229,11 +253,15 @@ export async function DELETE(request: Request) {
       },
       select: {
         id: true,
+        date: true,
         googleEventId: true,
         workplace: {
           select: {
             userId: true,
             id: true,
+            closingDayType: true,
+            closingDay: true,
+            payday: true,
           },
         },
       },
@@ -267,9 +295,17 @@ export async function DELETE(request: Request) {
       }
     });
 
+    const paymentMonthKeys = resolveAffectedPaymentMonthKeys(
+      targets.map((target) => ({
+        date: target.date,
+        payrollCycle: target.workplace,
+      })),
+    );
+
     revalidateShiftMutationTags({
       userId: current.user.id,
       workplaceIds: targets.map((target) => target.workplace.id),
+      ...(paymentMonthKeys ? { paymentMonthKeys } : {}),
     });
 
     after(async () => {

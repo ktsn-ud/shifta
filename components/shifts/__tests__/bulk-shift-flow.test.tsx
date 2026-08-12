@@ -17,7 +17,9 @@ import { queryKeys } from "@/lib/query/query-keys";
 const pushMock = jest.fn();
 const replaceMock = jest.fn();
 const refreshMock = jest.fn();
-const BULK_CALENDAR_SELECTION_STORAGE_KEY = "shifta:bulk-calendar-selection";
+const BULK_CALENDAR_SELECTION_STORAGE_KEY = "shifta:bulk-calendar-selection:v1";
+const LEGACY_BULK_CALENDAR_SELECTION_STORAGE_KEY =
+  "shifta:bulk-calendar-selection";
 const WORKPLACE_LIST_URL = "/api/workplaces?includeCounts=false";
 const SHIFT_FORM_BOOTSTRAP_URL = "/api/shifts/form-bootstrap";
 const BULK_SHIFT_FORM_PROPS = {
@@ -248,6 +250,68 @@ function isCalendarEventsRequest(
 ): boolean {
   return (
     input.startsWith("/api/calendar/events?month=") && init?.method === "POST"
+  );
+}
+
+function mockBulkCalendarSelectionRequests(
+  fetchMock: jest.Mock,
+  calendarRequests: Array<{ url: string; method?: string }>,
+): void {
+  fetchMock.mockImplementation(
+    async (input: string, init?: { method?: string }) => {
+      if (isCalendarEventsRequest(input, init)) {
+        calendarRequests.push({
+          url: input,
+          method: init?.method,
+        });
+
+        const requestUrl = new URL(input, "http://localhost");
+        const requestedCalendarIds =
+          requestUrl.searchParams.getAll("calendarId");
+        const selectedCalendarIds =
+          requestedCalendarIds.length > 0 ? requestedCalendarIds : ["cal-1"];
+
+        return jsonResponse({
+          data: {
+            month: "2026-03",
+            calendars: [
+              {
+                id: "cal-1",
+                summary: "個人",
+                color: "#3366FF",
+              },
+              {
+                id: "cal-2",
+                summary: "バイト",
+                color: "#0EA5E9",
+              },
+            ],
+            selectedCalendarIds,
+            dates: [],
+          },
+        });
+      }
+
+      if (input === WORKPLACE_LIST_URL) {
+        return jsonResponse({
+          data: [
+            {
+              id: "workplace-1",
+              name: "勤務先A",
+              color: "#3366FF",
+              type: "GENERAL",
+            },
+          ],
+        });
+      }
+
+      const previewResponse = handleBulkPreviewFetch(input);
+      if (previewResponse) {
+        return previewResponse;
+      }
+
+      throw new Error("Unexpected fetch: " + input);
+    },
   );
 }
 
@@ -1060,7 +1124,7 @@ describe("bulk shift flow integration", () => {
     expect(within(saturdayButton).getByText("21")).toHaveClass("text-blue-600");
   });
 
-  it("restores and clears selected google calendars from localStorage", async () => {
+  it("prioritizes the current versioned calendar selection over a legacy value", async () => {
     const user = userEvent.setup({
       advanceTimers: jest.advanceTimersByTime,
     });
@@ -1075,65 +1139,18 @@ describe("bulk shift flow integration", () => {
         selectedCalendarIds: ["cal-2"],
       }),
     );
-
-    fetchMock.mockImplementation(
-      async (input: string, init?: { method?: string }) => {
-        if (isCalendarEventsRequest(input, init)) {
-          calendarRequests.push({
-            url: input,
-            method: init?.method,
-          });
-
-          const requestUrl = new URL(input, "http://localhost");
-          const requestedCalendarIds =
-            requestUrl.searchParams.getAll("calendarId");
-          const selectedCalendarIds =
-            requestedCalendarIds.length > 0 ? requestedCalendarIds : ["cal-1"];
-
-          return jsonResponse({
-            data: {
-              month: "2026-03",
-              calendars: [
-                {
-                  id: "cal-1",
-                  summary: "個人",
-                  color: "#3366FF",
-                },
-                {
-                  id: "cal-2",
-                  summary: "バイト",
-                  color: "#0EA5E9",
-                },
-              ],
-              selectedCalendarIds,
-              dates: [],
-            },
-          });
-        }
-
-        if (input === WORKPLACE_LIST_URL) {
-          return jsonResponse({
-            data: [
-              {
-                id: "workplace-1",
-                name: "勤務先A",
-                color: "#3366FF",
-                type: "GENERAL",
-              },
-            ],
-          });
-        }
-
-        const previewResponse = handleBulkPreviewFetch(input);
-        if (previewResponse) {
-          return previewResponse;
-        }
-
-        throw new Error("Unexpected fetch: " + input);
-      },
+    localStorage.setItem(
+      LEGACY_BULK_CALENDAR_SELECTION_STORAGE_KEY,
+      JSON.stringify({
+        version: 1,
+        hasUserSelection: true,
+        selectedCalendarIds: ["cal-1"],
+      }),
     );
 
-    renderBulkShiftForm();
+    mockBulkCalendarSelectionRequests(fetchMock, calendarRequests);
+
+    const { unmount } = renderBulkShiftForm();
 
     await waitFor(() => {
       expect(calendarRequests.length).toBeGreaterThan(0);
@@ -1141,7 +1158,10 @@ describe("bulk shift flow integration", () => {
 
     expect(calendarRequests[0]?.method).toBe("POST");
 
-    const firstRequest = new URL(calendarRequests[0].url, "http://localhost");
+    const firstRequest = new URL(
+      calendarRequests[0]?.url ?? "",
+      "http://localhost",
+    );
     expect(firstRequest.searchParams.getAll("calendarId")).toEqual(["cal-2"]);
 
     const resetButton = await screen.findByRole("button", {
@@ -1153,7 +1173,97 @@ describe("bulk shift flow integration", () => {
       expect(
         localStorage.getItem(BULK_CALENDAR_SELECTION_STORAGE_KEY),
       ).toBeNull();
+      expect(
+        localStorage.getItem(LEGACY_BULK_CALENDAR_SELECTION_STORAGE_KEY),
+      ).toBeNull();
     });
+
+    const requestCountBeforeRemount = calendarRequests.length;
+    unmount();
+    renderBulkShiftForm();
+
+    await waitFor(() => {
+      expect(calendarRequests.length).toBeGreaterThan(
+        requestCountBeforeRemount,
+      );
+    });
+
+    const remountRequest = new URL(
+      calendarRequests[requestCountBeforeRemount]?.url ?? "",
+      "http://localhost",
+    );
+    expect(remountRequest.searchParams.getAll("calendarId")).toEqual([]);
+  });
+
+  it("migrates a valid legacy calendar selection to the versioned key", async () => {
+    const fetchMock = globalThis.fetch as jest.Mock;
+    const calendarRequests: Array<{ url: string; method?: string }> = [];
+    const legacyPayload = {
+      version: 1,
+      hasUserSelection: true,
+      selectedCalendarIds: [" cal-2 ", "cal-2"],
+    };
+
+    localStorage.setItem(
+      LEGACY_BULK_CALENDAR_SELECTION_STORAGE_KEY,
+      JSON.stringify(legacyPayload),
+    );
+    mockBulkCalendarSelectionRequests(fetchMock, calendarRequests);
+
+    renderBulkShiftForm();
+
+    await waitFor(() => {
+      expect(calendarRequests.length).toBeGreaterThan(0);
+    });
+
+    const firstRequest = new URL(
+      calendarRequests[0]?.url ?? "",
+      "http://localhost",
+    );
+    expect(firstRequest.searchParams.getAll("calendarId")).toEqual(["cal-2"]);
+    expect(
+      JSON.parse(
+        localStorage.getItem(BULK_CALENDAR_SELECTION_STORAGE_KEY) ?? "null",
+      ),
+    ).toEqual({
+      version: 1,
+      hasUserSelection: true,
+      selectedCalendarIds: ["cal-2"],
+    });
+    expect(
+      localStorage.getItem(LEGACY_BULK_CALENDAR_SELECTION_STORAGE_KEY),
+    ).toBeNull();
+  });
+
+  it("rejects an invalid legacy calendar selection without applying it", async () => {
+    const fetchMock = globalThis.fetch as jest.Mock;
+    const calendarRequests: Array<{ url: string; method?: string }> = [];
+    const invalidLegacyPayload = JSON.stringify({
+      version: 2,
+      hasUserSelection: true,
+      selectedCalendarIds: ["cal-2"],
+    });
+
+    localStorage.setItem(
+      LEGACY_BULK_CALENDAR_SELECTION_STORAGE_KEY,
+      invalidLegacyPayload,
+    );
+    mockBulkCalendarSelectionRequests(fetchMock, calendarRequests);
+
+    renderBulkShiftForm();
+
+    await waitFor(() => {
+      expect(calendarRequests.length).toBeGreaterThan(0);
+    });
+
+    const firstRequest = new URL(calendarRequests[0].url, "http://localhost");
+    expect(firstRequest.searchParams.getAll("calendarId")).toEqual([]);
+    expect(
+      localStorage.getItem(BULK_CALENDAR_SELECTION_STORAGE_KEY),
+    ).toBeNull();
+    expect(
+      localStorage.getItem(LEGACY_BULK_CALENDAR_SELECTION_STORAGE_KEY),
+    ).toBe(invalidLegacyPayload);
   });
 
   it("shows payroll preview after selecting a date row", async () => {

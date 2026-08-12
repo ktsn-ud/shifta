@@ -19,10 +19,11 @@
 ## 3. 推奨開発サイクル
 
 1. 実装
-2. 型チェック: `pnpm exec tsc --noEmit`
-3. Lint: `pnpm lint`
-4. 整形: `pnpm format`
-5. 変更確認とコミット
+2. 整形: `pnpm format`（ファイルを書き換え）
+3. 検証: `pnpm check`（`format:check`、`typecheck`、`lint`、`test:ci`。ファイルを変更せず、build や migration は含まない）
+4. 変更確認とコミット
+
+個別に実行する場合は、型チェックに `pnpm typecheck`、整形結果の確認だけに `pnpm format:check`、通常のローカルテストに `pnpm test` を使用します。`pnpm format:check` はファイルを変更しません。
 
 ## 4. Next.js ランタイム確認
 

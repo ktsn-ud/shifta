@@ -131,14 +131,30 @@ describe("optimistic month shift cache helpers", () => {
         includeEstimate: false,
       },
     ] as const;
+    const juneEstimateKey = [
+      "shifts",
+      "month",
+      {
+        userId: "user-1",
+        startDate: "2026-06-01",
+        endDate: "2026-06-30",
+        includeEstimate: true,
+      },
+    ] as const;
 
     queryClient.setQueryData<MonthShift[]>(juneKey, []);
     queryClient.setQueryData<MonthShift[]>(mayKey, []);
+    queryClient.setQueryData<MonthShift[]>(juneEstimateKey, []);
 
     upsertMonthShiftInCachesOptimistically(queryClient, createMonthShift());
 
     expect(
       (queryClient.getQueryData(juneKey) as MonthShift[]).map(
+        (shift) => shift.id,
+      ),
+    ).toEqual(["shift-1"]);
+    expect(
+      (queryClient.getQueryData(juneEstimateKey) as MonthShift[]).map(
         (shift) => shift.id,
       ),
     ).toEqual(["shift-1"]);
@@ -167,6 +183,16 @@ describe("optimistic month shift cache helpers", () => {
         includeEstimate: false,
       },
     ] as const;
+    const marchEstimateKey = [
+      "shifts",
+      "month",
+      {
+        userId: "user-1",
+        startDate: "2026-03-01",
+        endDate: "2026-03-31",
+        includeEstimate: true,
+      },
+    ] as const;
 
     queryClient.setQueryData<MonthShift[]>(marchKey, [
       createMonthShift({
@@ -176,6 +202,7 @@ describe("optimistic month shift cache helpers", () => {
       }),
     ]);
     queryClient.setQueryData<MonthShift[]>(aprilKey, []);
+    queryClient.setQueryData<MonthShift[]>(marchEstimateKey, []);
 
     upsertMonthShiftsInCachesOptimistically(queryClient, [
       createMonthShift({
@@ -201,6 +228,11 @@ describe("optimistic month shift cache helpers", () => {
         date: shift.date,
       })),
     ).toEqual([{ id: "shift-2", date: "2026-04-02T00:00:00.000Z" }]);
+    expect(
+      (queryClient.getQueryData(marchEstimateKey) as MonthShift[]).map(
+        (shift) => ({ id: shift.id, comment: shift.comment }),
+      ),
+    ).toEqual([{ id: "shift-1", comment: "更新後" }]);
   });
 
   it("編集で月が変わった場合は旧月から除去して新月へ移す", () => {
@@ -260,8 +292,21 @@ describe("optimistic month shift cache helpers", () => {
         includeEstimate: false,
       },
     ] as const;
+    const juneEstimateKey = [
+      "shifts",
+      "month",
+      {
+        userId: "user-1",
+        startDate: "2026-06-01",
+        endDate: "2026-06-30",
+        includeEstimate: true,
+      },
+    ] as const;
 
     queryClient.setQueryData<MonthShift[]>(juneKey, [createMonthShift()]);
+    queryClient.setQueryData<MonthShift[]>(juneEstimateKey, [
+      createMonthShift(),
+    ]);
 
     updateShiftInMonthCachesOptimistically(queryClient, "shift-1", (shift) => ({
       ...shift,
@@ -272,6 +317,14 @@ describe("optimistic month shift cache helpers", () => {
     }));
 
     expect(queryClient.getQueryData(juneKey)).toEqual([
+      createMonthShift({
+        startTime: "1970-01-01T10:00:00.000Z",
+        endTime: "1970-01-01T18:00:00.000Z",
+        breakMinutes: 45,
+        workedMinutes: 435,
+      }),
+    ]);
+    expect(queryClient.getQueryData(juneEstimateKey)).toEqual([
       createMonthShift({
         startTime: "1970-01-01T10:00:00.000Z",
         endTime: "1970-01-01T18:00:00.000Z",

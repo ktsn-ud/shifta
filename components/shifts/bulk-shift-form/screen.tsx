@@ -1,9 +1,7 @@
 "use client";
 
-import {
-  getBulkShiftValidationErrorSummary,
-  type BulkShiftFormController,
-} from "@/components/shifts/BulkShiftForm";
+import type { BulkShiftFormController } from "@/components/shifts/BulkShiftForm";
+import { getBulkShiftValidationErrorSummary } from "@/components/shifts/bulk-shift-form/validation";
 import { ShiftPayrollPreviewFloating } from "@/components/shifts/ShiftPayrollPreviewFloating";
 import { RefreshStatusFloating } from "@/components/ui/refresh-status-floating";
 import { Form } from "@/components/ui/form";

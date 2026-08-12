@@ -163,8 +163,9 @@ describe("ShiftListPageClient Undo deletion", () => {
   it("waits for month-query cancellation before removing selected shifts", async () => {
     const user = userEvent.setup({ advanceTimers: jest.advanceTimersByTime });
     const queryClient = createQueryClient();
+    const cancelQueries = jest.spyOn(queryClient, "cancelQueries");
     let resolveCancellation!: () => void;
-    jest.spyOn(queryClient, "cancelQueries").mockImplementation(
+    cancelQueries.mockImplementation(
       () =>
         new Promise<void>((resolve) => {
           resolveCancellation = resolve;
@@ -197,6 +198,9 @@ describe("ShiftListPageClient Undo deletion", () => {
       screen.getByRole("button", { name: "選択したシフトを削除" }),
     );
 
+    expect(cancelQueries).toHaveBeenCalledWith({
+      queryKey: ["shifts", "month"],
+    });
     expect(getTargetRow()).toBeInTheDocument();
     expect(mockToast).not.toHaveBeenCalled();
 

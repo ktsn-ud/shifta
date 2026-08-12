@@ -1,9 +1,7 @@
 "use client";
 
-import type {
-  BulkShiftFormController,
-  ShiftType,
-} from "@/components/shifts/BulkShiftForm";
+import type { BulkShiftFormController } from "@/components/shifts/BulkShiftForm";
+import type { ShiftType } from "@/components/shifts/bulk-shift-form/types";
 import { FormErrorMessage } from "@/components/form/form-error-message";
 import { Button } from "@/components/ui/button";
 import {

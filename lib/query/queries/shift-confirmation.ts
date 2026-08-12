@@ -2,28 +2,10 @@ import { useQuery } from "@tanstack/react-query";
 import type { UnconfirmedShiftItem } from "@/components/shifts/shift-confirmation-types";
 import { fetchJson } from "@/lib/query/fetch-json";
 import { queryKeys } from "@/lib/query/query-keys";
-
-type UnconfirmedShiftApiResponse = {
-  shifts: Array<{
-    id: string;
-    workplaceId: string;
-    comment: string | null;
-    date: string;
-    startTime: string;
-    endTime: string;
-    breakMinutes: number;
-    isConfirmed: boolean;
-    workplace: {
-      id: string;
-      name: string;
-      color: string;
-    };
-  }>;
-};
-
-type UnconfirmedShiftCountApiResponse = {
-  count: number;
-};
+import {
+  unconfirmedShiftCountResponseSchema,
+  unconfirmedShiftsResponseSchema,
+} from "@/lib/query/dto-schemas/shift-confirmation";
 
 const dateWithWeekdayFormatter = new Intl.DateTimeFormat("ja-JP", {
   year: "numeric",
@@ -43,15 +25,13 @@ function formatDateWithWeekday(dateOnly: string): string {
 }
 
 function parseUnconfirmedPayload(payload: unknown): UnconfirmedShiftItem[] {
-  if (
-    typeof payload !== "object" ||
-    payload === null ||
-    !Array.isArray((payload as UnconfirmedShiftApiResponse).shifts)
-  ) {
+  const result = unconfirmedShiftsResponseSchema.safeParse(payload);
+  if (!result.success) {
     throw new Error("UNCONFIRMED_SHIFTS_RESPONSE_INVALID");
   }
+  const { shifts } = result.data;
 
-  return (payload as UnconfirmedShiftApiResponse).shifts.map((shift) => ({
+  return shifts.map((shift) => ({
     id: shift.id,
     workplaceId: shift.workplaceId,
     date: formatDateWithWeekday(shift.date),
@@ -65,15 +45,12 @@ function parseUnconfirmedPayload(payload: unknown): UnconfirmedShiftItem[] {
 }
 
 function parseUnconfirmedShiftCountPayload(payload: unknown): number {
-  if (
-    typeof payload !== "object" ||
-    payload === null ||
-    typeof (payload as UnconfirmedShiftCountApiResponse).count !== "number"
-  ) {
+  const result = unconfirmedShiftCountResponseSchema.safeParse(payload);
+  if (!result.success) {
     throw new Error("UNCONFIRMED_SHIFT_COUNT_RESPONSE_INVALID");
   }
 
-  return (payload as UnconfirmedShiftCountApiResponse).count;
+  return result.data.count;
 }
 
 export function useUnconfirmedShiftsQuery(input: {

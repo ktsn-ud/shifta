@@ -1,5 +1,6 @@
 import { type QueryClient, type QueryKey } from "@tanstack/react-query";
 import type { MonthShift } from "@/hooks/use-month-shifts";
+import { queryKeys } from "@/lib/query/query-keys";
 
 type ShiftLike = {
   id: string;
@@ -62,7 +63,7 @@ function compareMonthShiftRows(left: ShiftLike, right: ShiftLike): number {
 function snapshotMonthShiftQueries(queryClient: QueryClient): QuerySnapshot[] {
   return queryClient
     .getQueriesData<ShiftLike[]>({
-      queryKey: ["shifts", "month"],
+      queryKey: queryKeys.shifts.monthScope(),
     })
     .map(([key, data]) => ({ key, data }));
 }
@@ -86,7 +87,7 @@ function getMonthShiftQueryEntries(queryClient: QueryClient): Array<{
 }> {
   return queryClient
     .getQueriesData<MonthShift[]>({
-      queryKey: ["shifts", "month"],
+      queryKey: queryKeys.shifts.monthScope(),
     })
     .map(([key, data]) => ({ key, data }));
 }

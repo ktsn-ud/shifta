@@ -29,6 +29,18 @@ describe("normalizeShiftPageSearchParams", () => {
     });
   });
 
+  it("rejects an array returnTo value even when it contains an allowed target", () => {
+    expect(
+      normalizeShiftPageSearchParams({
+        returnTo: ["list", "https://example.com"],
+      }),
+    ).toEqual({
+      returnTo: "dashboard",
+      initialDate: undefined,
+      returnMonth: undefined,
+    });
+  });
+
   it("treats unsupported returnTo values as dashboard", () => {
     expect(
       normalizeShiftPageSearchParams({

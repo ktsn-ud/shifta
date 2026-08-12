@@ -121,7 +121,7 @@ export function TimetableList({
         workplaceId,
         deletingTarget.id,
       );
-      if (typeof response.error === "string") throw new Error(response.error);
+      if ("error" in response) throw new Error(response.error);
 
       await invalidateAfterTimetableMutation(queryClient, workplaceId);
       queryClient.setQueryData<TimetableSet[]>(

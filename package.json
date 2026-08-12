@@ -9,7 +9,14 @@
     "start": "next start",
     "lint": "eslint",
     "format": "prettier --write .",
+    "format:check": "prettier --check .",
+    "typecheck": "tsc --noEmit --incremental false",
     "test": "jest",
+    "test:ci": "jest --ci",
+    "doctor": "react-doctor . --verbose --scope changed --include-untracked",
+    "doctor:full": "react-doctor . --verbose --scope full",
+    "doctor:ci": "react-doctor . --scope changed --blocking error --no-score",
+    "check": "pnpm run format:check && pnpm run typecheck && pnpm run lint && pnpm run test:ci",
     "perf:collect": "node scripts/performance/collect-server-timing.mjs"
   },
   "dependencies": {
@@ -29,7 +36,6 @@
     "next-themes": "^0.4.6",
     "react": "19.2.8",
     "react-dom": "19.2.8",
-    "recharts": "2.15.4",
     "shadcn": "^4.16.2",
     "sonner": "^2.0.7",
     "tailwind-merge": "^3.6.0",
@@ -53,6 +59,7 @@
     "jest-environment-jsdom": "^30.4.1",
     "prettier": "^3.9.6",
     "prisma": "^6.19.3",
+    "react-doctor": "^0.9.11",
     "tailwindcss": "^4.3.3",
     "typescript": "^6.0.3"
   },

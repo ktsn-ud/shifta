@@ -4,24 +4,24 @@ import {
   resolvePayrollRuleDateRange,
 } from "@/lib/payroll/rule-query";
 import { prisma } from "@/lib/prisma";
-import { revalidateShiftDomainTags } from "@/lib/cache/revalidate";
+import { revalidateShiftSyncTags } from "@/lib/cache/revalidate";
+import type { GoogleSyncErrorCode } from "./syncErrors";
 import {
-  GoogleCalendarSyncError,
-  GOOGLE_SYNC_ERROR_CODES,
-  type GoogleSyncErrorCode,
-  requiresCalendarSetupBySyncErrorCode,
-  requiresSignOutBySyncErrorCode,
-} from "./syncErrors";
+  executeWithSyncRetry,
+  resolveGoogleSyncError,
+  type SyncRetryAction,
+} from "./sync-error-policy";
 import {
   createCalendarEvent,
   deleteCalendarEvent,
   getVerifiedCalendarClient,
   updateCalendarEvent,
 } from "./syncEvent";
+import { createSemaphore, isSemaphoreCapacityError } from "./semaphore";
 
 type ShiftSyncStatus = "PENDING" | "SUCCESS" | "FAILED";
 
-type SyncAction = "create" | "update" | "retry" | "delete";
+type SyncAction = SyncRetryAction;
 
 type SyncFailureResult = {
   ok: false;
@@ -51,315 +51,49 @@ type SyncLog = {
   errorCode?: GoogleSyncErrorCode | null;
 };
 
-type ResolvedSyncError = {
-  message: string;
-  code: GoogleSyncErrorCode | null;
-  requiresCalendarSetup: boolean;
-  requiresSignOut: boolean;
-};
-
 const BULK_SYNC_CONCURRENCY = 3;
-const SYNC_RETRY_DELAYS_MS = [500, 1500] as const;
-const RATE_LIMIT_RETRY_DELAYS_MS = [2000, 6000] as const;
-const RETRYABLE_STATUS_CODES = new Set([408, 409, 429]);
-const RETRYABLE_ERROR_CODES = [
-  "ETIMEDOUT",
-  "ECONNRESET",
-  "ECONNABORTED",
-  "EAI_AGAIN",
-  "ENOTFOUND",
-  "UND_ERR_CONNECT_TIMEOUT",
-] as const;
+export const BULK_SYNC_MAX_WAITING = 100;
+const BULK_SYNC_CAPACITY_ERROR_MESSAGE =
+  "Google Calendar 同期の待機上限に達しました。時間を置いて再試行してください";
+const bulkShiftSyncSemaphore = createSemaphore(
+  BULK_SYNC_CONCURRENCY,
+  BULK_SYNC_MAX_WAITING,
+);
 
-function extractGoogleErrorStatus(error: unknown): number | null {
-  if (!(error instanceof Error)) {
-    return null;
-  }
-
-  const candidate = error as Error & {
-    code?: number | string;
-    status?: number;
-    response?: {
-      status?: number;
+function resolveBulkSyncError(error: unknown) {
+  if (isSemaphoreCapacityError(error)) {
+    return {
+      message: BULK_SYNC_CAPACITY_ERROR_MESSAGE,
+      code: null,
+      requiresCalendarSetup: false,
+      requiresSignOut: false,
     };
-  };
+  }
 
-  const status =
-    candidate.status ?? candidate.response?.status ?? Number(candidate.code);
-
-  return Number.isFinite(status) ? status : null;
+  return resolveGoogleSyncError(error);
 }
 
-type GoogleErrorReasonCandidate = {
-  reason?: unknown;
-};
-
-type GoogleErrorWithMetadata = Error & {
-  response?: {
-    status?: number;
-    data?: {
-      error?: {
-        message?: unknown;
-        errors?: unknown;
-      };
-    };
-  };
-  cause?: {
-    message?: unknown;
-    errors?: unknown;
-  };
-};
-
-function getGoogleErrorReasons(error: unknown): string[] {
-  if (!(error instanceof Error)) {
-    return [];
-  }
-
-  const candidate = error as GoogleErrorWithMetadata;
-  const sources = [
-    candidate.response?.data?.error?.errors,
-    candidate.cause?.errors,
-  ];
-  const reasons: string[] = [];
-
-  for (const source of sources) {
-    if (!Array.isArray(source)) {
-      continue;
-    }
-
-    for (const item of source) {
-      if (!item || typeof item !== "object") {
-        continue;
-      }
-
-      const reason = (item as GoogleErrorReasonCandidate).reason;
-      if (typeof reason === "string" && reason.length > 0) {
-        reasons.push(reason.toLowerCase());
-      }
-    }
-  }
-
-  return reasons;
-}
-
-function getGoogleErrorMessages(error: unknown): string[] {
-  if (!(error instanceof Error)) {
-    return [];
-  }
-
-  const candidate = error as GoogleErrorWithMetadata;
-  const messages = [
-    error.message,
-    candidate.response?.data?.error?.message,
-    candidate.cause?.message,
-  ];
-
-  return messages
-    .filter((message): message is string => {
-      return typeof message === "string" && message.length > 0;
-    })
-    .map((message) => message.toLowerCase());
-}
-
-function isGoogleRateLimitError(error: unknown): boolean {
-  const reasons = getGoogleErrorReasons(error);
-  const hasRateLimitReason = reasons.some((reason) => {
-    return (
-      reason.includes("ratelimit") ||
-      reason.includes("rate_limit") ||
-      reason.includes("userratelimitexceeded") ||
-      reason.includes("quotaexceeded")
-    );
-  });
-
-  const messages = getGoogleErrorMessages(error);
-  const hasRateLimitMessage = messages.some((message) => {
-    return (
-      message.includes("rate limit exceeded") ||
-      message.includes("user rate limit exceeded") ||
-      message.includes("quota exceeded")
-    );
-  });
-
-  if (hasRateLimitReason || hasRateLimitMessage) {
-    return true;
-  }
-
-  const status = extractGoogleErrorStatus(error);
-  return status === 429;
-}
-
-function extractGoogleErrorCode(error: unknown): string {
-  if (!(error instanceof Error)) {
-    return "";
-  }
-
-  return String(
-    (error as Error & { code?: number | string }).code ?? "",
-  ).toUpperCase();
-}
-
-function isRetryableGoogleSyncError(error: unknown): boolean {
-  if (error instanceof GoogleCalendarSyncError) {
-    return false;
-  }
-
-  if (isGoogleRateLimitError(error)) {
-    return true;
-  }
-
-  const status = extractGoogleErrorStatus(error);
-  if (
-    status !== null &&
-    (RETRYABLE_STATUS_CODES.has(status) || status >= 500)
-  ) {
-    return true;
-  }
-
-  if (!(error instanceof Error)) {
-    return false;
-  }
-
-  const errorCode = extractGoogleErrorCode(error);
-  if (
-    RETRYABLE_ERROR_CODES.some((code) => {
-      return errorCode.includes(code);
-    })
-  ) {
-    return true;
-  }
-
-  return error.message.toLowerCase().includes("timeout");
-}
-
-function wait(ms: number): Promise<void> {
-  return new Promise((resolve) => {
-    setTimeout(resolve, ms);
-  });
-}
-
-async function executeWithSyncRetry<T>(
+async function withBulkShiftSyncPermit<T>(
   operation: () => Promise<T>,
-  context: {
-    action: SyncAction;
-    userId: string;
-    shiftId: string;
-  },
+  onCapacityExceeded?: (error: unknown) => Promise<T>,
 ): Promise<T> {
-  async function run(attempt: number): Promise<T> {
-    try {
-      return await operation();
-    } catch (error) {
-      const delays = isGoogleRateLimitError(error)
-        ? RATE_LIMIT_RETRY_DELAYS_MS
-        : SYNC_RETRY_DELAYS_MS;
-      const hasRetryLeft = attempt < delays.length;
-      const shouldRetry = hasRetryLeft && isRetryableGoogleSyncError(error);
+  let release: () => void;
 
-      if (!shouldRetry) {
-        throw error;
-      }
-
-      const delayMs = delays[attempt] ?? 0;
-      console.warn("Google Calendar sync retry scheduled", {
-        action: context.action,
-        userId: context.userId,
-        shiftId: context.shiftId,
-        attempt: attempt + 1,
-        nextDelayMs: delayMs,
-      });
-
-      await wait(delayMs);
-      return run(attempt + 1);
+  try {
+    release = await bulkShiftSyncSemaphore.acquire();
+  } catch (error) {
+    if (isSemaphoreCapacityError(error) && onCapacityExceeded) {
+      return onCapacityExceeded(error);
     }
+
+    throw error;
   }
 
-  return run(0);
-}
-
-function resolveGoogleSyncError(error: unknown): ResolvedSyncError {
-  if (error instanceof GoogleCalendarSyncError) {
-    return {
-      message: error.message,
-      code: error.code,
-      requiresCalendarSetup: requiresCalendarSetupBySyncErrorCode(error.code),
-      requiresSignOut: requiresSignOutBySyncErrorCode(error.code),
-    };
+  try {
+    return await operation();
+  } finally {
+    release();
   }
-
-  const status = extractGoogleErrorStatus(error);
-  if (isGoogleRateLimitError(error)) {
-    return {
-      message:
-        "Google Calendar の利用上限に達しました。時間を置いて再試行してください",
-      code: null,
-      requiresCalendarSetup: false,
-      requiresSignOut: false,
-    };
-  }
-
-  if (status === 401) {
-    return {
-      message: "Google認証に失敗しました。再ログインしてください",
-      code: GOOGLE_SYNC_ERROR_CODES.TOKEN_EXPIRED,
-      requiresCalendarSetup: false,
-      requiresSignOut: true,
-    };
-  }
-  if (status === 403) {
-    return {
-      message: "Google Calendar へのアクセス権限が不足しています",
-      code: null,
-      requiresCalendarSetup: false,
-      requiresSignOut: false,
-    };
-  }
-  if (status === 404) {
-    return {
-      message: "同期先のGoogle Calendarイベントが見つかりません",
-      code: null,
-      requiresCalendarSetup: false,
-      requiresSignOut: false,
-    };
-  }
-  if (status === 409) {
-    return {
-      message: "Google Calendar 上で競合が発生しました。再試行してください",
-      code: null,
-      requiresCalendarSetup: false,
-      requiresSignOut: false,
-    };
-  }
-  if (typeof status === "number" && status >= 500) {
-    return {
-      message: "Google Calendar 側で一時的なエラーが発生しました",
-      code: null,
-      requiresCalendarSetup: false,
-      requiresSignOut: false,
-    };
-  }
-
-  if (error instanceof Error) {
-    const code = extractGoogleErrorCode(error);
-    if (
-      error.message.toLowerCase().includes("timeout") ||
-      code.includes("ETIMEDOUT")
-    ) {
-      return {
-        message: "Google Calendar との通信がタイムアウトしました",
-        code: null,
-        requiresCalendarSetup: false,
-        requiresSignOut: false,
-      };
-    }
-  }
-
-  return {
-    message: "Google Calendar との同期に失敗しました",
-    code: null,
-    requiresCalendarSetup: false,
-    requiresSignOut: false,
-  };
 }
 
 function logSyncEvent(entry: SyncLog): void {
@@ -378,6 +112,16 @@ function logSyncEvent(entry: SyncLog): void {
   );
 }
 
+function logScheduledSyncRetry(retry: {
+  action: SyncAction;
+  userId: string;
+  shiftId: string;
+  attempt: number;
+  nextDelayMs: number;
+}): void {
+  console.warn("Google Calendar sync retry scheduled", retry);
+}
+
 async function clearCalendarIdForReinitialize(userId: string): Promise<void> {
   try {
     await prisma.user.update({
@@ -387,9 +131,11 @@ async function clearCalendarIdForReinitialize(userId: string): Promise<void> {
       },
     });
   } catch (error) {
+    const syncError = resolveGoogleSyncError(error);
     console.error("Failed to clear stale calendarId", {
       userId,
-      error,
+      error: syncError.message,
+      errorCode: syncError.code,
     });
   }
 }
@@ -424,7 +170,7 @@ async function updateSyncStatus(
     return false;
   }
 
-  revalidateShiftDomainTags({ userId });
+  revalidateShiftSyncTags({ userId });
   return true;
 }
 
@@ -533,6 +279,44 @@ async function mapWithConcurrency<T, R>(
   return results;
 }
 
+async function deleteCreatedCalendarEvent(
+  googleEventId: string,
+  shiftId: string,
+  user: User,
+): Promise<void> {
+  try {
+    await executeWithSyncRetry(
+      () => deleteCalendarEvent(googleEventId, shiftId, user),
+      {
+        action: "delete",
+        userId: user.id,
+        shiftId,
+        onRetryScheduled: () => {},
+      },
+    );
+  } catch {
+    console.warn("Google Calendar orphaned create compensation failed", {
+      action: "create",
+    });
+  }
+}
+
+async function compensateCreatedCalendarEvent(
+  googleEventId: string,
+  shiftId: string,
+  user: User,
+): Promise<void> {
+  try {
+    await withBulkShiftSyncPermit(() =>
+      deleteCreatedCalendarEvent(googleEventId, shiftId, user),
+    );
+  } catch {
+    console.warn("Google Calendar orphaned create compensation failed", {
+      action: "create",
+    });
+  }
+}
+
 async function runShiftSync(
   shiftId: string,
   userId: string,
@@ -592,11 +376,17 @@ async function runShiftSync(
     }
 
     let googleEventId = shift.googleEventId;
+    let createdGoogleEventId: string | null = null;
 
     googleEventId = await executeWithSyncRetry(
       async () => {
         if (action === "create") {
-          return createCalendarEvent(shift, shift.workplace, user);
+          createdGoogleEventId = await createCalendarEvent(
+            shift,
+            shift.workplace,
+            user,
+          );
+          return createdGoogleEventId;
         }
 
         if (shift.googleEventId) {
@@ -604,19 +394,52 @@ async function runShiftSync(
           return shift.googleEventId;
         }
 
-        return createCalendarEvent(shift, shift.workplace, user);
+        createdGoogleEventId = await createCalendarEvent(
+          shift,
+          shift.workplace,
+          user,
+        );
+        return createdGoogleEventId;
       },
       {
         action,
         userId,
         shiftId,
+        onRetryScheduled: logScheduledSyncRetry,
       },
     );
 
-    await updateSyncStatus(shiftId, userId, "SUCCESS", {
+    const succeeded = await updateSyncStatus(shiftId, userId, "SUCCESS", {
       googleEventId,
       error: null,
     });
+    if (!succeeded) {
+      if (createdGoogleEventId) {
+        await compensateCreatedCalendarEvent(
+          createdGoogleEventId,
+          shiftId,
+          user,
+        );
+      }
+
+      const errorMessage = "同期対象のシフトが見つかりません";
+      logSyncEvent({
+        userId,
+        shiftId,
+        action,
+        status: "FAILED",
+        error: errorMessage,
+        durationMs: Date.now() - startedAt,
+      });
+
+      return {
+        ok: false,
+        errorMessage,
+        errorCode: null,
+        requiresCalendarSetup: false,
+        requiresSignOut: false,
+      };
+    }
 
     logSyncEvent({
       userId,
@@ -632,14 +455,15 @@ async function runShiftSync(
       googleEventId,
     };
   } catch (error) {
+    const syncError = resolveGoogleSyncError(error);
     console.error("Google Calendar shift sync failed", {
       action,
       userId,
       shiftId,
-      error,
+      error: syncError.message,
+      errorCode: syncError.code,
     });
 
-    const syncError = resolveGoogleSyncError(error);
     if (syncError.requiresCalendarSetup) {
       await clearCalendarIdForReinitialize(userId);
     }
@@ -706,7 +530,7 @@ export async function syncShiftsAfterBulkCreate(
       },
     });
 
-    revalidateShiftDomainTags({ userId });
+    revalidateShiftSyncTags({ userId });
   }
 
   let clearCalendarIdPromise: Promise<void> | null = null;
@@ -724,9 +548,11 @@ export async function syncShiftsAfterBulkCreate(
 
   if (user?.calendarId) {
     try {
-      sharedCalendar = await getVerifiedCalendarClient(user);
+      sharedCalendar = await withBulkShiftSyncPermit(() =>
+        getVerifiedCalendarClient(user),
+      );
     } catch (error) {
-      const syncError = resolveGoogleSyncError(error);
+      const syncError = resolveBulkSyncError(error);
       if (syncError.requiresCalendarSetup) {
         await clearCalendarIdOnce();
       }
@@ -745,7 +571,7 @@ export async function syncShiftsAfterBulkCreate(
           },
         });
 
-        revalidateShiftDomainTags({ userId });
+        revalidateShiftSyncTags({ userId });
       }
 
       return mapWithConcurrency(
@@ -808,104 +634,164 @@ export async function syncShiftsAfterBulkCreate(
     shiftIds,
     BULK_SYNC_CONCURRENCY,
     async (shiftId) => {
-      const startedAt = Date.now();
-      const shift = shiftsById.get(shiftId);
+      return withBulkShiftSyncPermit(
+        async () => {
+          const startedAt = Date.now();
+          const shift = shiftsById.get(shiftId);
 
-      if (!shift || !user) {
-        const errorMessage = "同期対象のシフトまたはユーザーが見つかりません";
-        await updateSyncStatus(shiftId, userId, "FAILED", {
-          error: errorMessage,
-        });
+          if (!shift || !user) {
+            const errorMessage =
+              "同期対象のシフトまたはユーザーが見つかりません";
+            await updateSyncStatus(shiftId, userId, "FAILED", {
+              error: errorMessage,
+            });
 
-        logSyncEvent({
-          userId,
-          shiftId,
-          action: "create",
-          status: "FAILED",
-          error: errorMessage,
-          durationMs: Date.now() - startedAt,
-        });
+            logSyncEvent({
+              userId,
+              shiftId,
+              action: "create",
+              status: "FAILED",
+              error: errorMessage,
+              durationMs: Date.now() - startedAt,
+            });
 
-        return {
-          shiftId,
-          ok: false as const,
-          errorMessage,
-          errorCode: null,
-          requiresCalendarSetup: false,
-          requiresSignOut: false,
-        };
-      }
+            return {
+              shiftId,
+              ok: false as const,
+              errorMessage,
+              errorCode: null,
+              requiresCalendarSetup: false,
+              requiresSignOut: false,
+            };
+          }
 
-      try {
-        const googleEventId = await executeWithSyncRetry(
-          async () =>
-            createCalendarEvent(shift, shift.workplace, user, {
-              calendar: sharedCalendar ?? undefined,
-              skipCalendarExistenceCheck: sharedCalendar !== null,
-              payrollRulesByWorkplaceId: payrollRulesByWorkplace,
-            }),
-          {
-            action: "create",
+          try {
+            const googleEventId = await executeWithSyncRetry(
+              async () =>
+                createCalendarEvent(shift, shift.workplace, user, {
+                  calendar: sharedCalendar ?? undefined,
+                  skipCalendarExistenceCheck: sharedCalendar !== null,
+                  payrollRulesByWorkplaceId: payrollRulesByWorkplace,
+                }),
+              {
+                action: "create",
+                userId,
+                shiftId,
+                onRetryScheduled: logScheduledSyncRetry,
+              },
+            );
+
+            const succeeded = await updateSyncStatus(
+              shiftId,
+              userId,
+              "SUCCESS",
+              {
+                googleEventId,
+                error: null,
+              },
+            );
+            if (!succeeded) {
+              await deleteCreatedCalendarEvent(googleEventId, shiftId, user);
+
+              const errorMessage = "同期対象のシフトが見つかりません";
+              logSyncEvent({
+                userId,
+                shiftId,
+                action: "create",
+                status: "FAILED",
+                error: errorMessage,
+                durationMs: Date.now() - startedAt,
+              });
+
+              return {
+                shiftId,
+                ok: false as const,
+                errorMessage,
+                errorCode: null,
+                requiresCalendarSetup: false,
+                requiresSignOut: false,
+              };
+            }
+
+            logSyncEvent({
+              userId,
+              shiftId,
+              action: "create",
+              status: "SUCCESS",
+              googleEventId,
+              durationMs: Date.now() - startedAt,
+            });
+
+            return {
+              shiftId,
+              ok: true as const,
+              googleEventId,
+            };
+          } catch (error) {
+            const syncError = resolveGoogleSyncError(error);
+            console.error("Google Calendar bulk shift sync failed", {
+              action: "create",
+              userId,
+              shiftId,
+              error: syncError.message,
+              errorCode: syncError.code,
+            });
+
+            if (syncError.requiresCalendarSetup) {
+              await clearCalendarIdOnce();
+            }
+
+            await updateSyncStatus(shiftId, userId, "FAILED", {
+              error: syncError.message,
+            });
+
+            logSyncEvent({
+              userId,
+              shiftId,
+              action: "create",
+              status: "FAILED",
+              error: syncError.message,
+              errorCode: syncError.code,
+              durationMs: Date.now() - startedAt,
+            });
+
+            return {
+              shiftId,
+              ok: false as const,
+              errorMessage: syncError.message,
+              errorCode: syncError.code,
+              requiresCalendarSetup: syncError.requiresCalendarSetup,
+              requiresSignOut: syncError.requiresSignOut,
+            };
+          }
+        },
+        async (error) => {
+          const startedAt = Date.now();
+          const syncError = resolveBulkSyncError(error);
+          await updateSyncStatus(shiftId, userId, "FAILED", {
+            error: syncError.message,
+          });
+
+          logSyncEvent({
             userId,
             shiftId,
-          },
-        );
+            action: "create",
+            status: "FAILED",
+            error: syncError.message,
+            errorCode: syncError.code,
+            durationMs: Date.now() - startedAt,
+          });
 
-        await updateSyncStatus(shiftId, userId, "SUCCESS", {
-          googleEventId,
-          error: null,
-        });
-
-        logSyncEvent({
-          userId,
-          shiftId,
-          action: "create",
-          status: "SUCCESS",
-          googleEventId,
-          durationMs: Date.now() - startedAt,
-        });
-
-        return {
-          shiftId,
-          ok: true as const,
-          googleEventId,
-        };
-      } catch (error) {
-        console.error("Google Calendar bulk shift sync failed", {
-          action: "create",
-          userId,
-          shiftId,
-          error,
-        });
-
-        const syncError = resolveGoogleSyncError(error);
-        if (syncError.requiresCalendarSetup) {
-          await clearCalendarIdOnce();
-        }
-
-        await updateSyncStatus(shiftId, userId, "FAILED", {
-          error: syncError.message,
-        });
-
-        logSyncEvent({
-          userId,
-          shiftId,
-          action: "create",
-          status: "FAILED",
-          error: syncError.message,
-          errorCode: syncError.code,
-          durationMs: Date.now() - startedAt,
-        });
-
-        return {
-          shiftId,
-          ok: false as const,
-          errorMessage: syncError.message,
-          errorCode: syncError.code,
-          requiresCalendarSetup: syncError.requiresCalendarSetup,
-          requiresSignOut: syncError.requiresSignOut,
-        };
-      }
+          return {
+            shiftId,
+            ok: false as const,
+            errorMessage: syncError.message,
+            errorCode: syncError.code,
+            requiresCalendarSetup: syncError.requiresCalendarSetup,
+            requiresSignOut: syncError.requiresSignOut,
+          };
+        },
+      );
     },
   );
 }
@@ -947,6 +833,7 @@ export async function syncShiftDeletion(
         action: "delete",
         userId,
         shiftId,
+        onRetryScheduled: logScheduledSyncRetry,
       },
     );
 
@@ -960,15 +847,16 @@ export async function syncShiftDeletion(
     });
     return { ok: true };
   } catch (error) {
+    const syncError = resolveGoogleSyncError(error);
     console.error("Google Calendar shift deletion sync failed", {
       action: "delete",
       userId,
       shiftId,
       googleEventId,
-      error,
+      error: syncError.message,
+      errorCode: syncError.code,
     });
 
-    const syncError = resolveGoogleSyncError(error);
     if (syncError.requiresCalendarSetup) {
       await clearCalendarIdForReinitialize(userId);
     }
@@ -992,6 +880,44 @@ export async function syncShiftDeletion(
       requiresSignOut: syncError.requiresSignOut,
     };
   }
+}
+
+export async function syncShiftDeletionsAfterWorkplaceDeletion(
+  shifts: ReadonlyArray<{ id: string; googleEventId: string }>,
+  userId: string,
+): Promise<{ total: number; failed: number }> {
+  const user = await findUserForSync(userId);
+  if (!user) {
+    return { total: shifts.length, failed: shifts.length };
+  }
+
+  const results = await mapWithConcurrency(
+    shifts,
+    BULK_SYNC_CONCURRENCY,
+    async (shift) => {
+      try {
+        await withBulkShiftSyncPermit(() =>
+          executeWithSyncRetry(
+            () => deleteCalendarEvent(shift.googleEventId, shift.id, user),
+            {
+              action: "delete",
+              userId,
+              shiftId: shift.id,
+              onRetryScheduled: () => {},
+            },
+          ),
+        );
+        return true;
+      } catch {
+        return false;
+      }
+    },
+  );
+
+  return {
+    total: results.length,
+    failed: results.filter((result) => !result).length,
+  };
 }
 
 export async function getOwnedShiftSyncStatus(shiftId: string, userId: string) {

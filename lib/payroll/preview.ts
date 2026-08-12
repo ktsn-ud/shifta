@@ -8,7 +8,7 @@ import { calculateShiftWage } from "@/lib/payroll/calculateShiftWage";
 import { resolvePaymentMonthForShiftDate } from "@/lib/payroll/pay-period";
 import { resolveLessonTimeRangeFromRows } from "@/lib/shifts/lesson-time-range";
 
-type ShiftType = "NORMAL" | "LESSON" | "OTHER";
+type ShiftType = "NORMAL" | "LESSON";
 type HolidayType = "NONE" | "WEEKEND" | "HOLIDAY" | "WEEKEND_HOLIDAY";
 type PreviewStatus = "ready" | "incomplete" | "missing-rule" | "invalid";
 

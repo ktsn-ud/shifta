@@ -1035,21 +1035,15 @@ function WorkplaceEditorForm({
       } else {
         actionResult = await createWorkplaceAction(payload);
       }
-      const responsePayload = actionResult as {
-        error?: string;
-        data?: {
-          id?: string;
-          type?: WorkplaceType;
-        };
-      };
-      if (responsePayload.error) throw new Error(responsePayload.error);
+      if ("error" in actionResult) throw new Error(actionResult.error);
+      const responsePayload = actionResult;
       const syncState = parseGoogleSyncStateFromPayload(
         responsePayload,
         messages.error.calendarSyncFailed,
       );
       await invalidateAfterWorkplaceMutation(queryClient);
 
-      if (!isEdit && responsePayload.data?.id) {
+      if (!isEdit && responsePayload.data.id) {
         toast.success(messages.success.workplaceCreated, {
           id: loadingToastId,
           description: buildMutationSuccessDescription({

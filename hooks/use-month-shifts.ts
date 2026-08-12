@@ -235,7 +235,7 @@ async function fetchMonthShifts(params: {
 export function clearMonthShiftsCache(): void {
   const queryClient = getBrowserQueryClient();
   queryClient.removeQueries({
-    queryKey: ["shifts", "month"],
+    queryKey: queryKeys.shifts.monthScope(),
   });
 }
 

@@ -1,3 +1,4 @@
+import type { MouseEvent } from "react";
 import { act, fireEvent, render, screen, within } from "@testing-library/react";
 import { toast } from "sonner";
 import { DashboardPageClient } from "@/components/dashboard/dashboard-page-client";
@@ -11,6 +12,7 @@ import { removeShiftsFromMonthCachesOptimistically } from "@/lib/query/optimisti
 const pushMock = jest.fn();
 const replaceMock = jest.fn();
 const cancelQueriesMock = jest.fn();
+const invalidateQueriesMock = jest.fn();
 
 jest.mock("next/navigation", () => ({
   useRouter: jest.fn(() => ({
@@ -54,11 +56,13 @@ jest.mock("@/components/calendar/ShiftListModal", () => ({
     ({
       onCreateShift,
       onDeleteShift,
+      onRetrySync,
       open,
       targetDate,
     }: {
       onCreateShift: (date: Date) => void;
       onDeleteShift: (shiftId: string) => void;
+      onRetrySync: (shiftId: string) => Promise<void> | void;
       open: boolean;
       targetDate: Date;
     }) =>
@@ -70,6 +74,9 @@ jest.mock("@/components/calendar/ShiftListModal", () => ({
           </button>
           <button type="button" onClick={() => onDeleteShift("shift-1")}>
             シフトを削除
+          </button>
+          <button type="button" onClick={() => void onRetrySync("shift-1")}>
+            同期を再試行
           </button>
         </div>
       ) : null,
@@ -153,6 +160,8 @@ describe("DashboardPageClient", () => {
     mockedRemoveShiftsFromMonthCachesOptimistically.mockReset();
     cancelQueriesMock.mockReset();
     cancelQueriesMock.mockResolvedValue(undefined);
+    invalidateQueriesMock.mockReset();
+    invalidateQueriesMock.mockResolvedValue(undefined);
     mockToast.mockClear();
     mockToast.dismiss.mockClear();
     mockToast.error.mockClear();
@@ -164,6 +173,7 @@ describe("DashboardPageClient", () => {
     });
     mockedGetBrowserQueryClient.mockReturnValue({
       cancelQueries: cancelQueriesMock,
+      invalidateQueries: invalidateQueriesMock,
     } as unknown as ReturnType<typeof getBrowserQueryClient>);
     mockedUseMonthShifts.mockReturnValue({
       shifts: [],
@@ -622,6 +632,103 @@ describe("DashboardPageClient", () => {
     expect(mockToast.success).not.toHaveBeenCalled();
     expect(unhandledRejection).not.toHaveBeenCalled();
     window.removeEventListener("unhandledrejection", unhandledRejection);
+  });
+
+  it("日別モーダルの元に戻すでは楽観削除を復元し、削除APIを呼ばない", async () => {
+    const rollback = jest.fn();
+    const fetchMock = jest.fn();
+    mockedRemoveShiftsFromMonthCachesOptimistically.mockReturnValue(rollback);
+    Object.defineProperty(globalThis, "fetch", {
+      writable: true,
+      value: fetchMock,
+    });
+
+    render(
+      <DashboardPageClient
+        currentUserId="user-1"
+        initialMonthShifts={[]}
+        initialMonthStartDate="2026-07-01"
+        initialMonthEndDate="2026-07-31"
+        initialUnconfirmedShiftCount={0}
+        initialUnconfirmedShiftCountVersion="dashboard-count-v1"
+        initialNextPaymentAmount={null}
+        todayDate="2026-07-15"
+      />,
+    );
+
+    fireEvent.click(
+      screen.getByRole("button", { name: "シフトありの日を開く" }),
+    );
+    fireEvent.click(screen.getByRole("button", { name: "シフトを削除" }));
+
+    await act(async () => {
+      await Promise.resolve();
+    });
+
+    const toastOptions = mockToast.mock.calls.find(
+      ([message]) => message === "シフトを削除しました。",
+    )?.[1] as {
+      action: { onClick: (event: MouseEvent<HTMLButtonElement>) => void };
+    };
+
+    act(() => {
+      toastOptions.action.onClick({} as MouseEvent<HTMLButtonElement>);
+      jest.advanceTimersByTime(4000);
+    });
+
+    expect(rollback).toHaveBeenCalledTimes(1);
+    expect(fetchMock).not.toHaveBeenCalled();
+    expect(mockToast.dismiss).toHaveBeenCalledWith("undo-toast-1");
+  });
+
+  it("日別モーダルの再同期は対象シフトの再試行APIを呼ぶ", async () => {
+    const reload = jest.fn();
+    const fetchMock = jest.fn().mockResolvedValue({ ok: true } as Response);
+    Object.defineProperty(globalThis, "fetch", {
+      writable: true,
+      value: fetchMock,
+    });
+    mockedUseMonthShifts.mockReturnValue({
+      shifts: [],
+      displayMonth: new Date("2026-07-01T00:00:00.000Z"),
+      isLoading: false,
+      isInitialLoading: false,
+      isRefreshing: false,
+      isPlaceholderData: false,
+      errorMessage: null,
+      reload,
+    } as ReturnType<typeof useMonthShifts>);
+
+    render(
+      <DashboardPageClient
+        currentUserId="user-1"
+        initialMonthShifts={[]}
+        initialMonthStartDate="2026-07-01"
+        initialMonthEndDate="2026-07-31"
+        initialUnconfirmedShiftCount={0}
+        initialUnconfirmedShiftCountVersion="dashboard-count-v1"
+        initialNextPaymentAmount={null}
+        todayDate="2026-07-15"
+      />,
+    );
+
+    fireEvent.click(
+      screen.getByRole("button", { name: "シフトありの日を開く" }),
+    );
+    fireEvent.click(screen.getByRole("button", { name: "同期を再試行" }));
+
+    await act(async () => {
+      await Promise.resolve();
+      await Promise.resolve();
+    });
+
+    expect(fetchMock).toHaveBeenCalledWith("/api/shifts/shift-1/retry-sync", {
+      method: "POST",
+    });
+    expect(reload).toHaveBeenCalledTimes(1);
+    expect(mockToast.success).toHaveBeenCalledWith(
+      "Google Calendar へ再同期しました。",
+    );
   });
 
   it("does not schedule dashboard deletion after unmounting during query cancellation", async () => {

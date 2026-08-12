@@ -1,3 +1,5 @@
+import { parseMonthKeyToDate } from "@/lib/payroll/month-key";
+
 export function userWorkplacesTag(userId: string): string {
   return `user:${userId}:workplaces`;
 }
@@ -20,6 +22,15 @@ export function userActualPayrollTag(userId: string): string {
 
 export function userPayrollSnapshotTag(userId: string): string {
   return `user:${userId}:payroll-snapshot`;
+}
+
+export function userPayrollSnapshotMonthTag(
+  userId: string,
+  monthKey: string,
+): string {
+  parseMonthKeyToDate(monthKey);
+
+  return `user:${userId}:payroll-snapshot:${monthKey}`;
 }
 
 export function workplaceDetailTag(workplaceId: string): string {

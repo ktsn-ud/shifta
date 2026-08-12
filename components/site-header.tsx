@@ -172,7 +172,7 @@ function SiteHeaderBreadcrumbContent({
         const isLast = index === breadcrumbs.length - 1;
         const isMiddleItem =
           shouldCollapseMiddle && index > 0 && index < breadcrumbs.length - 1;
-        const key = `${item.title}-${index}`;
+        const key = `${item.href ?? "current"}:${item.title}`;
         const separatorClassName = isMiddleItem
           ? "hidden sm:inline-flex"
           : shouldCollapseMiddle && isLast

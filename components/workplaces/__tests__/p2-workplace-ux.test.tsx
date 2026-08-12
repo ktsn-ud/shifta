@@ -1,4 +1,10 @@
-import { fireEvent, render, screen, waitFor } from "@testing-library/react";
+import {
+  fireEvent,
+  render,
+  screen,
+  waitFor,
+  within,
+} from "@testing-library/react";
 import { TimetableForm } from "@/components/workplaces/timetable-form";
 import { TimetableList } from "@/components/workplaces/timetable-list";
 import { PayrollRuleForm } from "@/components/workplaces/payroll-rule-form";
@@ -8,26 +14,27 @@ import { PayrollRuleList } from "@/components/workplaces/payroll-rule-list";
 import {
   useWorkplaceDetailQuery,
   useWorkplaceEditDetailQuery,
+  useWorkplacePayrollRuleDetailQuery,
   useWorkplacePayrollRulesQuery,
   useWorkplacesQuery,
   useWorkplaceTimetablesQuery,
 } from "@/lib/query/queries/workplaces";
-import { useQuery } from "@tanstack/react-query";
 import {
   createWorkplaceAction,
+  createPayrollRuleAction,
+  createTimetableAction,
   deleteWorkplaceAction,
 } from "@/lib/actions/workplace";
+import type { SyncResponsePayload } from "@/lib/google-calendar/sync-response";
+import { messages } from "@/lib/messages";
 import { getBrowserQueryClient } from "@/lib/query/query-client";
+import { buildActionableErrorMessage } from "@/lib/user-facing-error";
 import { useUndoableAction } from "@/hooks/use-undoable-action";
 
 const pushMock = jest.fn();
 
 jest.mock("next/navigation", () => ({
   useRouter: () => ({ push: pushMock }),
-}));
-
-jest.mock("@tanstack/react-query", () => ({
-  useQuery: jest.fn(),
 }));
 
 jest.mock("@/hooks/use-reset-on-route-hidden", () => ({
@@ -37,6 +44,7 @@ jest.mock("@/hooks/use-reset-on-route-hidden", () => ({
 jest.mock("@/lib/query/queries/workplaces", () => ({
   useWorkplaceDetailQuery: jest.fn(),
   useWorkplaceEditDetailQuery: jest.fn(),
+  useWorkplacePayrollRuleDetailQuery: jest.fn(),
   useWorkplacePayrollRulesQuery: jest.fn(),
   useWorkplacesQuery: jest.fn(),
   useWorkplaceTimetablesQuery: jest.fn(),
@@ -65,7 +73,6 @@ jest.mock("@/hooks/use-undoable-action", () => ({
   useUndoableAction: jest.fn(),
 }));
 
-const mockedUseQuery = useQuery as jest.MockedFunction<typeof useQuery>;
 const mockedUseWorkplaceDetailQuery =
   useWorkplaceDetailQuery as jest.MockedFunction<
     typeof useWorkplaceDetailQuery
@@ -73,6 +80,10 @@ const mockedUseWorkplaceDetailQuery =
 const mockedUseWorkplaceEditDetailQuery =
   useWorkplaceEditDetailQuery as jest.MockedFunction<
     typeof useWorkplaceEditDetailQuery
+  >;
+const mockedUseWorkplacePayrollRuleDetailQuery =
+  useWorkplacePayrollRuleDetailQuery as jest.MockedFunction<
+    typeof useWorkplacePayrollRuleDetailQuery
   >;
 const mockedUseWorkplacePayrollRulesQuery =
   useWorkplacePayrollRulesQuery as jest.MockedFunction<
@@ -86,6 +97,8 @@ const mockedUseWorkplaceTimetablesQuery =
     typeof useWorkplaceTimetablesQuery
   >;
 const createWorkplaceActionMock = jest.mocked(createWorkplaceAction);
+const createPayrollRuleActionMock = jest.mocked(createPayrollRuleAction);
+const createTimetableActionMock = jest.mocked(createTimetableAction);
 const deleteWorkplaceActionMock = jest.mocked(deleteWorkplaceAction);
 const getBrowserQueryClientMock = jest.mocked(getBrowserQueryClient);
 const useUndoableActionMock = jest.mocked(useUndoableAction);
@@ -97,10 +110,19 @@ const scheduleUndoableActionMock = jest.fn<
   [ScheduledUndoableAction]
 >();
 
+const successfulSync = {
+  status: "success",
+  ok: true,
+  pending: false,
+  errorMessage: null,
+  errorCode: null,
+  requiresCalendarSetup: false,
+  requiresSignOut: false,
+} as const satisfies SyncResponsePayload;
+
 describe("勤務先管理のP2 UX", () => {
   beforeEach(() => {
     pushMock.mockReset();
-    mockedUseQuery.mockReset();
     mockedUseWorkplacesQuery.mockReturnValue({
       data: [],
       isLoading: false,
@@ -124,6 +146,12 @@ describe("勤務先管理のP2 UX", () => {
       isFetching: false,
       error: null,
     } as unknown as ReturnType<typeof useWorkplaceEditDetailQuery>);
+    mockedUseWorkplacePayrollRuleDetailQuery.mockReturnValue({
+      data: undefined,
+      isPending: false,
+      isFetching: false,
+      error: null,
+    } as unknown as ReturnType<typeof useWorkplacePayrollRuleDetailQuery>);
     mockedUseWorkplacePayrollRulesQuery.mockReturnValue({
       data: [],
       isLoading: false,
@@ -137,6 +165,8 @@ describe("勤務先管理のP2 UX", () => {
       error: null,
     } as unknown as ReturnType<typeof useWorkplaceTimetablesQuery>);
     createWorkplaceActionMock.mockReset();
+    createPayrollRuleActionMock.mockReset();
+    createTimetableActionMock.mockReset();
     deleteWorkplaceActionMock.mockReset();
     getBrowserQueryClientMock.mockReset();
     getBrowserQueryClientMock.mockReturnValue({
@@ -263,8 +293,9 @@ describe("勤務先管理のP2 UX", () => {
 
   it("勤務先作成時は初期給与ルールが初期状態でOFFで、作成後は給与ルール作成へ進む", async () => {
     createWorkplaceActionMock.mockResolvedValue({
-      data: { id: "workplace-1", name: "青葉塾", type: "CRAM_SCHOOL" },
-      sync: { status: "success", pending: false },
+      data: { id: "workplace-1", type: "CRAM_SCHOOL" },
+      initialPayrollRule: null,
+      sync: successfulSync,
     });
 
     render(<WorkplaceForm mode="create" initialRuleStartDate="2026-07-01" />);
@@ -287,6 +318,149 @@ describe("勤務先管理のP2 UX", () => {
     expect(createWorkplaceActionMock).toHaveBeenCalledWith(
       expect.objectContaining({ name: "青葉塾" }),
     );
+  });
+
+  it("給与ルールと時間割の作成成功時は、完全な同期結果を受けて各一覧へ遷移する", async () => {
+    createPayrollRuleActionMock.mockResolvedValue({
+      data: { id: "rule-1", workplaceId: "workplace-1" },
+      warning: null,
+      sync: successfulSync,
+    });
+
+    const payrollRule = render(
+      <PayrollRuleForm mode="create" workplaceId="workplace-1" />,
+    );
+    fireEvent.change(screen.getByLabelText("適用開始日"), {
+      target: { value: "2026-07-01" },
+    });
+    fireEvent.click(screen.getByRole("button", { name: "作成" }));
+
+    await waitFor(() => {
+      expect(createPayrollRuleActionMock).toHaveBeenCalledWith(
+        "workplace-1",
+        expect.objectContaining({ startDate: "2026-07-01" }),
+      );
+      expect(pushMock).toHaveBeenCalledWith(
+        "/my/workplaces/workplace-1/payroll-rules",
+      );
+    });
+    payrollRule.unmount();
+
+    pushMock.mockReset();
+    createTimetableActionMock.mockResolvedValue({
+      data: { id: "timetable-1", workplaceId: "workplace-1" },
+      sync: successfulSync,
+    });
+    const timetable = render(
+      <TimetableForm mode="create" workplaceId="workplace-1" />,
+    );
+    fireEvent.change(screen.getByLabelText("時間割セット名"), {
+      target: { value: "夏期時間割" },
+    });
+    const timeInputs =
+      timetable.container.querySelectorAll<HTMLInputElement>(
+        'input[type="time"]',
+      );
+    fireEvent.change(timeInputs[0]!, { target: { value: "09:00" } });
+    fireEvent.change(timeInputs[1]!, { target: { value: "10:00" } });
+    fireEvent.change(screen.getByRole("spinbutton"), {
+      target: { value: "1" },
+    });
+    fireEvent.click(screen.getByRole("button", { name: "保存して完了" }));
+
+    await waitFor(() => {
+      expect(createTimetableActionMock).toHaveBeenCalledWith("workplace-1", {
+        name: "夏期時間割",
+        items: [{ period: 1, startTime: "09:00", endTime: "10:00" }],
+      });
+      expect(pushMock).toHaveBeenCalledWith(
+        "/my/workplaces/workplace-1/timetables",
+      );
+    });
+  });
+
+  it("各フォームは error union を受けた場合に遷移せず、既存のエラー表示を維持する", async () => {
+    createWorkplaceActionMock.mockResolvedValue({
+      error: "勤務先を保存できません",
+    });
+    const workplace = render(
+      <WorkplaceForm mode="create" initialRuleStartDate="2026-07-01" />,
+    );
+    fireEvent.change(screen.getByLabelText("勤務先名"), {
+      target: { value: "青葉塾" },
+    });
+    fireEvent.click(screen.getByRole("button", { name: "作成" }));
+
+    await waitFor(() => {
+      expect(createWorkplaceActionMock).toHaveBeenCalledTimes(1);
+      expect(within(workplace.container).getByRole("alert")).toHaveTextContent(
+        buildActionableErrorMessage(
+          messages.error.workplaceSaveFailed,
+          "server",
+        ),
+      );
+    });
+    expect(pushMock).not.toHaveBeenCalled();
+    workplace.unmount();
+
+    createPayrollRuleActionMock.mockResolvedValue({
+      error: "給与ルールを保存できません",
+      details: {
+        fieldErrors: { baseHourlyWage: ["基本時給を確認してください"] },
+      },
+    });
+    const payrollRule = render(
+      <PayrollRuleForm mode="create" workplaceId="workplace-1" />,
+    );
+    fireEvent.change(screen.getByLabelText("適用開始日"), {
+      target: { value: "2026-07-01" },
+    });
+    fireEvent.click(screen.getByRole("button", { name: "作成" }));
+
+    await waitFor(() => {
+      expect(createPayrollRuleActionMock).toHaveBeenCalledTimes(1);
+      expect(
+        within(payrollRule.container).getByText("給与ルールを保存できません"),
+      ).toBeInTheDocument();
+      expect(
+        within(payrollRule.container).getByText("基本時給を確認してください"),
+      ).toBeInTheDocument();
+    });
+    expect(pushMock).not.toHaveBeenCalled();
+    payrollRule.unmount();
+
+    createTimetableActionMock.mockResolvedValue({
+      error: "時間割を保存できません",
+    });
+    const timetable = render(
+      <TimetableForm mode="create" workplaceId="workplace-1" />,
+    );
+    fireEvent.change(screen.getByLabelText("時間割セット名"), {
+      target: { value: "夏期時間割" },
+    });
+    const timeInputs =
+      timetable.container.querySelectorAll<HTMLInputElement>(
+        'input[type="time"]',
+      );
+    fireEvent.change(timeInputs[0]!, { target: { value: "09:00" } });
+    fireEvent.change(timeInputs[1]!, { target: { value: "10:00" } });
+    fireEvent.change(screen.getByRole("spinbutton"), {
+      target: { value: "1" },
+    });
+    fireEvent.click(screen.getByRole("button", { name: "保存して完了" }));
+
+    await waitFor(() => {
+      expect(createTimetableActionMock).toHaveBeenCalledTimes(1);
+      expect(
+        within(timetable.container).getByText(
+          buildActionableErrorMessage(
+            messages.error.timetableSaveFailed,
+            "server",
+          ),
+        ),
+      ).toBeInTheDocument();
+    });
+    expect(pushMock).not.toHaveBeenCalled();
   });
 
   it("削除 Action が失敗したときは楽観的な勤務先一覧を復元する", async () => {
@@ -334,17 +508,6 @@ describe("勤務先管理のP2 UX", () => {
   });
 
   it("給与ルールの終了日が当日まで適用されることをフォームと一覧で明示する", () => {
-    mockedUseQuery.mockReturnValue({
-      data: {
-        id: "workplace-1",
-        name: "青葉塾",
-        type: "CRAM_SCHOOL",
-      },
-      isPending: false,
-      isFetching: false,
-      error: null,
-    } as unknown as ReturnType<typeof useQuery>);
-
     const { rerender } = render(
       <PayrollRuleForm mode="create" workplaceId="workplace-1" />,
     );
@@ -396,20 +559,6 @@ describe("勤務先管理のP2 UX", () => {
   });
 
   it("時間割作成で追加継続と保存完了の役割を明示する", () => {
-    mockedUseQuery
-      .mockReturnValueOnce({
-        data: { id: "workplace-1", name: "青葉塾", type: "CRAM_SCHOOL" },
-        isPending: false,
-        isFetching: false,
-        error: null,
-      } as unknown as ReturnType<typeof useQuery>)
-      .mockReturnValueOnce({
-        data: undefined,
-        isPending: false,
-        isFetching: false,
-        error: null,
-      } as unknown as ReturnType<typeof useQuery>);
-
     render(<TimetableForm mode="create" workplaceId="workplace-1" />);
 
     expect(
@@ -423,5 +572,125 @@ describe("勤務先管理のP2 UX", () => {
         "まだ保存待ちのセットはありません。「追加して続ける」で入力中のセットを追加できます。",
       ),
     ).toBeInTheDocument();
+  });
+
+  it("時間割フォームでは30コマと20セットで追加操作を停止し、上限を表示する", () => {
+    const timetable = render(
+      <TimetableForm mode="create" workplaceId="workplace-1" />,
+    );
+    const addItemButton = screen.getByRole("button", {
+      name: "行を追加",
+    });
+    for (let index = 0; index < 29; index += 1) {
+      fireEvent.click(addItemButton);
+    }
+
+    expect(screen.getByText("30/30件")).toBeInTheDocument();
+    expect(addItemButton).toBeDisabled();
+    timetable.unmount();
+
+    const queued = render(
+      <TimetableForm mode="create" workplaceId="workplace-1" />,
+    );
+    const queueButton = screen.getByRole("button", {
+      name: "追加して続ける",
+    });
+    for (let index = 0; index < 20; index += 1) {
+      fireEvent.change(screen.getByLabelText("時間割セット名"), {
+        target: { value: `時間割${index + 1}` },
+      });
+      const timeInputs =
+        queued.container.querySelectorAll<HTMLInputElement>(
+          'input[type="time"]',
+        );
+      fireEvent.change(timeInputs[0]!, { target: { value: "09:00" } });
+      fireEvent.change(timeInputs[1]!, { target: { value: "10:00" } });
+      fireEvent.change(screen.getByRole("spinbutton"), {
+        target: { value: "1" },
+      });
+      fireEvent.click(queueButton);
+    }
+
+    expect(screen.getByText("保存待ちの時間割セット (20)")).toBeInTheDocument();
+    expect(queueButton).toBeDisabled();
+    expect(screen.getByText("最大20件")).toBeInTheDocument();
+
+    fireEvent.click(screen.getByRole("button", { name: "作成予定1を削除" }));
+
+    expect(screen.getByText("保存待ちの時間割セット (19)")).toBeInTheDocument();
+    expect(queueButton).toBeEnabled();
+  });
+
+  it("時間割フォームは31限を送信せず、コマ番号入力の上限を表示する", () => {
+    const timetable = render(
+      <TimetableForm mode="create" workplaceId="workplace-1" />,
+    );
+    const periodInput = screen.getByRole("spinbutton");
+    expect(periodInput).toHaveAttribute("max", "30");
+
+    fireEvent.change(screen.getByLabelText("時間割セット名"), {
+      target: { value: "夏期時間割" },
+    });
+    const timeInputs =
+      timetable.container.querySelectorAll<HTMLInputElement>(
+        'input[type="time"]',
+      );
+    fireEvent.change(timeInputs[0]!, { target: { value: "09:00" } });
+    fireEvent.change(timeInputs[1]!, { target: { value: "10:00" } });
+    fireEvent.change(periodInput, { target: { value: "31" } });
+    fireEvent.click(screen.getByRole("button", { name: "保存して完了" }));
+
+    expect(
+      screen.getByText("コマ番号は30以下の整数で入力してください。"),
+    ).toBeInTheDocument();
+    expect(createTimetableActionMock).not.toHaveBeenCalled();
+  });
+
+  it("既存の31限の時間割を編集フォームに表示できる", () => {
+    mockedUseWorkplaceDetailQuery.mockReturnValue({
+      data: { id: "workplace-1", name: "青葉塾", type: "CRAM_SCHOOL" },
+      isPending: false,
+      isFetching: false,
+      error: null,
+    } as unknown as ReturnType<typeof useWorkplaceDetailQuery>);
+    mockedUseWorkplaceTimetablesQuery.mockReturnValue({
+      data: [
+        {
+          id: "set-legacy",
+          workplaceId: "workplace-1",
+          name: "旧時間割",
+          sortOrder: 0,
+          createdAt: "2026-03-01T00:00:00.000Z",
+          updatedAt: "2026-03-01T00:00:00.000Z",
+          items: [
+            {
+              id: "period-31",
+              timetableSetId: "set-legacy",
+              period: 31,
+              startTime: "1970-01-01T19:00:00.000Z",
+              endTime: "1970-01-01T20:00:00.000Z",
+            },
+          ],
+        },
+      ],
+      isPending: false,
+      isFetching: false,
+      error: null,
+    } as unknown as ReturnType<typeof useWorkplaceTimetablesQuery>);
+
+    render(
+      <TimetableForm
+        mode="edit"
+        workplaceId="workplace-1"
+        timetableId="set-legacy"
+      />,
+    );
+
+    expect(screen.getByLabelText("時間割セット名")).toHaveValue("旧時間割");
+    expect(screen.getByRole("spinbutton")).toHaveValue(31);
+    expect(screen.getByRole("button", { name: "更新" })).toBeInTheDocument();
+    expect(
+      screen.queryByRole("button", { name: "追加して続ける" }),
+    ).not.toBeInTheDocument();
   });
 });

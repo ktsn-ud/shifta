@@ -38,6 +38,7 @@ import {
 import { messages, toErrorMessage } from "@/lib/messages";
 import { invalidateAfterShiftMutation } from "@/lib/query/invalidation";
 import { removeShiftsFromMonthCachesOptimistically } from "@/lib/query/optimistic-shifts";
+import { queryKeys } from "@/lib/query/query-keys";
 import { formatShiftTimeRange } from "@/lib/shifts/time";
 import { formatShiftWorkplaceLabel } from "@/lib/shifts/format";
 import { resolveUserFacingErrorFromResponse } from "@/lib/user-facing-error";
@@ -921,7 +922,9 @@ export function ShiftListPageClient({
     dispatch({ type: "startDelete" });
 
     try {
-      await queryClient.cancelQueries({ queryKey: ["shifts", "month"] });
+      await queryClient.cancelQueries({
+        queryKey: queryKeys.shifts.monthScope(),
+      });
     } catch (error) {
       console.error("failed to cancel month shift queries", { error });
       if (isMountedRef.current) {

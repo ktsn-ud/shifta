@@ -3,11 +3,13 @@
 import { dateFromDateKey } from "@/lib/calendar/date";
 import { formatShiftType } from "@/lib/enum-labels";
 import type {
-  GoogleCalendarDay,
-  GoogleCalendarEventItem,
   ShiftType,
   Workplace,
-} from "@/components/shifts/BulkShiftForm";
+} from "@/components/shifts/bulk-shift-form/types";
+import type {
+  GoogleCalendarDay,
+  GoogleCalendarEventItem,
+} from "@/components/shifts/bulk-shift-form/google-events-parser";
 
 const selectedDateFormatter = new Intl.DateTimeFormat("ja-JP", {
   year: "numeric",
@@ -28,7 +30,7 @@ export const WEEKDAY_LABELS = [
   "金",
   "土",
 ] as const;
-export const MAX_BREAK_MINUTES = 240;
+export { MAX_BREAK_MINUTES } from "@/lib/shifts/break-validation";
 
 export function getVisibleGoogleEvents(day: GoogleCalendarDay | undefined): {
   visible: GoogleCalendarEventItem[];
