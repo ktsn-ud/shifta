@@ -688,5 +688,9 @@ describe("勤務先管理のP2 UX", () => {
 
     expect(screen.getByLabelText("時間割セット名")).toHaveValue("旧時間割");
     expect(screen.getByRole("spinbutton")).toHaveValue(31);
+    expect(screen.getByRole("button", { name: "更新" })).toBeInTheDocument();
+    expect(
+      screen.queryByRole("button", { name: "追加して続ける" }),
+    ).not.toBeInTheDocument();
   });
 });

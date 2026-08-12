@@ -116,12 +116,11 @@ type TimetableEditorFormProps = {
 };
 
 type TimetableItemsSectionProps = {
+  mode: TimetableFormMode;
   items: FormItemValues[];
+  queuedSetCount: number;
   rowErrors: RowErrorMap;
   isSubmitting: boolean;
-  isEdit: boolean;
-  hasReachedItemLimit: boolean;
-  hasReachedQueuedSetLimit: boolean;
   onUpdateItem: (
     itemId: string,
     patch: Partial<Pick<FormItemValues, "period" | "startTime" | "endTime">>,
@@ -146,8 +145,6 @@ type TimetableEditorController = {
   rowErrors: RowErrorMap;
   isSubmitting: boolean;
   formErrorMessage: string | null;
-  hasReachedItemLimit: boolean;
-  hasReachedQueuedSetLimit: boolean;
   updateName: (name: string) => void;
   updateItem: (
     itemId: string,
@@ -488,17 +485,21 @@ function timetableFormReducer(
 }
 
 function TimetableItemsSection({
+  mode,
   items,
+  queuedSetCount,
   rowErrors,
   isSubmitting,
-  isEdit,
-  hasReachedItemLimit,
-  hasReachedQueuedSetLimit,
   onUpdateItem,
   onRemoveItem,
   onAppendItem,
   onQueueCurrentSet,
 }: TimetableItemsSectionProps) {
+  const isEdit = mode === "edit";
+  const hasReachedItemLimit = items.length >= MAX_TIMETABLE_ITEMS_PER_SET;
+  const hasReachedQueuedSetLimit =
+    queuedSetCount >= MAX_BULK_TIMETABLE_SET_COUNT;
+
   return (
     <div className="space-y-3">
       <div className="flex flex-wrap items-center justify-between gap-2">
@@ -889,10 +890,6 @@ function useTimetableEditorController({
     rowErrors: state.rowErrors,
     isSubmitting: state.isSubmitting,
     formErrorMessage: state.errors.form ?? externalFormError ?? null,
-    hasReachedItemLimit:
-      state.values.items.length >= MAX_TIMETABLE_ITEMS_PER_SET,
-    hasReachedQueuedSetLimit:
-      state.queuedSets.length >= MAX_BULK_TIMETABLE_SET_COUNT,
     updateName: (name) => {
       dispatch({
         type: "updateName",
@@ -1021,12 +1018,11 @@ function TimetableEditorForm({
           </FieldGroup>
 
           <TimetableItemsSection
+            mode={mode}
             items={controller.values.items}
+            queuedSetCount={controller.queuedSets.length}
             rowErrors={controller.rowErrors}
             isSubmitting={controller.isSubmitting}
-            isEdit={controller.isEdit}
-            hasReachedItemLimit={controller.hasReachedItemLimit}
-            hasReachedQueuedSetLimit={controller.hasReachedQueuedSetLimit}
             onUpdateItem={controller.updateItem}
             onRemoveItem={controller.removeItem}
             onAppendItem={controller.appendItem}

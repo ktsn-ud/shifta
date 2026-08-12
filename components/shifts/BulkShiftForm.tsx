@@ -60,7 +60,9 @@ import {
 } from "@/lib/validation/batch-limits";
 
 const LAST_WORKPLACE_ID_KEY = "shifta:last-workplace-id";
-const BULK_CALENDAR_SELECTION_STORAGE_KEY = "shifta:bulk-calendar-selection";
+const BULK_CALENDAR_SELECTION_STORAGE_KEY = "shifta:bulk-calendar-selection:v1";
+const LEGACY_BULK_CALENDAR_SELECTION_STORAGE_KEY =
+  "shifta:bulk-calendar-selection";
 const BULK_CALENDAR_SELECTION_SCHEMA_VERSION = 1;
 const DAY_CELL_COUNT = 42;
 const GOOGLE_TOKEN_EXPIRED_DESCRIPTION =
@@ -121,13 +123,10 @@ function isPersistedBulkCalendarSelection(
   );
 }
 
-function readPersistedBulkCalendarSelection(): PersistedBulkCalendarSelection | null {
+function parsePersistedBulkCalendarSelection(
+  raw: string,
+): PersistedBulkCalendarSelection | null {
   try {
-    const raw = localStorage.getItem(BULK_CALENDAR_SELECTION_STORAGE_KEY);
-    if (!raw) {
-      return null;
-    }
-
     const parsed = JSON.parse(raw) as unknown;
     if (!isPersistedBulkCalendarSelection(parsed)) {
       return null;
@@ -150,6 +149,38 @@ function readPersistedBulkCalendarSelection(): PersistedBulkCalendarSelection | 
       hasUserSelection: parsed.hasUserSelection,
       selectedCalendarIds: Array.from(selectedCalendarIds),
     };
+  } catch {
+    return null;
+  }
+}
+
+function readPersistedBulkCalendarSelection(): PersistedBulkCalendarSelection | null {
+  try {
+    const currentRaw = localStorage.getItem(
+      BULK_CALENDAR_SELECTION_STORAGE_KEY,
+    );
+    if (currentRaw !== null) {
+      return parsePersistedBulkCalendarSelection(currentRaw);
+    }
+
+    const legacyRaw = localStorage.getItem(
+      LEGACY_BULK_CALENDAR_SELECTION_STORAGE_KEY,
+    );
+    if (legacyRaw === null) {
+      return null;
+    }
+
+    const legacySelection = parsePersistedBulkCalendarSelection(legacyRaw);
+    if (!legacySelection) {
+      return null;
+    }
+
+    localStorage.setItem(
+      BULK_CALENDAR_SELECTION_STORAGE_KEY,
+      JSON.stringify(legacySelection),
+    );
+    localStorage.removeItem(LEGACY_BULK_CALENDAR_SELECTION_STORAGE_KEY);
+    return legacySelection;
   } catch {
     return null;
   }
@@ -394,6 +425,7 @@ function writePersistedBulkCalendarSelection(
 
 function clearPersistedBulkCalendarSelection(): void {
   localStorage.removeItem(BULK_CALENDAR_SELECTION_STORAGE_KEY);
+  localStorage.removeItem(LEGACY_BULK_CALENDAR_SELECTION_STORAGE_KEY);
 }
 
 function createInitialBulkShiftFormState(
@@ -951,6 +983,8 @@ function useBulkShiftFormController({
     error: googleCalendarEventsQueryError,
     isPending: isGoogleCalendarEventsPending,
     isFetching: isGoogleCalendarEventsFetching,
+    // This POST fetches read-only Google Calendar events; GET is intentionally unsupported.
+    // oxlint-disable-next-line react-doctor/query-no-usequery-for-mutation
   } = useQuery({
     queryKey: queryKeys.calendar.googleEvents(
       requestedMonthInputValue,
