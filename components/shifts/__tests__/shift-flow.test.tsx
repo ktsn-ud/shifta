@@ -1444,6 +1444,78 @@ describe("shift flow integration", () => {
     });
   });
 
+  it("displays a legacy LESSON range at period 31 in the edit form", async () => {
+    const fetchMock = globalThis.fetch as jest.Mock;
+    globalThis.__shiftFormBootstrapResponseInput = {
+      workplaceName: "英語塾A",
+      workplaceType: "CRAM_SCHOOL",
+      timetableSets: [
+        {
+          id: "set-legacy",
+          workplaceId: "workplace-1",
+          name: "旧時間割",
+          sortOrder: 0,
+          createdAt: "2026-03-01T00:00:00.000Z",
+          updatedAt: "2026-03-01T00:00:00.000Z",
+          items: [
+            {
+              id: "tt-31",
+              timetableSetId: "set-legacy",
+              period: 31,
+              startTime: "1970-01-01T19:00:00.000Z",
+              endTime: "1970-01-01T20:00:00.000Z",
+            },
+          ],
+        },
+      ],
+    };
+
+    fetchMock.mockImplementation(async (input: string) => {
+      if (input.startsWith(SHIFT_FORM_BOOTSTRAP_URL)) {
+        return createShiftFormBootstrapResponse(
+          globalThis.__shiftFormBootstrapResponseInput,
+        );
+      }
+
+      if (input === "/api/shifts/shift-legacy-lesson") {
+        return jsonResponse({
+          data: {
+            id: "shift-legacy-lesson",
+            workplaceId: "workplace-1",
+            date: "2026-03-18T00:00:00.000Z",
+            startTime: "1970-01-01T19:00:00.000Z",
+            endTime: "1970-01-01T20:00:00.000Z",
+            breakMinutes: 0,
+            shiftType: "LESSON",
+            comment: null,
+            lessonRange: {
+              timetableSetId: "set-legacy",
+              startPeriod: 31,
+              endPeriod: 31,
+            },
+          },
+        });
+      }
+
+      if (input.startsWith("/api/shifts?")) {
+        return jsonResponse({ data: [] });
+      }
+
+      const previewResponse = handleShiftPreviewFetch(input);
+      if (previewResponse) {
+        return previewResponse;
+      }
+
+      throw new Error("Unexpected fetch: " + input);
+    });
+
+    render(<ShiftForm mode="edit" shiftId="shift-legacy-lesson" />);
+
+    await waitFor(() => {
+      expect(screen.getAllByText("31限")).toHaveLength(2);
+    });
+  });
+
   it("keeps LESSON prefilled values on edit even if workplaces load later", async () => {
     const user = userEvent.setup();
     const fetchMock = globalThis.fetch as jest.Mock;

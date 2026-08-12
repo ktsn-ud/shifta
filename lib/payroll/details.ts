@@ -9,16 +9,21 @@ import {
   type PayrollDisplayValue,
 } from "@/lib/payroll/actual-payroll";
 import {
+  decimalToNumber,
+  roundCurrency,
+  roundHours,
+} from "@/lib/payroll/numeric";
+import {
   calculateShiftPayrollResultByRule,
   findApplicablePayrollRule,
   groupPayrollRulesByWorkplace,
   type PayrollRulesByWorkplace,
 } from "@/lib/payroll/summarizeByPeriod";
 import { type PayrollPeriod } from "@/lib/payroll/pay-period";
+import { createPayrollPeriodSummaryGetter } from "@/lib/payroll/period-summary";
 import {
   loadPayrollSnapshot,
   toPayrollPeriodMapKey,
-  type PayrollSnapshotWorkplace,
 } from "@/lib/payroll/snapshot";
 
 type ShiftWithPayrollRelations = Prisma.ShiftGetPayload<{
@@ -26,8 +31,6 @@ type ShiftWithPayrollRelations = Prisma.ShiftGetPayload<{
     lessonRange: true;
   };
 }>;
-
-type WorkplaceWithPayrollCycle = PayrollSnapshotWorkplace;
 
 type PayrollBreakdownAccumulator = {
   shiftCount: number;
@@ -113,22 +116,6 @@ export type PayrollDetailsWorkplaceYearlyResult = {
 
 export type PayrollDetailBreakdownResult = PayrollBreakdownDisplay;
 
-function decimalToNumber(
-  value: number | string | { toString: () => string } | null | undefined,
-  fallback = 0,
-): number {
-  if (value === null || value === undefined) {
-    return fallback;
-  }
-
-  const numeric = Number(value.toString());
-  if (Number.isFinite(numeric) === false) {
-    return fallback;
-  }
-
-  return numeric;
-}
-
 function startOfMonthUtc(date: Date): Date {
   return new Date(Date.UTC(date.getUTCFullYear(), date.getUTCMonth(), 1));
 }
@@ -170,14 +157,6 @@ function createEmptyBreakdownAccumulator(): PayrollBreakdownAccumulator {
     holidayHoursAllowanceBase: 0,
     nightHoursWageBase: 0,
   };
-}
-
-function roundHours(value: number): number {
-  return Math.round(value * 100) / 100;
-}
-
-function roundCurrency(value: number): number {
-  return Math.round(value);
 }
 
 function formatDurationHours(hours: number): string {
@@ -281,32 +260,6 @@ function groupShiftsByWorkplace(
   return grouped;
 }
 
-function readRuleDecimal(
-  rule: PayrollRule,
-  keys: string[],
-  fallback = 0,
-): number {
-  const record = rule as unknown as Record<string, unknown>;
-  for (const key of keys) {
-    const value = record[key];
-    if (
-      typeof value === "number" ||
-      typeof value === "string" ||
-      (typeof value === "object" &&
-        value !== null &&
-        "toString" in value &&
-        typeof (value as { toString: unknown }).toString === "function")
-    ) {
-      return decimalToNumber(
-        value as number | string | { toString: () => string },
-        fallback,
-      );
-    }
-  }
-
-  return fallback;
-}
-
 function summarizeWorkplaceByPeriod(
   workplaceId: string,
   period: PayrollPeriod,
@@ -344,11 +297,7 @@ function summarizeWorkplaceByPeriod(
 
     const result = calculateShiftPayrollResultByRule(shift, rule);
     const baseHourlyWage = decimalToNumber(rule.baseHourlyWage);
-    const holidayAllowanceHourly = readRuleDecimal(
-      rule,
-      ["holidayAllowanceHourly", "holidayHourlyWage"],
-      0,
-    );
+    const holidayAllowanceHourly = decimalToNumber(rule.holidayAllowanceHourly);
 
     summary.totalWorkHours += result.workHours;
     summary.baseHours += result.baseHours;
@@ -507,32 +456,17 @@ export async function getPayrollDetailsWorkplaceYearlyForUser(
     };
   }
 
-  const monthSummaryCache = new Map<string, PayrollBreakdownAccumulator>();
-
-  const getMonthSummary = (
-    workplace: WorkplaceWithPayrollCycle,
-    monthKey: string,
-  ): PayrollBreakdownAccumulator => {
-    const cacheKey = toPayrollPeriodMapKey(workplace.id, monthKey);
-    const cached = monthSummaryCache.get(cacheKey);
-    if (cached) {
-      return cached;
-    }
-
-    const period = periodByWorkplaceMonth.get(cacheKey);
-    if (!period) {
-      throw new Error(`PAYROLL_PERIOD_NOT_FOUND: ${cacheKey}`);
-    }
-
-    const summary = summarizeWorkplaceByPeriod(
-      workplace.id,
-      period,
-      shiftsByWorkplace,
-      rulesByWorkplace,
-    );
-    monthSummaryCache.set(cacheKey, summary);
-    return summary;
-  };
+  const getMonthSummary =
+    createPayrollPeriodSummaryGetter<PayrollBreakdownAccumulator>({
+      periodByWorkplaceMonth,
+      summarize: (workplaceId, period) =>
+        summarizeWorkplaceByPeriod(
+          workplaceId,
+          period,
+          shiftsByWorkplace,
+          rulesByWorkplace,
+        ),
+    });
 
   const yearlyByWorkplace = workplaces.map((workplace) => {
     const yearlyTotals = createEmptyBreakdownAccumulator();

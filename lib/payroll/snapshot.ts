@@ -12,6 +12,7 @@ import {
   type ClosingDayType,
   type PayrollPeriod,
 } from "@/lib/payroll/pay-period";
+import { toPayrollPeriodMapKey } from "@/lib/payroll/period-key";
 import {
   groupPayrollRulesByWorkplace,
   type PayrollRulesByWorkplace,
@@ -19,7 +20,10 @@ import {
 import { parseMonthKeyToDate } from "@/lib/payroll/month-key";
 import { createRequestTiming } from "@/lib/perf/request-timing";
 import { prisma } from "@/lib/prisma";
-import { userPayrollSnapshotTag } from "@/lib/cache/tags";
+import {
+  userPayrollSnapshotMonthTag,
+  userPayrollSnapshotTag,
+} from "@/lib/cache/tags";
 
 type PayrollSnapshotRule = PayrollRule;
 
@@ -465,10 +469,16 @@ async function loadCachedPayrollSnapshotEntry(
   "use cache";
 
   cacheLife("minutes");
-  cacheTag(userPayrollSnapshotTag(userId));
 
   const monthKeys =
     monthKeysSignature.length > 0 ? monthKeysSignature.split(",") : [];
+
+  cacheTag(
+    userPayrollSnapshotTag(userId),
+    ...monthKeys.map((monthKey) =>
+      userPayrollSnapshotMonthTag(userId, monthKey),
+    ),
+  );
 
   return loadPayrollSnapshotSource({
     userId,
@@ -477,12 +487,7 @@ async function loadCachedPayrollSnapshotEntry(
   });
 }
 
-export function toPayrollPeriodMapKey(
-  workplaceId: string,
-  monthKey: string,
-): string {
-  return `${workplaceId}:${monthKey}`;
-}
+export { toPayrollPeriodMapKey } from "@/lib/payroll/period-key";
 
 export async function loadPayrollSnapshot(
   params: LoadPayrollSnapshotParams,

@@ -1,6 +1,18 @@
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { renderHook, waitFor } from "@testing-library/react";
-import { useMonthShifts, type MonthShift } from "@/hooks/use-month-shifts";
+import {
+  clearMonthShiftsCache,
+  useMonthShifts,
+  type MonthShift,
+} from "@/hooks/use-month-shifts";
+import { getBrowserQueryClient } from "@/lib/query/query-client";
+
+jest.mock("@/lib/query/query-client", () => ({
+  getBrowserQueryClient: jest.fn(),
+}));
+
+const mockedGetBrowserQueryClient =
+  getBrowserQueryClient as jest.MockedFunction<typeof getBrowserQueryClient>;
 
 function createQueryClient() {
   return new QueryClient({
@@ -60,6 +72,7 @@ describe("useMonthShifts", () => {
   beforeEach(() => {
     global.fetch = jest.fn() as unknown as typeof fetch;
     console.error = jest.fn();
+    mockedGetBrowserQueryClient.mockReset();
   });
 
   afterEach(() => {
@@ -132,5 +145,18 @@ describe("useMonthShifts", () => {
     });
 
     expect(console.error).not.toHaveBeenCalled();
+  });
+
+  it("月次シフトcacheをmonthScope prefixで削除する", () => {
+    const queryClient = createQueryClient();
+    const removeQueries = jest.spyOn(queryClient, "removeQueries");
+    mockedGetBrowserQueryClient.mockReturnValue(queryClient);
+
+    clearMonthShiftsCache();
+
+    expect(removeQueries).toHaveBeenCalledTimes(1);
+    expect(removeQueries).toHaveBeenCalledWith({
+      queryKey: ["shifts", "month"],
+    });
   });
 });

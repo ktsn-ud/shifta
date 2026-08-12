@@ -20,6 +20,7 @@ function readSingleParam(
 function allowlistedShiftFormReturnTo(
   searchParams: ShiftPageSearchParams,
 ): ShiftFormReturnTo {
+  // react-doctor-disable-next-line react-doctor/url-prefilled-privileged-action -- Return target is restricted to an internal allowlist.
   const returnTo = readSingleParam(searchParams.returnTo);
 
   return returnTo === "list" ? "list" : "dashboard";

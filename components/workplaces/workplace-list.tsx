@@ -81,7 +81,7 @@ function WorkplaceListHeader({ createHref }: WorkplaceListHeaderProps) {
         <p className="text-xs font-medium uppercase tracking-[0.12em] text-muted-foreground">
           Workplace
         </p>
-        <h2 className="text-2xl font-semibold tracking-tight">勤務先管理</h2>
+        <h2 className="text-2xl font-semibold">勤務先管理</h2>
         <p className="text-sm text-muted-foreground">
           勤務先の作成・編集・削除を行います。
         </p>
@@ -288,7 +288,7 @@ export function WorkplaceList({
   ) => {
     try {
       const response = await deleteWorkplaceAction(deletingTarget.id);
-      if (typeof response.error === "string") throw new Error(response.error);
+      if ("error" in response) throw new Error(response.error);
 
       await invalidateAfterWorkplaceMutation(queryClient);
       queryClient.setQueryData<Workplace[]>(

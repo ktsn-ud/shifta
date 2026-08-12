@@ -1,10 +1,10 @@
 "use client";
 
+import type { BulkShiftFormController } from "@/components/shifts/BulkShiftForm";
 import type {
-  BulkShiftFormController,
   BulkShiftRow,
   RowErrors,
-} from "@/components/shifts/BulkShiftForm";
+} from "@/components/shifts/bulk-shift-form/types";
 import { BulkShiftGoogleEventsSummary } from "@/components/shifts/bulk-shift-form/google-events-summary";
 import { BulkShiftRowCommentField } from "@/components/shifts/bulk-shift-form/row-comment-field";
 import { BulkShiftRowHeader } from "@/components/shifts/bulk-shift-form/row-header";

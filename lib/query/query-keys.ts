@@ -82,58 +82,106 @@ function normalizeMonths(months: string[]): string[] {
   );
 }
 
+function normalizeCalendarIds(calendarIds: string[]): string[] {
+  const normalizedIds = new Set<string>();
+
+  for (const calendarId of calendarIds) {
+    const normalizedId = calendarId.trim();
+    if (normalizedId.length > 0) {
+      normalizedIds.add(normalizedId);
+    }
+  }
+
+  return Array.from(normalizedIds);
+}
+
+type CalendarSelectionMode = "default" | "custom";
+
+const shiftQueryKeys = {
+  all: () => ["shifts"] as const,
+  monthScope: () => [...shiftQueryKeys.all(), "month"] as const,
+  month: (input: MonthShiftsQueryInput) =>
+    [...shiftQueryKeys.monthScope(), input] as const,
+  detail: (input: ShiftDetailQueryInput) =>
+    [...shiftQueryKeys.all(), "detail", input] as const,
+  unconfirmed: (input: { userId: string; initialDataVersion: string }) =>
+    [...shiftQueryKeys.all(), "unconfirmed", input] as const,
+  unconfirmedCount: (input: { userId: string; initialDataVersion: string }) =>
+    [...shiftQueryKeys.all(), "unconfirmedCount", input] as const,
+};
+
+const payrollQueryKeys = {
+  all: () => ["payroll"] as const,
+  summaryScope: () => [...payrollQueryKeys.all(), "summary"] as const,
+  actualScope: () => [...payrollQueryKeys.all(), "actual"] as const,
+  previewBaselineScope: () =>
+    [...payrollQueryKeys.all(), "previewBaseline"] as const,
+  detailsScope: () => [...payrollQueryKeys.all(), "details"] as const,
+  summary: (input: PayrollSummaryQueryInput) =>
+    [...payrollQueryKeys.summaryScope(), input] as const,
+  summaryYearContext: (input: PayrollSummaryYearContextQueryInput) =>
+    [...payrollQueryKeys.summaryScope(), "yearContext", input] as const,
+  summaryAmount: (input: PayrollSummaryAmountQueryInput) =>
+    [...payrollQueryKeys.summaryScope(), "amount", input] as const,
+  actual: (input: ActualPayrollQueryInput) =>
+    [...payrollQueryKeys.actualScope(), input] as const,
+  previewBaseline: (input: PayrollPreviewBaselineQueryInput) =>
+    [
+      ...payrollQueryKeys.previewBaselineScope(),
+      {
+        userId: input.userId,
+        months: normalizeMonths(input.months),
+      },
+    ] as const,
+  detailsMonthly: (input: PayrollDetailsMonthlyQueryInput) =>
+    [...payrollQueryKeys.detailsScope(), "monthly", input] as const,
+  detailsWorkplaceYearly: (input: PayrollDetailsWorkplaceYearlyQueryInput) =>
+    [...payrollQueryKeys.detailsScope(), "workplaceYearly", input] as const,
+};
+
+const workplaceQueryKeys = {
+  all: () => ["workplaces"] as const,
+  shiftFormBootstrapScope: () =>
+    [...workplaceQueryKeys.all(), "shiftFormBootstrap"] as const,
+  payrollRuleDetailScope: () =>
+    [...workplaceQueryKeys.all(), "payrollRuleDetail"] as const,
+  list: (input: WorkplacesListQueryInput) =>
+    [...workplaceQueryKeys.all(), "list", input] as const,
+  detailSummary: (input: WorkplaceDetailSummaryQueryInput) =>
+    [...workplaceQueryKeys.all(), "detailSummary", input] as const,
+  editDetail: (input: WorkplaceEditDetailQueryInput) =>
+    [...workplaceQueryKeys.all(), "editDetail", input] as const,
+  payrollRules: (input: WorkplacePayrollRulesQueryInput) =>
+    [...workplaceQueryKeys.all(), "payrollRules", input] as const,
+  payrollRuleDetail: (input: WorkplacePayrollRuleDetailQueryInput) =>
+    [...workplaceQueryKeys.payrollRuleDetailScope(), input] as const,
+  timetables: (input: WorkplaceTimetablesQueryInput) =>
+    [...workplaceQueryKeys.all(), "timetables", input] as const,
+  shiftFormBootstrap: (input: WorkplaceShiftFormBootstrapQueryInput) =>
+    [...workplaceQueryKeys.shiftFormBootstrapScope(), input] as const,
+};
+
 export const queryKeys = {
   users: {
     me: () => ["users", "me"] as const,
   },
-  shifts: {
-    month: (input: MonthShiftsQueryInput) =>
-      ["shifts", "month", input] as const,
-    detail: (input: ShiftDetailQueryInput) =>
-      ["shifts", "detail", input] as const,
-    unconfirmed: (input: { userId: string; initialDataVersion: string }) =>
-      ["shifts", "unconfirmed", input] as const,
-    unconfirmedCount: (input: { userId: string; initialDataVersion: string }) =>
-      ["shifts", "unconfirmedCount", input] as const,
-  },
-  payroll: {
-    summary: (input: PayrollSummaryQueryInput) =>
-      ["payroll", "summary", input] as const,
-    summaryYearContext: (input: PayrollSummaryYearContextQueryInput) =>
-      ["payroll", "summary", "yearContext", input] as const,
-    summaryAmount: (input: PayrollSummaryAmountQueryInput) =>
-      ["payroll", "summary", "amount", input] as const,
-    actual: (input: ActualPayrollQueryInput) =>
-      ["payroll", "actual", input] as const,
-    previewBaseline: (input: PayrollPreviewBaselineQueryInput) =>
+  shifts: shiftQueryKeys,
+  payroll: payrollQueryKeys,
+  workplaces: workplaceQueryKeys,
+  calendar: {
+    googleEvents: (
+      month: string,
+      selectionMode: CalendarSelectionMode,
+      calendarIds: string[],
+    ) =>
       [
-        "payroll",
-        "previewBaseline",
-        {
-          userId: input.userId,
-          months: normalizeMonths(input.months),
-        },
+        "bulk-google-calendar-events",
+        month,
+        selectionMode,
+        selectionMode === "custom"
+          ? normalizeCalendarIds(calendarIds).join(",")
+          : "default",
       ] as const,
-    detailsMonthly: (input: PayrollDetailsMonthlyQueryInput) =>
-      ["payroll", "details", "monthly", input] as const,
-    detailsWorkplaceYearly: (input: PayrollDetailsWorkplaceYearlyQueryInput) =>
-      ["payroll", "details", "workplaceYearly", input] as const,
-  },
-  workplaces: {
-    list: (input: WorkplacesListQueryInput) =>
-      ["workplaces", "list", input] as const,
-    detailSummary: (input: WorkplaceDetailSummaryQueryInput) =>
-      ["workplaces", "detailSummary", input] as const,
-    editDetail: (input: WorkplaceEditDetailQueryInput) =>
-      ["workplaces", "editDetail", input] as const,
-    payrollRules: (input: WorkplacePayrollRulesQueryInput) =>
-      ["workplaces", "payrollRules", input] as const,
-    payrollRuleDetail: (input: WorkplacePayrollRuleDetailQueryInput) =>
-      ["workplaces", "payrollRuleDetail", input] as const,
-    timetables: (input: WorkplaceTimetablesQueryInput) =>
-      ["workplaces", "timetables", input] as const,
-    shiftFormBootstrap: (input: WorkplaceShiftFormBootstrapQueryInput) =>
-      ["workplaces", "shiftFormBootstrap", input] as const,
   },
 } as const;
 

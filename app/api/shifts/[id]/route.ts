@@ -14,6 +14,7 @@ import { buildPendingSyncResponse } from "@/lib/google-calendar/sync-response";
 import { prisma } from "@/lib/prisma";
 import { jsonNoStore } from "@/lib/api/cache-control";
 import { revalidateShiftDomainTags } from "@/lib/cache/revalidate";
+import { resolveAffectedPaymentMonthKeys } from "@/lib/payroll/affected-payment-month";
 import {
   buildShiftData,
   ShiftValidationError,
@@ -40,6 +41,9 @@ async function findOwnedShift(shiftId: string, userId: string) {
           name: true,
           color: true,
           type: true,
+          closingDayType: true,
+          closingDay: true,
+          payday: true,
         },
       },
     },
@@ -60,7 +64,17 @@ export async function GET(_: Request, context: Context) {
       return jsonError("シフトが見つかりません", 404);
     }
 
-    return jsonNoStore({ data: shift });
+    return jsonNoStore({
+      data: {
+        ...shift,
+        workplace: {
+          id: shift.workplace.id,
+          name: shift.workplace.name,
+          color: shift.workplace.color,
+          type: shift.workplace.type,
+        },
+      },
+    });
   } catch (error) {
     console.error("GET /api/shifts/:id failed", error);
     return jsonError("シフト取得に失敗しました", 500);
@@ -74,15 +88,15 @@ export async function PUT(request: Request, context: Context) {
       return current.response;
     }
 
+    const body = await parseJsonBody(request, shiftInputSchema);
+    if (!body.success) {
+      return body.response;
+    }
+
     const { id } = await context.params;
     const existing = await findOwnedShift(id, current.user.id);
     if (!existing) {
       return jsonError("シフトが見つかりません", 404);
-    }
-
-    const body = await parseJsonBody(request, shiftInputSchema);
-    if (!body.success) {
-      return body.response;
     }
 
     const workplaceResult = await requireOwnedWorkplace(
@@ -158,13 +172,21 @@ export async function PUT(request: Request, context: Context) {
       });
     }
 
+    const paymentMonthKeys = resolveAffectedPaymentMonthKeys([
+      {
+        date: existing.date,
+        payrollCycle: existing.workplace,
+      },
+      {
+        date: built.shiftData.date,
+        payrollCycle: workplaceResult.workplace,
+      },
+    ]);
+
     revalidateShiftDomainTags({
       userId: current.user.id,
-      workplaceId: existing.workplace.id,
-    });
-    revalidateShiftDomainTags({
-      userId: current.user.id,
-      workplaceId: built.shiftData.workplaceId,
+      workplaceIds: [existing.workplace.id, built.shiftData.workplaceId],
+      ...(paymentMonthKeys ? { paymentMonthKeys } : {}),
     });
 
     return jsonNoStore({
@@ -199,6 +221,9 @@ export async function DELETE(request: Request, context: Context) {
           select: {
             userId: true,
             id: true,
+            closingDayType: true,
+            closingDay: true,
+            payday: true,
           },
         },
       },
@@ -213,9 +238,17 @@ export async function DELETE(request: Request, context: Context) {
 
     await prisma.shift.delete({ where: { id } });
 
+    const paymentMonthKeys = resolveAffectedPaymentMonthKeys([
+      {
+        date: existing.date,
+        payrollCycle: existing.workplace,
+      },
+    ]);
+
     revalidateShiftDomainTags({
       userId: current.user.id,
       workplaceId: existing.workplace.id,
+      ...(paymentMonthKeys ? { paymentMonthKeys } : {}),
     });
 
     after(async () => {

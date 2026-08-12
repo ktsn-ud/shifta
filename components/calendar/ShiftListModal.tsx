@@ -12,6 +12,7 @@ import {
   DialogHeader,
   DialogTitle,
 } from "@/components/ui/dialog";
+import { SHIFTA_CALENDAR_TIMEZONE } from "@/lib/google-calendar/constants";
 import { messages, toErrorMessage } from "@/lib/messages";
 import { formatShiftWorkplaceLabel } from "@/lib/shifts/format";
 import { formatShiftTimeRange } from "@/lib/shifts/time";
@@ -49,6 +50,7 @@ const dateFormatter = new Intl.DateTimeFormat("ja-JP", {
   month: "long",
   day: "numeric",
   weekday: "short",
+  timeZone: SHIFTA_CALENDAR_TIMEZONE,
 });
 const estimatedPayFormatter = new Intl.NumberFormat("ja-JP", {
   style: "currency",

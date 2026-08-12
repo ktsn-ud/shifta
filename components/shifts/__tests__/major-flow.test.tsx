@@ -14,6 +14,7 @@ import {
   createWorkplaceAction,
   updateWorkplaceAction,
 } from "@/lib/actions/workplace";
+import { buildSuccessSyncResponse } from "@/lib/google-calendar/sync-response";
 
 const pushMock = jest.fn();
 const refreshMock = jest.fn();
@@ -60,8 +61,32 @@ jest.mock("@/lib/actions/workplace", () => ({
       id: "workplace-1",
       type: "GENERAL",
     },
+    initialPayrollRule: null,
+    sync: {
+      status: "success",
+      ok: true,
+      pending: false,
+      errorMessage: null,
+      errorCode: null,
+      requiresCalendarSetup: false,
+      requiresSignOut: false,
+    },
   })),
-  updateWorkplaceAction: jest.fn(async () => ({ data: {} })),
+  updateWorkplaceAction: jest.fn(async () => ({
+    data: {
+      id: "workplace-1",
+      type: "GENERAL",
+    },
+    sync: {
+      status: "success",
+      ok: true,
+      pending: false,
+      errorMessage: null,
+      errorCode: null,
+      requiresCalendarSetup: false,
+      requiresSignOut: false,
+    },
+  })),
 }));
 
 const createWorkplaceActionMock = jest.mocked(createWorkplaceAction);
@@ -199,9 +224,17 @@ describe("major flow integration", () => {
         id: "workplace-1",
         type: "GENERAL",
       },
+      initialPayrollRule: null,
+      sync: buildSuccessSyncResponse(),
     });
     updateWorkplaceActionMock.mockReset();
-    updateWorkplaceActionMock.mockResolvedValue({ data: {} });
+    updateWorkplaceActionMock.mockResolvedValue({
+      data: {
+        id: "workplace-1",
+        type: "GENERAL",
+      },
+      sync: buildSuccessSyncResponse(),
+    });
     globalThis.__majorFlowShiftBootstrapResponseInput = undefined;
     globalThis.timetableSetsData = undefined;
 

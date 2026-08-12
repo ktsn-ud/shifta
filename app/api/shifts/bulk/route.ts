@@ -2,14 +2,33 @@ import { randomUUID } from "node:crypto";
 import { after } from "next/server";
 import { z } from "zod";
 import { requireCurrentUser } from "@/lib/api/current-user";
-import { DATE_ONLY_REGEX, TIME_ONLY_REGEX } from "@/lib/api/date-time";
-import { jsonError, parseJsonBody } from "@/lib/api/http";
+import { consumeBulkShiftCreateRateLimit } from "@/lib/api/bulk-shift-rate-limit";
+import {
+  DATE_ONLY_REGEX,
+  isValidDateOnly,
+  TIME_ONLY_REGEX,
+} from "@/lib/api/date-time";
+import {
+  jsonError,
+  parseJsonBody,
+  verifyMutationRequest,
+} from "@/lib/api/http";
 import { requireOwnedWorkplace } from "@/lib/api/workplace";
 import { syncShiftsAfterBulkCreate } from "@/lib/google-calendar/syncStatus";
 import { prisma } from "@/lib/prisma";
 import { jsonNoStore } from "@/lib/api/cache-control";
 import { revalidateShiftDomainTags } from "@/lib/cache/revalidate";
+import { resolveAffectedPaymentMonthKeys } from "@/lib/payroll/affected-payment-month";
 import { buildPendingSyncResponse } from "@/lib/google-calendar/sync-response";
+import {
+  BULK_SHIFT_LIMIT_MESSAGE,
+  MAX_BULK_SHIFT_COUNT,
+} from "@/lib/validation/batch-limits";
+import {
+  BREAK_MINUTES_INTEGER_MESSAGE,
+  BREAK_MINUTES_RANGE_MESSAGE,
+  MAX_BREAK_MINUTES,
+} from "@/lib/shifts/break-validation";
 import {
   buildShiftData,
   type BuiltShiftData,
@@ -24,7 +43,10 @@ import {
 export const maxDuration = 60;
 
 const bulkShiftItemSchema = z.strictObject({
-  date: z.string().regex(DATE_ONLY_REGEX, "YYYY-MM-DD形式で入力してください"),
+  date: z
+    .string()
+    .regex(DATE_ONLY_REGEX, "YYYY-MM-DD形式で入力してください")
+    .refine(isValidDateOnly, "実在する日付を入力してください"),
   shiftType: z.enum(["NORMAL", "LESSON"]),
   comment: shiftCommentSchema,
   startTime: z
@@ -35,13 +57,21 @@ const bulkShiftItemSchema = z.strictObject({
     .string()
     .regex(TIME_ONLY_REGEX, "HH:MM形式で入力してください")
     .optional(),
-  breakMinutes: z.coerce.number().int().min(0).default(0),
+  breakMinutes: z.coerce
+    .number()
+    .int(BREAK_MINUTES_INTEGER_MESSAGE)
+    .min(0, BREAK_MINUTES_RANGE_MESSAGE)
+    .max(MAX_BREAK_MINUTES, BREAK_MINUTES_RANGE_MESSAGE)
+    .default(0),
   lessonRange: lessonRangeSchema.optional(),
 });
 
 const bulkCreateSchema = z.strictObject({
   workplaceId: z.string().min(1),
-  shifts: z.array(bulkShiftItemSchema).min(1),
+  shifts: z
+    .array(bulkShiftItemSchema)
+    .min(1)
+    .max(MAX_BULK_SHIFT_COUNT, BULK_SHIFT_LIMIT_MESSAGE),
 });
 
 type CreatedShift = {
@@ -250,6 +280,25 @@ export async function POST(request: Request) {
       return current.response;
     }
 
+    const csrfError = verifyMutationRequest(request);
+    if (csrfError) {
+      return csrfError;
+    }
+
+    const rateLimit = consumeBulkShiftCreateRateLimit(current.user.id);
+    if (!rateLimit.allowed) {
+      return jsonError(
+        "一括シフト登録の回数が多すぎます。しばらくしてからもう一度お試しください。",
+        429,
+        undefined,
+        {
+          headers: {
+            "Retry-After": String(rateLimit.retryAfterSeconds),
+          },
+        },
+      );
+    }
+
     const body = await parseJsonBody(request, bulkCreateSchema);
     if (!body.success) {
       return body.response;
@@ -338,9 +387,17 @@ export async function POST(request: Request) {
       }
     });
 
+    const paymentMonthKeys = resolveAffectedPaymentMonthKeys(
+      builtItems.map((built) => ({
+        date: built.shiftData.date,
+        payrollCycle: workplaceResult.workplace,
+      })),
+    );
+
     revalidateShiftDomainTags({
       userId: current.user.id,
       workplaceId: body.data.workplaceId,
+      ...(paymentMonthKeys ? { paymentMonthKeys } : {}),
     });
 
     return jsonNoStore(

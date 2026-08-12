@@ -45,11 +45,8 @@ jest.mock("@/lib/google-calendar/syncStatus", () => ({
 }));
 
 jest.mock("@/lib/api/http", () => ({
-  parseJsonBody: jest.fn(),
-  jsonError: (message: string, status = 400) => ({
-    status,
-    json: async () => ({ error: message }),
-  }),
+  ...jest.requireActual("@/lib/api/http"),
+  parseJsonBody: jest.fn(jest.requireActual("@/lib/api/http").parseJsonBody),
 }));
 
 jest.mock("@/lib/prisma", () => ({
@@ -63,6 +60,10 @@ jest.mock("@/lib/prisma", () => ({
 
 import { PATCH } from "@/app/api/shifts/[id]/confirm/route";
 
+const actualParseJsonBody =
+  jest.requireActual<typeof import("@/lib/api/http")>(
+    "@/lib/api/http",
+  ).parseJsonBody;
 const requireCurrentUserMock = jest.mocked(requireCurrentUser);
 const parseJsonBodyMock = jest.mocked(parseJsonBody);
 const revalidateShiftDomainTagsMock = jest.mocked(revalidateShiftDomainTags);
@@ -80,12 +81,30 @@ function createShiftEntity() {
     date: new Date("2026-03-18T00:00:00.000Z"),
     comment: null,
     isConfirmed: false,
+    workplace: {
+      closingDayType: "DAY_OF_MONTH" as const,
+      closingDay: 15,
+      payday: 25,
+    },
   };
+}
+
+function createRequest(body: unknown): Request {
+  return {
+    method: "PATCH",
+    url: "http://localhost/api/shifts/shift-1/confirm",
+    headers: {
+      get: (name: string) =>
+        name.toLowerCase() === "origin" ? "http://localhost" : null,
+    },
+    text: async () => JSON.stringify(body),
+  } as unknown as Request;
 }
 
 describe("PATCH /api/shifts/[id]/confirm", () => {
   beforeEach(() => {
     jest.resetAllMocks();
+    parseJsonBodyMock.mockImplementation(actualParseJsonBody);
     requireCurrentUserMock.mockResolvedValue({
       user: { id: "user-1" },
     } as Awaited<ReturnType<typeof requireCurrentUser>>);
@@ -124,6 +143,43 @@ describe("PATCH /api/shifts/[id]/confirm", () => {
     expect(prismaShiftUpdateMock).not.toHaveBeenCalled();
   });
 
+  it.each([241, 30.5])(
+    "rejects breakMinutes=%s through the confirm request schema",
+    async (breakMinutes) => {
+      const response = await PATCH(createRequest({ breakMinutes }), {
+        params: Promise.resolve({ id: "shift-1" }),
+      });
+      const payload = (await response.json()) as { error?: string };
+
+      expect(response.status).toBe(400);
+      expect(payload.error).toBe("入力値が不正です");
+      expect(prismaShiftUpdateMock).not.toHaveBeenCalled();
+    },
+  );
+
+  it("rejects a break that would leave no actual working time", async () => {
+    parseJsonBodyMock.mockResolvedValue({
+      success: true,
+      data: {
+        startTime: "09:00",
+        endTime: "10:00",
+        breakMinutes: 60,
+      },
+    });
+
+    const response = await PATCH({} as Request, {
+      params: Promise.resolve({ id: "shift-1" }),
+    });
+    if (!response) {
+      throw new Error("response is undefined");
+    }
+    const payload = (await response.json()) as { error?: string };
+
+    expect(response.status).toBe(400);
+    expect(payload.error).toBe("休憩時間は勤務時間より短く入力してください。");
+    expect(prismaShiftUpdateMock).not.toHaveBeenCalled();
+  });
+
   it("accepts overnight shift and confirms it", async () => {
     parseJsonBodyMock.mockResolvedValue({
       success: true,
@@ -147,6 +203,7 @@ describe("PATCH /api/shifts/[id]/confirm", () => {
     expect(revalidateShiftDomainTagsMock).toHaveBeenCalledWith({
       userId: "user-1",
       workplaceId: "workplace-1",
+      paymentMonthKeys: ["2026-04"],
     });
   });
 });

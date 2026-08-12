@@ -9,6 +9,14 @@ import { buildPendingSyncResponse } from "@/lib/google-calendar/sync-response";
 import { prisma } from "@/lib/prisma";
 import { jsonNoStore } from "@/lib/api/cache-control";
 import { revalidateShiftDomainTags } from "@/lib/cache/revalidate";
+import { resolveAffectedPaymentMonthKeys } from "@/lib/payroll/affected-payment-month";
+import {
+  BREAK_MINUTES_INTEGER_MESSAGE,
+  BREAK_MINUTES_RANGE_MESSAGE,
+  MAX_BREAK_MINUTES,
+  calculateGrossMinutes,
+  getBreakMinutesValidationError,
+} from "@/lib/shifts/break-validation";
 
 type Context = {
   params: Promise<{ id: string }>;
@@ -25,7 +33,12 @@ const confirmShiftInputSchema = z.strictObject({
     .string()
     .regex(TIME_ONLY_REGEX, "終了時刻はHH:MM形式で入力してください")
     .optional(),
-  breakMinutes: z.coerce.number().int().min(0).optional(),
+  breakMinutes: z.coerce
+    .number()
+    .int(BREAK_MINUTES_INTEGER_MESSAGE)
+    .min(0, BREAK_MINUTES_RANGE_MESSAGE)
+    .max(MAX_BREAK_MINUTES, BREAK_MINUTES_RANGE_MESSAGE)
+    .optional(),
 });
 
 function pad(value: number): string {
@@ -53,6 +66,11 @@ export async function PATCH(request: Request, context: Context) {
       return current.response;
     }
 
+    const body = await parseJsonBody(request, confirmShiftInputSchema);
+    if (!body.success) {
+      return body.response;
+    }
+
     const { id } = await context.params;
     const existing = await prisma.shift.findFirst({
       where: {
@@ -61,14 +79,18 @@ export async function PATCH(request: Request, context: Context) {
           userId: current.user.id,
         },
       },
+      include: {
+        workplace: {
+          select: {
+            closingDayType: true,
+            closingDay: true,
+            payday: true,
+          },
+        },
+      },
     });
     if (!existing) {
       return jsonError("シフトが見つかりません", 404);
-    }
-
-    const body = await parseJsonBody(request, confirmShiftInputSchema);
-    if (!body.success) {
-      return body.response;
     }
 
     const nextStartTime =
@@ -80,8 +102,12 @@ export async function PATCH(request: Request, context: Context) {
       return jsonError("開始時刻と終了時刻は同じ時刻にできません", 400);
     }
 
-    if (nextBreakMinutes < 0) {
-      return jsonError("休憩時間は0以上で入力してください", 400);
+    const breakMinutesError = getBreakMinutesValidationError(
+      nextBreakMinutes,
+      calculateGrossMinutes(nextStartTime, nextEndTime),
+    );
+    if (breakMinutesError) {
+      return jsonError(breakMinutesError, 400);
     }
 
     const updated = await prisma.shift.update({
@@ -96,9 +122,17 @@ export async function PATCH(request: Request, context: Context) {
       },
     });
 
+    const paymentMonthKeys = resolveAffectedPaymentMonthKeys([
+      {
+        date: existing.date,
+        payrollCycle: existing.workplace,
+      },
+    ]);
+
     revalidateShiftDomainTags({
       userId: current.user.id,
       workplaceId: updated.workplaceId,
+      ...(paymentMonthKeys ? { paymentMonthKeys } : {}),
     });
 
     after(async () => {

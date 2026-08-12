@@ -112,6 +112,8 @@ Browser (React UI) → Next.js Routes → Prisma ORM → Neon DB
 ### サーバー側（Route Handler / Server Components）
 
 - API レスポンスは `lib/api/cache-control.ts` を経由し、機密データを含むレスポンスを `private, no-store` 中心で返却する。
+- `POST /api/shifts/bulk` は認証済みユーザー単位で60秒あたり5回までとする。CSRF 検証に失敗したリクエストは枠を消費しない。超過時は JSON エラーと `429`、`Retry-After`（残り秒数）、`private, no-store` を返す。制限は各 Node.js instance のメモリに保持する best effort 制御であり、instance 間では共有しない。期限切れのユーザー記録は expiry FIFO でアクセス時に削除し、記録数は最大10,000件に制限する。上限時は最も早く期限切れになる記録を破棄する。
+- `parseJsonBody` を利用するすべての更新リクエスト（Route Handler と Server Action）は、JSON 本文を 1 MiB（UTF-8 バイト数）までに制限する。上限を超える有効な `Content-Length` は本文読取前に、ヘッダー未指定・不正・chunked の本文はストリーム読取中に拒否し、いずれも `413` と `{ "error": "リクエスト本文が大きすぎます" }` を `private, no-store` で返す。JSON 構文・UTF-8・スキーマの既存エラー契約（400）は維持する。
 - `/my`・`/my/shifts/list` の初期月次シフト取得は `lib/shifts/month-shifts.ts` の共通 DAL で取得し、初回表示時の重複 fetch を避ける。
 - 勤務先・給与ルール・時間割の参照系は、ユーザーと関連 ID をキーにした serializable DTO を Server Cache（`cacheLife("max")` + tags）へ保存する。GET API は `private, no-store` のまま、このキャッシュ済み DAL を呼び出す。
 - 勤務先・給与ルール・時間割の作成/更新/削除は公開 Mutation REST Route を持たず、共通認証・既存 Zod 検証・所有確認を行う Server Action 経由で実行する。DB 更新後は `updateTag` で勤務先および給与関連タグを即時無効化する。
@@ -255,7 +257,9 @@ Browser (React UI) → Next.js Routes → Prisma ORM → Neon DB
 - name は空でない
 - color は HEX カラーコード（#RRGGBB）形式
 - 1ユーザーあたり複数勤務先可能
-- 削除時は関連する Shift, PayrollRule も削除される（CASCADE）
+- 削除時は、transaction 内で `Shift`、`PayrollRule`、`TimetableSet`、`ActualPayroll` の4項目の件数を取得し、返却する `relatedCounts` に含める。`ShiftLessonRange` と `Timetable` を含む関連データは CASCADE で削除し、Google Calendar イベント識別子も捕捉する。いずれかの DB 処理に失敗した場合は transaction を rollback し、勤務先と関連データを削除前の状態に戻す。削除競合時は `WORKPLACE_DELETE_CONFLICT` と HTTP 409 を返す。
+- DB commit 後、捕捉した Google Calendar イベントは、bulk同期と共有する instance-local semaphore（最大3並列、待機列最大100）を通じて `after()` で best-effort 削除する。削除対象イベントがある場合は同期状態を `pending` として返す。外部削除に失敗しても DB 削除は戻さず、安全な件数要約ログのみを記録し、永続的な自動 retry/job は行わない。single-user MVPでは、稀な競合、Google Calendar 障害、`after()` 実行消失などによりイベントが残る可能性を受容する。
+- Calendar イベント作成後に DB の成功更新件数が 0 件となった場合は、単体・一括とも所有確認付きの補償削除を best-effort で実行し、orphan イベントを抑制する。補償削除も永続 retry は行わない。
 
 **使用例**
 
@@ -383,8 +387,9 @@ Browser (React UI) → Next.js Routes → Prisma ORM → Neon DB
 - workplaceId は `CRAM_SCHOOL`
 - `(workplaceId, name)` は一意
 - `(timetableSetId, period)` は一意
-- startTime と endTime は同時刻不可
-- endTime は startTime より後でなければならない
+- period は 1〜30 の整数。既存の範囲外データは表示できるが、次回保存時に範囲内へ修正が必要
+- startTime と endTime は同時刻不可。新規作成・更新の API と UI の双方で、endTime は startTime より後でなければならず、同時刻および翌日跨ぎは許可しない
+- 既存 DB に保存済みの翌日跨ぎ Timetable は、後方互換の read/resolver で LESSON の時刻計算に利用される場合がある。新規作成・更新の保存契約では翌日跨ぎを許可しない
 
 **使用例**
 
@@ -440,8 +445,8 @@ Browser (React UI) → Next.js Routes → Prisma ORM → Neon DB
 
 - 同一勤務先の時間帯重複は、日跨ぎ解釈後の開始日時・終了日時で判定する（バリデーション段階で警告）
 - startTime と endTime は同時刻不可
-- endTime < startTime の場合、翌日終了のシフトとして扱う
-- breakMinutes ≥ 0
+- NORMAL型では endTime < startTime の場合、翌日終了のシフトとして扱う。LESSON型の時刻は Timetable から導出し、新規・更新時の Timetable 保存契約では翌日跨ぎを許可しない（既存の翌日跨ぎ Timetable は read/resolver 互換で計算される場合がある）
+- breakMinutes は整数で 0 ～ 240 分とし、日跨ぎ補正後の総勤務時間より短くする（実勤務時間 0 は保存しない）
 - comment は任意。未入力・空文字・空白のみは NULL として保存
 - comment は最大100文字、改行不可
 - shiftType = LESSON の場合、ShiftLessonRange が1件以上存在
@@ -486,6 +491,7 @@ Browser (React UI) → Next.js Routes → Prisma ORM → Neon DB
 - shiftId の Shift.shiftType = LESSON
 - timetableSetId は Shift の勤務先に紐づく TimetableSet を参照する
 - startPeriod ≤ endPeriod
+- startPeriod, endPeriod は 1〜30 の整数。既存の範囲外データは表示できるが、次回保存時に範囲内へ修正が必要
 - startPeriod, endPeriod は `timetableSetId` で指定した Timetable の period に存在する
 - 1シフトあたり1件（複数コマの授業を1つのシフトで表現）
 
@@ -739,10 +745,11 @@ H_total = (endTime - startTime - breakMinutes) / 60 [時間]
 ```
 
 - endTime < startTime の場合、endTime は翌日の時刻として計算する。
+- 休憩は勤務時間の内訳位置を保持しない。現行の給与計算では `H_night = min(H_total, 休憩控除前の深夜帯重複時間)`、`H_base = max(0, H_total - H_night)` とする。深夜帯内外への正確な休憩配分には、休憩位置を保持するスキーマ拡張が必要であり、本仕様の対象外とする。
 
 **深夜帯勤務時間（H_night）**
 
-- 22:00 ～ 05:00 の時間帯に該当する勤務時間（固定）
+- `min(H_total, 22:00 ～ 05:00 の休憩控除前の時間帯重複時間)`（固定）
 - 例：22:00 ～ 05:00 の場合
   - 22:00 ～ 24:00（2時間）と 00:00 ～ 05:00（5時間）の合計
   - 翌日にまたがる場合は合算
@@ -750,7 +757,7 @@ H_total = (endTime - startTime - breakMinutes) / 60 [時間]
 **基本時間（H_base）**
 
 ```
-H_base = H_total - H_night
+H_base = max(0, H_total - H_night)
 ```
 
 **休日時間（H_holiday）**
@@ -1067,7 +1074,7 @@ H_total = (19:50 - 16:30) = 3時間20分 = 3.33時間
 | シフトタイプ | RADIO  | ○    | NORMAL / LESSON; デフォルト = NORMAL                                                           |
 | 開始時刻     | TIME   | ◆    | NORMAL型のみ表示; HH:MM 形式; バリデーション: 00:00 ～ 23:59                                   |
 | 終了時刻     | TIME   | ◆    | NORMAL型のみ表示; HH:MM 形式; 開始時刻と同時刻は不可。開始時刻より早い場合は翌日終了として扱う |
-| 休憩時間     | NUMBER | ○    | 分単位; デフォルト = 0; 0 ～ 240                                                               |
+| 休憩時間     | NUMBER | ○    | 分単位; デフォルト = 0; 整数の 0 ～ 240 かつ日跨ぎ補正後の総勤務時間未満                       |
 | 時間割セット | SELECT | ◆    | LESSON型のみ表示; 勤務先に紐づく時間割セットから選択                                           |
 | 開始コマ     | SELECT | ◆    | LESSON型のみ表示; 選択した時間割セットに存在するコマ番号から選択                               |
 | 終了コマ     | SELECT | ◆    | LESSON型のみ表示; `開始コマ` 以上で、選択した時間割セットに存在するコマ番号から選択            |
@@ -1091,7 +1098,8 @@ H_total = (19:50 - 16:30) = 3時間20分 = 3.33時間
    - NORMAL型で終了時刻 < 開始時刻の場合、翌日終了として扱い、保存前に確認ダイアログを表示する
    - （警告）日跨ぎ解釈後の時間帯が既存シフトと重複している場合の警告
 3. **コマ範囲**: LESSON型選択時、有効なコマが存在するか確認
-4. **コメント**: 最大100文字、改行不可。空文字・空白のみは NULL
+4. **休憩時間**: NORMAL の入力値および LESSON の時間割から導出した値を、整数の 0 ～ 240 分かつ日跨ぎ補正後の総勤務時間未満として確認する
+5. **コメント**: 最大100文字、改行不可。空文字・空白のみは NULL
 
 **日跨ぎ確認ダイアログ**
 
@@ -1218,7 +1226,7 @@ H_total = (19:50 - 16:30) = 3時間20分 = 3.33時間
 | フィールド | 型     | 必須 | 仕様                                                                 |
 | ---------- | ------ | ---- | -------------------------------------------------------------------- |
 | セット名   | TEXT   | ○    | 1〜50文字。同一勤務先内で一意                                        |
-| コマ番号   | NUMBER | ○    | 正の整数; 同一セット内で一意                                         |
+| コマ番号   | NUMBER | ○    | 1〜30の整数; 同一セット内で一意                                      |
 | 開始時刻   | TIME   | ○    | HH:MM 形式                                                           |
 | 終了時刻   | TIME   | ○    | HH:MM 形式; 開始時刻と同時刻は不可。開始時刻より後でなければならない |
 
@@ -1229,6 +1237,7 @@ H_total = (19:50 - 16:30) = 3時間20分 = 3.33時間
 - 各行の削除が可能（最低1行は維持）。
 - 作成画面では `追加して続ける` により入力中の時間割セットを保存待ちのキューへ追加する。`保存して完了` で、キューと入力中のセットをまとめて保存する。
 - 同一セット内で `period` の重複がある場合はエラー表示する。
+- 1セットのコマは最大30件、作成時にまとめて保存できる時間割セットは最大20件とする。大量リクエストによる入力・DB処理の過負荷を防ぎ、通常の時間割作成フローを保つためである。
 
 ---
 
@@ -1247,6 +1256,7 @@ H_total = (19:50 - 16:30) = 3時間20分 = 3.33時間
 - **表示**: 月間カレンダー（SCR_003 と異なる専用UI）
 - **日付選択**: 複数日をクリックして選択（選択状態を背景色で表示）
 - **選択日数表示**: 「選択中: N日」と表示
+- **一括登録上限**: 1回の一括登録は最大31日（1か月分）とする。月単位の入力画面に合わせ、過大な登録・同期処理を防ぐ。
 - **クリア機能**: 「選択をリセット」ボタンで全日付選択をクリア
 - **再取得中UI**: 月切替や Google予定の再取得時は、直前のカレンダー表示と既存の LoadingOverlay・`aria-busy=true`・操作制御を維持する。画面内の `最新データを更新中...` 通知は表示せず、右下に非操作型スピナーと `更新中` をフローティング表示する。
 
@@ -1290,7 +1300,7 @@ H_total = (19:50 - 16:30) = 3時間20分 = 3.33時間
 | シフトタイプ | RADIO  | ○    | NORMAL / LESSON; デフォルト = NORMAL                                                           |
 | 開始時刻     | TIME   | ◆    | NORMAL型のみ表示; HH:MM 形式                                                                   |
 | 終了時刻     | TIME   | ◆    | NORMAL型のみ表示; HH:MM 形式; 開始時刻と同時刻は不可。開始時刻より早い場合は翌日終了として扱う |
-| 休憩時間     | NUMBER | ○    | 分単位; デフォルト = 0; 0 ～ 240                                                               |
+| 休憩時間     | NUMBER | ○    | 分単位; デフォルト = 0; 整数の 0 ～ 240 かつ日跨ぎ補正後の総勤務時間未満                       |
 | 時間割セット | SELECT | ◆    | LESSON型のみ表示; 勤務先に紐づく時間割セットから選択                                           |
 | 開始コマ     | SELECT | ◆    | LESSON型のみ表示; 選択した時間割セットに存在するコマ番号から選択                               |
 | 終了コマ     | SELECT | ◆    | LESSON型のみ表示; `開始コマ` 以上で、選択した時間割セットに存在するコマ番号から選択            |
@@ -1326,7 +1336,8 @@ H_total = (19:50 - 16:30) = 3時間20分 = 3.33時間
 2. **時間バリデーション**: NORMAL型で開始時刻と終了時刻が同時刻でないことを確認。終了時刻 < 開始時刻の場合は翌日終了として扱う
 3. **条件付き必須**: シフトタイプに応じて必須フィールド確認
 4. **コマ範囲**: LESSON型選択時、有効なコマが存在するか確認
-5. **コメント**: 最大100文字、改行不可。空文字・空白のみは NULL
+5. **休憩時間**: NORMAL の入力値および LESSON の時間割から導出した値を、整数の 0 ～ 240 分かつ日跨ぎ補正後の総勤務時間未満として確認する
+6. **コメント**: 最大100文字、改行不可。空文字・空白のみは NULL
 
 **エラーメッセージ**
 
@@ -1381,7 +1392,7 @@ H_total = (19:50 - 16:30) = 3時間20分 = 3.33時間
 | **時刻/休憩時間編集**      | 入力値がリアルタイムに更新される。確定時に新値でDB更新される                                                                                                                                       |
 | **確定ボタンクリック**     | 日跨ぎ確認が必要な場合は確認ダイアログ表示 → シフトの `isConfirmed` を `true` に更新 → DB反映 → カード削除                                                                                         |
 | **削除ボタンクリック**     | カードを楽観的に除去し、「削除しました」と4秒間の「元に戻す」トーストを表示。期限経過後は hard delete をバックグラウンドで実行し、成功時は追加通知を表示しない。失敗時はカードを復元してエラー通知 |
-| **編集値のバリデーション** | 開始時刻と終了時刻が同時刻でないこと、休憩時間 ≥ 0 を確認                                                                                                                                          |
+| **編集値のバリデーション** | 開始時刻と終了時刻が同時刻でないこと、休憩時間が整数の0～240分かつ日跨ぎ補正後の総勤務時間未満であることを確認                                                                                     |
 
 **ローディング表示**
 
@@ -1398,7 +1409,7 @@ H_total = (19:50 - 16:30) = 3時間20分 = 3.33時間
 **バリデーション（Part 1 の編集値）**
 
 1. **時刻バリデーション**: 開始時刻と終了時刻が同時刻でないことを確認。終了時刻 < 開始時刻の場合は翌日終了として扱う
-2. **休憩時間**: 0 ≤ breakMinutes ≤ 240
+2. **休憩時間**: 整数の 0 ≤ breakMinutes ≤ 240 かつ日跨ぎ補正後の総勤務時間未満
 3. **編集後の確定**: 確定ボタン押下時に上記を再確認
 
 **バリデーションエラーメッセージ**
@@ -1466,6 +1477,7 @@ H_total = (19:50 - 16:30) = 3時間20分 = 3.33時間
 - シフト作成/編集/削除/確定/一括登録は、DB更新完了時点でHTTPレスポンスを返し、Google同期は `after()` でバックグラウンド実行する。
 - 更新系レスポンスは `sync` オブジェクトを返し、`status=pending` と `pending=true` で「同期実行中」を表す。
 - クライアントは `sync.failure` がない限り遷移を継続し、`pending` の場合は非ブロッキング通知のみ表示する。
+- 一括シフト作成とカレンダー初期化後の既存シフト同期は、同一 Node.js instance 内で共有する最大3件の同期 permit と最大100件の待機列を利用する。Google Calendar の事前検証と、イベント作成およびそのリトライを含む各シフト同期単位で permit を取得し、複数のバックグラウンド同期呼び出しをまたいでも同時実行数を3件以下にする。待機列の上限を超えたジョブは明示的に `FAILED` として終了し、再スケジュールしない。Google の retryable な応答に `Retry-After` がある場合は、既存の待機時間以上かつ最大30秒として尊重し、待機中も permit を保持する。permit と待機列はいずれも instance-local であり、Node.js instance 間では共有しない。
 
 ---
 
@@ -1516,6 +1528,14 @@ H_total = (19:50 - 16:30) = 3時間20分 = 3.33時間
 - キーボード操作対応（Tab、Enter）
 
 ---
+
+## 11.5 タイポグラフィ
+
+- 本文および UI は `Gen Interface JP` を使用する。
+- `h1`・`h2` は `Gen Interface JP Display` を使用する。
+- 既存の font weight は維持し、通常書体は 400 / 500 / 600 / 700、Display 書体は 600 のみを読み込む。
+- フォントは `gen-interface-jp@0.8.0` の公式 jsDelivr サブセット CSS から配信する。
+- `Geist Mono` は使用しない。文字間隔の調整は本仕様の対象外とする。
 
 # 12. 今後の拡張可能性
 
@@ -1880,7 +1900,6 @@ H_total = (19:50 - 16:30) = 3時間20分 = 3.33時間
 - 基本勤務金額
 - 休日勤務金額
 - 深夜勤務金額
-- 残業金額
 - 実績支給額
 - 概算金額
 
@@ -1890,7 +1909,6 @@ H_total = (19:50 - 16:30) = 3時間20分 = 3.33時間
   - 基本勤務時間・金額
   - 休日勤務時間・金額
   - 深夜勤務時間・金額
-  - 残業時間・金額
   - 計算式テンプレート（値枠つき）
 - 計算式は「値の枠（プレースホルダ）」を持つ1つの式テンプレートで表示する。
   - 各枠には
@@ -1898,9 +1916,9 @@ H_total = (19:50 - 16:30) = 3時間20分 = 3.33時間
     - 枠値（実値）
       をセットで表示する。
   - 例（合計式テンプレート）:
-    - `[基本勤務金額: ¥32,400] + [休日勤務金額: ¥8,000] + [深夜勤務金額: ¥1,620] + [残業金額: ¥2,700] = [合計: ¥44,720]`
+    - `[基本勤務金額: ¥32,400] + [休日勤務金額: ¥8,000] + [深夜勤務金額: ¥1,620] = [合計: ¥42,020]`
   - 例（深夜勤務式テンプレート）:
-    - `[深夜勤務時間: 3:00] × [適用時給: ¥1,200] × [(nightMultiplier - 1): (1.25 - 1)] = [深夜勤務金額: ¥900]`
+    - `[深夜時間: 3:00] × [深夜時給（割増込）: ¥1,500] = [深夜勤務金額: ¥4,500]`
 - シフト単位の全行明細は表示しない。
 
 #### 4.2 SCR_016B 勤務先毎表示（年次）
@@ -1935,7 +1953,6 @@ H_total = (19:50 - 16:30) = 3時間20分 = 3.33時間
 - 基本勤務金額
 - 休日勤務金額
 - 深夜勤務金額
-- 残業金額
 - 実績支給額
 - 実績（課税）
 - 実績（非課税）
@@ -1944,6 +1961,8 @@ H_total = (19:50 - 16:30) = 3時間20分 = 3.33時間
 3. 操作
 
 - 各月行から `月毎表示` へ遷移できる（対象月を引き継ぐ）。
+
+- 月次UI・年次UIとも、表示列は基本・深夜・休日・合計の内訳に限定し、残業時間・残業金額の列は表示しない。
 
 ---
 
@@ -1954,45 +1973,34 @@ H_total = (19:50 - 16:30) = 3時間20分 = 3.33時間
 #### 5.1 時間
 
 - `勤務時間(H_total)` = `(endTime - startTime - breakMinutes) / 60`
-- `基本勤務時間(H_base)`:
-  - 休日判定が `false` のシフトでは `H_total`
-  - 休日判定が `true` のシフトでは `0`
+- `基本勤務時間(H_base)` = `max(0, H_total - H_night)`（深夜時間とは重複しない）
 - `休日勤務時間(H_holiday)`:
   - 休日判定が `true` のシフトでは `H_total`
   - 休日判定が `false` のシフトでは `0`
-- `深夜勤務時間(H_night)` = 設定された深夜帯との重複時間
+- `深夜勤務時間(H_night)` = 固定の22:00〜翌05:00との重複時間
 - `残業時間(H_overtime)` = `max(0, H_total - dailyOvertimeThreshold)`
 - 時間表示ルール:
   - テーブル表示は `h:mm` 形式（例: `7:30`）
   - 計算内部は従来どおり小数時間で扱う
-  - `H_night` は `H_base` / `H_holiday` と重複しうる（加算内訳のため）
+  - `H_night` は `H_base` と重複しない。`H_holiday` とは独立して扱う。
 
 #### 5.2 時給の選択
 
-- 休日判定が `true` の場合:
-  - `holidayHourlyWage` があればそれを使用
-  - なければ `baseHourlyWage` を使用
-- 休日判定が `false` の場合:
-  - `baseHourlyWage` を使用
+- 常に `baseHourlyWage` を基本単価として使用する。
+- `holidayAllowanceHourly` は休日時間に対する独立した加算手当（円/時）として使用する。
 
 #### 5.3 金額内訳（1シフト）
 
-- `基本勤務金額`:
-  - 平日シフト: `H_total × 適用時給`
-  - 休日シフト: `0`
-- `休日勤務金額`:
-  - 休日シフト: `H_total × 適用時給`
-  - 平日シフト: `0`
-- `深夜勤務金額`:
-  - `H_night × 適用時給 × (nightMultiplier - 1)`
-- `残業金額`:
-  - `H_overtime × 適用時給 × overtimeMultiplier`
-- `シフト合計`:
-  - `基本勤務金額 + 休日勤務金額 + 深夜勤務金額 + 残業金額`
+- `基本勤務金額` = `H_base × baseHourlyWage`
+- `休日勤務金額` = `H_holiday × holidayAllowanceHourly`（`holidayAllowanceHourly` による独立加算）
+- `深夜勤務金額` = `H_night × baseHourlyWage × (1 + nightPremiumRate)`
+- 表示上の深夜勤務式は「深夜時間 × 深夜時給（割増込）」とし、深夜時給は `baseHourlyWage × (1 + nightPremiumRate)` で求める。
+- `残業金額` = `0`（`H_overtime` は参考表示のみ。総額に加算しない）
+- `シフト合計` = `round(基本勤務金額) + round(休日勤務金額) + round(深夜勤務金額)`
 
 注記:
 
-- 現行実装準拠で、`残業金額` は「残業時間分の加算」として上式で表示する。
+- `overtimePremiumRate` は将来拡張用に保持するが、V2では計算に使用しない。
 - LESSON 型シフトも現行実装では時給計算で集計する。
 
 #### 5.4 月合計・年合計
@@ -2022,7 +2030,7 @@ H_total = (19:50 - 16:30) = 3時間20分 = 3.33時間
   - `baseHours` / `baseWage`
   - `holidayHours` / `holidayWage`
   - `nightHours` / `nightWage`
-  - `overtimeHours` / `overtimeWage`
+  - `overtimeHours`（参考値。給与詳細API DTOには `overtimeWage` を含めない）
 - `byWorkplace[]`
 - `byWorkplace[].workDuration`（`h:mm` 表示用）
 - `byWorkplace[].baseDuration`（`h:mm`）
@@ -2276,7 +2284,7 @@ GET /api/payroll/preview-baseline?months=YYYY-MM,YYYY-MM
 - 実装タスクごとに、先に失敗するテストを書く。
 - その後に最小実装でテストを通す。
 - 対象は純粋関数、API、単体登録 UI、一括登録 UI の順に進める。
-- ドキュメント作成のみのタスクを除き、各タスクの完了前に `pnpm exec tsc --noEmit`, `pnpm lint`, `pnpm test`, `pnpm format` を実行する。
+- ドキュメント作成のみのタスクを除き、各タスクの完了前に `pnpm check`（`format:check`、`typecheck`、`lint`、`test:ci`）を実行する。`pnpm format` は整形のためファイルを書き換える。`pnpm check` は build や migration を含まない。
 
 ---
 
@@ -2390,6 +2398,18 @@ GET /api/payroll/preview-baseline?months=YYYY-MM,YYYY-MM
 # 更新履歴（git log -p 確認済み）
 
 | 日時 | 変更概要 | 具体的な変更内容 |
+| 2026-08-12 00:00:00 +0000 | 全体タイポグラフィ仕様を追加 | 本文/UI に `Gen Interface JP`、`h1`/`h2` に `Gen Interface JP Display` を使用し、`gen-interface-jp@0.8.0` の公式 jsDelivr サブセット CSS から通常 400/500/600/700・Display 600 のみを配信する仕様を追加。`Geist Mono` は未使用とし、文字間隔調整は対象外とした。 |
+| 2026-08-11 00:00:00 +0000 | 勤務先 Calendar cleanup の best-effort 残存リスクを明記 | single-user MVP の勤務先削除では、稀な競合・Google Calendar 障害・`after()` 実行消失によりイベントが残り得ること、永続 retry/job を持たないことを仕様として明記。 |
+| 2026-08-11 00:00:00 +0000 | 勤務先 Calendar cleanup の共有制御と競合・補償処理を反映 | 勤務先削除後の Calendar cleanup を bulk 同期と共有する instance-local semaphore（最大3並列・待機列最大100）へ統一。`WORKPLACE_DELETE_CONFLICT`（409）、件数要約ログ、Calendar 作成後の DB 成功更新件数0件時に所有確認付き補償削除を行う契約を追記し、いずれも永続 retry しないことを明記。 |
+| 2026-08-11 00:00:00 +0000 | 勤務先削除の cascade と Google Calendar 後処理を実装へ同期 | 勤務先削除時の `relatedCounts` は `Shift`、`PayrollRule`、`TimetableSet`、`ActualPayroll` の4項目とし、`ShiftLessonRange` と `Timetable` は CASCADE 削除対象だが件数返却対象外であることを明記。イベント識別子捕捉・transaction rollback 契約、DB commit 後の `after()` による best-effort 削除、`sync.pending`、外部失敗時の DB 成功維持と永続 retry を行わない仕様は維持。 |
+| 2026-08-11 00:00:00 +0000 | 時間割と通常シフトの日跨ぎ制約を明確化 | Timetable の新規作成・更新は API/UI ともに endTime > startTime を必須とし、同時刻・翌日跨ぎを許可しないこと、通常の新規保存で翌日跨ぎ入力を直接許可するのは NORMAL 型シフトであることを明記。既存 DB の翌日跨ぎ Timetable は read/resolver 互換で LESSON 計算に利用され得る旨を注記。 |
+| 2026-08-11 00:00:00 +0000 | 検証用 package scripts の利用方法を更新 | `typecheck`、`format:check`、`test:ci`、`check` の使い分けを開発手順へ反映。`format` はファイルを書き換え、`format:check` と `check` は非破壊で、`check` に build・migration を含めないことを明記。 |
+| 2026-08-11 00:00:00 +0000 | 一括シフト登録のレート制限と Google 同期共有キューを追加 | `POST /api/shifts/bulk` を認証済みユーザーごとに60秒5回の instance-local fixed-window 制御とし、CSRF 失敗では枠を消費しない。記録は expiry FIFO と最大10,000件の上限でメモリを制限し、超過時は `429`・`Retry-After`・private no-store JSON エラーを返す。Google Calendar の一括作成同期は、カレンダー初期化後の既存シフト同期を含め、同一 Node.js instance で共有する最大3件の permit と最大100件の待機列に制限する。待機列超過ジョブは明示的に `FAILED` として終了し、再スケジュールしない。permit と待機列は instance-local で、Google の `Retry-After` は既存待機以上・最大30秒で尊重し、リトライ待機中も permit を保持する。 |
+| 2026-08-11 00:00:00 +0000 | JSON 本文サイズ上限を追加 | `parseJsonBody` を利用する Route Handler と Server Action の更新リクエストを UTF-8 で 1 MiB までに制限。超過時は本文読取前またはストリーム読取中に `413` と private no-store JSON エラーを返し、既存の 400 検証契約を維持する。 |
+| 2026-08-11 00:00:00 +0000 | 時間割コマ番号・授業コマ範囲の入力上限を追加 | 時間割の period および LESSON の startPeriod/endPeriod は 1〜30 の整数へ制限する。既存の範囲外データは表示できるが、次回保存時に範囲内へ修正が必要。 |
+| 2026-08-11 00:00:00 +0000 | 一括登録・時間割の件数上限を追加 | シフト一括登録を最大31件、時間割セット内のコマを最大30件、時間割セット一括作成を最大20件に制限。UIとサーバー検証の両方で上限を適用し、DB更新・Google Calendar同期の前に拒否する。 |
+| 2026-08-11 00:00:00 +0000 | 給与詳細をV2計算・現行DTOへ同期 | 14章の給与内訳を、固定22:00〜05:00、基本時間と深夜時間の非重複、休日手当の独立加算、残業時間は参考値・金額0（総額加算なし）へ更新。旧 `nightMultiplier` 等の例を廃止。 |
+| 2026-08-11 00:00:00 +0000 | シフト休憩時間の実勤務ゼロ防止を追加 | 新規・更新・一括登録・確定で、休憩時間を整数の0～240分かつ日跨ぎ補正後の総勤務時間未満に統一。LESSON は時間割から導出した休憩時間も保存前に検証し、休憩位置を保持しない現行の深夜時間計算上の制約を8.3へ明記。 |
 | 2026-07-29 00:00:00 +0000 | `/my` と SCR_015 の未確定データ背景再取得を明文化 | SSR の未確定件数/一覧を初期表示に使用し、画面を開くたびクライアントで非ブロッキング再取得する仕様、右下の「更新中」フローティング表示、SCR_015 の手動更新維持を 2.2・2.3・SCR_015 に反映。 |
 | 2026-07-29 00:00:00 +0000 | SCR_015 の確定済み表示を廃止 | シフト確定ページを未確定シフトのみの表示へ変更。確定成功時は対象カードを即時除去する。未確定一覧は利用者の手動「更新」操作時のみ再取得し、画面全体をブロックしない。確定済みの provisional「計算中」行と current-month API の記述を削除。 |
 | 2026-07-26 00:00:00 +0000 | 長寿命 Server Cache と Server Action 更新経路を反映 | 勤務先・給与ルール・時間割の参照を `cacheLife("max")` とタグ付き serializable DTO の Server Cache に統一し、GET API は `private, no-store` のまま cached DAL を利用する仕様へ更新。公開 Mutation REST Route と Route core の `revalidateTag` を廃止し、更新は認証・検証・所有確認付き Server Action と `updateTag` による即時無効化を正本とした。削除フローの DELETE API 記述も Server Action に置換。 |

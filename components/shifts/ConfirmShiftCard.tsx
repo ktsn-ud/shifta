@@ -16,6 +16,10 @@ import { buildMutationSuccessDescription } from "@/lib/query/mutation-toast";
 import { invalidateAfterShiftMutation } from "@/lib/query/invalidation";
 import { formatShiftWorkplaceLabel } from "@/lib/shifts/format";
 import { isOvernightShift, isSameTimeShift } from "@/lib/shifts/time";
+import {
+  calculateGrossMinutes,
+  getBreakMinutesValidationError,
+} from "@/lib/shifts/break-validation";
 import { useGoogleTokenExpiredSignOut } from "@/hooks/use-google-token-expired-signout";
 import { ConfirmDialog } from "@/components/modal/confirm-dialog";
 import type { UnconfirmedShiftItem } from "@/components/shifts/shift-confirmation-types";
@@ -70,17 +74,14 @@ function validateShiftInput(
   }
 
   const breakMinutes = Number(breakMinutesText);
-  if (!Number.isInteger(breakMinutes)) {
+  const breakMinutesError = getBreakMinutesValidationError(
+    breakMinutes,
+    calculateGrossMinutes(startTime, endTime),
+  );
+  if (breakMinutesError) {
     return {
       success: false,
-      message: "休憩時間は整数で入力してください。",
-    };
-  }
-
-  if (breakMinutes < 0 || breakMinutes > 240) {
-    return {
-      success: false,
-      message: "休憩時間は0〜240分で入力してください。",
+      message: breakMinutesError,
     };
   }
 
@@ -130,7 +131,7 @@ function ConfirmShiftCardContent({
         body: JSON.stringify(data),
       });
 
-      if (response.ok === false) {
+      if (!response.ok) {
         const apiError = await readGoogleSyncFailureFromErrorResponse(
           response,
           messages.error.shiftConfirmFailed,

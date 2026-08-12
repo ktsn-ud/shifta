@@ -44,7 +44,7 @@ export async function fetchJson<TData>(
     throw error;
   }
 
-  if (response.ok === false) {
+  if (!response.ok) {
     const resolved = await resolveUserFacingErrorFromResponse(
       response,
       fallbackMessage,

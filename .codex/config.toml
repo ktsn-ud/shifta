@@ -1,6 +1,6 @@
 projects = { "/workspace" = { trust_level = "trusted" } }
 
-model = "gpt-5.6-terra"
+model = "gpt-5.6-sol"
 model_reasoning_effort = "medium"
 personality = "pragmatic"
 approvals_reviewer = "auto_review"
@@ -14,7 +14,7 @@ command = "npx"
 args = ["-y", "next-devtools-mcp@latest"]
 startup_timeout_sec = 30
 
-[mcp_servers.shadcn]
-command = "npx"
-args = ["shadcn@latest", "mcp"]
-startup_timeout_sec = 30
+# [mcp_servers.shadcn]
+# command = "npx"
+# args = ["shadcn@latest", "mcp"]
+# startup_timeout_sec = 30

@@ -11,29 +11,29 @@ export async function invalidateAfterShiftMutation(
   options?: InvalidateAfterShiftMutationOptions,
 ): Promise<void> {
   await queryClient.invalidateQueries({
-    queryKey: ["shifts"],
+    queryKey: queryKeys.shifts.all(),
     refetchType: options?.refetchType,
   });
 
   const relatedInvalidation = Promise.all([
     queryClient.invalidateQueries({
-      queryKey: ["payroll", "summary"],
+      queryKey: queryKeys.payroll.summaryScope(),
       refetchType: options?.refetchType,
     }),
     queryClient.invalidateQueries({
-      queryKey: ["payroll", "actual"],
+      queryKey: queryKeys.payroll.actualScope(),
       refetchType: options?.refetchType,
     }),
     queryClient.invalidateQueries({
-      queryKey: ["payroll", "previewBaseline"],
+      queryKey: queryKeys.payroll.previewBaselineScope(),
       refetchType: options?.refetchType,
     }),
     queryClient.invalidateQueries({
-      queryKey: ["payroll", "details"],
+      queryKey: queryKeys.payroll.detailsScope(),
       refetchType: options?.refetchType,
     }),
     queryClient.invalidateQueries({
-      queryKey: ["workplaces"],
+      queryKey: queryKeys.workplaces.all(),
       refetchType: options?.refetchType,
     }),
   ]);
@@ -57,12 +57,20 @@ export async function invalidateAfterWorkplaceMutation(
   queryClient: QueryClient,
 ): Promise<void> {
   await Promise.all([
-    queryClient.invalidateQueries({ queryKey: ["workplaces"] }),
-    queryClient.invalidateQueries({ queryKey: ["shifts"] }),
-    queryClient.invalidateQueries({ queryKey: ["payroll", "actual"] }),
-    queryClient.invalidateQueries({ queryKey: ["payroll", "summary"] }),
-    queryClient.invalidateQueries({ queryKey: ["payroll", "previewBaseline"] }),
-    queryClient.invalidateQueries({ queryKey: ["payroll", "details"] }),
+    queryClient.invalidateQueries({ queryKey: queryKeys.workplaces.all() }),
+    queryClient.invalidateQueries({ queryKey: queryKeys.shifts.all() }),
+    queryClient.invalidateQueries({
+      queryKey: queryKeys.payroll.actualScope(),
+    }),
+    queryClient.invalidateQueries({
+      queryKey: queryKeys.payroll.summaryScope(),
+    }),
+    queryClient.invalidateQueries({
+      queryKey: queryKeys.payroll.previewBaselineScope(),
+    }),
+    queryClient.invalidateQueries({
+      queryKey: queryKeys.payroll.detailsScope(),
+    }),
   ]);
 }
 
@@ -81,16 +89,24 @@ export async function invalidateAfterPayrollRuleMutation(
       queryKey: queryKeys.workplaces.payrollRules({ workplaceId }),
     }),
     queryClient.invalidateQueries({
-      queryKey: ["workplaces", "shiftFormBootstrap"],
+      queryKey: queryKeys.workplaces.shiftFormBootstrapScope(),
     }),
     queryClient.invalidateQueries({
-      queryKey: ["workplaces", "payrollRuleDetail"],
+      queryKey: queryKeys.workplaces.payrollRuleDetailScope(),
     }),
-    queryClient.invalidateQueries({ queryKey: ["payroll", "actual"] }),
-    queryClient.invalidateQueries({ queryKey: ["payroll", "summary"] }),
-    queryClient.invalidateQueries({ queryKey: ["payroll", "previewBaseline"] }),
-    queryClient.invalidateQueries({ queryKey: ["payroll", "details"] }),
-    queryClient.invalidateQueries({ queryKey: ["shifts"] }),
+    queryClient.invalidateQueries({
+      queryKey: queryKeys.payroll.actualScope(),
+    }),
+    queryClient.invalidateQueries({
+      queryKey: queryKeys.payroll.summaryScope(),
+    }),
+    queryClient.invalidateQueries({
+      queryKey: queryKeys.payroll.previewBaselineScope(),
+    }),
+    queryClient.invalidateQueries({
+      queryKey: queryKeys.payroll.detailsScope(),
+    }),
+    queryClient.invalidateQueries({ queryKey: queryKeys.shifts.all() }),
   ]);
 }
 
@@ -109,10 +125,12 @@ export async function invalidateAfterTimetableMutation(
       queryKey: queryKeys.workplaces.editDetail({ workplaceId }),
     }),
     queryClient.invalidateQueries({
-      queryKey: ["workplaces", "shiftFormBootstrap"],
+      queryKey: queryKeys.workplaces.shiftFormBootstrapScope(),
     }),
-    queryClient.invalidateQueries({ queryKey: ["payroll", "actual"] }),
-    queryClient.invalidateQueries({ queryKey: ["shifts"] }),
+    queryClient.invalidateQueries({
+      queryKey: queryKeys.payroll.actualScope(),
+    }),
+    queryClient.invalidateQueries({ queryKey: queryKeys.shifts.all() }),
   ]);
 }
 
@@ -120,8 +138,14 @@ export async function invalidateAfterActualPayrollMutation(
   queryClient: QueryClient,
 ): Promise<void> {
   await Promise.all([
-    queryClient.invalidateQueries({ queryKey: ["payroll", "actual"] }),
-    queryClient.invalidateQueries({ queryKey: ["payroll", "summary"] }),
-    queryClient.invalidateQueries({ queryKey: ["payroll", "details"] }),
+    queryClient.invalidateQueries({
+      queryKey: queryKeys.payroll.actualScope(),
+    }),
+    queryClient.invalidateQueries({
+      queryKey: queryKeys.payroll.summaryScope(),
+    }),
+    queryClient.invalidateQueries({
+      queryKey: queryKeys.payroll.detailsScope(),
+    }),
   ]);
 }

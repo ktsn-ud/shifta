@@ -2,6 +2,7 @@ import { z } from "zod";
 import {
   DATE_ONLY_REGEX,
   TIME_ONLY_REGEX,
+  isValidDateOnly,
   parseDateOnly,
   parseTimeOnly,
   toMinutes,
@@ -12,6 +13,17 @@ import {
   type LessonRangeInput,
   type LessonTimeRange,
 } from "@/lib/shifts/lesson-time-range";
+import {
+  BREAK_MINUTES_INTEGER_MESSAGE,
+  BREAK_MINUTES_RANGE_MESSAGE,
+  MAX_BREAK_MINUTES,
+  calculateGrossMinutes,
+  getBreakMinutesValidationError,
+} from "@/lib/shifts/break-validation";
+import {
+  MAX_TIMETABLE_PERIOD,
+  TIMETABLE_PERIOD_LIMIT_MESSAGE,
+} from "@/lib/validation/batch-limits";
 
 export class ShiftValidationError extends Error {
   constructor(message: string) {
@@ -22,8 +34,16 @@ export class ShiftValidationError extends Error {
 
 export const lessonRangeSchema = z.strictObject({
   timetableSetId: z.string().min(1),
-  startPeriod: z.coerce.number().int().positive(),
-  endPeriod: z.coerce.number().int().positive(),
+  startPeriod: z.coerce
+    .number()
+    .int()
+    .positive()
+    .max(MAX_TIMETABLE_PERIOD, TIMETABLE_PERIOD_LIMIT_MESSAGE),
+  endPeriod: z.coerce
+    .number()
+    .int()
+    .positive()
+    .max(MAX_TIMETABLE_PERIOD, TIMETABLE_PERIOD_LIMIT_MESSAGE),
 });
 
 export const shiftCommentSchema = z
@@ -37,7 +57,10 @@ export const shiftCommentSchema = z
 
 export const shiftInputSchema = z.strictObject({
   workplaceId: z.string().min(1),
-  date: z.string().regex(DATE_ONLY_REGEX, "YYYY-MM-DD形式で入力してください"),
+  date: z
+    .string()
+    .regex(DATE_ONLY_REGEX, "YYYY-MM-DD形式で入力してください")
+    .refine(isValidDateOnly, "実在する日付を入力してください"),
   shiftType: z.enum(["NORMAL", "LESSON"]),
   comment: shiftCommentSchema,
   startTime: z
@@ -48,7 +71,12 @@ export const shiftInputSchema = z.strictObject({
     .string()
     .regex(TIME_ONLY_REGEX, "HH:MM形式で入力してください")
     .optional(),
-  breakMinutes: z.coerce.number().int().min(0).default(0),
+  breakMinutes: z.coerce
+    .number()
+    .int(BREAK_MINUTES_INTEGER_MESSAGE)
+    .min(0, BREAK_MINUTES_RANGE_MESSAGE)
+    .max(MAX_BREAK_MINUTES, BREAK_MINUTES_RANGE_MESSAGE)
+    .default(0),
   lessonRange: lessonRangeSchema.optional(),
 });
 
@@ -138,6 +166,20 @@ export function resolveLessonTimeRangeFromRows(
   );
 }
 
+function validateBuiltBreakMinutes(input: {
+  startTime: Date;
+  endTime: Date;
+  breakMinutes: number;
+}): void {
+  const message = getBreakMinutesValidationError(
+    input.breakMinutes,
+    calculateGrossMinutes(input.startTime, input.endTime),
+  );
+  if (message) {
+    throw new ShiftValidationError(message);
+  }
+}
+
 async function resolveLessonTimeRangeFromDatabase(
   workplaceId: string,
   lessonRange: z.infer<typeof lessonRangeSchema>,
@@ -207,6 +249,8 @@ export async function buildShiftData(
       lessonRange,
     );
 
+    validateBuiltBreakMinutes(lessonTimes);
+
     return {
       shiftData: {
         workplaceId: input.workplaceId,
@@ -227,6 +271,12 @@ export async function buildShiftData(
 
   const startTime = parseTimeOnly(input.startTime ?? "00:00");
   const endTime = parseTimeOnly(input.endTime ?? "00:00");
+
+  validateBuiltBreakMinutes({
+    startTime,
+    endTime,
+    breakMinutes: input.breakMinutes,
+  });
 
   return {
     shiftData: {

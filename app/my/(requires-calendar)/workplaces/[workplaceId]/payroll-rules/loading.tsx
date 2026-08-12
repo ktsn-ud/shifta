@@ -9,7 +9,7 @@ export default function Loading() {
           <p className="text-xs font-medium uppercase tracking-[0.12em] text-muted-foreground">
             Payroll Rules
           </p>
-          <h2 className="text-2xl font-semibold tracking-tight">給与ルール</h2>
+          <h2 className="text-2xl font-semibold">給与ルール</h2>
           <p className="text-sm text-muted-foreground">
             勤務先ごとの給与ルールを管理します。
           </p>
