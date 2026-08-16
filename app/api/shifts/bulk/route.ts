@@ -36,6 +36,7 @@ import {
   type LessonTimeRangeResolver,
   resolveLessonTimeRangeFromRows,
   shiftCommentSchema,
+  transportationAllowanceSchema,
   ShiftValidationError,
   type ShiftInput,
 } from "../_shared";
@@ -63,6 +64,7 @@ const bulkShiftItemSchema = z.strictObject({
     .min(0, BREAK_MINUTES_RANGE_MESSAGE)
     .max(MAX_BREAK_MINUTES, BREAK_MINUTES_RANGE_MESSAGE)
     .default(0),
+  transportationAllowance: transportationAllowanceSchema,
   lessonRange: lessonRangeSchema.optional(),
 });
 

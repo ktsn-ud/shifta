@@ -180,6 +180,80 @@ describe("shift break input", () => {
   });
 });
 
+describe("shift transportation allowance input", () => {
+  function createNormalInput(transportationAllowance?: number | string) {
+    return shiftInputSchema.parse({
+      workplaceId: "workplace-1",
+      date: "2026-05-01",
+      shiftType: "NORMAL",
+      startTime: "09:00",
+      endTime: "18:00",
+      ...(transportationAllowance === undefined
+        ? {}
+        : { transportationAllowance }),
+    });
+  }
+
+  it.each([
+    [undefined, 0],
+    ["", 0],
+    [0, 0],
+    [480, 480],
+    [2_147_483_647, 2_147_483_647],
+  ])(
+    "defaults or accepts transportationAllowance=%s",
+    async (transportationAllowance, expected) => {
+      await expect(
+        buildShiftData(createNormalInput(transportationAllowance), "GENERAL"),
+      ).resolves.toMatchObject({
+        shiftData: { transportationAllowance: expected },
+      });
+    },
+  );
+
+  it.each([-1, 100.5, 2_147_483_648])(
+    "rejects invalid transportationAllowance=%s at the input schema",
+    (transportationAllowance) => {
+      expect(
+        shiftInputSchema.safeParse({
+          workplaceId: "workplace-1",
+          date: "2026-05-01",
+          shiftType: "NORMAL",
+          startTime: "09:00",
+          endTime: "18:00",
+          transportationAllowance,
+        }).success,
+      ).toBe(false);
+    },
+  );
+
+  it("passes the allowance through for a LESSON shift", async () => {
+    const input = shiftInputSchema.parse({
+      workplaceId: "workplace-1",
+      date: "2026-05-01",
+      shiftType: "LESSON",
+      transportationAllowance: 360,
+      lessonRange: {
+        timetableSetId: "set-1",
+        startPeriod: 1,
+        endPeriod: 1,
+      },
+    });
+
+    await expect(
+      buildShiftData(input, "CRAM_SCHOOL", {
+        lessonTimeRangeResolver: async () => ({
+          startTime: new Date("1970-01-01T09:00:00.000Z"),
+          endTime: new Date("1970-01-01T10:00:00.000Z"),
+          breakMinutes: 0,
+        }),
+      }),
+    ).resolves.toMatchObject({
+      shiftData: { transportationAllowance: 360 },
+    });
+  });
+});
+
 describe("lesson period input", () => {
   it("accepts a one-period lesson at period 30", () => {
     expect(

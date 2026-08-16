@@ -8,4 +8,5 @@ export type UnconfirmedShiftItem = {
   startTime: string;
   endTime: string;
   breakMinutes: number;
+  transportationAllowance: number;
 };

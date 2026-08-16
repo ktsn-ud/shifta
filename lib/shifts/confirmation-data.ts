@@ -18,6 +18,7 @@ export type UnconfirmedShiftApiItem = {
   startTime: string;
   endTime: string;
   breakMinutes: number;
+  transportationAllowance: number;
   isConfirmed: boolean;
   workplace: {
     id: string;
@@ -88,6 +89,7 @@ function mapUnconfirmedShiftApiItems(
     startTime: toTimeOnlyString(shift.startTime),
     endTime: toTimeOnlyString(shift.endTime),
     breakMinutes: shift.breakMinutes,
+    transportationAllowance: shift.transportationAllowance,
     isConfirmed: shift.isConfirmed,
     workplace: shift.workplace,
   }));
@@ -116,5 +118,6 @@ export async function getShiftConfirmationInitialData(
     startTime: shift.startTime,
     endTime: shift.endTime,
     breakMinutes: shift.breakMinutes,
+    transportationAllowance: shift.transportationAllowance,
   }));
 }

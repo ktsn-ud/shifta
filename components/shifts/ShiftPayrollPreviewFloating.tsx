@@ -5,6 +5,7 @@ import { ChevronUpIcon } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { cn } from "@/lib/utils";
 import { type ShiftPayrollPreviewDisplayMonth } from "@/components/shifts/use-shift-payroll-preview";
+import { type ShiftPayrollPreviewDisplayYear } from "@/components/shifts/use-shift-payroll-preview";
 
 const currencyFormatter = new Intl.NumberFormat("ja-JP", {
   style: "currency",
@@ -35,16 +36,24 @@ function formatPaymentMonthLabel(month: string): string {
 export function ShiftPayrollPreviewFloating(props: {
   title?: string;
   months: ShiftPayrollPreviewDisplayMonth[];
+  years?: ShiftPayrollPreviewDisplayYear[];
   unresolvedCount: number;
   emptyMessage: string;
   baselineErrorMessage?: string | null;
+  isAnnualLoading?: boolean;
+  annualErrorMessage?: string | null;
+  isAnnualResponseIncomplete?: boolean;
 }) {
   const {
     title = "支給額プレビュー",
     months,
+    years = [],
     unresolvedCount,
     emptyMessage,
     baselineErrorMessage,
+    isAnnualLoading = false,
+    annualErrorMessage,
+    isAnnualResponseIncomplete = false,
   } = props;
   const [isExpandedOnMobile, setIsExpandedOnMobile] = useState(false);
 
@@ -160,6 +169,60 @@ export function ShiftPayrollPreviewFloating(props: {
             <p className="text-[11px] text-muted-foreground">
               入力不備のため未計算の行があります（{unresolvedCount}件）。
             </p>
+          ) : null}
+
+          {years.length > 0 ? (
+            <div className="space-y-2 border-t pt-2">
+              <p className="text-xs font-semibold">年間支給額プレビュー</p>
+              {isAnnualLoading ? (
+                <p className="rounded-md border px-2 py-2 text-xs text-muted-foreground">
+                  年間支給見込を取得中です。
+                </p>
+              ) : annualErrorMessage || isAnnualResponseIncomplete ? (
+                <p className="rounded-md border border-amber-500/40 bg-amber-500/10 px-2 py-2 text-xs text-amber-700">
+                  {annualErrorMessage ?? "年間支給見込の取得に失敗しました。"}
+                </p>
+              ) : (
+                years.map((year) => (
+                  <section
+                    key={year.year}
+                    className="rounded-lg border px-2 py-2 text-xs"
+                  >
+                    <p className="font-semibold">{year.year}年支給</p>
+                    <div className="mt-1 grid grid-cols-3 gap-1">
+                      <span className="text-muted-foreground" />
+                      <span className="text-right text-muted-foreground">
+                        課税合計
+                      </span>
+                      <span className="text-right text-muted-foreground">
+                        総支給額
+                      </span>
+                      <span>現在</span>
+                      <span className="text-right">
+                        {formatCurrency(year.baselineTaxableAmount)}
+                      </span>
+                      <span className="text-right">
+                        {formatCurrency(year.baselineTotalAmount)}
+                      </span>
+                      <span>追加予定</span>
+                      <span className="text-right">
+                        {formatSignedCurrency(year.additionalTaxableAmount)}
+                      </span>
+                      <span className="text-right">
+                        {formatSignedCurrency(year.additionalTotalAmount)}
+                      </span>
+                      <span className="font-semibold">登録後見込</span>
+                      <span className="text-right font-semibold">
+                        {formatCurrency(year.projectedTaxableAmount)}
+                      </span>
+                      <span className="text-right font-semibold">
+                        {formatCurrency(year.projectedTotalAmount)}
+                      </span>
+                    </div>
+                  </section>
+                ))
+              )}
+            </div>
           ) : null}
 
           <div className="md:hidden">

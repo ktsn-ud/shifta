@@ -26,6 +26,7 @@ type ShiftListModalShift = {
   googleSyncStatus: "PENDING" | "SUCCESS" | "FAILED";
   googleSyncError: string | null;
   estimatedPay: number | null;
+  transportationAllowance: number;
   workplace: {
     id: string;
     name: string;
@@ -182,6 +183,12 @@ export function ShiftListModal({
                     </p>
                     <p className="text-sm">
                       {formatEstimatedPay(shift.estimatedPay)}
+                    </p>
+                    <p className="text-xs text-muted-foreground">
+                      交通費{" "}
+                      {estimatedPayFormatter.format(
+                        shift.transportationAllowance,
+                      )}
                     </p>
                   </div>
 

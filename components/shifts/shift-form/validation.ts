@@ -13,6 +13,10 @@ import {
   MAX_TIMETABLE_PERIOD,
   TIMETABLE_PERIOD_LIMIT_MESSAGE,
 } from "@/lib/validation/batch-limits";
+import {
+  getTransportationAllowanceValidationError,
+  normalizeTransportationAllowance,
+} from "@/lib/shifts/transportation-allowance";
 import { parseShiftListResponse, toTimeOnly } from "./response";
 import type {
   FormErrors,
@@ -121,6 +125,12 @@ export function validateShiftForm(params: {
 
   if (form.comment.length > 100) {
     nextErrors.comment = "コメントは100文字以内で入力してください";
+  }
+
+  const transportationAllowanceError =
+    getTransportationAllowanceValidationError(form.transportationAllowance);
+  if (transportationAllowanceError) {
+    nextErrors.transportationAllowance = transportationAllowanceError;
   }
 
   if (/[\r\n]/.test(form.comment)) {
@@ -372,6 +382,9 @@ export function buildShiftPayload(
         : Number.isNaN(breakMinutes)
           ? 0
           : breakMinutes,
+    transportationAllowance: normalizeTransportationAllowance(
+      form.transportationAllowance,
+    ),
   };
 
   if (effectiveShiftType === "LESSON") {

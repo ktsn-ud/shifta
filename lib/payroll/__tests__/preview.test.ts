@@ -52,6 +52,7 @@ describe("calculateShiftPayrollPreview", () => {
           startTime: "09:00",
           endTime: "17:00",
           breakMinutes: 60,
+          transportationAllowance: 400,
         },
         {
           temporaryId: "tmp-b",
@@ -61,6 +62,7 @@ describe("calculateShiftPayrollPreview", () => {
           startTime: "09:00",
           endTime: "17:00",
           breakMinutes: 60,
+          transportationAllowance: 600,
         },
       ],
       workplaces,
@@ -87,6 +89,65 @@ describe("calculateShiftPayrollPreview", () => {
       "2026-06",
       "2026-07",
     ]);
+    expect(result.months).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          month: "2026-06",
+          additionalWage: 8400,
+          additionalTransportationAllowance: 600,
+          additionalTotalAmount: 9000,
+        }),
+        expect.objectContaining({
+          month: "2026-07",
+          additionalWage: 7000,
+          additionalTransportationAllowance: 400,
+          additionalTotalAmount: 7400,
+        }),
+      ]),
+    );
+    expect(result.items).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          temporaryId: "tmp-a",
+          wage: 7000,
+          transportationAllowance: 400,
+        }),
+        expect.objectContaining({
+          temporaryId: "tmp-b",
+          wage: 8400,
+          transportationAllowance: 600,
+        }),
+      ]),
+    );
+  });
+
+  it("年末勤務の交通費と給与を翌年の支給月へ集計する", () => {
+    const result = calculateShiftPayrollPreview({
+      shifts: [
+        {
+          temporaryId: "tmp-year-boundary",
+          workplaceId: "workplace-a",
+          date: "2026-12-31",
+          shiftType: "NORMAL",
+          startTime: "09:00",
+          endTime: "17:00",
+          breakMinutes: 60,
+          transportationAllowance: 480,
+        },
+      ],
+      workplaces,
+      payrollRules,
+      timetableSets: [],
+    });
+
+    expect(result.months).toEqual([
+      expect.objectContaining({
+        month: "2027-01",
+        additionalWage: 7000,
+        additionalTransportationAllowance: 480,
+        additionalTotalAmount: 7480,
+      }),
+    ]);
   });
 
   it("給与ルールが見つからない場合は missing-rule を返す", () => {
@@ -100,6 +161,7 @@ describe("calculateShiftPayrollPreview", () => {
           startTime: "09:00",
           endTime: "17:00",
           breakMinutes: 60,
+          transportationAllowance: 500,
         },
       ],
       workplaces,
@@ -148,6 +210,8 @@ describe("calculateShiftPayrollPreview", () => {
       expect.objectContaining({
         month: "2026-07",
         additionalWage: 7000,
+        additionalTransportationAllowance: 0,
+        additionalTotalAmount: 7000,
         shiftCount: 1,
       }),
     ]);
@@ -167,6 +231,7 @@ describe("calculateShiftPayrollPreview", () => {
             startPeriod: 1,
             endPeriod: 2,
           },
+          transportationAllowance: 360,
         },
       ],
       workplaces,
@@ -209,6 +274,7 @@ describe("calculateShiftPayrollPreview", () => {
             startPeriod: 1,
             endPeriod: 2,
           },
+          transportationAllowance: 360,
         },
       ],
       workplaces,
@@ -240,12 +306,15 @@ describe("calculateShiftPayrollPreview", () => {
         temporaryId: "tmp-lesson-break",
         status: "ready",
         wage: 2500,
+        transportationAllowance: 360,
       }),
     ]);
     expect(result.months).toEqual([
       expect.objectContaining({
         month: "2026-07",
         additionalWage: 2500,
+        additionalTransportationAllowance: 360,
+        additionalTotalAmount: 2860,
       }),
     ]);
   });

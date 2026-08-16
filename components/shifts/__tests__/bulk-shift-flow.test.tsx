@@ -68,6 +68,7 @@ function createMonthShift(overrides: Partial<MonthShift> = {}): MonthShift {
     startTime: "1970-01-01T09:00:00.000Z",
     endTime: "1970-01-01T18:00:00.000Z",
     breakMinutes: 0,
+    transportationAllowance: 0,
     shiftType: "NORMAL",
     comment: null,
     googleSyncStatus: "PENDING",
@@ -235,8 +236,25 @@ function handleBulkPreviewFetch(input: string): Response | null {
         months: months.map((month) => ({
           month,
           totalWage: 0,
+          totalTransportationAllowance: 0,
+          totalAmount: 0,
           byWorkplace: [],
         })),
+      },
+    });
+  }
+
+  if (input.startsWith("/api/payroll/preview-annual?")) {
+    return jsonResponse({
+      data: {
+        years: [
+          {
+            year: 2026,
+            taxableAmount: 100000,
+            nonTaxableAmount: 10000,
+            totalAmount: 110000,
+          },
+        ],
       },
     });
   }
@@ -567,6 +585,9 @@ describe("bulk shift flow integration", () => {
     fireEvent.change(screen.getByLabelText("デフォルトコメント"), {
       target: { value: "研修" },
     });
+    fireEvent.change(screen.getByLabelText("デフォルト交通費"), {
+      target: { value: "480" },
+    });
     expect(
       screen.getByText("イベント名プレビュー「勤務先A (研修)」"),
     ).toBeInTheDocument();
@@ -609,6 +630,9 @@ describe("bulk shift flow integration", () => {
     fireEvent.change(within(secondRow).getByLabelText("コメント"), {
       target: { value: "棚卸" },
     });
+    fireEvent.change(within(secondRow).getByLabelText("交通費"), {
+      target: { value: "360" },
+    });
     expect(
       within(secondRow).getByText("イベント名プレビュー「勤務先A (棚卸)」"),
     ).toBeInTheDocument();
@@ -639,6 +663,7 @@ describe("bulk shift flow integration", () => {
         startTime: string;
         endTime: string;
         breakMinutes: number;
+        transportationAllowance: number;
       }>;
     };
 
@@ -651,6 +676,7 @@ describe("bulk shift flow integration", () => {
         startTime: "10:00",
         endTime: "18:30",
         breakMinutes: 0,
+        transportationAllowance: 480,
       },
       {
         date: secondDateKey,
@@ -659,6 +685,7 @@ describe("bulk shift flow integration", () => {
         startTime: "13:00",
         endTime: "20:00",
         breakMinutes: 0,
+        transportationAllowance: 360,
       },
     ]);
   });
@@ -1319,7 +1346,16 @@ describe("bulk shift flow integration", () => {
 
     await waitFor(() => {
       expect(screen.getAllByText("支給額プレビュー").length).toBeGreaterThan(0);
-      expect(screen.getByText("登録後見込")).toBeInTheDocument();
+      const annualPreview =
+        screen.getByText("年間支給額プレビュー").parentElement;
+      if (!annualPreview) {
+        throw new Error("年間支給額プレビューが見つかりません。");
+      }
+
+      expect(screen.getAllByText("登録後見込")).toHaveLength(2);
+      expect(within(annualPreview).getByText("登録後見込")).toBeInTheDocument();
+      expect(within(annualPreview).getByText("課税合計")).toBeInTheDocument();
+      expect(within(annualPreview).getByText("総支給額")).toBeInTheDocument();
     });
   });
 

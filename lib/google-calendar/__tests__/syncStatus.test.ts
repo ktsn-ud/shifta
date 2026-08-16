@@ -81,6 +81,7 @@ function createBulkSyncShift(id: string): BulkSyncShift {
     startTime: new Date("1970-01-01T09:00:00.000Z"),
     endTime: new Date("1970-01-01T18:00:00.000Z"),
     breakMinutes: 0,
+    transportationAllowance: 0,
     isConfirmed: false,
     shiftType: "NORMAL",
     comment: null,

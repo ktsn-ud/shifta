@@ -20,6 +20,7 @@ function createUnconfirmedShiftsPayload() {
         startTime: "09:00",
         endTime: "10:00",
         breakMinutes: 0,
+        transportationAllowance: 0,
         isConfirmed: false,
         workplace: {
           id: "workplace-1",

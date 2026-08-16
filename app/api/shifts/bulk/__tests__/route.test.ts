@@ -259,6 +259,84 @@ describe("POST /api/shifts/bulk batch size", () => {
     expect(afterMock).toHaveBeenCalledTimes(1);
   });
 
+  it("defaults omitted or blank transportation allowance and persists a supplied integer allowance", async () => {
+    const POST = await loadPost();
+    const response = await POST(
+      createRequest({
+        workplaceId: "workplace-1",
+        shifts: [
+          {
+            date: "2026-03-01",
+            shiftType: "NORMAL",
+            startTime: "09:00",
+            endTime: "18:00",
+          },
+          {
+            date: "2026-03-02",
+            shiftType: "NORMAL",
+            startTime: "09:00",
+            endTime: "18:00",
+            transportationAllowance: "",
+          },
+          {
+            date: "2026-03-03",
+            shiftType: "NORMAL",
+            startTime: "09:00",
+            endTime: "18:00",
+            transportationAllowance: 2_147_483_647,
+          },
+          {
+            date: "2026-03-04",
+            shiftType: "NORMAL",
+            startTime: "09:00",
+            endTime: "18:00",
+            transportationAllowance: 480,
+          },
+        ],
+      }),
+    );
+    if (!response) {
+      throw new Error("bulk shift route did not return a response");
+    }
+
+    expect(response.status).toBe(201);
+    expect(prismaShiftCreateManyMock).toHaveBeenCalledWith({
+      data: expect.arrayContaining([
+        expect.objectContaining({ transportationAllowance: 0 }),
+        expect.objectContaining({ transportationAllowance: 2_147_483_647 }),
+        expect.objectContaining({ transportationAllowance: 480 }),
+      ]),
+    });
+  });
+
+  it.each([-1, 100.5, 2_147_483_648])(
+    "rejects invalid transportationAllowance=%s before database work",
+    async (transportationAllowance) => {
+      const POST = await loadPost();
+      const response = await POST(
+        createRequest({
+          workplaceId: "workplace-1",
+          shifts: [
+            {
+              date: "2026-03-01",
+              shiftType: "NORMAL",
+              startTime: "09:00",
+              endTime: "18:00",
+              transportationAllowance,
+            },
+          ],
+        }),
+      );
+      if (!response) {
+        throw new Error("bulk shift route did not return a response");
+      }
+
+      await expectLimitValidationError(response, "交通費");
+      expect(requireOwnedWorkplaceMock).not.toHaveBeenCalled();
+      expect(prismaTransactionMock).not.toHaveBeenCalled();
+    },
+  );
+
   it("rejects 32 shifts before database writes or deferred work", async () => {
     const POST = await loadPost();
 
