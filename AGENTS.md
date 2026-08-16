@@ -29,6 +29,7 @@
 - `Main` は司令塔であり、目的整理、Plan mode、委譲判断、結果統合、最終報告を担当する。
 - `Main` は、ファイル探索・既存実装の読解・類似実装の検索・広範な差分や設定内容の取得を、`code_researcher` に委譲する。`rg`、`sed`、`find`、`cat`、`git grep` など高出力となり得るコマンドを直接実行しない。
 - `Main` が直接実行してよいのは、`git status` など対象・出力とも明らかに少量の状態確認のみとする。判断に迷う場合は `code_researcher` に委譲する。
+- `Main` は `curl` を実行しない。`curl` が必要な場合は、必要性と対象を明示して `code_researcher` などの gpt-5.6-luna（軽量モデル）に委譲し、実行は luna モデルのみに限定する。Main および terra などのモデルは実行しない。
 - 非自明なタスクでは、`Main` が調査・実装・テスト追加・検証・レビューを自前で完結させない。
 - `Main` は必要なサブエージェントを選び、各役割の責務を混ぜない。
 - サブエージェントは単機能で動かし、担当外の作業は次工程へ handoff する。
@@ -108,13 +109,13 @@
 - Lint: `pnpm lint`
 - Format: `pnpm format`（ファイルを書き換え） / `pnpm format:check`（非破壊チェック）
 - Test: `pnpm test`
-- React Doctor（変更差分+untrackedのverbose診断）: `pnpm doctor`
+- React Doctor（変更差分+untrackedのverbose診断）: `pnpm doctor:changed`
 - React Doctor（全体診断）: `pnpm doctor:full`
 - React Doctor（変更差分のerror blocking/non-score）: `pnpm doctor:ci`
 - CI向け一括検証: `pnpm check`（`format:check` / `typecheck` / `lint` / `test:ci`。build・migrationは含まない）
 
 コードベースに触れる実装では、原則として `tester` が `pnpm check` を実行する。整形が必要な場合のみ、先に `pnpm format` を実行し、その後 `pnpm check` を実行する。`pnpm check` は build や migration を含まないため、必要な場合は別途実行する。ドキュメントのみの変更では型チェック・Lint・テストを省略してよいが、可能なら `pnpm format` を実行する。
-Reactコード変更後は、原則として `pnpm doctor` も実行する。
+Reactコード変更後は、原則として `pnpm doctor:changed` も実行する。
 
 ## Git 運用
 
