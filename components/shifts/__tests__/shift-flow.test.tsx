@@ -5,6 +5,7 @@ import {
   render as baseRender,
   screen,
   waitFor,
+  within,
 } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { ShiftListModal } from "@/components/calendar/ShiftListModal";
@@ -186,8 +187,25 @@ function handleShiftPreviewFetch(input: string): Response | null {
         months: months.map((month) => ({
           month,
           totalWage: 0,
+          totalTransportationAllowance: 0,
+          totalAmount: 0,
           byWorkplace: [],
         })),
+      },
+    });
+  }
+
+  if (input.startsWith("/api/payroll/preview-annual?")) {
+    return jsonResponse({
+      data: {
+        years: [
+          {
+            year: 2026,
+            taxableAmount: 100000,
+            nonTaxableAmount: 10000,
+            totalAmount: 110000,
+          },
+        ],
       },
     });
   }
@@ -212,6 +230,7 @@ function createMonthShift(overrides: Partial<MonthShift> = {}): MonthShift {
     startTime: "1970-01-01T09:00:00.000Z",
     endTime: "1970-01-01T17:00:00.000Z",
     breakMinutes: 60,
+    transportationAllowance: 0,
     shiftType: "NORMAL",
     comment: null,
     googleSyncStatus: "PENDING",
@@ -434,6 +453,9 @@ describe("shift flow integration", () => {
     fireEvent.change(screen.getByLabelText("コメント"), {
       target: { value: "研修" },
     });
+    fireEvent.change(screen.getByLabelText("交通費"), {
+      target: { value: "480" },
+    });
     expect(
       screen.getByText("イベント名プレビュー「勤務先A (研修)」"),
     ).toBeInTheDocument();
@@ -462,6 +484,7 @@ describe("shift flow integration", () => {
       comment: string;
       startTime: string;
       endTime: string;
+      transportationAllowance: number;
     };
 
     expect(body).toMatchObject({
@@ -471,6 +494,7 @@ describe("shift flow integration", () => {
       comment: "研修",
       startTime: "09:00",
       endTime: "17:00",
+      transportationAllowance: 480,
     });
   });
 
@@ -907,6 +931,7 @@ describe("shift flow integration", () => {
               startTime: "1970-01-01T09:00:00.000Z",
               endTime: "1970-01-01T17:00:00.000Z",
               breakMinutes: 45,
+              transportationAllowance: 360,
               shiftType: "NORMAL",
               comment: null,
               lessonRange: null,
@@ -944,6 +969,7 @@ describe("shift flow integration", () => {
     await waitFor(() => {
       expect(screen.getByLabelText("開始時刻")).toHaveValue("09:00");
     });
+    expect(screen.getByLabelText("交通費")).toHaveValue(360);
 
     fireEvent.change(screen.getByLabelText("終了時刻"), {
       target: { value: "18:00" },
@@ -970,6 +996,7 @@ describe("shift flow integration", () => {
       startTime: string;
       endTime: string;
       breakMinutes: number;
+      transportationAllowance: number;
     };
 
     expect(body).toMatchObject({
@@ -977,6 +1004,7 @@ describe("shift flow integration", () => {
       startTime: "09:00",
       endTime: "18:00",
       breakMinutes: 45,
+      transportationAllowance: 360,
     });
   });
 
@@ -1008,6 +1036,7 @@ describe("shift flow integration", () => {
               startTime: "1970-01-01T09:00:00.000Z",
               endTime: "1970-01-01T17:00:00.000Z",
               breakMinutes: 45,
+              transportationAllowance: 0,
               shiftType: "NORMAL",
               comment: null,
               lessonRange: null,
@@ -1103,6 +1132,7 @@ describe("shift flow integration", () => {
               startTime: "1970-01-01T18:00:00.000Z",
               endTime: "1970-01-01T01:00:00.000Z",
               breakMinutes: 45,
+              transportationAllowance: 0,
               shiftType: "NORMAL",
               comment: null,
               lessonRange: null,
@@ -1183,6 +1213,7 @@ describe("shift flow integration", () => {
               startTime: "1970-01-01T09:00:00.000Z",
               endTime: "1970-01-01T17:00:00.000Z",
               breakMinutes: 45,
+              transportationAllowance: 0,
               shiftType: "NORMAL",
               comment: null,
               lessonRange: null,
@@ -1260,6 +1291,7 @@ describe("shift flow integration", () => {
               startTime: "1970-01-01T09:00:00.000Z",
               endTime: "1970-01-01T17:00:00.000Z",
               breakMinutes: 45,
+              transportationAllowance: 0,
               shiftType: "NORMAL",
               comment: null,
               lessonRange: null,
@@ -1388,6 +1420,7 @@ describe("shift flow integration", () => {
               startTime: "1970-01-01T09:00:00.000Z",
               endTime: "1970-01-01T17:00:00.000Z",
               breakMinutes: 45,
+              transportationAllowance: 0,
               shiftType: "NORMAL",
               comment: null,
               lessonRange: null,
@@ -1486,6 +1519,7 @@ describe("shift flow integration", () => {
             startTime: "1970-01-01T19:00:00.000Z",
             endTime: "1970-01-01T20:00:00.000Z",
             breakMinutes: 0,
+            transportationAllowance: 0,
             shiftType: "LESSON",
             comment: null,
             lessonRange: {
@@ -1566,6 +1600,7 @@ describe("shift flow integration", () => {
               startTime: "1970-01-01T16:30:00.000Z",
               endTime: "1970-01-01T18:40:00.000Z",
               breakMinutes: 0,
+              transportationAllowance: 0,
               shiftType: "LESSON",
               comment: null,
               lessonRange: {
@@ -1759,6 +1794,7 @@ describe("shift flow integration", () => {
               startTime: "1970-01-01T13:00:00.000Z",
               endTime: "1970-01-01T14:10:00.000Z",
               breakMinutes: 0,
+              transportationAllowance: 0,
               shiftType: "LESSON",
               comment: null,
               lessonRange: {
@@ -1981,6 +2017,7 @@ describe("shift flow integration", () => {
               startTime: "1970-01-01T15:30:00.000Z",
               endTime: "1970-01-01T16:20:00.000Z",
               breakMinutes: 0,
+              transportationAllowance: 0,
               shiftType: "LESSON",
               comment: null,
               lessonRange: {
@@ -2136,6 +2173,7 @@ describe("shift flow integration", () => {
         shiftType: "NORMAL" as const,
         comment: null,
         estimatedPay: 8000,
+        transportationAllowance: 0,
         googleSyncStatus: "SUCCESS" as const,
         googleSyncError: null,
         workplace: {
@@ -2227,7 +2265,16 @@ describe("shift flow integration", () => {
 
     await waitFor(() => {
       expect(screen.getAllByText("支給額プレビュー").length).toBeGreaterThan(0);
-      expect(screen.getByText("登録後見込")).toBeInTheDocument();
+      const annualPreview =
+        screen.getByText("年間支給額プレビュー").parentElement;
+      if (!annualPreview) {
+        throw new Error("年間支給額プレビューが見つかりません。");
+      }
+
+      expect(screen.getAllByText("登録後見込")).toHaveLength(2);
+      expect(within(annualPreview).getByText("登録後見込")).toBeInTheDocument();
+      expect(within(annualPreview).getByText("課税合計")).toBeInTheDocument();
+      expect(within(annualPreview).getByText("総支給額")).toBeInTheDocument();
     });
   });
 });

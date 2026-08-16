@@ -22,6 +22,7 @@ type MonthShift = {
   startTime: string;
   endTime: string;
   breakMinutes: number;
+  transportationAllowance: number;
   shiftType: "NORMAL" | "LESSON";
   comment: string | null;
   googleSyncStatus: "PENDING" | "SUCCESS" | "FAILED";
@@ -173,6 +174,10 @@ function normalizeMonthShift(raw: unknown): MonthShift | null {
     startTime: shift.startTime,
     endTime: shift.endTime,
     breakMinutes: shift.breakMinutes,
+    transportationAllowance:
+      typeof shift.transportationAllowance === "number"
+        ? shift.transportationAllowance
+        : 0,
     shiftType: shift.shiftType === "LESSON" ? "LESSON" : "NORMAL",
     comment:
       typeof shift.comment === "string" || shift.comment === null

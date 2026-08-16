@@ -427,19 +427,20 @@ Browser (React UI) → Next.js Routes → Prisma ORM → Neon DB
 - ユーザーが時刻を手入力
 - 時給で給与計算される（PayrollRule の baseHourlyWage を使用）
 
-| 属性          | 型       | 説明                                             |
-| ------------- | -------- | ------------------------------------------------ |
-| id            | UUID     | シフトの一意識別子                               |
-| workplaceId   | UUID     | 勤務先ID（外部キー）                             |
-| date          | date     | シフトの勤務開始日                               |
-| startTime     | time     | シフト開始時刻（HH:MM）                          |
-| endTime       | time     | シフト終了時刻（HH:MM）                          |
-| breakMinutes  | int      | 休憩時間（分単位、デフォルト0）                  |
-| shiftType     | enum     | シフトのタイプ（NORMAL, LESSON）                 |
-| comment       | string?  | 表示・Google Calendar イベント名用の任意コメント |
-| isConfirmed   | boolean  | シフト確定フラグ（デフォルト false）             |
-| googleEventId | string?  | Google Calendar のイベントID（同期用）           |
-| createdAt     | datetime | シフト登録日時                                   |
+| 属性                    | 型       | 説明                                             |
+| ----------------------- | -------- | ------------------------------------------------ |
+| id                      | UUID     | シフトの一意識別子                               |
+| workplaceId             | UUID     | 勤務先ID（外部キー）                             |
+| date                    | date     | シフトの勤務開始日                               |
+| startTime               | time     | シフト開始時刻（HH:MM）                          |
+| endTime                 | time     | シフト終了時刻（HH:MM）                          |
+| breakMinutes            | int      | 休憩時間（分単位、デフォルト0）                  |
+| transportationAllowance | int      | シフト単位の交通費（整数円、未入力は0）          |
+| shiftType               | enum     | シフトのタイプ（NORMAL, LESSON）                 |
+| comment                 | string?  | 表示・Google Calendar イベント名用の任意コメント |
+| isConfirmed             | boolean  | シフト確定フラグ（デフォルト false）             |
+| googleEventId           | string?  | Google Calendar のイベントID（同期用）           |
+| createdAt               | datetime | シフト登録日時                                   |
 
 **制約条件**
 
@@ -449,6 +450,7 @@ Browser (React UI) → Next.js Routes → Prisma ORM → Neon DB
 - breakMinutes は整数で 0 ～ 240 分とし、日跨ぎ補正後の総勤務時間より短くする（実勤務時間 0 は保存しない）
 - comment は任意。未入力・空文字・空白のみは NULL として保存
 - comment は最大100文字、改行不可
+- transportationAllowance は0円以上の整数円。未入力は0円とし、負数・小数は保存しない
 - shiftType = LESSON の場合、ShiftLessonRange が1件以上存在
 - shiftType = LESSON 以外の場合、ShiftLessonRange は存在しない
 
@@ -1075,6 +1077,7 @@ H_total = (19:50 - 16:30) = 3時間20分 = 3.33時間
 | 開始時刻     | TIME   | ◆    | NORMAL型のみ表示; HH:MM 形式; バリデーション: 00:00 ～ 23:59                                   |
 | 終了時刻     | TIME   | ◆    | NORMAL型のみ表示; HH:MM 形式; 開始時刻と同時刻は不可。開始時刻より早い場合は翌日終了として扱う |
 | 休憩時間     | NUMBER | ○    | 分単位; デフォルト = 0; 整数の 0 ～ 240 かつ日跨ぎ補正後の総勤務時間未満                       |
+| 交通費       | NUMBER | ー   | シフト単位の円額; 未入力 = 0; 0以上の整数（負数・小数不可）                                    |
 | 時間割セット | SELECT | ◆    | LESSON型のみ表示; 勤務先に紐づく時間割セットから選択                                           |
 | 開始コマ     | SELECT | ◆    | LESSON型のみ表示; 選択した時間割セットに存在するコマ番号から選択                               |
 | 終了コマ     | SELECT | ◆    | LESSON型のみ表示; `開始コマ` 以上で、選択した時間割セットに存在するコマ番号から選択            |
@@ -1089,6 +1092,7 @@ H_total = (19:50 - 16:30) = 3時間20分 = 3.33時間
   - comment 入力あり: `イベント名プレビュー「勤務先名 (コメント)」`
   - comment 未入力: `イベント名プレビュー「勤務先名」`
   - 勤務先未選択の場合は、プレビューを非表示にするか `勤務先を選択するとイベント名を確認できます` と表示する。
+- 交通費入力欄は新規・編集のシフトフォームに表示し、支給額プレビューでは給与と分けて非課税額として扱う。
 
 **バリデーション**
 
@@ -1272,6 +1276,7 @@ H_total = (19:50 - 16:30) = 3時間20分 = 3.33時間
 | デフォルト開始時刻     | TIME   | ◆    | NORMAL型のみ表示; HH:MM 形式                         |
 | デフォルト終了時刻     | TIME   | ◆    | NORMAL型のみ表示; HH:MM 形式                         |
 | デフォルト休憩時間     | NUMBER | ○    | 分単位; 0 ～ 240                                     |
+| デフォルト交通費       | NUMBER | ー   | シフト単位の円額; 未入力 = 0; 0以上の整数            |
 | デフォルト時間割セット | SELECT | ◆    | LESSON型のみ表示; 勤務先に紐づく時間割セットから選択 |
 | デフォルト開始コマ     | SELECT | ◆    | LESSON型のみ表示; 選択した時間割セットのコマ番号     |
 | デフォルト終了コマ     | SELECT | ◆    | LESSON型のみ表示; 選択した時間割セットのコマ番号     |
@@ -1337,7 +1342,8 @@ H_total = (19:50 - 16:30) = 3時間20分 = 3.33時間
 3. **条件付き必須**: シフトタイプに応じて必須フィールド確認
 4. **コマ範囲**: LESSON型選択時、有効なコマが存在するか確認
 5. **休憩時間**: NORMAL の入力値および LESSON の時間割から導出した値を、整数の 0 ～ 240 分かつ日跨ぎ補正後の総勤務時間未満として確認する
-6. **コメント**: 最大100文字、改行不可。空文字・空白のみは NULL
+6. **交通費**: 未入力は0円。0以上の整数円のみ許可し、負数・小数は拒否する
+7. **コメント**: 最大100文字、改行不可。空文字・空白のみは NULL
 
 **エラーメッセージ**
 
@@ -1760,7 +1766,7 @@ H_total = (19:50 - 16:30) = 3時間20分 = 3.33時間
 
 ### 8. 非対象（本改訂で扱わない）
 
-- 控除計算（税・社会保険・交通費）
+- 控除計算（税・社会保険）
 - 複数ユーザー対応
 - Google Calendar 逆同期
 
@@ -1823,7 +1829,7 @@ H_total = (19:50 - 16:30) = 3時間20分 = 3.33時間
 
 #### 2.2 非対象（本仕様では扱わない）
 
-- 控除（税・社会保険・交通費）の計算
+- 控除（税・社会保険）の計算
 - 複数ユーザー対応
 - Google Calendar 逆同期
 - 労基法の厳密な週次/月60h超残業計算の導入
@@ -2113,7 +2119,6 @@ H_total = (19:50 - 16:30) = 3時間20分 = 3.33時間
 
 非対象:
 
-- SCR_005（シフト編集）
 - SCR_015（シフト確定）
 - Google Calendar 側予定の取り込み・逆同期
 
@@ -2160,6 +2165,7 @@ H_total = (19:50 - 16:30) = 3時間20分 = 3.33時間
 - 金額は `¥12,345` 形式で表示する。
 - 追加予定額は `+¥3,200` のように差分であることが分かる形式にする。
 - `登録後見込` を最も強調する。
+- 各段階（現在・追加予定・登録後見込）に「課税合計」と「非課税込み総支給額」を表示する。課税合計は給与、非課税込み総支給額は給与と交通費の合計とする。
 - 計算中表示は入力操作をブロックしない。
 
 ---
@@ -2170,6 +2176,8 @@ H_total = (19:50 - 16:30) = 3時間20分 = 3.33時間
 
 ```text
 登録後見込 = 現在の支給見込 + 入力中シフトの追加予定額
+課税合計 = 給与合計
+非課税込み総支給額 = 課税合計 + 交通費合計
 ```
 
 現在の支給見込:
@@ -2185,6 +2193,7 @@ H_total = (19:50 - 16:30) = 3時間20分 = 3.33時間
 - クライアント側で即時計算する。
 - 給与計算式は8章および `docs/PAYROLL_CALCULATION_SPEC_V2_20260430.md` に従う。
 - プレビュー専用の独自計算式は作らない。
+- 給与を課税額、シフト単位の `transportationAllowance` を非課税額として集計する。
 - LESSON型では、選択したコマ範囲の時間割から `startTime/endTime` と `breakMinutes` を算出する。
   - コマ間ギャップを `breakMinutes` として扱う。
   - 算出ロジックはシフト保存時（`/api/shifts`）と同一の共通関数を利用する。
@@ -2241,10 +2250,11 @@ PC:
 
 プレビュー専用の軽量 API を追加する。
 
-候補:
+API:
 
 ```text
 GET /api/payroll/preview-baseline?months=YYYY-MM,YYYY-MM
+GET /api/payroll/preview-annual?years=YYYY,YYYY
 ```
 
 責務:
@@ -2262,6 +2272,8 @@ GET /api/payroll/preview-baseline?months=YYYY-MM,YYYY-MM
 - `byWorkplace[].wage`
 - `byWorkplace[].periodStartDate`
 - `byWorkplace[].periodEndDate`
+
+年間プレビューは支給年ごとに「現在」「追加予定」「登録後見込」を返し、各段階で課税合計と非課税込み総支給額を表示する。年末勤務も勤務日ではなく支給月の年へ計上する。`ActualPayroll` がある勤務先×支給月は、給与と非課税額を含む実給与で完全置換し、シフト概算を重複加算しない。Google Calendar のイベント説明・同期内容は変更しない。
 
 ---
 
@@ -2398,6 +2410,7 @@ GET /api/payroll/preview-baseline?months=YYYY-MM,YYYY-MM
 # 更新履歴（git log -p 確認済み）
 
 | 日時 | 変更概要 | 具体的な変更内容 |
+| 2026-08-16 00:00:00 +0000 | シフト交通費と年間支給額プレビューを追加 | `Shift` 単位の交通費（整数円、未入力0、負数・小数不可）を新規・編集・一括登録で扱い、給与を課税、交通費を非課税として月次・年間プレビューへ反映。新規・一括登録では支給年ごとに現在・追加予定・登録後見込の各「課税合計」「非課税込み総支給額」を表示し、`GET /api/payroll/preview-annual?years=...` を追加。実給与登録済みの勤務先×支給月は実給与で置換し、Google Calendar の説明は変更しない。 |
 | 2026-08-12 00:00:00 +0000 | 全体タイポグラフィ仕様を追加 | 本文/UI に `Gen Interface JP`、`h1`/`h2` に `Gen Interface JP Display` を使用し、`gen-interface-jp@0.8.0` の公式 jsDelivr サブセット CSS から通常 400/500/600/700・Display 600 のみを配信する仕様を追加。`Geist Mono` は未使用とし、文字間隔調整は対象外とした。 |
 | 2026-08-11 00:00:00 +0000 | 勤務先 Calendar cleanup の best-effort 残存リスクを明記 | single-user MVP の勤務先削除では、稀な競合・Google Calendar 障害・`after()` 実行消失によりイベントが残り得ること、永続 retry/job を持たないことを仕様として明記。 |
 | 2026-08-11 00:00:00 +0000 | 勤務先 Calendar cleanup の共有制御と競合・補償処理を反映 | 勤務先削除後の Calendar cleanup を bulk 同期と共有する instance-local semaphore（最大3並列・待機列最大100）へ統一。`WORKPLACE_DELETE_CONFLICT`（409）、件数要約ログ、Calendar 作成後の DB 成功更新件数0件時に所有確認付き補償削除を行う契約を追記し、いずれも永続 retry しないことを明記。 |

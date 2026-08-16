@@ -45,6 +45,7 @@ type MonthShiftDto = {
   startTime: string;
   endTime: string;
   breakMinutes: number;
+  transportationAllowance: number;
   shiftType: "NORMAL" | "LESSON";
   comment: string | null;
   googleSyncStatus: "PENDING" | "SUCCESS" | "FAILED";
@@ -100,6 +101,7 @@ function toMonthShiftDto(
     startTime: shift.startTime.toISOString(),
     endTime: shift.endTime.toISOString(),
     breakMinutes: shift.breakMinutes,
+    transportationAllowance: shift.transportationAllowance,
     shiftType: normalizedShiftType,
     comment: shift.comment,
     googleSyncStatus:

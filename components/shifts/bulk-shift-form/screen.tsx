@@ -69,9 +69,15 @@ export function BulkShiftFormScreen(props: {
 
       <ShiftPayrollPreviewFloating
         months={controller.previewMonths}
+        years={controller.previewYears}
         unresolvedCount={controller.previewUnresolvedCount}
         emptyMessage={controller.previewEmptyMessage}
         baselineErrorMessage={controller.previewBaselineErrorMessage}
+        isAnnualLoading={controller.isAnnualPreviewLoading}
+        annualErrorMessage={controller.previewAnnualErrorMessage}
+        isAnnualResponseIncomplete={
+          controller.isAnnualPreviewResponseIncomplete
+        }
       />
 
       <BulkShiftOvernightDialog {...controller} />

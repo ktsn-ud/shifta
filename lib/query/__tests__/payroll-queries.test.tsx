@@ -5,6 +5,7 @@ import {
   actualPayrollResponseSchema,
   payrollDetailsMonthlyResponseSchema,
   payrollDetailsWorkplaceYearlyResponseSchema,
+  payrollAnnualPreviewResponseSchema,
   payrollPreviewBaselineResponseSchema,
   payrollSummaryAmountResponseSchema,
   payrollSummaryResponseSchema,
@@ -194,14 +195,33 @@ function createPayrollPreviewBaselinePayload() {
         {
           month: "2026-01",
           totalWage: 1200,
+          totalTransportationAllowance: 0,
+          totalAmount: 1200,
           byWorkplace: [
             {
               workplaceId: "workplace-1",
               wage: 1200,
+              transportationAllowance: 0,
+              totalAmount: 1200,
               periodStartDate: "2025-12-16",
               periodEndDate: "2026-01-15",
             },
           ],
+        },
+      ],
+    },
+  };
+}
+
+function createPayrollAnnualPreviewPayload() {
+  return {
+    data: {
+      years: [
+        {
+          year: 2026,
+          taxableAmount: 120000,
+          nonTaxableAmount: 12000,
+          totalAmount: 132000,
         },
       ],
     },
@@ -292,6 +312,11 @@ describe("給与クエリ DTO スキーマ", () => {
       payrollPreviewBaselineResponseSchema,
       createPayrollPreviewBaselinePayload(),
     ],
+    [
+      "年間支給見込プレビュー",
+      payrollAnnualPreviewResponseSchema,
+      createPayrollAnnualPreviewPayload(),
+    ],
   ])("実際の DTO 形状の %s レスポンスを受理する", (_name, schema, payload) => {
     expect(schema.safeParse(payload).success).toBe(true);
   });
@@ -301,12 +326,18 @@ describe("給与クエリ DTO スキーマ", () => {
     Reflect.set(unknownKeyPayload.months[0].totals, "unexpected", true);
     const missingNestedPayload = createPayrollDetailsMonthlyPayload();
     Reflect.deleteProperty(missingNestedPayload.byWorkplace[0], "displayValue");
+    const invalidAnnualPayload = createPayrollAnnualPreviewPayload();
+    Reflect.deleteProperty(invalidAnnualPayload.data.years[0], "totalAmount");
 
     expect(
       payrollSummaryResponseSchema.safeParse(unknownKeyPayload).success,
     ).toBe(false);
     expect(
       payrollDetailsMonthlyResponseSchema.safeParse(missingNestedPayload)
+        .success,
+    ).toBe(false);
+    expect(
+      payrollAnnualPreviewResponseSchema.safeParse(invalidAnnualPayload)
         .success,
     ).toBe(false);
   });

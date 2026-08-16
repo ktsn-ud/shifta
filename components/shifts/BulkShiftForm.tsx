@@ -204,6 +204,7 @@ const DEFAULT_BULK_VALUES: BulkDefaults = {
   startTime: "09:00",
   endTime: "18:00",
   breakMinutes: "0",
+  transportationAllowance: "0",
   timetableSetId: "",
   startPeriod: "",
   endPeriod: "",
@@ -217,6 +218,7 @@ function createRow(date: string, defaults: BulkDefaults): BulkShiftRow {
     startTime: defaults.startTime,
     endTime: defaults.endTime,
     breakMinutes: defaults.breakMinutes,
+    transportationAllowance: defaults.transportationAllowance,
     timetableSetId: defaults.timetableSetId,
     startPeriod: defaults.startPeriod,
     endPeriod: defaults.endPeriod,
@@ -1122,6 +1124,7 @@ function useBulkShiftFormController({
       startTime: row.startTime,
       endTime: row.endTime,
       breakMinutes: Number(row.breakMinutes) || 0,
+      transportationAllowance: Number(row.transportationAllowance) || 0,
       lessonRange:
         row.shiftType === "LESSON"
           ? {
@@ -1607,8 +1610,13 @@ function useBulkShiftFormController({
     selectedDateCount: state.selectedDateKeys.length,
     formErrorMessage,
     previewMonths: shiftPayrollPreview.months,
+    previewYears: shiftPayrollPreview.years,
     previewUnresolvedCount: shiftPayrollPreview.unresolvedCount,
     previewBaselineErrorMessage: shiftPayrollPreview.baselineErrorMessage,
+    isAnnualPreviewLoading: shiftPayrollPreview.isAnnualLoading,
+    previewAnnualErrorMessage: shiftPayrollPreview.annualErrorMessage,
+    isAnnualPreviewResponseIncomplete:
+      shiftPayrollPreview.isAnnualResponseIncomplete,
     previewEmptyMessage,
     handleWorkplaceChange,
     handleRequestedMonthChange,

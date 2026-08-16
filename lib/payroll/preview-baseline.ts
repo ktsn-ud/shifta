@@ -13,6 +13,8 @@ import {
 type PreviewBaselineByWorkplace = {
   workplaceId: string;
   wage: number;
+  transportationAllowance: number;
+  totalAmount: number;
   periodStartDate: string;
   periodEndDate: string;
 };
@@ -20,6 +22,8 @@ type PreviewBaselineByWorkplace = {
 type PreviewBaselineMonth = {
   month: string;
   totalWage: number;
+  totalTransportationAllowance: number;
+  totalAmount: number;
   byWorkplace: PreviewBaselineByWorkplace[];
 };
 
@@ -47,11 +51,12 @@ function summarizeWorkplaceByPeriod(
   period: PayrollPeriod,
   shiftsByWorkplace: Map<string, ShiftWithPreviewRelations[]>,
   rulesByWorkplace: PayrollRulesByWorkplace,
-): number {
+): { wage: number; transportationAllowance: number } {
   const shifts = shiftsByWorkplace.get(workplaceId) ?? [];
   const periodStartTime = period.periodStartDate.getTime();
   const periodEndTime = period.periodEndDate.getTime();
   let wage = 0;
+  let transportationAllowance = 0;
 
   for (const shift of shifts) {
     const shiftTime = shift.date.getTime();
@@ -63,9 +68,10 @@ function summarizeWorkplaceByPeriod(
     }
 
     wage += calculateShiftPayrollResult(shift, rulesByWorkplace).totalWage;
+    transportationAllowance += shift.transportationAllowance;
   }
 
-  return Math.round(wage);
+  return { wage: Math.round(wage), transportationAllowance };
 }
 
 export async function getPayrollPreviewBaselineForUser(
@@ -97,6 +103,8 @@ export async function getPayrollPreviewBaselineForUser(
         months: monthKeys.map((month) => ({
           month,
           totalWage: 0,
+          totalTransportationAllowance: 0,
+          totalAmount: 0,
           byWorkplace: [],
         })),
       },
@@ -105,6 +113,7 @@ export async function getPayrollPreviewBaselineForUser(
 
   const monthResults = monthKeys.map((monthKey): PreviewBaselineMonth => {
     let totalWage = 0;
+    let totalTransportationAllowance = 0;
     const byWorkplace: PreviewBaselineByWorkplace[] = [];
 
     for (const workplace of workplaces) {
@@ -115,21 +124,24 @@ export async function getPayrollPreviewBaselineForUser(
         continue;
       }
 
-      const wage = summarizeWorkplaceByPeriod(
+      const summarized = summarizeWorkplaceByPeriod(
         workplace.id,
         period,
         shiftsByWorkplace,
         rulesByWorkplace,
       );
-      totalWage += wage;
+      totalWage += summarized.wage;
+      totalTransportationAllowance += summarized.transportationAllowance;
 
-      if (wage === 0) {
+      if (summarized.wage === 0 && summarized.transportationAllowance === 0) {
         continue;
       }
 
       byWorkplace.push({
         workplaceId: workplace.id,
-        wage,
+        wage: summarized.wage,
+        transportationAllowance: summarized.transportationAllowance,
+        totalAmount: summarized.wage + summarized.transportationAllowance,
         periodStartDate: toDateOnlyUtc(period.periodStartDate),
         periodEndDate: toDateOnlyUtc(period.periodEndDate),
       });
@@ -138,7 +150,11 @@ export async function getPayrollPreviewBaselineForUser(
     return {
       month: monthKey,
       totalWage: Math.round(totalWage),
-      byWorkplace: byWorkplace.sort((left, right) => right.wage - left.wage),
+      totalTransportationAllowance: Math.round(totalTransportationAllowance),
+      totalAmount: Math.round(totalWage + totalTransportationAllowance),
+      byWorkplace: byWorkplace.sort(
+        (left, right) => right.totalAmount - left.totalAmount,
+      ),
     };
   });
 

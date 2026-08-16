@@ -45,6 +45,7 @@ function createUnconfirmedShift(
     startTime: "10:00",
     endTime: "18:00",
     breakMinutes: 60,
+    transportationAllowance: 0,
     ...overrides,
   };
 }
@@ -82,6 +83,27 @@ describe("shift confirm page and card flow", () => {
       writable: true,
       value: jest.fn().mockResolvedValue(jsonResponse({ shifts: [] })),
     });
+  });
+
+  it("displays the shift transportation allowance without including it in the confirmation payload", () => {
+    render(
+      <ConfirmShiftCard
+        shift={createUnconfirmedShift({ transportationAllowance: 480 })}
+      />,
+    );
+
+    expect(screen.getByText("交通費: 480円")).toBeInTheDocument();
+  });
+
+  it("defaults a legacy shift without transportation allowance to zero", () => {
+    const legacyShift = {
+      ...createUnconfirmedShift(),
+      transportationAllowance: undefined,
+    } as unknown as UnconfirmedShiftItem;
+
+    render(<ConfirmShiftCard shift={legacyShift} />);
+
+    expect(screen.getByText("交通費: 0円")).toBeInTheDocument();
   });
 
   it("keeps SSR cards usable while refreshing the latest unconfirmed shifts in the background", async () => {
@@ -134,6 +156,7 @@ describe("shift confirm page and card flow", () => {
             startTime: "12:00",
             endTime: "20:00",
             breakMinutes: 60,
+            transportationAllowance: 480,
             isConfirmed: false,
             workplace: {
               id: "workplace-2",
@@ -148,6 +171,7 @@ describe("shift confirm page and card flow", () => {
     await waitFor(() => {
       expect(screen.getByText("書店B")).toBeInTheDocument();
     });
+    expect(screen.getByText("交通費: 480円")).toBeInTheDocument();
     expect(screen.queryByText("コンビニA")).not.toBeInTheDocument();
     expect(screen.queryByLabelText("更新中")).not.toBeInTheDocument();
   });
@@ -266,6 +290,7 @@ describe("shift confirm page and card flow", () => {
                   startTime: "10:00",
                   endTime: "18:00",
                   breakMinutes: 60,
+                  transportationAllowance: 0,
                   isConfirmed: false,
                   workplace: {
                     id: "workplace-1",
@@ -384,6 +409,7 @@ describe("shift confirm page and card flow", () => {
             startTime: "10:00",
             endTime: "18:00",
             breakMinutes: 60,
+            transportationAllowance: 0,
             isConfirmed: false,
             workplace: {
               id: "workplace-1",
@@ -429,6 +455,7 @@ describe("shift confirm page and card flow", () => {
                   startTime: "10:00",
                   endTime: "18:00",
                   breakMinutes: 60,
+                  transportationAllowance: 0,
                   isConfirmed: false,
                   workplace: {
                     id: "workplace-1",

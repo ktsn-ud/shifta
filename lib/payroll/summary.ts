@@ -119,6 +119,7 @@ type WorkplaceWithPayrollCycle = PayrollSnapshotWorkplace;
 
 type WorkplacePeriodSummary = {
   wage: number;
+  transportationAllowance: number;
   confirmedWage: number;
   workHours: number;
   nightHours: number;
@@ -162,6 +163,46 @@ function createActualPayrollAmount(
   };
 }
 
+function calculateEstimatedTotalAmount(
+  summary: WorkplacePeriodSummary,
+): number {
+  return roundCurrency(summary.wage + summary.transportationAllowance);
+}
+
+function createWorkplacePayrollDisplayValue(
+  summary: WorkplacePeriodSummary,
+  actualPayroll: ActualPayrollRecord | null,
+): PayrollDisplayValue {
+  return createPayrollDisplayValue(
+    calculateEstimatedTotalAmount(summary),
+    actualPayroll,
+  );
+}
+
+function createSummaryPayrollDisplayValue(params: {
+  estimatedAmount: number;
+  displayAmount: number;
+  actualCoverage: ActualPayrollCoverage;
+}): PayrollDisplayValue {
+  const estimatedAmount = roundCurrency(params.estimatedAmount);
+  const displayAmount = roundCurrency(params.displayAmount);
+  const actualAmount =
+    params.actualCoverage.registeredWorkplaceCount > 0
+      ? createActualPayrollAmount(
+          params.actualCoverage.taxableAmount,
+          params.actualCoverage.nonTaxableAmount,
+        )
+      : null;
+
+  return {
+    estimatedAmount,
+    actualAmount,
+    displayAmount,
+    differenceAmount: roundCurrency(displayAmount - estimatedAmount),
+    isActualApplied: actualAmount !== null,
+  };
+}
+
 function mergeCoverageWithDisplayAmount(
   coverage: ActualPayrollCoverage,
   amount: ActualPayrollAmount,
@@ -195,6 +236,7 @@ function summarizeWorkplaceByPeriod(
   const periodStartTime = period.periodStartDate.getTime();
   const periodEndTime = period.periodEndDate.getTime();
   let wage = 0;
+  let transportationAllowance = 0;
   let confirmedWage = 0;
   let workHours = 0;
   let nightHours = 0;
@@ -212,6 +254,7 @@ function summarizeWorkplaceByPeriod(
 
     const result = calculateShiftPayrollResult(shift, rulesByWorkplace);
     wage += result.totalWage;
+    transportationAllowance += shift.transportationAllowance;
     if (shift.isConfirmed) {
       confirmedWage += result.totalWage;
     }
@@ -222,6 +265,7 @@ function summarizeWorkplaceByPeriod(
 
   return {
     wage,
+    transportationAllowance,
     confirmedWage,
     workHours,
     nightHours,
@@ -332,7 +376,7 @@ function buildPayrollSummaryCore(params: {
       workplace,
       params.monthKey,
     );
-    estimatedTotalWage += summarized.wage;
+    estimatedTotalWage += calculateEstimatedTotalAmount(summarized);
     totalConfirmedWage += summarized.confirmedWage;
     totalWorkHours += summarized.workHours;
     totalNightHours += summarized.nightHours;
@@ -342,14 +386,17 @@ function buildPayrollSummaryCore(params: {
       params.actualPayrollByWorkplaceMonth.get(
         buildWorkplaceMonthKey(workplace.id, params.monthKey),
       ) ?? null;
-    const displayValue = createPayrollDisplayValue(
-      summarized.wage,
+    const displayValue = createWorkplacePayrollDisplayValue(
+      summarized,
       actualPayroll,
     );
     totalWage += displayValue.displayAmount;
     selectedMonthActuals.push(actualPayroll);
 
-    if (summarized.workHours <= 0 && summarized.wage <= 0) {
+    if (
+      summarized.workHours <= 0 &&
+      calculateEstimatedTotalAmount(summarized) <= 0
+    ) {
       continue;
     }
 
@@ -375,16 +422,11 @@ function buildPayrollSummaryCore(params: {
     month: params.monthKey,
     totalWage: roundCurrency(totalWage),
     estimatedTotalWage: roundCurrency(estimatedTotalWage),
-    displayValue: createPayrollDisplayValue(
-      estimatedTotalWage,
-      actualCoverage.registeredWorkplaceCount > 0
-        ? {
-            taxableAmount: actualCoverage.taxableAmount,
-            nonTaxableAmount: actualCoverage.nonTaxableAmount,
-            totalAmount: actualCoverage.totalAmount,
-          }
-        : null,
-    ),
+    displayValue: createSummaryPayrollDisplayValue({
+      estimatedAmount: estimatedTotalWage,
+      displayAmount: totalWage,
+      actualCoverage,
+    }),
     actualCoverage,
     totalWorkHours: roundHours(totalWorkHours),
     totalNightHours: roundHours(totalNightHours),
@@ -413,16 +455,16 @@ function buildPayrollSummaryAmount(params: {
   let totalWage = 0;
 
   for (const workplace of params.workplaces) {
-    const estimatedWage = params.getWorkplaceMonthSummary(
+    const summarized = params.getWorkplaceMonthSummary(
       workplace,
       params.monthKey,
-    ).wage;
+    );
     const actualPayroll =
       params.actualPayrollByWorkplaceMonth.get(
         buildWorkplaceMonthKey(workplace.id, params.monthKey),
       ) ?? null;
-    totalWage += createPayrollDisplayValue(
-      estimatedWage,
+    totalWage += createWorkplacePayrollDisplayValue(
+      summarized,
       actualPayroll,
     ).displayAmount;
   }
@@ -464,27 +506,30 @@ function buildPayrollSummaryYearContext(params: {
     let displayNonTaxableTotal = 0;
 
     for (const workplace of params.workplaces) {
-      const estimatedWage = params.getWorkplaceMonthSummary(
-        workplace,
-        monthKey,
-      ).wage;
+      const summarized = params.getWorkplaceMonthSummary(workplace, monthKey);
+      const estimatedWage = summarized.wage;
+      const estimatedTransportationAllowance =
+        summarized.transportationAllowance;
       const actualPayroll =
         params.actualPayrollByWorkplaceMonth.get(
           buildWorkplaceMonthKey(workplace.id, monthKey),
         ) ?? null;
-      const displayValue = createPayrollDisplayValue(
-        estimatedWage,
+      const displayValue = createWorkplacePayrollDisplayValue(
+        summarized,
         actualPayroll,
       );
 
-      total += estimatedWage;
-      displayTotal += displayValue.displayAmount;
+      total += estimatedWage + estimatedTransportationAllowance;
+      displayTotal += actualPayroll
+        ? displayValue.displayAmount
+        : estimatedWage + estimatedTransportationAllowance;
 
       if (actualPayroll) {
         displayTaxableTotal += actualPayroll.taxableAmount;
         displayNonTaxableTotal += actualPayroll.nonTaxableAmount;
       } else {
-        displayTaxableTotal += displayValue.displayAmount;
+        displayTaxableTotal += estimatedWage;
+        displayNonTaxableTotal += estimatedTransportationAllowance;
       }
 
       yearlyActuals.push(actualPayroll);
@@ -609,15 +654,18 @@ function buildSummaryIncomeByWorkplaceItem(params: {
       buildWorkplaceMonthKey(params.workplace.id, params.monthKey),
     ) ?? null;
   const estimatedAmount = roundCurrency(summarized.wage);
+  const estimatedTransportationAllowance = roundCurrency(
+    summarized.transportationAllowance,
+  );
   const taxableAmount = actualPayroll
     ? roundCurrency(actualPayroll.taxableAmount)
     : estimatedAmount;
   const nonTaxableAmount = actualPayroll
     ? roundCurrency(actualPayroll.nonTaxableAmount)
-    : 0;
+    : estimatedTransportationAllowance;
   const totalAmount = actualPayroll
     ? roundCurrency(actualPayroll.totalAmount)
-    : estimatedAmount;
+    : roundCurrency(estimatedAmount + estimatedTransportationAllowance);
 
   return {
     workplaceId: params.workplace.id,

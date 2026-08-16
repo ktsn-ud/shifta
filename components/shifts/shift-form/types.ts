@@ -27,6 +27,7 @@ export type ShiftDetail = {
   startTime: string;
   endTime: string;
   breakMinutes: number;
+  transportationAllowance: number;
   shiftType: ShiftType;
   comment: string | null;
   lessonRange: {
@@ -44,6 +45,7 @@ export type FormState = {
   startTime: string;
   endTime: string;
   breakMinutes: string;
+  transportationAllowance: string;
   timetableSetId: string;
   startPeriod: string;
   endPeriod: string;
@@ -57,6 +59,7 @@ export type FormErrorKey =
   | "startTime"
   | "endTime"
   | "breakMinutes"
+  | "transportationAllowance"
   | "timetableSetId"
   | "startPeriod"
   | "endPeriod"
@@ -98,6 +101,7 @@ export type ShiftMutationPayload = {
   startTime?: string;
   endTime?: string;
   breakMinutes: number;
+  transportationAllowance: number;
   lessonRange?: {
     timetableSetId: string;
     startPeriod: number;

@@ -119,6 +119,7 @@ function ConfirmShiftCardContent({
     workplaceName: shift.workplaceName,
     comment: shift.comment,
   });
+  const transportationAllowance = shift.transportationAllowance ?? 0;
 
   const submitConfirmedShift = async (data: ValidationResult) => {
     setIsConfirming(true);
@@ -266,6 +267,10 @@ function ConfirmShiftCardContent({
                 disabled={isMutating}
               />
             </label>
+
+            <p className="flex items-end text-sm text-muted-foreground">
+              交通費: {transportationAllowance.toLocaleString("ja-JP")}円
+            </p>
 
             <label
               htmlFor={endTimeInputId}

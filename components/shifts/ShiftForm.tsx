@@ -65,6 +65,7 @@ import {
   toMonthInputValue,
 } from "@/lib/calendar/date";
 import { formatShiftType } from "@/lib/enum-labels";
+import { MAX_TRANSPORTATION_ALLOWANCE } from "@/lib/shifts/transportation-allowance";
 import {
   parseGoogleSyncStateFromPayload,
   readGoogleSyncFailureFromErrorResponse,
@@ -181,6 +182,7 @@ type ShiftFormEditorProps = {
   onStartTimeChange: (value: string) => void;
   onEndTimeChange: (value: string) => void;
   onBreakMinutesChange: (value: string) => void;
+  onTransportationAllowanceChange: (value: string) => void;
   onCommentChange: (value: string) => void;
   onCancel: () => void;
 };
@@ -207,9 +209,13 @@ type ShiftFormControllerResult = {
   isBootstrapRefreshing: boolean;
   formErrorMessage: string | null;
   previewMonths: ReturnType<typeof useShiftPayrollPreview>["months"];
+  previewYears: ReturnType<typeof useShiftPayrollPreview>["years"];
   previewUnresolvedCount: number;
   previewEmptyMessage: string;
   previewBaselineErrorMessage: string | null;
+  isAnnualPreviewLoading: boolean;
+  previewAnnualErrorMessage: string | null;
+  isAnnualPreviewResponseIncomplete: boolean;
   isOvernightDialogOpen: boolean;
   handleSubmit: (event: React.FormEvent<HTMLFormElement>) => Promise<void>;
   handleWorkplaceChange: (value: string) => void;
@@ -221,6 +227,7 @@ type ShiftFormControllerResult = {
   handleStartTimeChange: (value: string) => void;
   handleEndTimeChange: (value: string) => void;
   handleBreakMinutesChange: (value: string) => void;
+  handleTransportationAllowanceChange: (value: string) => void;
   handleCommentChange: (value: string) => void;
   handleCancel: () => void;
   handleOvernightDialogOpenChange: (open: boolean) => void;
@@ -287,6 +294,7 @@ function createInitialFormState(defaultDate: string): FormState {
     startTime: "",
     endTime: "",
     breakMinutes: "0",
+    transportationAllowance: "0",
     timetableSetId: "",
     startPeriod: "",
     endPeriod: "",
@@ -302,6 +310,7 @@ function createEditFormState(detail: ShiftDetail): FormState {
     startTime: toTimeOnly(detail.startTime),
     endTime: toTimeOnly(detail.endTime),
     breakMinutes: String(detail.breakMinutes),
+    transportationAllowance: String(detail.transportationAllowance),
     timetableSetId: detail.lessonRange?.timetableSetId ?? "",
     startPeriod: detail.lessonRange
       ? String(detail.lessonRange.startPeriod)
@@ -768,6 +777,7 @@ function useShiftFormPreviewInputs(params: {
         startTime: form.startTime,
         endTime: form.endTime,
         breakMinutes: Number(form.breakMinutes) || 0,
+        transportationAllowance: Number(form.transportationAllowance) || 0,
         lessonRange:
           shiftType === "LESSON"
             ? {
@@ -780,6 +790,7 @@ function useShiftFormPreviewInputs(params: {
     ];
   }, [
     form.breakMinutes,
+    form.transportationAllowance,
     form.date,
     form.endPeriod,
     form.endTime,
@@ -808,6 +819,7 @@ const formErrorFieldIds: Record<Exclude<FormErrorKey, "form">, string> = {
   startTime: "shift-start-time",
   endTime: "shift-end-time",
   breakMinutes: "shift-break-minutes",
+  transportationAllowance: "shift-transportation-allowance",
   timetableSetId: "shift-timetable-set",
   startPeriod: "shift-start-period",
   endPeriod: "shift-end-period",
@@ -1127,6 +1139,7 @@ function ShiftFormTimeFields(props: {
   onStartTimeChange: (value: string) => void;
   onEndTimeChange: (value: string) => void;
   onBreakMinutesChange: (value: string) => void;
+  onTransportationAllowanceChange: (value: string) => void;
 }) {
   const {
     form,
@@ -1135,6 +1148,7 @@ function ShiftFormTimeFields(props: {
     onStartTimeChange,
     onEndTimeChange,
     onBreakMinutesChange,
+    onTransportationAllowanceChange,
   } = props;
 
   return (
@@ -1186,6 +1200,28 @@ function ShiftFormTimeFields(props: {
             <span className="shrink-0 text-sm text-muted-foreground">分</span>
           </div>
           <FormErrorMessage message={errors.breakMinutes} />
+        </FieldContent>
+      </Field>
+      <Field data-invalid={Boolean(errors.transportationAllowance)}>
+        <FieldLabel htmlFor="shift-transportation-allowance">交通費</FieldLabel>
+        <FieldContent>
+          <div className="flex items-center gap-2">
+            <Input
+              id="shift-transportation-allowance"
+              type="number"
+              min={0}
+              max={MAX_TRANSPORTATION_ALLOWANCE}
+              step={1}
+              value={form.transportationAllowance}
+              onChange={(event) =>
+                onTransportationAllowanceChange(event.currentTarget.value)
+              }
+              disabled={disabled}
+              className="max-w-28"
+            />
+            <span className="shrink-0 text-sm text-muted-foreground">円</span>
+          </div>
+          <FormErrorMessage message={errors.transportationAllowance} />
         </FieldContent>
       </Field>
     </>
@@ -1314,6 +1350,7 @@ function ShiftFormEditor(props: ShiftFormEditorProps) {
     onStartTimeChange,
     onEndTimeChange,
     onBreakMinutesChange,
+    onTransportationAllowanceChange,
     onCommentChange,
     onCancel,
   } = props;
@@ -1359,8 +1396,36 @@ function ShiftFormEditor(props: ShiftFormEditorProps) {
             onStartTimeChange={onStartTimeChange}
             onEndTimeChange={onEndTimeChange}
             onBreakMinutesChange={onBreakMinutesChange}
+            onTransportationAllowanceChange={onTransportationAllowanceChange}
           />
         )}
+
+        {showLessonFields ? (
+          <Field data-invalid={Boolean(errors.transportationAllowance)}>
+            <FieldLabel htmlFor="shift-lesson-transportation-allowance">
+              交通費
+            </FieldLabel>
+            <FieldContent>
+              <div className="flex items-center gap-2">
+                <Input
+                  id="shift-lesson-transportation-allowance"
+                  type="number"
+                  min={0}
+                  max={MAX_TRANSPORTATION_ALLOWANCE}
+                  step={1}
+                  value={form.transportationAllowance}
+                  onChange={(event) =>
+                    onTransportationAllowanceChange(event.currentTarget.value)
+                  }
+                  disabled={disabled}
+                  className="max-w-28"
+                />
+                <span className="text-sm text-muted-foreground">円</span>
+              </div>
+              <FormErrorMessage message={errors.transportationAllowance} />
+            </FieldContent>
+          </Field>
+        ) : null}
 
         <ShiftFormCommentField
           form={form}
@@ -1966,9 +2031,14 @@ function useShiftFormController(
     isBootstrapRefreshing: data.isBootstrapRefreshing,
     formErrorMessage,
     previewMonths: shiftPayrollPreview.months,
+    previewYears: shiftPayrollPreview.years,
     previewUnresolvedCount: shiftPayrollPreview.unresolvedCount,
     previewEmptyMessage,
     previewBaselineErrorMessage: shiftPayrollPreview.baselineErrorMessage,
+    isAnnualPreviewLoading: shiftPayrollPreview.isAnnualLoading,
+    previewAnnualErrorMessage: shiftPayrollPreview.annualErrorMessage,
+    isAnnualPreviewResponseIncomplete:
+      shiftPayrollPreview.isAnnualResponseIncomplete,
     isOvernightDialogOpen: state.isOvernightDialogOpen,
     handleSubmit,
     handleWorkplaceChange,
@@ -1980,6 +2050,8 @@ function useShiftFormController(
     handleStartTimeChange: (value) => updateFormField("startTime", value),
     handleEndTimeChange: (value) => updateFormField("endTime", value),
     handleBreakMinutesChange: (value) => updateFormField("breakMinutes", value),
+    handleTransportationAllowanceChange: (value) =>
+      updateFormField("transportationAllowance", value),
     handleCommentChange: (value) => updateFormField("comment", value),
     handleCancel,
     handleOvernightDialogOpenChange,
@@ -2052,6 +2124,9 @@ function ShiftFormScreen(props: ShiftFormProps) {
           onStartTimeChange={controller.handleStartTimeChange}
           onEndTimeChange={controller.handleEndTimeChange}
           onBreakMinutesChange={controller.handleBreakMinutesChange}
+          onTransportationAllowanceChange={
+            controller.handleTransportationAllowanceChange
+          }
           onCommentChange={controller.handleCommentChange}
           onCancel={controller.handleCancel}
         />
@@ -2060,9 +2135,15 @@ function ShiftFormScreen(props: ShiftFormProps) {
       {controller.mode === "create" ? (
         <ShiftPayrollPreviewFloating
           months={controller.previewMonths}
+          years={controller.previewYears}
           unresolvedCount={controller.previewUnresolvedCount}
           emptyMessage={controller.previewEmptyMessage}
           baselineErrorMessage={controller.previewBaselineErrorMessage}
+          isAnnualLoading={controller.isAnnualPreviewLoading}
+          annualErrorMessage={controller.previewAnnualErrorMessage}
+          isAnnualResponseIncomplete={
+            controller.isAnnualPreviewResponseIncomplete
+          }
         />
       ) : null}
 

@@ -165,6 +165,7 @@ model Shift {
   startTime        DateTime          @db.Time(0)
   endTime          DateTime          @db.Time(0)
   breakMinutes     Int               @default(0)
+  transportationAllowance Int        @default(0)
   isConfirmed      Boolean           @default(false)
   shiftType        ShiftType
   comment          String?           @db.VarChar(100)

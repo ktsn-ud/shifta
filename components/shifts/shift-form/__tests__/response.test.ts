@@ -12,6 +12,7 @@ const normalShift = {
   startTime: "1970-01-01T09:00:00.000Z",
   endTime: "1970-01-01T17:00:00.000Z",
   breakMinutes: 60,
+  transportationAllowance: 480,
   shiftType: "NORMAL",
   comment: null,
   lessonRange: null,
@@ -85,6 +86,14 @@ describe("shift-form response parsers", () => {
   it.each([
     ["a fractional break", { ...normalShift, breakMinutes: 0.5 }],
     ["a negative break", { ...normalShift, breakMinutes: -1 }],
+    [
+      "a negative transportation allowance",
+      { ...normalShift, transportationAllowance: -1 },
+    ],
+    [
+      "a fractional transportation allowance",
+      { ...normalShift, transportationAllowance: 100.5 },
+    ],
     ["an unknown shift type", { ...normalShift, shiftType: "OTHER" }],
     [
       "a lesson range with a non-positive period",

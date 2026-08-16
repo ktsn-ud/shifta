@@ -648,6 +648,9 @@ function ShiftListTableHeaderRow({
         />
       </TableHead>
       <TableHead className="text-right">
+        <span>交通費</span>
+      </TableHead>
+      <TableHead className="text-right">
         <SortToggleButton
           column="estimatedPay"
           sortState={sortState}
@@ -712,6 +715,7 @@ function ShiftListTableItemRow({
         </div>
       </TableCell>
       <TableCell>{shift.breakMinutes}分</TableCell>
+      <TableCell>{shift.transportationAllowance}円</TableCell>
       <TableCell className="text-right font-medium">
         {formatCurrency(shift.estimatedPay)}
       </TableCell>

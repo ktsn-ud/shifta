@@ -13,7 +13,7 @@
     "typecheck": "tsc --noEmit --incremental false",
     "test": "jest",
     "test:ci": "jest --ci",
-    "doctor": "react-doctor . --verbose --scope changed --include-untracked",
+    "doctor:changed": "react-doctor . --verbose --scope changed --include-untracked",
     "doctor:full": "react-doctor . --verbose --scope full",
     "doctor:ci": "react-doctor . --scope changed --blocking error --no-score",
     "check": "pnpm run format:check && pnpm run typecheck && pnpm run lint && pnpm run test:ci",

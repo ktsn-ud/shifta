@@ -50,6 +50,7 @@ export type PreviewShiftInput = {
   startTime?: string;
   endTime?: string;
   breakMinutes?: number;
+  transportationAllowance?: number;
   lessonRange?: {
     timetableSetId?: string;
     startPeriod?: number;
@@ -61,6 +62,7 @@ export type ShiftPayrollPreviewItem = {
   temporaryId: string;
   paymentMonth: string | null;
   wage: number | null;
+  transportationAllowance: number;
   status: PreviewStatus;
   message?: string;
 };
@@ -68,6 +70,8 @@ export type ShiftPayrollPreviewItem = {
 export type ShiftPayrollPreviewMonthSummary = {
   month: string;
   additionalWage: number;
+  additionalTransportationAllowance: number;
+  additionalTotalAmount: number;
   shiftCount: number;
   unresolvedCount: number;
   messages: string[];
@@ -376,6 +380,8 @@ export function calculateShiftPayrollPreview(input: {
     const nextSummary: ShiftPayrollPreviewMonthSummary = {
       month: paymentMonth,
       additionalWage: 0,
+      additionalTransportationAllowance: 0,
+      additionalTotalAmount: 0,
       shiftCount: 0,
       unresolvedCount: 0,
       messages: [],
@@ -413,6 +419,7 @@ export function calculateShiftPayrollPreview(input: {
         temporaryId: shift.temporaryId,
         paymentMonth: null,
         wage: null,
+        transportationAllowance: 0,
         status: "incomplete",
         message: "勤務先を選択すると支給額を確認できます",
       });
@@ -426,6 +433,7 @@ export function calculateShiftPayrollPreview(input: {
         temporaryId: shift.temporaryId,
         paymentMonth: null,
         wage: null,
+        transportationAllowance: 0,
         status: "invalid",
         message: "勤務先情報の取得に失敗しました",
       });
@@ -439,6 +447,7 @@ export function calculateShiftPayrollPreview(input: {
         temporaryId: shift.temporaryId,
         paymentMonth: null,
         wage: null,
+        transportationAllowance: 0,
         status: "incomplete",
         message: "日付を入力すると支給月を判定できます",
       });
@@ -451,6 +460,7 @@ export function calculateShiftPayrollPreview(input: {
         temporaryId: shift.temporaryId,
         paymentMonth: null,
         wage: null,
+        transportationAllowance: 0,
         status: "invalid",
         message: "日付の入力形式が不正です",
       });
@@ -472,6 +482,7 @@ export function calculateShiftPayrollPreview(input: {
         temporaryId: shift.temporaryId,
         paymentMonth,
         wage: null,
+        transportationAllowance: 0,
         status: resolvedTime.status,
         message: resolvedTime.message,
       });
@@ -492,6 +503,7 @@ export function calculateShiftPayrollPreview(input: {
         temporaryId: shift.temporaryId,
         paymentMonth,
         wage: null,
+        transportationAllowance: 0,
         status: "missing-rule",
         message,
       });
@@ -523,11 +535,24 @@ export function calculateShiftPayrollPreview(input: {
       temporaryId: shift.temporaryId,
       paymentMonth,
       wage: wageResult.totalWage,
+      transportationAllowance:
+        Number.isInteger(shift.transportationAllowance) &&
+        (shift.transportationAllowance ?? 0) >= 0
+          ? (shift.transportationAllowance ?? 0)
+          : 0,
       status: "ready",
     });
 
     const monthSummary = getMonthSummary(paymentMonth);
     monthSummary.additionalWage += wageResult.totalWage;
+    monthSummary.additionalTransportationAllowance +=
+      Number.isInteger(shift.transportationAllowance) &&
+      (shift.transportationAllowance ?? 0) >= 0
+        ? (shift.transportationAllowance ?? 0)
+        : 0;
+    monthSummary.additionalTotalAmount =
+      monthSummary.additionalWage +
+      monthSummary.additionalTransportationAllowance;
     monthSummary.shiftCount += 1;
   }
 

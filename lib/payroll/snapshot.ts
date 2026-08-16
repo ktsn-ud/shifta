@@ -71,6 +71,7 @@ type SerializedPayrollSnapshotShift = {
   startTime: string;
   endTime: string;
   breakMinutes: number;
+  transportationAllowance: number;
   isConfirmed: boolean;
   shiftType: "NORMAL" | "LESSON";
   comment: string | null;
@@ -151,6 +152,7 @@ function toSerializedShift(
     startTime: shift.startTime.toISOString(),
     endTime: shift.endTime.toISOString(),
     breakMinutes: shift.breakMinutes,
+    transportationAllowance: shift.transportationAllowance,
     isConfirmed: shift.isConfirmed,
     shiftType: shift.shiftType,
     comment: shift.comment,
@@ -181,6 +183,7 @@ function fromSerializedShift(
     startTime: new Date(shift.startTime),
     endTime: new Date(shift.endTime),
     breakMinutes: shift.breakMinutes,
+    transportationAllowance: shift.transportationAllowance,
     isConfirmed: shift.isConfirmed,
     shiftType: shift.shiftType,
     comment: shift.comment,
