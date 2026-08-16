@@ -7,6 +7,7 @@ import type {
   PayrollDetailsWorkplaceYearlyResult,
 } from "@/lib/payroll/details";
 import type { PayrollPreviewBaselineResult } from "@/lib/payroll/preview-baseline";
+import type { PayrollAnnualPreviewResult } from "@/lib/payroll/preview-annual";
 import type {
   PayrollSummaryAmountResult,
   PayrollSummaryResult,
@@ -248,14 +249,32 @@ export const payrollPreviewBaselineResponseSchema: z.ZodType<PayrollPreviewBasel
         z.strictObject({
           month: monthKeySchema,
           totalWage: finiteNumberSchema,
+          totalTransportationAllowance: finiteNumberSchema,
+          totalAmount: finiteNumberSchema,
           byWorkplace: z.array(
             z.strictObject({
               workplaceId: z.string(),
               wage: finiteNumberSchema,
+              transportationAllowance: finiteNumberSchema,
+              totalAmount: finiteNumberSchema,
               periodStartDate: dateOnlySchema,
               periodEndDate: dateOnlySchema,
             }),
           ),
+        }),
+      ),
+    }),
+  });
+
+export const payrollAnnualPreviewResponseSchema: z.ZodType<PayrollAnnualPreviewResult> =
+  z.strictObject({
+    data: z.strictObject({
+      years: z.array(
+        z.strictObject({
+          year: finiteNumberSchema,
+          taxableAmount: finiteNumberSchema,
+          nonTaxableAmount: finiteNumberSchema,
+          totalAmount: finiteNumberSchema,
         }),
       ),
     }),

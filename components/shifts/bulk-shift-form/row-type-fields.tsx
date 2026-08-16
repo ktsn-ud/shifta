@@ -8,6 +8,7 @@ import type {
   Workplace,
 } from "@/components/shifts/bulk-shift-form/types";
 import { FormErrorMessage } from "@/components/form/form-error-message";
+import { MAX_TRANSPORTATION_ALLOWANCE } from "@/lib/shifts/transportation-allowance";
 import {
   Field,
   FieldContent,
@@ -117,6 +118,31 @@ export function BulkShiftRowTypeFields(props: {
           </FieldContent>
         </Field>
       )}
+      <Field data-invalid={Boolean(rowErrors.transportationAllowance)}>
+        <FieldLabel htmlFor={`${row.date}-transportation-allowance`}>
+          交通費
+        </FieldLabel>
+        <FieldContent>
+          <div className="flex items-center gap-2">
+            <Input
+              id={`${row.date}-transportation-allowance`}
+              type="number"
+              min={0}
+              max={MAX_TRANSPORTATION_ALLOWANCE}
+              step={1}
+              className="max-w-28"
+              value={row.transportationAllowance}
+              onChange={(event) =>
+                handleUpdateRow(row.date, {
+                  transportationAllowance: event.currentTarget.value,
+                })
+              }
+            />
+            <span className="text-sm text-muted-foreground">円</span>
+          </div>
+          <FormErrorMessage message={rowErrors.transportationAllowance} />
+        </FieldContent>
+      </Field>
     </FieldGroup>
   );
 }

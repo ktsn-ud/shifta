@@ -79,6 +79,7 @@ function createShift(
     startTime: time("09:00"),
     endTime: time("10:00"),
     breakMinutes: 0,
+    transportationAllowance: 0,
     isConfirmed: false,
     shiftType: "NORMAL",
     comment: null,
@@ -166,6 +167,7 @@ function createSnapshot(monthDates: Date[]): PayrollSnapshot {
             date: date("2026-01-15"),
             startTime: time("09:00"),
             endTime: time("14:00"),
+            transportationAllowance: 400,
           }),
           createShift({
             id: "shift-a-feb",
@@ -173,6 +175,7 @@ function createSnapshot(monthDates: Date[]): PayrollSnapshot {
             date: date("2026-02-12"),
             startTime: time("10:00"),
             endTime: time("14:30"),
+            transportationAllowance: 500,
           }),
         ],
       ],
@@ -185,6 +188,7 @@ function createSnapshot(monthDates: Date[]): PayrollSnapshot {
             date: date("2026-01-20"),
             startTime: time("18:00"),
             endTime: time("21:00"),
+            transportationAllowance: 300,
           }),
           createShift({
             id: "shift-b-mar",
@@ -192,6 +196,7 @@ function createSnapshot(monthDates: Date[]): PayrollSnapshot {
             date: date("2026-03-08"),
             startTime: time("09:00"),
             endTime: time("15:15"),
+            transportationAllowance: 600,
           }),
         ],
       ],
@@ -282,8 +287,8 @@ describe("payroll summary services", () => {
         {
           workplaceId: "workplace-2",
           taxableAmount: 3600,
-          nonTaxableAmount: 0,
-          totalAmount: 3600,
+          nonTaxableAmount: 300,
+          totalAmount: 3900,
         },
       ],
       hoursByWorkplace: [
@@ -298,15 +303,15 @@ describe("payroll summary services", () => {
       ],
       totals: {
         taxableAmount: 8400,
-        nonTaxableAmount: 200,
-        totalAmount: 8600,
+        nonTaxableAmount: 500,
+        totalAmount: 8900,
         totalWorkHours: 8,
       },
     });
     expect(summary.months[1].totals).toEqual({
       taxableAmount: 4500,
-      nonTaxableAmount: 0,
-      totalAmount: 4500,
+      nonTaxableAmount: 500,
+      totalAmount: 5000,
       totalWorkHours: 4.5,
     });
     expect(summary.months[3].totals).toEqual({
@@ -320,22 +325,22 @@ describe("payroll summary services", () => {
         {
           workplaceId: "workplace-1",
           taxableAmount: 9300,
-          nonTaxableAmount: 200,
-          totalAmount: 9500,
+          nonTaxableAmount: 700,
+          totalAmount: 10000,
           totalWorkHours: 9.5,
         },
         {
           workplaceId: "workplace-2",
           taxableAmount: 10600,
-          nonTaxableAmount: 300,
-          totalAmount: 10900,
+          nonTaxableAmount: 600,
+          totalAmount: 11200,
           totalWorkHours: 9.25,
         },
       ],
       grandTotals: {
         taxableAmount: 19900,
-        nonTaxableAmount: 500,
-        totalAmount: 20400,
+        nonTaxableAmount: 1300,
+        totalAmount: 21200,
         totalWorkHours: 18.75,
       },
     });
@@ -382,8 +387,8 @@ describe("payroll summary services", () => {
       {
         workplaceId: "workplace-1",
         taxableAmount: 4500,
-        nonTaxableAmount: 0,
-        totalAmount: 4500,
+        nonTaxableAmount: 500,
+        totalAmount: 5000,
       },
       {
         workplaceId: "workplace-2",
@@ -404,7 +409,7 @@ describe("payroll summary services", () => {
       expect.objectContaining({
         month: "2026-03",
         totalWage: 7300,
-        estimatedTotalWage: 7500,
+        estimatedTotalWage: 8100,
         totalWorkHours: 6.25,
         confirmedShiftWage: 0,
       }),
@@ -427,7 +432,7 @@ describe("payroll summary services", () => {
 
     expect(summaryAmount).toEqual({
       month: "2026-01",
-      totalWage: 8600,
+      totalWage: 8900,
     });
   });
 
@@ -439,26 +444,26 @@ describe("payroll summary services", () => {
 
     expect(summaryYearContext).toEqual({
       month: "2026-03",
-      currentMonthCumulative: 20400,
-      yearlyTotal: 20400,
+      currentMonthCumulative: 21200,
+      yearlyTotal: 21200,
       currentMonthActualCoverage: {
         registeredWorkplaceCount: 2,
         totalWorkplaceCount: 6,
         isPartial: true,
         taxableAmount: 19900,
-        nonTaxableAmount: 500,
-        totalAmount: 20400,
+        nonTaxableAmount: 1300,
+        totalAmount: 21200,
       },
       yearlyActualCoverage: {
         registeredWorkplaceCount: 2,
         totalWorkplaceCount: 24,
         isPartial: true,
         taxableAmount: 19900,
-        nonTaxableAmount: 500,
-        totalAmount: 20400,
+        nonTaxableAmount: 1300,
+        totalAmount: 21200,
       },
-      estimatedCurrentMonthCumulative: 20600,
-      estimatedYearlyTotal: 20600,
+      estimatedCurrentMonthCumulative: 22400,
+      estimatedYearlyTotal: 22400,
     });
   });
 });

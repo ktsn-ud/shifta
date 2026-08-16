@@ -16,6 +16,10 @@ import {
   MAX_TIMETABLE_PERIOD,
   TIMETABLE_PERIOD_LIMIT_MESSAGE,
 } from "@/lib/validation/batch-limits";
+import {
+  getTransportationAllowanceValidationError,
+  normalizeTransportationAllowance,
+} from "@/lib/shifts/transportation-allowance";
 import type {
   BulkShiftPayload,
   BulkShiftRow,
@@ -34,6 +38,7 @@ const ROW_ERROR_FIELD_LABELS: Record<RowErrorKey, string> = {
   startTime: "開始時刻",
   endTime: "終了時刻",
   breakMinutes: "休憩時間",
+  transportationAllowance: "交通費",
   timetableSetId: "時間割セット",
   startPeriod: "開始コマ",
   endPeriod: "終了コマ",
@@ -47,6 +52,7 @@ function getRowFieldId(dateKey: string, field: RowErrorKey) {
     startTime: "start-time",
     endTime: "end-time",
     breakMinutes: "break",
+    transportationAllowance: "transportation-allowance",
     timetableSetId: "timetable-set",
     startPeriod: "start-period",
     endPeriod: "end-period",
@@ -227,6 +233,12 @@ export function validateAndBuildPayload(params: {
       rowErrors.comment = "コメントに改行は使用できません。";
     }
 
+    const transportationAllowanceError =
+      getTransportationAllowanceValidationError(row.transportationAllowance);
+    if (transportationAllowanceError) {
+      rowErrors.transportationAllowance = transportationAllowanceError;
+    }
+
     if (row.shiftType === "LESSON") {
       if (selectedWorkplaceType !== "CRAM_SCHOOL") {
         rowErrors.shiftType = "授業シフトは塾タイプ勤務先でのみ選択できます。";
@@ -303,6 +315,9 @@ export function validateAndBuildPayload(params: {
           shiftType: "LESSON",
           comment: row.comment,
           breakMinutes: 0,
+          transportationAllowance: normalizeTransportationAllowance(
+            row.transportationAllowance,
+          ),
           lessonRange: {
             timetableSetId: row.timetableSetId,
             startPeriod,
@@ -371,6 +386,9 @@ export function validateAndBuildPayload(params: {
           startTime: row.startTime,
           endTime: row.endTime,
           breakMinutes,
+          transportationAllowance: normalizeTransportationAllowance(
+            row.transportationAllowance,
+          ),
         });
       }
     }

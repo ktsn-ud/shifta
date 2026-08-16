@@ -15,6 +15,7 @@ export type BulkShiftRow = {
   startTime: string;
   endTime: string;
   breakMinutes: string;
+  transportationAllowance: string;
   timetableSetId: string;
   startPeriod: string;
   endPeriod: string;
@@ -28,6 +29,7 @@ export type RowErrorKey =
   | "startTime"
   | "endTime"
   | "breakMinutes"
+  | "transportationAllowance"
   | "timetableSetId"
   | "startPeriod"
   | "endPeriod";
@@ -54,6 +56,7 @@ export type NormalShiftPayload = {
   startTime: string;
   endTime: string;
   breakMinutes: number;
+  transportationAllowance: number;
 };
 
 export type LessonShiftPayload = {
@@ -61,6 +64,7 @@ export type LessonShiftPayload = {
   shiftType: "LESSON";
   comment: string;
   breakMinutes: number;
+  transportationAllowance: number;
   lessonRange: {
     timetableSetId: string;
     startPeriod: number;

@@ -51,6 +51,9 @@ export function parseShiftDetailResponse(payload: unknown): ShiftDetail | null {
     typeof data.breakMinutes !== "number" ||
     Number.isInteger(data.breakMinutes) === false ||
     data.breakMinutes < 0 ||
+    typeof data.transportationAllowance !== "number" ||
+    Number.isInteger(data.transportationAllowance) === false ||
+    data.transportationAllowance < 0 ||
     (data.comment !== null && typeof data.comment !== "string") ||
     !isShiftType(data.shiftType)
   ) {
@@ -89,6 +92,7 @@ export function parseShiftDetailResponse(payload: unknown): ShiftDetail | null {
     startTime: data.startTime,
     endTime: data.endTime,
     breakMinutes: data.breakMinutes,
+    transportationAllowance: data.transportationAllowance,
     shiftType: data.shiftType,
     comment: data.comment,
     lessonRange,

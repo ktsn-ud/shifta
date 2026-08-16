@@ -41,6 +41,7 @@ function parseUnconfirmedPayload(payload: unknown): UnconfirmedShiftItem[] {
     startTime: shift.startTime,
     endTime: shift.endTime,
     breakMinutes: shift.breakMinutes,
+    transportationAllowance: shift.transportationAllowance,
   }));
 }
 

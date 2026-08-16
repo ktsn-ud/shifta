@@ -13,6 +13,7 @@ const unconfirmedShiftSchema = z.strictObject({
   startTime: timeOnlySchema,
   endTime: timeOnlySchema,
   breakMinutes: nonNegativeIntegerSchema,
+  transportationAllowance: nonNegativeIntegerSchema,
   isConfirmed: z.literal(false),
   workplace: z.strictObject({
     id: z.string(),

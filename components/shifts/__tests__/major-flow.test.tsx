@@ -446,6 +446,7 @@ describe("major flow integration", () => {
             shiftType: "NORMAL",
             comment: null,
             estimatedPay: 8000,
+            transportationAllowance: 0,
             googleSyncStatus: "FAILED",
             googleSyncError: "Insufficient permissions",
             workplace: {
@@ -483,6 +484,7 @@ describe("major flow integration", () => {
             shiftType: "NORMAL",
             comment: null,
             estimatedPay: 8000,
+            transportationAllowance: 0,
             googleSyncStatus: "SUCCESS",
             googleSyncError: null,
             workplace: {

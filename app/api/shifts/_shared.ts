@@ -24,6 +24,7 @@ import {
   MAX_TIMETABLE_PERIOD,
   TIMETABLE_PERIOD_LIMIT_MESSAGE,
 } from "@/lib/validation/batch-limits";
+import { MAX_TRANSPORTATION_ALLOWANCE } from "@/lib/shifts/transportation-allowance";
 
 export class ShiftValidationError extends Error {
   constructor(message: string) {
@@ -55,6 +56,16 @@ export const shiftCommentSchema = z
   .nullable()
   .optional();
 
+export const transportationAllowanceSchema = z.coerce
+  .number()
+  .int("交通費は整数円で入力してください")
+  .min(0, "交通費は0円以上で入力してください")
+  .max(
+    MAX_TRANSPORTATION_ALLOWANCE,
+    "交通費は2,147,483,647円以下で入力してください",
+  )
+  .default(0);
+
 export const shiftInputSchema = z.strictObject({
   workplaceId: z.string().min(1),
   date: z
@@ -77,6 +88,7 @@ export const shiftInputSchema = z.strictObject({
     .min(0, BREAK_MINUTES_RANGE_MESSAGE)
     .max(MAX_BREAK_MINUTES, BREAK_MINUTES_RANGE_MESSAGE)
     .default(0),
+  transportationAllowance: transportationAllowanceSchema,
   lessonRange: lessonRangeSchema.optional(),
 });
 
@@ -89,6 +101,7 @@ export type BuiltShiftData = {
     startTime: Date;
     endTime: Date;
     breakMinutes: number;
+    transportationAllowance: number;
     shiftType: "NORMAL" | "LESSON";
     comment: string | null;
   };
@@ -258,6 +271,7 @@ export async function buildShiftData(
         startTime: lessonTimes.startTime,
         endTime: lessonTimes.endTime,
         breakMinutes: lessonTimes.breakMinutes,
+        transportationAllowance: input.transportationAllowance,
         shiftType: input.shiftType,
         comment,
       },
@@ -285,6 +299,7 @@ export async function buildShiftData(
       startTime,
       endTime,
       breakMinutes: input.breakMinutes,
+      transportationAllowance: input.transportationAllowance,
       shiftType: input.shiftType,
       comment,
     },

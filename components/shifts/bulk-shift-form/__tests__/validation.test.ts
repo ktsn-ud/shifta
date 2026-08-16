@@ -42,6 +42,7 @@ function createRow(
     startTime: "09:00",
     endTime: "18:00",
     breakMinutes: "0",
+    transportationAllowance: "0",
     timetableSetId: "",
     startPeriod: "",
     endPeriod: "",
@@ -124,12 +125,14 @@ describe("validateAndBuildPayload", () => {
           startTime: "09:30",
           endTime: "18:00",
           breakMinutes: 60,
+          transportationAllowance: 0,
         },
         {
           date: "2026-03-19",
           shiftType: "LESSON",
           comment: "春期講習",
           breakMinutes: 0,
+          transportationAllowance: 0,
           lessonRange: {
             timetableSetId: "set-1",
             startPeriod: 1,
@@ -140,6 +143,95 @@ describe("validateAndBuildPayload", () => {
       overnightSummaries: [],
     });
   });
+
+  it("uses each NORMAL and LESSON row's transportation allowance", () => {
+    const result = validateRows({
+      selectedWorkplaceId: cramSchoolWorkplaceId,
+      selectedWorkplaceType: "CRAM_SCHOOL",
+      lessonPeriodsBySetId: { "set-1": [1] },
+      rows: [
+        createRow("2026-03-18", { transportationAllowance: "480" }),
+        createRow("2026-03-19", {
+          shiftType: "LESSON",
+          transportationAllowance: "360",
+          timetableSetId: "set-1",
+          startPeriod: "1",
+          endPeriod: "1",
+        }),
+      ],
+    });
+
+    expect(result).toEqual(
+      expect.objectContaining({
+        success: true,
+        payload: expect.arrayContaining([
+          expect.objectContaining({
+            shiftType: "NORMAL",
+            transportationAllowance: 480,
+          }),
+          expect.objectContaining({
+            shiftType: "LESSON",
+            transportationAllowance: 360,
+          }),
+        ]),
+      }),
+    );
+  });
+
+  it("normalizes a blank default allowance and preserves a maximum row override", () => {
+    const result = validateRows({
+      selectedWorkplaceId: cramSchoolWorkplaceId,
+      selectedWorkplaceType: "CRAM_SCHOOL",
+      lessonPeriodsBySetId: { "set-1": [1] },
+      rows: [
+        createRow("2026-03-18", { transportationAllowance: "" }),
+        createRow("2026-03-19", {
+          shiftType: "LESSON",
+          transportationAllowance: "2147483647",
+          timetableSetId: "set-1",
+          startPeriod: "1",
+          endPeriod: "1",
+        }),
+      ],
+    });
+
+    expect(result).toEqual(
+      expect.objectContaining({
+        success: true,
+        payload: expect.arrayContaining([
+          expect.objectContaining({
+            shiftType: "NORMAL",
+            transportationAllowance: 0,
+          }),
+          expect.objectContaining({
+            shiftType: "LESSON",
+            transportationAllowance: 2_147_483_647,
+          }),
+        ]),
+      }),
+    );
+  });
+
+  it.each(["-1", "100.5", "2147483648"])(
+    "rejects non-integer or negative transportation allowance %s",
+    (transportationAllowance) => {
+      expect(
+        validateRows({
+          rows: [createRow("2026-03-18", { transportationAllowance })],
+        }),
+      ).toEqual({
+        success: false,
+        errors: {
+          rows: {
+            "2026-03-18": {
+              transportationAllowance:
+                "交通費は0円以上2,147,483,647円以下の整数で入力してください。",
+            },
+          },
+        },
+      });
+    },
+  );
 
   it("reports only invalid rows when a multi-date submission contains valid rows", () => {
     const result = validateRows({
@@ -556,6 +648,7 @@ describe("validateAndBuildPayload", () => {
           shiftType: "LESSON",
           comment: "",
           breakMinutes: 0,
+          transportationAllowance: 0,
           lessonRange: {
             timetableSetId: "set-1",
             startPeriod: 1,
@@ -652,6 +745,7 @@ describe("validateAndBuildPayload", () => {
           startTime: "22:00",
           endTime: "05:00",
           breakMinutes: 0,
+          transportationAllowance: 0,
         },
         {
           date: "2026-04-01",
@@ -660,6 +754,7 @@ describe("validateAndBuildPayload", () => {
           startTime: "10:00",
           endTime: "18:00",
           breakMinutes: 0,
+          transportationAllowance: 0,
         },
       ],
       overnightSummaries: [

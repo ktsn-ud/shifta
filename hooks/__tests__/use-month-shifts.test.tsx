@@ -47,6 +47,7 @@ function createMonthShift(overrides?: Partial<MonthShift>): MonthShift {
     startTime: "2026-06-15T09:00:00.000Z",
     endTime: "2026-06-15T12:00:00.000Z",
     breakMinutes: 0,
+    transportationAllowance: 0,
     shiftType: "NORMAL",
     comment: null,
     googleSyncStatus: "SUCCESS",

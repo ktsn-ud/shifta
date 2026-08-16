@@ -66,6 +66,7 @@ function createForm(overrides: Partial<FormState> = {}): FormState {
     startTime: "09:00",
     endTime: "17:00",
     breakMinutes: "60",
+    transportationAllowance: "0",
     timetableSetId: "",
     startPeriod: "",
     endPeriod: "",
@@ -74,6 +75,30 @@ function createForm(overrides: Partial<FormState> = {}): FormState {
 }
 
 describe("validateShiftForm", () => {
+  it.each([
+    ["", undefined],
+    ["0", undefined],
+    ["480", undefined],
+    ["2147483647", undefined],
+    ["-1", "交通費は0円以上2,147,483,647円以下の整数で入力してください。"],
+    ["100.5", "交通費は0円以上2,147,483,647円以下の整数で入力してください。"],
+    [
+      "2147483648",
+      "交通費は0円以上2,147,483,647円以下の整数で入力してください。",
+    ],
+  ])(
+    "validates transportation allowance %s",
+    (transportationAllowance, expected) => {
+      expect(
+        validateShiftForm({
+          form: createForm({ transportationAllowance }),
+          selectedWorkplace: generalWorkplace,
+          timetableSets: [],
+        }).errors.transportationAllowance,
+      ).toBe(expected);
+    },
+  );
+
   it("accepts a 100-character comment and rejects 101 characters", () => {
     expect(
       validateShiftForm({
@@ -305,6 +330,7 @@ describe("shift-form submission helpers", () => {
       shiftType: "NORMAL",
       comment: "",
       breakMinutes: 60,
+      transportationAllowance: 0,
       startTime: "09:00",
       endTime: "17:00",
     });
@@ -329,8 +355,57 @@ describe("shift-form submission helpers", () => {
       shiftType: "LESSON",
       comment: "",
       breakMinutes: 0,
+      transportationAllowance: 0,
       lessonRange: { timetableSetId: "set-1", startPeriod: 1, endPeriod: 3 },
     });
+  });
+
+  it("preserves transportation allowance in NORMAL and LESSON payloads", () => {
+    expect(
+      buildShiftPayload(
+        createForm({ transportationAllowance: "480" }),
+        generalWorkplace.type,
+      ),
+    ).toEqual(expect.objectContaining({ transportationAllowance: 480 }));
+
+    expect(
+      buildShiftPayload(
+        createForm({
+          workplaceId: cramSchoolWorkplace.id,
+          shiftType: "LESSON",
+          transportationAllowance: "360",
+          timetableSetId: "set-1",
+          startPeriod: "1",
+          endPeriod: "1",
+        }),
+        cramSchoolWorkplace.type,
+      ),
+    ).toEqual(expect.objectContaining({ transportationAllowance: 360 }));
+  });
+
+  it("normalizes a blank allowance to zero and preserves the maximum allowance", () => {
+    expect(
+      buildShiftPayload(
+        createForm({ transportationAllowance: "" }),
+        generalWorkplace.type,
+      ),
+    ).toEqual(expect.objectContaining({ transportationAllowance: 0 }));
+
+    expect(
+      buildShiftPayload(
+        createForm({
+          workplaceId: cramSchoolWorkplace.id,
+          shiftType: "LESSON",
+          transportationAllowance: "2147483647",
+          timetableSetId: "set-1",
+          startPeriod: "1",
+          endPeriod: "1",
+        }),
+        cramSchoolWorkplace.type,
+      ),
+    ).toEqual(
+      expect.objectContaining({ transportationAllowance: 2_147_483_647 }),
+    );
   });
 
   it("requires overnight confirmation only for a new or changed overnight range", () => {

@@ -46,6 +46,7 @@ type TestShift = {
   shiftType?: "NORMAL" | "LESSON";
   comment?: string | null;
   breakMinutes?: number;
+  transportationAllowance?: number;
   estimatedPay?: number | null;
 };
 
@@ -65,6 +66,7 @@ function createShift(value: TestShift) {
     startTime: value.startTime,
     endTime: value.endTime,
     breakMinutes: value.breakMinutes ?? 0,
+    transportationAllowance: value.transportationAllowance ?? 0,
     shiftType: value.shiftType ?? "NORMAL",
     comment: value.comment ?? null,
     googleSyncStatus: "SUCCESS" as const,
@@ -122,6 +124,25 @@ describe("ShiftListPageClient", () => {
       writable: true,
       value: jest.fn(),
     });
+  });
+
+  it("shows transportation allowance for each listed shift", () => {
+    renderShiftListPage({
+      initialMonthShifts: [
+        createShift({
+          id: "shift-transport",
+          date: "2026-03-18T00:00:00.000Z",
+          startTime: "1970-01-01T09:00:00.000Z",
+          endTime: "1970-01-01T18:00:00.000Z",
+          workplaceName: "勤務先A",
+          transportationAllowance: 480,
+        }),
+      ],
+      initialMonthStartDate: "2026-03-01",
+      initialMonthEndDate: "2026-03-31",
+    });
+
+    expect(screen.getByText("480円")).toBeInTheDocument();
   });
 
   it("shows default date/time ascending order and supports workplace sort", async () => {
