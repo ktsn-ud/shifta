@@ -6,10 +6,23 @@ export const BULK_SHIFT_CREATE_RATE_LIMIT = {
   maxEntries: 10_000,
 } as const;
 
+export const BULK_SHIFT_EDIT_RATE_LIMIT = {
+  limit: 5,
+  windowMs: 60_000,
+  maxEntries: 10_000,
+} as const;
+
 const bulkShiftCreateRateLimiter = createFixedWindowRateLimiter(
   BULK_SHIFT_CREATE_RATE_LIMIT,
+);
+const bulkShiftEditRateLimiter = createFixedWindowRateLimiter(
+  BULK_SHIFT_EDIT_RATE_LIMIT,
 );
 
 export function consumeBulkShiftCreateRateLimit(userId: string) {
   return bulkShiftCreateRateLimiter.consume(userId);
+}
+
+export function consumeBulkShiftEditRateLimit(userId: string) {
+  return bulkShiftEditRateLimiter.consume(userId);
 }

@@ -75,6 +75,7 @@ const navSections: NavSection[] = [
             href: "/my/shifts/bulk",
             matchHrefs: ["/my/bulk"],
           },
+          { title: "一括編集", href: "/my/shifts/bulk-edit" },
           { title: "シフト確定", href: "/my/shifts/confirm" },
         ],
       },

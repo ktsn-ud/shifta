@@ -29,6 +29,10 @@ describe("queryKeys", () => {
       "payroll",
       "previewBaseline",
     ]);
+    expect(queryKeys.payroll.previewAnnualScope()).toEqual([
+      "payroll",
+      "previewAnnual",
+    ]);
     expect(queryKeys.payroll.detailsScope()).toEqual(["payroll", "details"]);
 
     expect(queryKeys.workplaces.all()).toEqual(["workplaces"]);
@@ -107,6 +111,16 @@ describe("queryKeys", () => {
       "payroll",
       "previewBaseline",
       { userId: "user-1", months: ["2026-06", "2026-07"] },
+    ]);
+    expect(
+      queryKeys.payroll.previewAnnual({
+        userId: "user-1",
+        years: [2027, 2026, 2027],
+      }),
+    ).toEqual([
+      "payroll",
+      "previewAnnual",
+      { userId: "user-1", years: [2026, 2027] },
     ]);
     expect(queryKeys.payroll.detailsMonthly(payrollMonth)).toEqual([
       "payroll",
@@ -223,6 +237,10 @@ describe("queryKeys", () => {
     expectToStartWith(
       queryKeys.payroll.previewBaseline({ userId: "user-1", months: [] }),
       queryKeys.payroll.previewBaselineScope(),
+    );
+    expectToStartWith(
+      queryKeys.payroll.previewAnnual({ userId: "user-1", years: [] }),
+      queryKeys.payroll.previewAnnualScope(),
     );
     expectToStartWith(
       queryKeys.payroll.detailsMonthly(payrollMonth),

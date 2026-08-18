@@ -35,6 +35,7 @@ describe("query invalidation keys", () => {
       { queryKey: ["payroll", "summary"], refetchType: "none" },
       { queryKey: ["payroll", "actual"], refetchType: "none" },
       { queryKey: ["payroll", "previewBaseline"], refetchType: "none" },
+      { queryKey: ["payroll", "previewAnnual"], refetchType: "none" },
       { queryKey: ["payroll", "details"], refetchType: "none" },
       { queryKey: ["workplaces"], refetchType: "none" },
     ]);
@@ -54,6 +55,7 @@ describe("query invalidation keys", () => {
       { queryKey: ["payroll", "actual"] },
       { queryKey: ["payroll", "summary"] },
       { queryKey: ["payroll", "previewBaseline"] },
+      { queryKey: ["payroll", "previewAnnual"] },
       { queryKey: ["payroll", "details"] },
     ]);
   });
@@ -81,6 +83,7 @@ describe("query invalidation keys", () => {
       { queryKey: ["payroll", "actual"] },
       { queryKey: ["payroll", "summary"] },
       { queryKey: ["payroll", "previewBaseline"] },
+      { queryKey: ["payroll", "previewAnnual"] },
       { queryKey: ["payroll", "details"] },
       { queryKey: ["shifts"] },
     ]);
@@ -119,6 +122,7 @@ describe("query invalidation keys", () => {
     expect(invalidatedFilters(invalidateQueries)).toEqual([
       { queryKey: ["payroll", "actual"] },
       { queryKey: ["payroll", "summary"] },
+      { queryKey: ["payroll", "previewAnnual"] },
       { queryKey: ["payroll", "details"] },
     ]);
   });

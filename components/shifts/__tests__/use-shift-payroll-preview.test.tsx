@@ -37,6 +37,7 @@ function createAnnualPayload(years: number[]) {
         nonTaxableAmount: year,
         totalAmount: year * 101,
       })),
+      actualPayrollKeys: [],
     },
   };
 }

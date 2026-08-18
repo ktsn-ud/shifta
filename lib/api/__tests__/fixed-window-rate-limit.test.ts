@@ -1,12 +1,54 @@
 import { BULK_SHIFT_CREATE_RATE_LIMIT } from "@/lib/api/bulk-shift-rate-limit";
 import { createFixedWindowRateLimiter } from "@/lib/api/fixed-window-rate-limit";
 
+async function loadBulkShiftRateLimitConsumers() {
+  let rateLimitModule: typeof import("@/lib/api/bulk-shift-rate-limit");
+
+  await jest.isolateModulesAsync(async () => {
+    rateLimitModule = await import("@/lib/api/bulk-shift-rate-limit");
+  });
+
+  return rateLimitModule!;
+}
+
 describe("createFixedWindowRateLimiter", () => {
   it("configures bulk shift creation for five requests per sixty seconds", () => {
     expect(BULK_SHIFT_CREATE_RATE_LIMIT).toEqual({
       limit: 5,
       windowMs: 60_000,
       maxEntries: 10_000,
+    });
+  });
+
+  it("keeps bulk create and bulk edit quotas independent in both directions", async () => {
+    const { consumeBulkShiftCreateRateLimit, consumeBulkShiftEditRateLimit } =
+      await loadBulkShiftRateLimitConsumers();
+
+    for (let attempt = 0; attempt < 5; attempt += 1) {
+      expect(consumeBulkShiftCreateRateLimit("user-1")).toEqual({
+        allowed: true,
+      });
+    }
+    expect(consumeBulkShiftCreateRateLimit("user-1")).toMatchObject({
+      allowed: false,
+    });
+    expect(consumeBulkShiftEditRateLimit("user-1")).toEqual({
+      allowed: true,
+    });
+
+    const secondConsumers = await loadBulkShiftRateLimitConsumers();
+    for (let attempt = 0; attempt < 5; attempt += 1) {
+      expect(secondConsumers.consumeBulkShiftEditRateLimit("user-1")).toEqual({
+        allowed: true,
+      });
+    }
+    expect(
+      secondConsumers.consumeBulkShiftEditRateLimit("user-1"),
+    ).toMatchObject({
+      allowed: false,
+    });
+    expect(secondConsumers.consumeBulkShiftCreateRateLimit("user-1")).toEqual({
+      allowed: true,
     });
   });
 
