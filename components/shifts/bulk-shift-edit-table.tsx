@@ -176,7 +176,9 @@ function BulkShiftEditRow({
                       DIRTY_CONTROL_CLASS,
                   )}
                 >
-                  <SelectValue placeholder="時間割セット" />
+                  <SelectValue placeholder="時間割セット">
+                    {selectedSet?.name}
+                  </SelectValue>
                 </SelectTrigger>
                 <SelectContent>
                   <SelectGroup>
@@ -203,7 +205,9 @@ function BulkShiftEditRow({
                       DIRTY_CONTROL_CLASS,
                   )}
                 >
-                  <SelectValue placeholder="開始コマ" />
+                  <SelectValue placeholder="開始コマ">
+                    {draft.startPeriod ? `${draft.startPeriod}限` : undefined}
+                  </SelectValue>
                 </SelectTrigger>
                 <SelectContent>
                   <SelectGroup>
@@ -233,7 +237,9 @@ function BulkShiftEditRow({
                       DIRTY_CONTROL_CLASS,
                   )}
                 >
-                  <SelectValue placeholder="終了コマ" />
+                  <SelectValue placeholder="終了コマ">
+                    {draft.endPeriod ? `${draft.endPeriod}限` : undefined}
+                  </SelectValue>
                 </SelectTrigger>
                 <SelectContent>
                   <SelectGroup>

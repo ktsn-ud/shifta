@@ -866,6 +866,8 @@ describe("BulkShiftEditPageClient", () => {
     expectOnlyControlHighlighted(controls, null);
 
     fireEvent.click(selectItem("別セット"));
+    expect(timetableSetTrigger).toHaveTextContent("別セット");
+    expect(timetableSetTrigger).not.toHaveTextContent("set-b");
     expectOnlyControlHighlighted(controls, [
       timetableSetTrigger,
       endPeriodTrigger,
@@ -960,7 +962,7 @@ describe("BulkShiftEditPageClient", () => {
       />,
     );
 
-    expect(screen.getByText("疎な時間割")).toBeInTheDocument();
+    expect(selectItem("疎な時間割")).toBeInTheDocument();
     expect(screen.queryByText("他勤務先の時間割")).not.toBeInTheDocument();
     expect(
       screen.queryByRole("button", { name: "2限" }),
