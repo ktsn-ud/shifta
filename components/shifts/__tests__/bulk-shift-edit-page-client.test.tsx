@@ -186,6 +186,35 @@ function renderPage(
   );
 }
 
+function tableCell(element: HTMLElement): HTMLTableCellElement {
+  const cell = element.closest("td");
+  if (!(cell instanceof HTMLTableCellElement)) {
+    throw new Error("Expected the control to be inside a table cell.");
+  }
+  return cell;
+}
+
+function tableRow(element: HTMLElement): HTMLTableRowElement {
+  const row = element.closest("tr");
+  if (!(row instanceof HTMLTableRowElement)) {
+    throw new Error("Expected the control to be inside a table row.");
+  }
+  return row;
+}
+
+function expectOnlyCellHighlighted(
+  row: HTMLTableRowElement,
+  highlighted: HTMLTableCellElement | null,
+) {
+  for (const cell of row.querySelectorAll("td")) {
+    if (cell === highlighted) {
+      expect(cell).toHaveClass("bg-accent/65");
+    } else {
+      expect(cell).not.toHaveClass("bg-accent/65");
+    }
+  }
+}
+
 describe("BulkShiftEditPageClient", () => {
   beforeEach(() => {
     jest.resetAllMocks();
@@ -200,6 +229,54 @@ describe("BulkShiftEditPageClient", () => {
       writable: true,
       value: jest.fn(() => false),
     });
+  });
+
+  it("highlights only the changed NORMAL field cell and clears the highlight when restored", () => {
+    renderPage([
+      createShift({
+        id: "normal-highlight",
+        date: "2026-03-18T00:00:00.000Z",
+        workplaceName: "勤務先A",
+      }),
+    ]);
+
+    const startInput = screen.getByLabelText("normal-highlight 開始");
+    const endInput = screen.getByLabelText("normal-highlight 終了");
+    const breakInput = screen.getByLabelText("normal-highlight 休憩");
+    const transportationInput = screen.getByLabelText(
+      "normal-highlight 交通費",
+    );
+    const commentInput = screen.getByLabelText("normal-highlight コメント");
+    const row = tableRow(startInput);
+    const timeCell = tableCell(startInput);
+    const breakCell = tableCell(breakInput);
+    const transportationCell = tableCell(transportationInput);
+    const commentCell = tableCell(commentInput);
+
+    fireEvent.change(startInput, { target: { value: "10:00" } });
+    expectOnlyCellHighlighted(row, timeCell);
+    fireEvent.change(startInput, { target: { value: "09:00" } });
+    expectOnlyCellHighlighted(row, null);
+
+    fireEvent.change(endInput, { target: { value: "17:00" } });
+    expectOnlyCellHighlighted(row, timeCell);
+    fireEvent.change(endInput, { target: { value: "18:00" } });
+    expectOnlyCellHighlighted(row, null);
+
+    fireEvent.change(breakInput, { target: { value: "30" } });
+    expectOnlyCellHighlighted(row, breakCell);
+    fireEvent.change(breakInput, { target: { value: "60" } });
+    expectOnlyCellHighlighted(row, null);
+
+    fireEvent.change(transportationInput, { target: { value: "480" } });
+    expectOnlyCellHighlighted(row, transportationCell);
+    fireEvent.change(transportationInput, { target: { value: "0" } });
+    expectOnlyCellHighlighted(row, null);
+
+    fireEvent.change(commentInput, { target: { value: "連絡事項" } });
+    expectOnlyCellHighlighted(row, commentCell);
+    fireEvent.change(commentInput, { target: { value: "" } });
+    expectOnlyCellHighlighted(row, null);
   });
 
   it("keeps an ID-keyed draft and row error after changing sort order", async () => {
@@ -222,6 +299,9 @@ describe("BulkShiftEditPageClient", () => {
     await user.click(screen.getByRole("button", { name: "変更を保存" }));
     expect(await screen.findByText("保存できません")).toBeInTheDocument();
     expect(screen.getByText("変更 1 件")).toBeInTheDocument();
+    expect(tableCell(screen.getByLabelText("shift-a コメント"))).toHaveClass(
+      "bg-accent/65",
+    );
 
     fireEvent.change(screen.getByRole("combobox", { name: "並び替え" }), {
       target: { value: "workplace" },
@@ -235,6 +315,9 @@ describe("BulkShiftEditPageClient", () => {
     );
     expect(screen.getByText("保存できません")).toBeInTheDocument();
     expect(screen.getByText("変更 1 件")).toBeInTheDocument();
+    expect(tableCell(screen.getByLabelText("shift-a コメント"))).toHaveClass(
+      "bg-accent/65",
+    );
   });
 
   it("does not restore the previous month's draft or errors after the month-keyed client remounts", async () => {
@@ -306,16 +389,19 @@ describe("BulkShiftEditPageClient", () => {
         workplaceName: "勤務先B",
       }),
     ];
+    const updatedShift = {
+      ...shifts[0],
+      comment: "更新済み",
+      transportationAllowance: 480,
+    };
     const fetchMock = globalThis.fetch as jest.Mock;
-    fetchMock.mockResolvedValue({
-      ok: true,
-      json: async () => ({
-        data: [
-          { ...shifts[0], comment: "更新済み", transportationAllowance: 480 },
-        ],
+    let resolveResponse!: (value: Response) => void;
+    fetchMock.mockReturnValue(
+      new Promise<Response>((resolve) => {
+        resolveResponse = resolve;
       }),
-    });
-    renderPage(shifts);
+    );
+    const view = renderPage(shifts);
 
     expect(
       screen.getByRole("columnheader", { name: "休憩" }),
@@ -339,7 +425,18 @@ describe("BulkShiftEditPageClient", () => {
     await user.clear(screen.getByLabelText("shift-a 交通費"));
     await user.type(screen.getByLabelText("shift-a 交通費"), "480");
     await user.type(screen.getByLabelText("shift-a コメント"), "更新済み");
+    expect(tableCell(screen.getByLabelText("shift-a 交通費"))).toHaveClass(
+      "bg-accent/65",
+    );
+    expect(tableCell(screen.getByLabelText("shift-a コメント"))).toHaveClass(
+      "bg-accent/65",
+    );
     await user.click(screen.getByRole("button", { name: "変更を保存" }));
+
+    resolveResponse({
+      ok: true,
+      json: async () => ({ data: [updatedShift] }),
+    } as Response);
 
     await waitFor(() => {
       expect(fetchMock).toHaveBeenCalledWith(
@@ -363,13 +460,7 @@ describe("BulkShiftEditPageClient", () => {
       );
       expect(upsertMonthShiftsInCachesOptimisticallyMock).toHaveBeenCalledWith(
         "query-client",
-        [
-          {
-            ...shifts[0],
-            comment: "更新済み",
-            transportationAllowance: 480,
-          },
-        ],
+        [updatedShift],
       );
       expect(invalidateAfterShiftMutationMock).toHaveBeenCalledWith(
         "query-client",
@@ -379,6 +470,27 @@ describe("BulkShiftEditPageClient", () => {
     expect(toast.success).toHaveBeenCalledWith(
       expect.stringContaining("1件を保存しました"),
     );
+    useMonthShiftsMock.mockReturnValue({
+      shifts: [updatedShift, shifts[1]],
+      isRefreshing: false,
+      errorMessage: null,
+    } as ReturnType<typeof useMonthShifts>);
+    view.rerender(
+      <BulkShiftEditPageClient
+        currentUserId="user-1"
+        initialMonth="2026-03"
+        initialShifts={shifts}
+        initialStartDate="2026-03-01"
+        initialEndDate="2026-03-31"
+        timetableSets={[]}
+      />,
+    );
+    expect(tableCell(screen.getByLabelText("shift-a 交通費"))).not.toHaveClass(
+      "bg-accent/65",
+    );
+    expect(
+      tableCell(screen.getByLabelText("shift-a コメント")),
+    ).not.toHaveClass("bg-accent/65");
   });
 
   it("does not send a PATCH when more than 31 rows have changes", async () => {
@@ -468,6 +580,114 @@ describe("BulkShiftEditPageClient", () => {
     expect(screen.getByText("確定済み")).toBeInTheDocument();
   });
 
+  it("highlights LESSON timetable, transportation, and comment cells independently", () => {
+    const lessonShift = {
+      ...createShift({
+        id: "lesson-highlight",
+        date: "2026-03-18T00:00:00.000Z",
+        workplaceName: "塾",
+        shiftType: "LESSON",
+      }),
+      workplaceId: "workplace-lesson-highlight",
+      workplace: {
+        id: "workplace-lesson-highlight",
+        name: "塾",
+        color: "#3366FF",
+        type: "CRAM_SCHOOL" as const,
+      },
+      lessonRange: {
+        id: "range-lesson-highlight",
+        shiftId: "lesson-highlight",
+        timetableSetId: "set-a",
+        startPeriod: 1,
+        endPeriod: 2,
+      },
+    };
+    useMonthShiftsMock.mockReturnValue({
+      shifts: [lessonShift],
+      isRefreshing: false,
+      errorMessage: null,
+    } as ReturnType<typeof useMonthShifts>);
+    render(
+      <BulkShiftEditPageClient
+        currentUserId="user-1"
+        initialMonth="2026-03"
+        initialShifts={[lessonShift]}
+        initialStartDate="2026-03-01"
+        initialEndDate="2026-03-31"
+        timetableSets={[
+          {
+            id: "set-a",
+            workplaceId: "workplace-lesson-highlight",
+            name: "通常時間割",
+            periods: [
+              {
+                period: 1,
+                startTime: "1970-01-01T09:00:00.000Z",
+                endTime: "1970-01-01T09:50:00.000Z",
+              },
+              {
+                period: 2,
+                startTime: "1970-01-01T10:00:00.000Z",
+                endTime: "1970-01-01T10:50:00.000Z",
+              },
+            ],
+          },
+          {
+            id: "set-b",
+            workplaceId: "workplace-lesson-highlight",
+            name: "別セット",
+            periods: [
+              {
+                period: 1,
+                startTime: "1970-01-01T11:00:00.000Z",
+                endTime: "1970-01-01T11:50:00.000Z",
+              },
+              {
+                period: 2,
+                startTime: "1970-01-01T12:00:00.000Z",
+                endTime: "1970-01-01T12:50:00.000Z",
+              },
+            ],
+          },
+        ]}
+      />,
+    );
+
+    const transportationInput = screen.getByLabelText(
+      "lesson-highlight 交通費",
+    );
+    const commentInput = screen.getByLabelText("lesson-highlight コメント");
+    const row = tableRow(transportationInput);
+    const timeCell = tableCell(
+      screen.getByRole("button", { name: "別セット" }),
+    );
+    const transportationCell = tableCell(transportationInput);
+    const commentCell = tableCell(commentInput);
+    const derivedBreakCell = tableCell(screen.getByText("導出"));
+
+    fireEvent.change(transportationInput, { target: { value: "480" } });
+    expectOnlyCellHighlighted(row, transportationCell);
+    fireEvent.change(transportationInput, { target: { value: "0" } });
+    expectOnlyCellHighlighted(row, null);
+
+    fireEvent.change(commentInput, { target: { value: "連絡事項" } });
+    expectOnlyCellHighlighted(row, commentCell);
+    fireEvent.change(commentInput, { target: { value: "" } });
+    expectOnlyCellHighlighted(row, null);
+
+    fireEvent.click(screen.getAllByRole("button", { name: "1限" })[1]!);
+    expectOnlyCellHighlighted(row, timeCell);
+    expect(derivedBreakCell).not.toHaveClass("bg-accent/65");
+    fireEvent.click(screen.getAllByRole("button", { name: "2限" })[1]!);
+    expectOnlyCellHighlighted(row, null);
+    expect(derivedBreakCell).not.toHaveClass("bg-accent/65");
+
+    fireEvent.click(screen.getByRole("button", { name: "別セット" }));
+    expectOnlyCellHighlighted(row, timeCell);
+    expect(derivedBreakCell).not.toHaveClass("bg-accent/65");
+  });
+
   it("limits lesson selections to the workplace timetable periods and immediately derives values after a gap", async () => {
     const user = userEvent.setup();
     const lessonShift = {
@@ -546,12 +766,19 @@ describe("BulkShiftEditPageClient", () => {
       screen.getByText("導出: 時間割を選択してください"),
     ).toBeInTheDocument();
 
-    await user.click(screen.getAllByRole("button", { name: "3限" })[0]!);
+    const startPeriodButton = screen.getAllByRole("button", {
+      name: "3限",
+    })[0]!;
+    const timeCell = tableCell(startPeriodButton);
+    const derivedBreakCell = tableCell(screen.getByText("導出"));
+    await user.click(startPeriodButton);
 
     expect(
       screen.getByText("導出: 11:00〜11:50 / 休憩0分"),
     ).toBeInTheDocument();
     expect(screen.getByText("変更 1 件")).toBeInTheDocument();
+    expect(timeCell).toHaveClass("bg-accent/65");
+    expect(derivedBreakCell).not.toHaveClass("bg-accent/65");
   });
 
   it("clears a lesson row's stale error when its timetable set or start period changes", async () => {

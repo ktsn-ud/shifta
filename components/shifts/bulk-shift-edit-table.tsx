@@ -17,6 +17,7 @@ import {
   TableRow,
 } from "@/components/ui/table";
 import {
+  draftFieldsChanged,
   getEndPeriods,
   getLessonDerivedValues,
 } from "@/components/shifts/bulk-shift-edit-helpers";
@@ -26,6 +27,7 @@ import type {
 } from "@/components/shifts/bulk-shift-edit-types";
 import type { MonthShift } from "@/hooks/use-month-shifts";
 import { dateKeyFromApiDate } from "@/lib/calendar/date";
+import { cn } from "@/lib/utils";
 
 type Props = {
   drafts: Map<string, Draft>;
@@ -33,7 +35,6 @@ type Props = {
   rows: MonthShift[];
   saving: boolean;
   timetableSets: TimetableSet[];
-  dirtySet: Set<string>;
   createDraft: (shift: MonthShift) => Draft;
   onUpdate: (id: string, field: keyof Draft, value: string) => void;
   onTimetableSetChange: (
@@ -50,7 +51,6 @@ export function BulkShiftEditTable({
   rows,
   saving,
   timetableSets,
-  dirtySet,
   createDraft,
   onUpdate,
   onTimetableSetChange,
@@ -78,7 +78,6 @@ export function BulkShiftEditTable({
             error={errors.get(shift.id)}
             saving={saving}
             timetableSets={timetableSets}
-            dirty={dirtySet.has(shift.id)}
             onUpdate={onUpdate}
             onTimetableSetChange={onTimetableSetChange}
             onStartPeriodChange={onStartPeriodChange}
@@ -89,14 +88,10 @@ export function BulkShiftEditTable({
   );
 }
 
-type RowProps = Omit<
-  Props,
-  "drafts" | "errors" | "rows" | "dirtySet" | "createDraft"
-> & {
+type RowProps = Omit<Props, "drafts" | "errors" | "rows" | "createDraft"> & {
   shift: MonthShift;
   draft: Draft;
   error: string | undefined;
-  dirty: boolean;
 };
 
 function BulkShiftEditRow({
@@ -105,7 +100,6 @@ function BulkShiftEditRow({
   error,
   saving,
   timetableSets,
-  dirty,
   onUpdate,
   onTimetableSetChange,
   onStartPeriodChange,
@@ -118,7 +112,7 @@ function BulkShiftEditRow({
   const endPeriods = getEndPeriods(selectedSet?.periods, draft.startPeriod);
 
   return (
-    <TableRow data-state={dirty ? "selected" : undefined}>
+    <TableRow>
       <TableCell>{dateKeyFromApiDate(shift.date)}</TableCell>
       <TableCell>{shift.workplace.name}</TableCell>
       <TableCell>
@@ -131,7 +125,17 @@ function BulkShiftEditRow({
           </span>
         </div>
       </TableCell>
-      <TableCell>
+      <TableCell
+        className={cn(
+          draftFieldsChanged(
+            shift,
+            draft,
+            shift.shiftType === "NORMAL"
+              ? ["startTime", "endTime"]
+              : ["timetableSetId", "startPeriod", "endPeriod"],
+          ) && "bg-accent/65",
+        )}
+      >
         {shift.shiftType === "NORMAL" ? (
           <div className="flex gap-2">
             <Input
@@ -233,7 +237,13 @@ function BulkShiftEditRow({
           </div>
         )}
       </TableCell>
-      <TableCell>
+      <TableCell
+        className={cn(
+          shift.shiftType === "NORMAL" &&
+            draftFieldsChanged(shift, draft, ["breakMinutes"]) &&
+            "bg-accent/65",
+        )}
+      >
         {shift.shiftType === "NORMAL" ? (
           <div className="flex items-center gap-1 whitespace-nowrap">
             <Input
@@ -253,7 +263,12 @@ function BulkShiftEditRow({
           "導出"
         )}
       </TableCell>
-      <TableCell>
+      <TableCell
+        className={cn(
+          draftFieldsChanged(shift, draft, ["transportationAllowance"]) &&
+            "bg-accent/65",
+        )}
+      >
         <div className="flex items-center gap-1 whitespace-nowrap">
           <Input
             className="w-24"
@@ -269,7 +284,11 @@ function BulkShiftEditRow({
           <span>円</span>
         </div>
       </TableCell>
-      <TableCell>
+      <TableCell
+        className={cn(
+          draftFieldsChanged(shift, draft, ["comment"]) && "bg-accent/65",
+        )}
+      >
         <div className="flex flex-col gap-1">
           <Input
             aria-label={`${shift.id} コメント`}

@@ -294,7 +294,6 @@ export function BulkShiftEditPageClient(props: BulkShiftEditPageClientProps) {
         rows={rows}
         saving={saving}
         timetableSets={props.timetableSets}
-        dirtySet={dirtySet}
         createDraft={createDraft}
         onUpdate={update}
         onTimetableSetChange={updateLessonTimetableSet}

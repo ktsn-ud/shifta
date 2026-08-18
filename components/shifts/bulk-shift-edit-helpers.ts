@@ -26,6 +26,15 @@ export function draftChanged(shift: MonthShift, draft: Draft) {
   return JSON.stringify(createDraft(shift)) !== JSON.stringify(draft);
 }
 
+export function draftFieldsChanged(
+  shift: MonthShift,
+  draft: Draft,
+  fields: readonly (keyof Draft)[],
+) {
+  const initialDraft = createDraft(shift);
+  return fields.some((field) => draft[field] !== initialDraft[field]);
+}
+
 export function getLessonDerivedValues(
   timetableSet: TimetableSet | undefined,
   draft: Draft,
