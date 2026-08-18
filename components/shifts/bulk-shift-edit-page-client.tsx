@@ -272,7 +272,10 @@ export function BulkShiftEditPageClient(props: BulkShiftEditPageClientProps) {
   }
 
   return (
-    <section className="flex flex-col gap-6" aria-busy={saving || isRefreshing}>
+    <section
+      className="flex flex-col gap-6 p-4 md:p-6"
+      aria-busy={saving || isRefreshing}
+    >
       <BulkShiftEditToolbar
         dirtyCount={dirtyIds.length}
         month={month}
