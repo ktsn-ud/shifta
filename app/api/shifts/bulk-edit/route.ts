@@ -101,7 +101,7 @@ export async function PATCH(request: Request) {
     }
 
     const shiftIds = Array.from(editsById.keys());
-    const existing = await prisma.shift.findMany({
+    const existingRecords = await prisma.shift.findMany({
       where: { id: { in: shiftIds } },
       include: {
         workplace: {
@@ -116,26 +116,35 @@ export async function PATCH(request: Request) {
         },
       },
     });
-    if (existing.length !== shiftIds.length) {
+    if (existingRecords.length !== shiftIds.length) {
       return jsonError("更新対象のシフトが見つかりません", 404);
     }
-    if (existing.some((shift) => shift.workplace.userId !== current.user.id)) {
+    if (
+      existingRecords.some(
+        (shift) => shift.workplace.userId !== current.user.id,
+      )
+    ) {
       return jsonError("このシフトを更新する権限がありません", 403);
     }
+    const existingById = new Map(
+      existingRecords.map((shift) => [shift.id, shift]),
+    );
+    const existing = [] as typeof existingRecords;
+    for (const shiftId of shiftIds) {
+      const shift = existingById.get(shiftId);
+      if (!shift) {
+        return jsonError("更新対象のシフトが見つかりません", 404);
+      }
+      existing.push(shift);
+    }
 
-    const builtById = new Map<
-      string,
-      Awaited<ReturnType<typeof buildShiftData>>
-    >();
-    let invalidShiftId: string | null = null;
-    try {
-      for (const shift of existing) {
-        invalidShiftId = shift.id;
+    const buildResults = await Promise.allSettled(
+      existing.map(async (shift) => {
         const edit = editsById.get(shift.id);
         if (!edit || edit.shiftType !== shift.shiftType) {
           throw new ShiftValidationError("シフト種別は変更できません");
         }
-        const built = await buildShiftData(
+        return buildShiftData(
           edit.shiftType === "NORMAL"
             ? {
                 workplaceId: shift.workplaceId,
@@ -158,34 +167,45 @@ export async function PATCH(request: Request) {
               },
           shift.workplace.type,
         );
-        builtById.set(shift.id, built);
-      }
-    } catch (error) {
-      if (error instanceof ShiftValidationError) {
-        return jsonError(error.message, 400, { shiftId: invalidShiftId });
-      }
-      throw error;
-    }
-
-    await prisma.$transaction(async (tx) => {
-      for (const shift of existing) {
-        const built = builtById.get(shift.id);
-        if (!built) {
-          throw new Error("更新内容が見つかりません");
-        }
-        await tx.shift.update({
-          where: { id: shift.id },
-          data: built.shiftData,
-        });
-        if (built.lessonRange) {
-          await tx.shiftLessonRange.upsert({
-            where: { shiftId: shift.id },
-            update: built.lessonRange,
-            create: { shiftId: shift.id, ...built.lessonRange },
+      }),
+    );
+    const builtById = new Map<
+      string,
+      Awaited<ReturnType<typeof buildShiftData>>
+    >();
+    for (const [index, result] of buildResults.entries()) {
+      if (result.status === "rejected") {
+        if (result.reason instanceof ShiftValidationError) {
+          return jsonError(result.reason.message, 400, {
+            shiftId: existing[index].id,
           });
         }
+        throw result.reason;
       }
+      builtById.set(existing[index].id, result.value);
+    }
+
+    const updates = existing.flatMap((shift) => {
+      const built = builtById.get(shift.id);
+      if (!built) {
+        throw new Error("更新内容が見つかりません");
+      }
+      const update = prisma.shift.update({
+        where: { id: shift.id },
+        data: built.shiftData,
+      });
+      return built.lessonRange
+        ? [
+            update,
+            prisma.shiftLessonRange.upsert({
+              where: { shiftId: shift.id },
+              update: built.lessonRange,
+              create: { shiftId: shift.id, ...built.lessonRange },
+            }),
+          ]
+        : [update];
     });
+    await prisma.$transaction(updates);
 
     const paymentMonthKeys = resolveAffectedPaymentMonthKeys(
       existing.map((shift) => ({

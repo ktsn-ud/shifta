@@ -3,127 +3,38 @@
 import { useEffect, useMemo, useState } from "react";
 import { useRouter } from "next/navigation";
 import { toast } from "sonner";
-import { Badge } from "@/components/ui/badge";
-import { Button } from "@/components/ui/button";
-import { Input } from "@/components/ui/input";
 import {
-  Select,
-  SelectContent,
-  SelectGroup,
-  SelectItem,
-  SelectTrigger,
-  SelectValue,
-} from "@/components/ui/select";
-import {
-  Table,
-  TableBody,
-  TableCell,
-  TableHead,
-  TableHeader,
-  TableRow,
-} from "@/components/ui/table";
-import { useMonthShifts, type MonthShift } from "@/hooks/use-month-shifts";
+  normalizeMonthShift,
+  useMonthShifts,
+  type MonthShift,
+} from "@/hooks/use-month-shifts";
 import {
   addMonths,
   dateKeyFromApiDate,
-  formatMonthLabel,
   fromMonthInputValue,
   toMonthInputValue,
 } from "@/lib/calendar/date";
 import { getBrowserQueryClient } from "@/lib/query/query-client";
 import { invalidateAfterShiftMutation } from "@/lib/query/invalidation";
 import { upsertMonthShiftsInCachesOptimistically } from "@/lib/query/optimistic-shifts";
-import { normalizeMonthShift } from "@/hooks/use-month-shifts";
 import { getLessonSelectionValues } from "@/components/shifts/bulk-shift-form/view-helpers";
-import { resolveLessonTimeRangeFromRows } from "@/lib/shifts/lesson-time-range";
 import {
   BULK_SHIFT_EDIT_LIMIT_MESSAGE,
   MAX_BULK_SHIFT_EDIT_COUNT,
 } from "@/lib/validation/batch-limits";
+import {
+  createDraft,
+  draftChanged,
+} from "@/components/shifts/bulk-shift-edit-helpers";
+import { BulkShiftEditTable } from "@/components/shifts/bulk-shift-edit-table";
+import { BulkShiftEditToolbar } from "@/components/shifts/bulk-shift-edit-toolbar";
+import type {
+  BulkShiftEditPageClientProps,
+  Draft,
+  TimetableSet,
+} from "@/components/shifts/bulk-shift-edit-types";
 
-type TimetableSet = {
-  id: string;
-  workplaceId: string;
-  name: string;
-  periods: Array<{ period: number; startTime: string; endTime: string }>;
-};
-type Draft = {
-  startTime: string;
-  endTime: string;
-  breakMinutes: string;
-  transportationAllowance: string;
-  comment: string;
-  timetableSetId: string;
-  startPeriod: string;
-  endPeriod: string;
-};
-
-function time(value: string) {
-  return value.slice(11, 16);
-}
-function createDraft(shift: MonthShift): Draft {
-  return {
-    startTime: time(shift.startTime),
-    endTime: time(shift.endTime),
-    breakMinutes: String(shift.breakMinutes),
-    transportationAllowance: String(shift.transportationAllowance),
-    comment: shift.comment ?? "",
-    timetableSetId: shift.lessonRange?.timetableSetId ?? "",
-    startPeriod: String(shift.lessonRange?.startPeriod ?? ""),
-    endPeriod: String(shift.lessonRange?.endPeriod ?? ""),
-  };
-}
-function draftChanged(shift: MonthShift, draft: Draft) {
-  return JSON.stringify(createDraft(shift)) !== JSON.stringify(draft);
-}
-
-function getLessonDerivedValues(
-  timetableSet: TimetableSet | undefined,
-  draft: Draft,
-): { startTime: string; endTime: string; breakMinutes: number } | null {
-  const startPeriod = Number(draft.startPeriod);
-  const endPeriod = Number(draft.endPeriod);
-  if (
-    !timetableSet ||
-    !Number.isInteger(startPeriod) ||
-    !Number.isInteger(endPeriod) ||
-    startPeriod > endPeriod
-  ) {
-    return null;
-  }
-
-  try {
-    const value = resolveLessonTimeRangeFromRows(
-      { startPeriod, endPeriod },
-      timetableSet.periods
-        .filter(
-          (period) =>
-            period.period >= startPeriod && period.period <= endPeriod,
-        )
-        .map((period) => ({
-          period: period.period,
-          startTime: new Date(period.startTime),
-          endTime: new Date(period.endTime),
-        })),
-    );
-    return {
-      startTime: time(value.startTime.toISOString()),
-      endTime: time(value.endTime.toISOString()),
-      breakMinutes: value.breakMinutes,
-    };
-  } catch {
-    return null;
-  }
-}
-
-export function BulkShiftEditPageClient(props: {
-  currentUserId: string;
-  initialMonth: string;
-  initialShifts: MonthShift[];
-  initialStartDate: string;
-  initialEndDate: string;
-  timetableSets: TimetableSet[];
-}) {
+export function BulkShiftEditPageClient(props: BulkShiftEditPageClientProps) {
   const router = useRouter();
   const month = useMemo(
     () => fromMonthInputValue(props.initialMonth) ?? new Date(),
@@ -144,16 +55,14 @@ export function BulkShiftEditPageClient(props: {
   const [errors, setErrors] = useState(() => new Map<string, string>());
   const [order, setOrder] = useState<"date" | "workplace">("date");
   const [saving, setSaving] = useState(false);
-  const dirtyIds = useMemo(
-    () =>
-      shifts
-        .filter((shift) => {
-          const draft = drafts.get(shift.id);
-          return draft ? draftChanged(shift, draft) : false;
-        })
-        .map((shift) => shift.id),
-    [drafts, shifts],
-  );
+  const dirtyIds = useMemo(() => {
+    const ids: string[] = [];
+    for (const shift of shifts) {
+      const draft = drafts.get(shift.id);
+      if (draft && draftChanged(shift, draft)) ids.push(shift.id);
+    }
+    return ids;
+  }, [drafts, shifts]);
   const dirtySet = useMemo(() => new Set(dirtyIds), [dirtyIds]);
 
   useEffect(() => {
@@ -257,11 +166,33 @@ export function BulkShiftEditPageClient(props: {
     );
   }
   async function save() {
-    const edits = shifts
-      .filter((shift) => dirtySet.has(shift.id))
-      .map((shift) => {
-        const draft = drafts.get(shift.id) ?? createDraft(shift);
-        return shift.shiftType === "NORMAL"
+    const edits = [] as Array<
+      | {
+          id: string;
+          shiftType: "NORMAL";
+          startTime: string;
+          endTime: string;
+          breakMinutes: number;
+          transportationAllowance: number;
+          comment: string;
+        }
+      | {
+          id: string;
+          shiftType: "LESSON";
+          lessonRange: {
+            timetableSetId: string;
+            startPeriod: number;
+            endPeriod: number;
+          };
+          transportationAllowance: number;
+          comment: string;
+        }
+    >;
+    for (const shift of shifts) {
+      if (!dirtySet.has(shift.id)) continue;
+      const draft = drafts.get(shift.id) ?? createDraft(shift);
+      edits.push(
+        shift.shiftType === "NORMAL"
           ? {
               id: shift.id,
               shiftType: "NORMAL",
@@ -281,8 +212,9 @@ export function BulkShiftEditPageClient(props: {
               },
               transportationAllowance: Number(draft.transportationAllowance),
               comment: draft.comment,
-            };
-      });
+            },
+      );
+    }
     if (edits.length === 0) return;
     if (edits.length > MAX_BULK_SHIFT_EDIT_COUNT) {
       toast.error(BULK_SHIFT_EDIT_LIMIT_MESSAGE);
@@ -341,270 +273,30 @@ export function BulkShiftEditPageClient(props: {
 
   return (
     <section className="flex flex-col gap-6" aria-busy={saving || isRefreshing}>
-      <div className="flex flex-wrap items-end justify-between gap-3">
-        <div>
-          <h2 className="text-2xl font-semibold">シフト一括編集</h2>
-          <p className="text-sm text-muted-foreground">
-            編集可能なセルだけを変更し、変更行のみ保存します。
-          </p>
-        </div>
-        <div className="flex items-center gap-2">
-          <Button
-            variant="outline"
-            size="sm"
-            disabled={saving}
-            onClick={() => move(-1)}
-          >
-            前月
-          </Button>
-          <span className="min-w-24 text-center font-medium">
-            {formatMonthLabel(month)}
-          </span>
-          <Button
-            variant="outline"
-            size="sm"
-            disabled={saving}
-            onClick={() => move(1)}
-          >
-            翌月
-          </Button>
-        </div>
-      </div>
-      <div className="flex flex-wrap items-center justify-between gap-3">
-        <div className="flex items-center gap-2">
-          <span className="text-sm text-muted-foreground">並び替え</span>
-          <Select
-            value={order}
-            onValueChange={(value) => setOrder(value as "date" | "workplace")}
-            disabled={saving}
-          >
-            <SelectTrigger size="sm">
-              <SelectValue />
-            </SelectTrigger>
-            <SelectContent>
-              <SelectGroup>
-                <SelectItem value="date">日付順</SelectItem>
-                <SelectItem value="workplace">勤務先順</SelectItem>
-              </SelectGroup>
-            </SelectContent>
-          </Select>
-        </div>
-        <div className="flex items-center gap-2">
-          <span className="text-sm text-muted-foreground">
-            変更 {dirtyIds.length} 件
-          </span>
-          <Button disabled={saving || dirtyIds.length === 0} onClick={save}>
-            {saving ? "保存中..." : "変更を保存"}
-          </Button>
-        </div>
-      </div>
+      <BulkShiftEditToolbar
+        dirtyCount={dirtyIds.length}
+        month={month}
+        order={order}
+        saving={saving}
+        onMove={move}
+        onOrderChange={setOrder}
+        onSave={save}
+      />
       {errorMessage ? (
         <p className="text-sm text-destructive">{errorMessage}</p>
       ) : null}
-      <Table>
-        <TableHeader>
-          <TableRow>
-            <TableHead>日付</TableHead>
-            <TableHead>勤務先</TableHead>
-            <TableHead>種別・確定</TableHead>
-            <TableHead>時間 / 時間割</TableHead>
-            <TableHead>休憩</TableHead>
-            <TableHead>交通費</TableHead>
-            <TableHead>コメント</TableHead>
-          </TableRow>
-        </TableHeader>
-        <TableBody>
-          {rows.map((shift) => {
-            const draft = drafts.get(shift.id) ?? createDraft(shift);
-            const sets = props.timetableSets.filter(
-              (set) => set.workplaceId === shift.workplaceId,
-            );
-            const selectedSet = sets.find(
-              (set) => set.id === draft.timetableSetId,
-            );
-            const derivedValues = getLessonDerivedValues(selectedSet, draft);
-            return (
-              <TableRow
-                key={shift.id}
-                data-state={dirtySet.has(shift.id) ? "selected" : undefined}
-              >
-                <TableCell>{dateKeyFromApiDate(shift.date)}</TableCell>
-                <TableCell>{shift.workplace.name}</TableCell>
-                <TableCell>
-                  <div className="flex flex-col gap-1">
-                    <Badge variant="secondary">
-                      {shift.shiftType === "LESSON" ? "授業" : "通常"}
-                    </Badge>
-                    <span className="text-xs text-muted-foreground">
-                      {shift.isConfirmed ? "確定済み" : "未確定"}
-                    </span>
-                  </div>
-                </TableCell>
-                <TableCell>
-                  {shift.shiftType === "NORMAL" ? (
-                    <div className="flex gap-2">
-                      <Input
-                        aria-label={`${shift.id} 開始`}
-                        type="time"
-                        value={draft.startTime}
-                        disabled={saving}
-                        onChange={(event) =>
-                          update(shift.id, "startTime", event.target.value)
-                        }
-                      />
-                      <Input
-                        aria-label={`${shift.id} 終了`}
-                        type="time"
-                        value={draft.endTime}
-                        disabled={saving}
-                        onChange={(event) =>
-                          update(shift.id, "endTime", event.target.value)
-                        }
-                      />
-                    </div>
-                  ) : (
-                    <div className="flex flex-col gap-2">
-                      <div className="flex gap-2">
-                        <Select
-                          value={draft.timetableSetId}
-                          disabled={saving}
-                          onValueChange={(value) => {
-                            if (value !== null) {
-                              updateLessonTimetableSet(shift.id, value, sets);
-                            }
-                          }}
-                        >
-                          <SelectTrigger size="sm">
-                            <SelectValue placeholder="時間割セット" />
-                          </SelectTrigger>
-                          <SelectContent>
-                            <SelectGroup>
-                              {sets.map((set) => (
-                                <SelectItem key={set.id} value={set.id}>
-                                  {set.name}
-                                </SelectItem>
-                              ))}
-                            </SelectGroup>
-                          </SelectContent>
-                        </Select>
-                        <Select
-                          value={draft.startPeriod}
-                          disabled={saving}
-                          onValueChange={(value) => {
-                            if (value !== null)
-                              updateLessonStartPeriod(shift.id, value);
-                          }}
-                        >
-                          <SelectTrigger size="sm">
-                            <SelectValue placeholder="開始コマ" />
-                          </SelectTrigger>
-                          <SelectContent>
-                            <SelectGroup>
-                              {selectedSet?.periods.map((period) => (
-                                <SelectItem
-                                  key={period.period}
-                                  value={String(period.period)}
-                                >
-                                  {period.period}限
-                                </SelectItem>
-                              ))}
-                            </SelectGroup>
-                          </SelectContent>
-                        </Select>
-                        <Select
-                          value={draft.endPeriod}
-                          disabled={saving}
-                          onValueChange={(value) => {
-                            if (value !== null)
-                              update(shift.id, "endPeriod", value);
-                          }}
-                        >
-                          <SelectTrigger size="sm">
-                            <SelectValue placeholder="終了コマ" />
-                          </SelectTrigger>
-                          <SelectContent>
-                            <SelectGroup>
-                              {selectedSet?.periods
-                                .filter(
-                                  (period) =>
-                                    period.period >= Number(draft.startPeriod),
-                                )
-                                .map((period) => (
-                                  <SelectItem
-                                    key={period.period}
-                                    value={String(period.period)}
-                                  >
-                                    {period.period}限
-                                  </SelectItem>
-                                ))}
-                            </SelectGroup>
-                          </SelectContent>
-                        </Select>
-                      </div>
-                      <span className="text-xs text-muted-foreground">
-                        導出:{" "}
-                        {derivedValues
-                          ? `${derivedValues.startTime}〜${derivedValues.endTime} / 休憩${derivedValues.breakMinutes}分`
-                          : "時間割を選択してください"}
-                      </span>
-                    </div>
-                  )}
-                </TableCell>
-                <TableCell>
-                  {shift.shiftType === "NORMAL" ? (
-                    <Input
-                      aria-label={`${shift.id} 休憩`}
-                      type="number"
-                      min="0"
-                      value={draft.breakMinutes}
-                      disabled={saving}
-                      onChange={(event) =>
-                        update(shift.id, "breakMinutes", event.target.value)
-                      }
-                    />
-                  ) : (
-                    "導出"
-                  )}
-                </TableCell>
-                <TableCell>
-                  <Input
-                    aria-label={`${shift.id} 交通費`}
-                    type="number"
-                    min="0"
-                    value={draft.transportationAllowance}
-                    disabled={saving}
-                    onChange={(event) =>
-                      update(
-                        shift.id,
-                        "transportationAllowance",
-                        event.target.value,
-                      )
-                    }
-                  />
-                </TableCell>
-                <TableCell>
-                  <div className="flex flex-col gap-1">
-                    <Input
-                      aria-label={`${shift.id} コメント`}
-                      value={draft.comment}
-                      disabled={saving}
-                      maxLength={100}
-                      onChange={(event) =>
-                        update(shift.id, "comment", event.target.value)
-                      }
-                    />
-                    {errors.get(shift.id) ? (
-                      <span className="text-xs text-destructive">
-                        {errors.get(shift.id)}
-                      </span>
-                    ) : null}
-                  </div>
-                </TableCell>
-              </TableRow>
-            );
-          })}
-        </TableBody>
-      </Table>
+      <BulkShiftEditTable
+        drafts={drafts}
+        errors={errors}
+        rows={rows}
+        saving={saving}
+        timetableSets={props.timetableSets}
+        dirtySet={dirtySet}
+        createDraft={createDraft}
+        onUpdate={update}
+        onTimetableSetChange={updateLessonTimetableSet}
+        onStartPeriodChange={updateLessonStartPeriod}
+      />
     </section>
   );
 }

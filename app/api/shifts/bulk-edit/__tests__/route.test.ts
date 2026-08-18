@@ -38,7 +38,10 @@ jest.mock("@/lib/shifts/month-shifts", () => ({
 jest.mock("@/lib/prisma", () => ({
   prisma: {
     $transaction: jest.fn(),
-    shift: { findMany: jest.fn() },
+    shift: { findMany: jest.fn(), update: jest.fn() },
+    shiftLessonRange: { upsert: jest.fn() },
+    timetableSet: { findFirst: jest.fn() },
+    timetable: { findMany: jest.fn() },
   },
 }));
 
@@ -52,6 +55,10 @@ const syncShiftsAfterBulkUpdateMock = jest.mocked(syncShiftsAfterBulkUpdate);
 const getMonthShiftsMock = jest.mocked(getMonthShifts);
 const transactionMock = jest.mocked(prisma.$transaction);
 const shiftFindManyMock = jest.mocked(prisma.shift.findMany);
+const shiftUpdateMock = jest.mocked(prisma.shift.update);
+const shiftLessonRangeUpsertMock = jest.mocked(prisma.shiftLessonRange.upsert);
+const timetableSetFindFirstMock = jest.mocked(prisma.timetableSet.findFirst);
+const timetableFindManyMock = jest.mocked(prisma.timetable.findMany);
 
 function createRequest(body: unknown, origin = "http://localhost"): Request {
   return {
@@ -76,6 +83,20 @@ function normalEdit(id: string) {
   };
 }
 
+function lessonEdit(id: string) {
+  return {
+    id,
+    shiftType: "LESSON" as const,
+    lessonRange: {
+      timetableSetId: "timetable-set-1",
+      startPeriod: 1,
+      endPeriod: 2,
+    },
+    transportationAllowance: 480,
+    comment: "授業シフトを変更",
+  };
+}
+
 function existingShift(id: string, userId = "user-1") {
   return {
     id,
@@ -89,6 +110,17 @@ function existingShift(id: string, userId = "user-1") {
       closingDayType: "END_OF_MONTH",
       closingDay: null,
       payday: 25,
+    },
+  };
+}
+
+function existingLessonShift(id: string) {
+  return {
+    ...existingShift(id),
+    shiftType: "LESSON" as const,
+    workplace: {
+      ...existingShift(id).workplace,
+      type: "CRAM_SCHOOL" as const,
     },
   };
 }
@@ -108,12 +140,26 @@ describe("PATCH /api/shifts/bulk public route", () => {
       user: { id: "user-1" },
     } as Awaited<ReturnType<typeof requireCurrentUser>>);
     consumeBulkShiftEditRateLimitMock.mockReturnValue({ allowed: true });
-    transactionMock.mockImplementation(async (callback) =>
-      callback({
-        shift: { update: jest.fn() },
-        shiftLessonRange: { upsert: jest.fn() },
-      } as never),
-    );
+    transactionMock.mockResolvedValue([] as never);
+    shiftUpdateMock.mockReturnValue({ operation: "shift-update" } as never);
+    shiftLessonRangeUpsertMock.mockReturnValue({
+      operation: "lesson-range-upsert",
+    } as never);
+    timetableSetFindFirstMock.mockResolvedValue({
+      id: "timetable-set-1",
+    } as never);
+    timetableFindManyMock.mockResolvedValue([
+      {
+        period: 1,
+        startTime: new Date("1970-01-01T09:00:00.000Z"),
+        endTime: new Date("1970-01-01T09:50:00.000Z"),
+      },
+      {
+        period: 2,
+        startTime: new Date("1970-01-01T10:00:00.000Z"),
+        endTime: new Date("1970-01-01T10:50:00.000Z"),
+      },
+    ] as never);
     syncShiftsAfterBulkUpdateMock.mockResolvedValue([]);
   });
 
@@ -223,6 +269,87 @@ describe("PATCH /api/shifts/bulk public route", () => {
     expect(shiftFindManyMock).not.toHaveBeenCalled();
   });
 
+  it("passes every LESSON update and lesson-range upsert to one array transaction", async () => {
+    const PATCH = await loadPatch();
+    const firstUpdate = { operation: "first-shift-update" };
+    const firstLessonRange = { operation: "first-lesson-range-upsert" };
+    const secondUpdate = { operation: "second-shift-update" };
+    const secondLessonRange = { operation: "second-lesson-range-upsert" };
+    shiftUpdateMock
+      .mockReturnValueOnce(firstUpdate as never)
+      .mockReturnValueOnce(secondUpdate as never);
+    shiftLessonRangeUpsertMock
+      .mockReturnValueOnce(firstLessonRange as never)
+      .mockReturnValueOnce(secondLessonRange as never);
+    shiftFindManyMock
+      .mockResolvedValueOnce([
+        existingLessonShift("lesson-1"),
+        existingLessonShift("lesson-2"),
+      ] as never)
+      .mockResolvedValueOnce([
+        { date: new Date("2026-03-18T00:00:00.000Z") },
+        { date: new Date("2026-03-19T00:00:00.000Z") },
+      ] as never);
+    getMonthShiftsMock.mockResolvedValue([]);
+
+    const response = await PATCH(
+      createRequest({
+        shifts: [lessonEdit("lesson-1"), lessonEdit("lesson-2")],
+      }),
+    );
+
+    expect(response.status).toBe(200);
+    expect(transactionMock).toHaveBeenCalledWith([
+      firstUpdate,
+      firstLessonRange,
+      secondUpdate,
+      secondLessonRange,
+    ]);
+  });
+
+  it("returns the first validation error in request order when multiple builds fail", async () => {
+    const PATCH = await loadPatch();
+    shiftFindManyMock.mockResolvedValueOnce([
+      existingShift("shift-second"),
+      existingShift("shift-first"),
+    ] as never);
+
+    const response = await PATCH(
+      createRequest({
+        shifts: [
+          { ...normalEdit("shift-first"), endTime: "10:00" },
+          { ...normalEdit("shift-second"), endTime: "10:00" },
+        ],
+      }),
+    );
+
+    expect(response.status).toBe(400);
+    await expect(response.json()).resolves.toMatchObject({
+      details: { shiftId: "shift-first" },
+    });
+    expect(transactionMock).not.toHaveBeenCalled();
+  });
+
+  it("returns 500 without transaction, cache revalidation, or sync when a build fails unexpectedly", async () => {
+    const PATCH = await loadPatch();
+    shiftFindManyMock.mockResolvedValueOnce([
+      existingLessonShift("lesson-1"),
+    ] as never);
+    timetableSetFindFirstMock.mockRejectedValueOnce(
+      new Error("database unavailable"),
+    );
+
+    const response = await PATCH(
+      createRequest({ shifts: [lessonEdit("lesson-1")] }),
+    );
+
+    expect(response.status).toBe(500);
+    expect(transactionMock).not.toHaveBeenCalled();
+    expect(revalidateShiftDomainTagsMock).not.toHaveBeenCalled();
+    expect(afterMock).not.toHaveBeenCalled();
+    expect(syncShiftsAfterBulkUpdateMock).not.toHaveBeenCalled();
+  });
+
   it("enforces five PATCH attempts per user, returns Retry-After, and keeps user buckets isolated", async () => {
     const PATCH = await loadPatch();
     const attemptsByUser = new Map<string, number>();
@@ -269,17 +396,7 @@ describe("PATCH /api/shifts/bulk public route", () => {
       existingShift("shift-1"),
       existingShift("shift-2"),
     ] as never);
-    transactionMock.mockImplementation(async (callback) =>
-      callback({
-        shift: {
-          update: jest
-            .fn()
-            .mockResolvedValueOnce(undefined)
-            .mockRejectedValueOnce(new Error("database failure")),
-        },
-        shiftLessonRange: { upsert: jest.fn() },
-      } as never),
-    );
+    transactionMock.mockRejectedValueOnce(new Error("database failure"));
 
     const response = await PATCH(
       createRequest({
@@ -288,8 +405,10 @@ describe("PATCH /api/shifts/bulk public route", () => {
     );
 
     expect(response.status).toBe(500);
+    expect(transactionMock).toHaveBeenCalledTimes(1);
     expect(revalidateShiftDomainTagsMock).not.toHaveBeenCalled();
     expect(afterMock).not.toHaveBeenCalled();
+    expect(syncShiftsAfterBulkUpdateMock).not.toHaveBeenCalled();
   });
 
   it("returns updated DTOs with pending sync, revalidates affected caches, and schedules bulk update sync after commit", async () => {
