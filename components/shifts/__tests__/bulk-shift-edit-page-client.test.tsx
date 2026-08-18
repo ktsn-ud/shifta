@@ -42,6 +42,7 @@ jest.mock("@/components/ui/select", () => {
   const SelectContext = React.createContext<{
     disabled: boolean;
     onValueChange: (value: string) => void;
+    value: string;
   } | null>(null);
 
   return {
@@ -55,22 +56,11 @@ jest.mock("@/components/ui/select", () => {
       onValueChange: (value: string) => void;
       children: React.ReactNode;
       disabled?: boolean;
-    }) =>
-      value === "date" || value === "workplace" ? (
-        <select
-          aria-label="並び替え"
-          value={value}
-          disabled={disabled}
-          onChange={(event) => onValueChange(event.target.value)}
-        >
-          <option value="date">日付順</option>
-          <option value="workplace">勤務先順</option>
-        </select>
-      ) : (
-        <SelectContext.Provider value={{ disabled, onValueChange }}>
-          <div>{children}</div>
-        </SelectContext.Provider>
-      ),
+    }) => (
+      <SelectContext.Provider value={{ disabled, onValueChange, value }}>
+        <div>{children}</div>
+      </SelectContext.Provider>
+    ),
     SelectContent: ({ children }: { children: React.ReactNode }) => (
       <div>{children}</div>
     ),
@@ -95,8 +85,28 @@ jest.mock("@/components/ui/select", () => {
         </button>
       );
     },
-    SelectTrigger: () => null,
-    SelectValue: () => null,
+    SelectTrigger: ({ children }: { children: React.ReactNode }) => {
+      const context = React.useContext(SelectContext);
+      if (context?.value !== "date" && context?.value !== "workplace") {
+        return null;
+      }
+
+      const otherOrder = context.value === "date" ? "workplace" : "date";
+      return (
+        <select
+          aria-label="並び替え"
+          value={context.value}
+          disabled={context.disabled}
+          onChange={(event) => context.onValueChange(event.target.value)}
+        >
+          <option value={context.value}>{children}</option>
+          <option value={otherOrder} />
+        </select>
+      );
+    },
+    SelectValue: ({ children }: { children: React.ReactNode }) => (
+      <>{children}</>
+    ),
   };
 });
 
@@ -201,6 +211,10 @@ describe("BulkShiftEditPageClient", () => {
     });
     renderPage();
 
+    const sortSelect = screen.getByRole("combobox", { name: "並び替え" });
+    expect(sortSelect).toHaveTextContent("日付順");
+    expect(sortSelect).not.toHaveTextContent(/date|workplace/);
+
     await user.type(
       screen.getByLabelText("shift-a コメント"),
       "確定済みでも編集",
@@ -212,6 +226,9 @@ describe("BulkShiftEditPageClient", () => {
     fireEvent.change(screen.getByRole("combobox", { name: "並び替え" }), {
       target: { value: "workplace" },
     });
+
+    expect(sortSelect).toHaveTextContent("勤務先順");
+    expect(sortSelect).not.toHaveTextContent(/date|workplace/);
 
     expect(screen.getByLabelText("shift-a コメント")).toHaveValue(
       "確定済みでも編集",

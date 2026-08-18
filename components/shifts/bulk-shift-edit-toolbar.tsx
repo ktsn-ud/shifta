@@ -72,7 +72,9 @@ export function BulkShiftEditToolbar({
             disabled={saving}
           >
             <SelectTrigger size="sm">
-              <SelectValue />
+              <SelectValue>
+                {order === "date" ? "日付順" : "勤務先順"}
+              </SelectValue>
             </SelectTrigger>
             <SelectContent>
               <SelectGroup>
