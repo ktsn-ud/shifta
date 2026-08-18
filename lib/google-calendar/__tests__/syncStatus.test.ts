@@ -9,6 +9,7 @@ import {
   syncShiftDeletion,
   syncShiftDeletionsAfterWorkplaceDeletion,
   syncShiftsAfterBulkCreate,
+  syncShiftsAfterBulkUpdate,
 } from "@/lib/google-calendar/syncStatus";
 import { waitFor } from "@testing-library/react";
 import type {
@@ -559,6 +560,54 @@ describe("shift sync cache revalidation", () => {
     await expect(Promise.all(syncCalls)).resolves.toHaveLength(2);
     expect(createCalendarEvent).toHaveBeenCalledTimes(6);
     expect(maximumActiveCreates).toBeLessThanOrEqual(3);
+  });
+
+  it("uses the shared three-permit queue and update status contract for bulk edits", async () => {
+    const shiftIds = ["shift-1", "shift-2", "shift-3", "shift-4"];
+    const releaseUpdates: Array<() => void> = [];
+    let activeUpdates = 0;
+    let maximumActiveUpdates = 0;
+    updateCalendarEvent.mockImplementation(
+      () =>
+        new Promise<void>((resolve) => {
+          activeUpdates += 1;
+          maximumActiveUpdates = Math.max(maximumActiveUpdates, activeUpdates);
+          releaseUpdates.push(() => {
+            activeUpdates -= 1;
+            resolve();
+          });
+        }),
+    );
+
+    const syncCall = syncShiftsAfterBulkUpdate(shiftIds, "user-1");
+
+    await waitFor(() => {
+      expect(updateCalendarEvent).toHaveBeenCalledTimes(3);
+    });
+    expect(maximumActiveUpdates).toBe(3);
+
+    for (let releasedCount = 0; releasedCount < 4; releasedCount += 1) {
+      await waitFor(() => {
+        expect(releaseUpdates.length).toBeGreaterThan(0);
+      });
+      releaseUpdates.shift()?.();
+    }
+
+    await expect(syncCall).resolves.toEqual(
+      shiftIds.map((shiftId) =>
+        expect.objectContaining({
+          shiftId,
+          ok: true,
+          googleEventId: "google-event-1",
+        }),
+      ),
+    );
+    expect(shiftUpdateManyMock).toHaveBeenCalledWith(
+      expect.objectContaining({
+        data: expect.objectContaining({ googleSyncStatus: "PENDING" }),
+      }),
+    );
+    expect(maximumActiveUpdates).toBeLessThanOrEqual(3);
   });
 
   it("releases a shared permit after an unretryable create failure", async () => {

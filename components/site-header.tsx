@@ -83,6 +83,9 @@ function buildBreadcrumbs(pathname: string): Crumb[] {
       if (action === "bulk") {
         return [root, shiftRoot, { title: "シフト一括登録" }];
       }
+      if (action === "bulk-edit") {
+        return [root, shiftRoot, { title: "シフト一括編集" }];
+      }
       if (segments[3] === "edit") {
         return [root, shiftRoot, { title: "シフト編集" }];
       }

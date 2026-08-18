@@ -68,6 +68,7 @@ export function BulkShiftFormScreen(props: {
       </LoadingOverlay>
 
       <ShiftPayrollPreviewFloating
+        collapseOnDesktop
         months={controller.previewMonths}
         years={controller.previewYears}
         unresolvedCount={controller.previewUnresolvedCount}

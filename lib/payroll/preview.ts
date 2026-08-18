@@ -6,7 +6,12 @@ import {
 } from "@/lib/api/date-time";
 import { calculateShiftWage } from "@/lib/payroll/calculateShiftWage";
 import { resolvePaymentMonthForShiftDate } from "@/lib/payroll/pay-period";
+import {
+  calculateGrossMinutes,
+  getBreakMinutesValidationError,
+} from "@/lib/shifts/break-validation";
 import { resolveLessonTimeRangeFromRows } from "@/lib/shifts/lesson-time-range";
+import { MAX_TRANSPORTATION_ALLOWANCE } from "@/lib/shifts/transportation-allowance";
 
 type ShiftType = "NORMAL" | "LESSON";
 type HolidayType = "NONE" | "WEEKEND" | "HOLIDAY" | "WEEKEND_HOLIDAY";
@@ -100,6 +105,15 @@ type ResolvedShiftTime = {
   endTime: string;
   breakMinutes: number;
 };
+
+function isValidTransportationAllowance(value: number | undefined): boolean {
+  return (
+    value === undefined ||
+    (Number.isInteger(value) &&
+      value >= 0 &&
+      value <= MAX_TRANSPORTATION_ALLOWANCE)
+  );
+}
 
 function toMonthKey(date: Date): string {
   const year = String(date.getUTCFullYear());
@@ -340,13 +354,24 @@ function resolveShiftTime(
     };
   }
 
+  const breakMinutes = shift.breakMinutes ?? 0;
+  const breakMinutesError = getBreakMinutesValidationError(
+    breakMinutes,
+    calculateGrossMinutes(startTime, endTime),
+  );
+  if (breakMinutesError) {
+    return {
+      value: null,
+      status: "invalid",
+      message: breakMinutesError,
+    };
+  }
+
   return {
     value: {
       startTime,
       endTime,
-      breakMinutes: Number.isFinite(shift.breakMinutes)
-        ? shift.breakMinutes!
-        : 0,
+      breakMinutes,
     },
     status: "ready",
   };
@@ -495,6 +520,23 @@ export function calculateShiftPayrollPreview(input: {
       continue;
     }
 
+    if (!isValidTransportationAllowance(shift.transportationAllowance)) {
+      unresolvedCount += 1;
+      const message = "交通費は0円以上の整数で入力してください";
+      items.push({
+        temporaryId: shift.temporaryId,
+        paymentMonth,
+        wage: null,
+        transportationAllowance: 0,
+        status: "invalid",
+        message,
+      });
+      const monthSummary = getMonthSummary(paymentMonth);
+      monthSummary.unresolvedCount += 1;
+      addMonthMessage(paymentMonth, monthSummary, message);
+      continue;
+    }
+
     const rule = findApplicableRule(rulesByWorkplace, workplaceId, shiftDate);
     if (!rule) {
       unresolvedCount += 1;
@@ -535,21 +577,14 @@ export function calculateShiftPayrollPreview(input: {
       temporaryId: shift.temporaryId,
       paymentMonth,
       wage: wageResult.totalWage,
-      transportationAllowance:
-        Number.isInteger(shift.transportationAllowance) &&
-        (shift.transportationAllowance ?? 0) >= 0
-          ? (shift.transportationAllowance ?? 0)
-          : 0,
+      transportationAllowance: shift.transportationAllowance ?? 0,
       status: "ready",
     });
 
     const monthSummary = getMonthSummary(paymentMonth);
     monthSummary.additionalWage += wageResult.totalWage;
     monthSummary.additionalTransportationAllowance +=
-      Number.isInteger(shift.transportationAllowance) &&
-      (shift.transportationAllowance ?? 0) >= 0
-        ? (shift.transportationAllowance ?? 0)
-        : 0;
+      shift.transportationAllowance ?? 0;
     monthSummary.additionalTotalAmount =
       monthSummary.additionalWage +
       monthSummary.additionalTransportationAllowance;

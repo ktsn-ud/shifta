@@ -145,7 +145,55 @@ describe("ShiftListPageClient", () => {
     expect(screen.getByText("480円")).toBeInTheDocument();
   });
 
-  it("shows default date/time ascending order and supports workplace sort", async () => {
+  it("spans all table columns in the empty state", () => {
+    renderShiftListPage({
+      initialMonthStartDate: "2026-03-01",
+      initialMonthEndDate: "2026-03-31",
+    });
+
+    expect(screen.getByText("表示対象のシフトがありません。")).toHaveAttribute(
+      "colspan",
+      "9",
+    );
+  });
+
+  it("renders workplace and comment in separate table columns", () => {
+    renderShiftListPage({
+      initialMonthShifts: [
+        createShift({
+          id: "shift-with-comment",
+          date: "2026-03-18T00:00:00.000Z",
+          startTime: "1970-01-01T09:00:00.000Z",
+          endTime: "1970-01-01T18:00:00.000Z",
+          workplaceName: "勤務先A",
+          comment: "研修",
+        }),
+        createShift({
+          id: "shift-without-comment",
+          date: "2026-03-19T00:00:00.000Z",
+          startTime: "1970-01-01T09:00:00.000Z",
+          endTime: "1970-01-01T18:00:00.000Z",
+          workplaceName: "勤務先B",
+          comment: null,
+        }),
+      ],
+      initialMonthStartDate: "2026-03-01",
+      initialMonthEndDate: "2026-03-31",
+    });
+
+    expect(
+      screen.getByRole("columnheader", { name: "コメント" }),
+    ).toBeInTheDocument();
+
+    const [commentedRow, uncommentedRow] = getBodyRows();
+    expect(commentedRow.cells[3]).toHaveTextContent("勤務先A");
+    expect(commentedRow.cells[4]).toHaveTextContent("研修");
+    expect(commentedRow).not.toHaveTextContent("勤務先A (研修)");
+    expect(uncommentedRow.cells[3]).toHaveTextContent("勤務先B");
+    expect(uncommentedRow.cells[4]).toBeEmptyDOMElement();
+  });
+
+  it("shows default date/time ascending order and sorts workplaces by formatted labels", async () => {
     const user = userEvent.setup();
     const fetchMock = globalThis.fetch as jest.Mock;
 
@@ -166,13 +214,15 @@ describe("ShiftListPageClient", () => {
               startTime: "1970-01-01T09:00:00.000Z",
               endTime: "1970-01-01T17:00:00.000Z",
               workplaceName: "Alpha",
+              comment: "z",
             }),
             createShift({
               id: "shift-3",
-              date: "2026-03-10T00:00:00.000Z",
+              date: "2026-03-11T00:00:00.000Z",
               startTime: "1970-01-01T08:00:00.000Z",
               endTime: "1970-01-01T17:00:00.000Z",
-              workplaceName: "Beta",
+              workplaceName: "Alpha",
+              comment: "a",
             }),
           ],
         });
@@ -184,17 +234,19 @@ describe("ShiftListPageClient", () => {
     renderShiftListPage();
 
     await waitFor(() => {
-      expect(screen.getByText("Beta")).toBeInTheDocument();
+      expect(screen.getByText("Zeta")).toBeInTheDocument();
     });
 
     let rows = getBodyRows();
-    expect(rows[0]).toHaveTextContent("Beta");
+    expect(rows[0]).toHaveTextContent("Alpha");
+    expect(rows[0]).toHaveTextContent("z");
 
     await user.click(screen.getByRole("button", { name: "勤務先で並び替え" }));
 
     await waitFor(() => {
       rows = getBodyRows();
       expect(rows[0]).toHaveTextContent("Alpha");
+      expect(rows[0]).toHaveTextContent("a");
     });
 
     await user.click(screen.getByRole("button", { name: "勤務先で並び替え" }));
@@ -230,7 +282,9 @@ describe("ShiftListPageClient", () => {
     renderShiftListPage();
 
     await waitFor(() => {
-      expect(screen.getByText("勤務先A (研修)")).toBeInTheDocument();
+      expect(screen.getByText("勤務先A")).toBeInTheDocument();
+      expect(screen.getByText("研修")).toBeInTheDocument();
+      expect(screen.queryByText("勤務先A (研修)")).not.toBeInTheDocument();
     });
 
     fireEvent.click(screen.getByRole("button", { name: "編集" }));

@@ -73,6 +73,18 @@ describe("SiteHeader", () => {
     expect(screen.getByText("シフト編集")).toBeInTheDocument();
   });
 
+  it("/my/shifts/bulk-edit ではシフト一括編集 breadcrumb を表示する", () => {
+    usePathnameMock.mockReturnValue("/my/shifts/bulk-edit");
+
+    render(<SiteHeader />);
+
+    expect(screen.getByRole("link", { name: "シフト管理" })).toHaveAttribute(
+      "href",
+      "/my/shifts/list",
+    );
+    expect(screen.getByText("シフト一括編集")).toBeInTheDocument();
+  });
+
   it("代表パスでは collapse 付き breadcrumb を表示する", () => {
     usePathnameMock.mockReturnValue(
       "/my/workplaces/workplace-1/timetables/timetable-1/edit",

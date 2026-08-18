@@ -567,7 +567,7 @@ function ShiftListTableCard({
                 {sortedShifts.length === 0 ? (
                   <TableRow>
                     <TableCell
-                      colSpan={7}
+                      colSpan={9}
                       className="h-24 text-center text-muted-foreground"
                     >
                       表示対象のシフトがありません。
@@ -639,6 +639,7 @@ function ShiftListTableHeaderRow({
           onToggle={onToggleSort}
         />
       </TableHead>
+      <TableHead>コメント</TableHead>
       <TableHead>
         <SortToggleButton
           column="breakMinutes"
@@ -670,13 +671,6 @@ function ShiftListTableItemRow({
   onToggleShiftSelection,
   onEditShift,
 }: ShiftListTableItemRowProps) {
-  const workplaceLabel = formatShiftWorkplaceLabel({
-    workplaceName: shift.workplace.name,
-    workplaceType: shift.workplace.type,
-    shiftType: shift.shiftType,
-    comment: shift.comment,
-  });
-
   return (
     <TableRow
       data-state={isSelected ? "selected" : undefined}
@@ -711,9 +705,10 @@ function ShiftListTableItemRow({
               backgroundColor: shift.workplace.color,
             }}
           />
-          <span>{workplaceLabel}</span>
+          <span>{shift.workplace.name}</span>
         </div>
       </TableCell>
+      <TableCell>{shift.comment ?? ""}</TableCell>
       <TableCell>{shift.breakMinutes}分</TableCell>
       <TableCell>{shift.transportationAllowance}円</TableCell>
       <TableCell className="text-right font-medium">

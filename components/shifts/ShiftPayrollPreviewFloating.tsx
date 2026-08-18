@@ -43,6 +43,7 @@ export function ShiftPayrollPreviewFloating(props: {
   isAnnualLoading?: boolean;
   annualErrorMessage?: string | null;
   isAnnualResponseIncomplete?: boolean;
+  collapseOnDesktop?: boolean;
 }) {
   const {
     title = "支給額プレビュー",
@@ -54,8 +55,9 @@ export function ShiftPayrollPreviewFloating(props: {
     isAnnualLoading = false,
     annualErrorMessage,
     isAnnualResponseIncomplete = false,
+    collapseOnDesktop = false,
   } = props;
-  const [isExpandedOnMobile, setIsExpandedOnMobile] = useState(false);
+  const [isExpanded, setIsExpanded] = useState(false);
 
   const totalAdditional = useMemo(
     () => months.reduce((sum, item) => sum + item.additionalWage, 0),
@@ -70,9 +72,12 @@ export function ShiftPayrollPreviewFloating(props: {
       <div className="mx-3 mb-3 rounded-xl border bg-background/95 shadow-xl backdrop-blur md:mx-0 md:mb-0">
         <button
           type="button"
-          className="flex w-full items-center justify-between gap-2 px-3 py-2 text-left md:hidden"
-          onClick={() => setIsExpandedOnMobile((current) => !current)}
-          aria-expanded={isExpandedOnMobile}
+          className={cn(
+            "flex w-full items-center justify-between gap-2 px-3 py-2 text-left",
+            !collapseOnDesktop && "md:hidden",
+          )}
+          onClick={() => setIsExpanded((current) => !current)}
+          aria-expanded={isExpanded}
           aria-controls="shift-payroll-preview-floating-body"
         >
           <div>
@@ -86,7 +91,7 @@ export function ShiftPayrollPreviewFloating(props: {
           <ChevronUpIcon
             className={cn(
               "size-4 transition-transform",
-              isExpandedOnMobile ? "rotate-0" : "rotate-180",
+              isExpanded ? "rotate-0" : "rotate-180",
             )}
           />
         </button>
@@ -94,11 +99,13 @@ export function ShiftPayrollPreviewFloating(props: {
         <div
           id="shift-payroll-preview-floating-body"
           className={cn(
-            "space-y-3 border-t px-3 py-3 md:block md:border-t-0",
-            isExpandedOnMobile ? "block" : "hidden",
+            "space-y-3 border-t px-3 py-3",
+            isExpanded ? "block" : "hidden",
+            !collapseOnDesktop && "md:block md:border-t-0",
           )}
+          aria-hidden={collapseOnDesktop ? !isExpanded : undefined}
         >
-          <div className="hidden md:block">
+          <div className={cn("hidden", !collapseOnDesktop && "md:block")}>
             <p className="text-sm font-semibold">{title}</p>
             <p className="text-xs text-muted-foreground">
               入力中のシフトを反映した支給見込です
@@ -225,17 +232,19 @@ export function ShiftPayrollPreviewFloating(props: {
             </div>
           ) : null}
 
-          <div className="md:hidden">
-            <Button
-              type="button"
-              variant="ghost"
-              size="sm"
-              className="w-full"
-              onClick={() => setIsExpandedOnMobile(false)}
-            >
-              閉じる
-            </Button>
-          </div>
+          {!collapseOnDesktop ? (
+            <div className="md:hidden">
+              <Button
+                type="button"
+                variant="ghost"
+                size="sm"
+                className="w-full"
+                onClick={() => setIsExpanded(false)}
+              >
+                閉じる
+              </Button>
+            </div>
+          ) : null}
         </div>
       </div>
     </aside>

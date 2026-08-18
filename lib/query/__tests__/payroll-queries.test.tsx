@@ -224,6 +224,7 @@ function createPayrollAnnualPreviewPayload() {
           totalAmount: 132000,
         },
       ],
+      actualPayrollKeys: [],
     },
   };
 }
@@ -328,6 +329,11 @@ describe("給与クエリ DTO スキーマ", () => {
     Reflect.deleteProperty(missingNestedPayload.byWorkplace[0], "displayValue");
     const invalidAnnualPayload = createPayrollAnnualPreviewPayload();
     Reflect.deleteProperty(invalidAnnualPayload.data.years[0], "totalAmount");
+    const missingActualPayrollKeysPayload = createPayrollAnnualPreviewPayload();
+    Reflect.deleteProperty(
+      missingActualPayrollKeysPayload.data,
+      "actualPayrollKeys",
+    );
 
     expect(
       payrollSummaryResponseSchema.safeParse(unknownKeyPayload).success,
@@ -339,6 +345,11 @@ describe("給与クエリ DTO スキーマ", () => {
     expect(
       payrollAnnualPreviewResponseSchema.safeParse(invalidAnnualPayload)
         .success,
+    ).toBe(false);
+    expect(
+      payrollAnnualPreviewResponseSchema.safeParse(
+        missingActualPayrollKeysPayload,
+      ).success,
     ).toBe(false);
   });
 

@@ -22,6 +22,7 @@ type MonthShift = {
   startTime: string;
   endTime: string;
   breakMinutes: number;
+  isConfirmed?: boolean;
   transportationAllowance: number;
   shiftType: "NORMAL" | "LESSON";
   comment: string | null;
@@ -174,6 +175,7 @@ function normalizeMonthShift(raw: unknown): MonthShift | null {
     startTime: shift.startTime,
     endTime: shift.endTime,
     breakMinutes: shift.breakMinutes,
+    isConfirmed: shift.isConfirmed === true,
     transportationAllowance:
       typeof shift.transportationAllowance === "number"
         ? shift.transportationAllowance
