@@ -1,4 +1,5 @@
 import { render, screen, within } from "@testing-library/react";
+import userEvent from "@testing-library/user-event";
 import { BulkShiftEditPayrollPreviewFloating } from "@/components/shifts/BulkShiftEditPayrollPreviewFloating";
 
 const changedMonth = {
@@ -36,6 +37,53 @@ function renderChangedMonthPreview(input?: {
 }
 
 describe("BulkShiftEditPayrollPreviewFloating", () => {
+  it("shows its summary first and toggles the detail panel from its header", async () => {
+    const user = userEvent.setup();
+
+    render(
+      <BulkShiftEditPayrollPreviewFloating
+        months={[]}
+        years={[]}
+        unresolvedCount={0}
+        isBaselineLoading={false}
+        baselineErrorMessage={null}
+        isAnnualLoading={false}
+        annualErrorMessage={null}
+        isAnnualResponseIncomplete={false}
+      />,
+    );
+
+    const header = screen.getByRole("button", { name: /支給額への影響/ });
+    const detailPanel = document.getElementById(
+      "bulk-shift-edit-payroll-preview-body",
+    );
+    if (!detailPanel) throw new Error("detail panel was not rendered");
+
+    expect(
+      within(header).getByText(
+        "勤務内容を変更すると支給額への影響を確認できます",
+      ),
+    ).toBeVisible();
+    expect(header).toHaveAttribute("aria-expanded", "false");
+    expect(header).toHaveAttribute("aria-controls", detailPanel.id);
+    expect(detailPanel).toHaveAttribute("aria-hidden", "true");
+    expect(detailPanel).toHaveClass("hidden");
+    expect(header).not.toHaveClass("md:hidden");
+    expect(detailPanel).not.toHaveClass("md:block");
+
+    await user.click(header);
+
+    expect(header).toHaveAttribute("aria-expanded", "true");
+    expect(detailPanel).toHaveAttribute("aria-hidden", "false");
+    expect(detailPanel).toHaveClass("block");
+
+    await user.click(header);
+
+    expect(header).toHaveAttribute("aria-expanded", "false");
+    expect(detailPanel).toHaveAttribute("aria-hidden", "true");
+    expect(detailPanel).toHaveClass("hidden");
+  });
+
   it("guides the user before any editable value has changed", () => {
     render(
       <BulkShiftEditPayrollPreviewFloating

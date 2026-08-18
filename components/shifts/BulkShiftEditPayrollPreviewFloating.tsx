@@ -2,7 +2,6 @@
 
 import { useMemo, useState } from "react";
 import { ChevronUpIcon } from "lucide-react";
-import { Button } from "@/components/ui/button";
 import type {
   BulkEditPayrollPreviewMonth,
   BulkEditPayrollPreviewYear,
@@ -38,7 +37,7 @@ export function BulkShiftEditPayrollPreviewFloating(props: {
   annualErrorMessage: string | null;
   isAnnualResponseIncomplete: boolean;
 }) {
-  const [isExpandedOnMobile, setIsExpandedOnMobile] = useState(false);
+  const [isExpanded, setIsExpanded] = useState(false);
   const totalDifference = useMemo(
     () =>
       props.months.reduce(
@@ -58,9 +57,9 @@ export function BulkShiftEditPayrollPreviewFloating(props: {
       <div className="mx-3 mb-3 rounded-xl border bg-background/95 shadow-xl backdrop-blur md:mx-0 md:mb-0">
         <button
           type="button"
-          className="flex w-full items-center justify-between gap-2 px-3 py-2 text-left md:hidden"
-          onClick={() => setIsExpandedOnMobile((current) => !current)}
-          aria-expanded={isExpandedOnMobile}
+          className="flex w-full items-center justify-between gap-2 px-3 py-2 text-left"
+          onClick={() => setIsExpanded((current) => !current)}
+          aria-expanded={isExpanded}
           aria-controls="bulk-shift-edit-payroll-preview-body"
         >
           <div>
@@ -74,23 +73,18 @@ export function BulkShiftEditPayrollPreviewFloating(props: {
           <ChevronUpIcon
             className={cn(
               "size-4 transition-transform",
-              isExpandedOnMobile ? "rotate-0" : "rotate-180",
+              isExpanded ? "rotate-0" : "rotate-180",
             )}
           />
         </button>
         <div
           id="bulk-shift-edit-payroll-preview-body"
           className={cn(
-            "space-y-3 border-t px-3 py-3 md:block md:border-t-0",
-            isExpandedOnMobile ? "block" : "hidden",
+            "space-y-3 border-t px-3 py-3",
+            isExpanded ? "block" : "hidden",
           )}
+          aria-hidden={!isExpanded}
         >
-          <div className="hidden md:block">
-            <p className="text-sm font-semibold">支給額への影響</p>
-            <p className="text-xs text-muted-foreground">
-              変更前との差分を支給月ごとに確認できます
-            </p>
-          </div>
           {props.baselineErrorMessage ? (
             <p className="rounded-md border border-amber-500/40 bg-amber-500/10 px-2 py-1 text-xs text-amber-700">
               {props.baselineErrorMessage}
@@ -225,17 +219,6 @@ export function BulkShiftEditPayrollPreviewFloating(props: {
               )}
             </div>
           ) : null}
-          <div className="md:hidden">
-            <Button
-              type="button"
-              variant="ghost"
-              size="sm"
-              className="w-full"
-              onClick={() => setIsExpandedOnMobile(false)}
-            >
-              閉じる
-            </Button>
-          </div>
         </div>
       </div>
     </aside>

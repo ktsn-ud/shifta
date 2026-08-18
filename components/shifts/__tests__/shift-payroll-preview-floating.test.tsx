@@ -1,7 +1,88 @@
 import { render, screen, within } from "@testing-library/react";
+import userEvent from "@testing-library/user-event";
 import { ShiftPayrollPreviewFloating } from "@/components/shifts/ShiftPayrollPreviewFloating";
 
 describe("ShiftPayrollPreviewFloating", () => {
+  it("collapses on every breakpoint when collapseOnDesktop is enabled", async () => {
+    const user = userEvent.setup();
+
+    render(
+      <ShiftPayrollPreviewFloating
+        months={[]}
+        years={[]}
+        unresolvedCount={0}
+        emptyMessage="入力中のシフトはありません"
+        collapseOnDesktop
+      />,
+    );
+
+    const header = screen.getByRole("button", {
+      name: /支給額プレビュー/,
+    });
+    const detailPanel = document.getElementById(
+      "shift-payroll-preview-floating-body",
+    );
+    if (!detailPanel) throw new Error("detail panel was not rendered");
+
+    expect(
+      within(header).getByText("入力中のシフトはありません"),
+    ).toBeVisible();
+    expect(header).toHaveAttribute("aria-expanded", "false");
+    expect(header).toHaveAttribute("aria-controls", detailPanel.id);
+    expect(detailPanel).toHaveAttribute("aria-hidden", "true");
+    expect(detailPanel).toHaveClass("hidden");
+    expect(detailPanel).not.toHaveClass("md:block");
+
+    await user.click(header);
+
+    expect(header).toHaveAttribute("aria-expanded", "true");
+    expect(detailPanel).toHaveAttribute("aria-hidden", "false");
+    expect(detailPanel).toHaveClass("block");
+
+    await user.click(header);
+
+    expect(header).toHaveAttribute("aria-expanded", "false");
+    expect(detailPanel).toHaveAttribute("aria-hidden", "true");
+    expect(detailPanel).toHaveClass("hidden");
+  });
+
+  it("keeps the detail visible on desktop by default while retaining the mobile header toggle", async () => {
+    const user = userEvent.setup();
+
+    render(
+      <ShiftPayrollPreviewFloating
+        months={[]}
+        years={[]}
+        unresolvedCount={0}
+        emptyMessage="入力中のシフトはありません"
+      />,
+    );
+
+    const header = screen.getByRole("button", {
+      name: /支給額プレビュー/,
+    });
+    const detailPanel = document.getElementById(
+      "shift-payroll-preview-floating-body",
+    );
+    if (!detailPanel) throw new Error("detail panel was not rendered");
+
+    expect(header).toHaveClass("md:hidden");
+    expect(header).toHaveAttribute("aria-expanded", "false");
+    expect(header).toHaveAttribute("aria-controls", detailPanel.id);
+    expect(detailPanel).toHaveClass("hidden", "md:block", "md:border-t-0");
+    expect(detailPanel).not.toHaveAttribute("aria-hidden");
+
+    await user.click(header);
+
+    expect(header).toHaveAttribute("aria-expanded", "true");
+    expect(detailPanel).toHaveClass("block", "md:block");
+
+    await user.click(header);
+
+    expect(header).toHaveAttribute("aria-expanded", "false");
+    expect(detailPanel).toHaveClass("hidden", "md:block");
+  });
+
   it("shows current, additional, and projected annual taxable and total amounts", () => {
     render(
       <ShiftPayrollPreviewFloating
