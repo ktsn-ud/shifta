@@ -176,7 +176,9 @@ function BulkShiftEditRow({
                       DIRTY_CONTROL_CLASS,
                   )}
                 >
-                  <SelectValue placeholder="時間割セット" />
+                  <SelectValue placeholder="時間割セット">
+                    {selectedSet?.name}
+                  </SelectValue>
                 </SelectTrigger>
                 <SelectContent>
                   <SelectGroup>
