@@ -32,7 +32,7 @@ export function BulkShiftEditToolbar({
     <>
       <div className="flex flex-wrap items-end justify-between gap-3">
         <div>
-          <h2 className="text-2xl font-semibold">シフト一括編集</h2>
+          <h2 className="text-xl font-semibold">シフト一括編集</h2>
           <p className="text-sm text-muted-foreground">
             編集可能なセルだけを変更し、変更行のみ保存します。
           </p>
