@@ -317,6 +317,25 @@ describe("BulkShiftEditPageClient", () => {
     });
     renderPage(shifts);
 
+    expect(
+      screen.getByRole("columnheader", { name: "休憩" }),
+    ).toHaveTextContent("休憩");
+    expect(
+      screen.getByRole("columnheader", { name: "休憩" }),
+    ).not.toHaveTextContent("分");
+    expect(
+      screen.getByRole("columnheader", { name: "交通費" }),
+    ).toHaveTextContent("交通費");
+    expect(
+      screen.getByRole("columnheader", { name: "交通費" }),
+    ).not.toHaveTextContent("円");
+    expect(
+      screen.getByLabelText("shift-a 休憩").parentElement,
+    ).toHaveTextContent("分");
+    expect(
+      screen.getByLabelText("shift-a 交通費").parentElement,
+    ).toHaveTextContent("円");
+
     await user.clear(screen.getByLabelText("shift-a 交通費"));
     await user.type(screen.getByLabelText("shift-a 交通費"), "480");
     await user.type(screen.getByLabelText("shift-a コメント"), "更新済み");
@@ -437,6 +456,9 @@ describe("BulkShiftEditPageClient", () => {
     ]);
 
     expect(screen.getByLabelText("lesson-1 交通費")).toBeEnabled();
+    expect(
+      screen.getByLabelText("lesson-1 交通費").parentElement,
+    ).toHaveTextContent("円");
     expect(screen.getByLabelText("lesson-1 コメント")).toBeEnabled();
     expect(
       screen.getByText("導出: 時間割を選択してください"),

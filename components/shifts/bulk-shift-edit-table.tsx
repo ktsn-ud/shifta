@@ -235,31 +235,39 @@ function BulkShiftEditRow({
       </TableCell>
       <TableCell>
         {shift.shiftType === "NORMAL" ? (
-          <Input
-            aria-label={`${shift.id} 休憩`}
-            type="number"
-            min="0"
-            value={draft.breakMinutes}
-            disabled={saving}
-            onChange={(event) =>
-              onUpdate(shift.id, "breakMinutes", event.target.value)
-            }
-          />
+          <div className="flex items-center gap-1 whitespace-nowrap">
+            <Input
+              className="w-20"
+              aria-label={`${shift.id} 休憩`}
+              type="number"
+              min="0"
+              value={draft.breakMinutes}
+              disabled={saving}
+              onChange={(event) =>
+                onUpdate(shift.id, "breakMinutes", event.target.value)
+              }
+            />
+            <span>分</span>
+          </div>
         ) : (
           "導出"
         )}
       </TableCell>
       <TableCell>
-        <Input
-          aria-label={`${shift.id} 交通費`}
-          type="number"
-          min="0"
-          value={draft.transportationAllowance}
-          disabled={saving}
-          onChange={(event) =>
-            onUpdate(shift.id, "transportationAllowance", event.target.value)
-          }
-        />
+        <div className="flex items-center gap-1 whitespace-nowrap">
+          <Input
+            className="w-24"
+            aria-label={`${shift.id} 交通費`}
+            type="number"
+            min="0"
+            value={draft.transportationAllowance}
+            disabled={saving}
+            onChange={(event) =>
+              onUpdate(shift.id, "transportationAllowance", event.target.value)
+            }
+          />
+          <span>円</span>
+        </div>
       </TableCell>
       <TableCell>
         <div className="flex flex-col gap-1">
