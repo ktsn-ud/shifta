@@ -165,6 +165,7 @@ type ShiftInput = {
   id: string;
   date: string;
   workplaceName: string;
+  workplaceColor?: string;
   shiftType?: "NORMAL" | "LESSON";
   isConfirmed?: boolean;
 };
@@ -210,7 +211,7 @@ function createShift(input: ShiftInput) {
     workplace: {
       id: `workplace-${input.id}`,
       name: input.workplaceName,
-      color: "#3366FF",
+      color: input.workplaceColor ?? "#3366FF",
       type: isLesson ? ("CRAM_SCHOOL" as const) : ("GENERAL" as const),
     },
     lessonRange: isLesson
@@ -351,6 +352,24 @@ describe("BulkShiftEditPageClient", () => {
       writable: true,
       value: jest.fn(() => false),
     });
+  });
+
+  it("displays the workplace name with its configured color dot", () => {
+    renderPage([
+      createShift({
+        id: "workplace-color",
+        date: "2026-03-18T00:00:00.000Z",
+        workplaceName: "色付き勤務先",
+        workplaceColor: "#F97316",
+      }),
+    ]);
+
+    const workplaceName = screen.getByText("色付き勤務先");
+    const workplaceCell = tableCell(workplaceName);
+    const colorDot = workplaceCell.querySelector("span[aria-hidden='true']");
+
+    expect(workplaceName).toBeInTheDocument();
+    expect(colorDot).toHaveStyle({ backgroundColor: "#F97316" });
   });
 
   it("highlights only the changed NORMAL control and clears it when restored", () => {
@@ -866,6 +885,8 @@ describe("BulkShiftEditPageClient", () => {
     expectOnlyControlHighlighted(controls, null);
 
     fireEvent.click(selectItem("別セット"));
+    expect(timetableSetTrigger).toHaveTextContent("別セット");
+    expect(timetableSetTrigger).not.toHaveTextContent("set-b");
     expectOnlyControlHighlighted(controls, [
       timetableSetTrigger,
       endPeriodTrigger,
@@ -960,7 +981,7 @@ describe("BulkShiftEditPageClient", () => {
       />,
     );
 
-    expect(screen.getByText("疎な時間割")).toBeInTheDocument();
+    expect(selectItem("疎な時間割")).toBeInTheDocument();
     expect(screen.queryByText("他勤務先の時間割")).not.toBeInTheDocument();
     expect(
       screen.queryByRole("button", { name: "2限" }),

@@ -92,7 +92,9 @@ export function BulkShiftRowLessonFields(props: {
             }}
           >
             <SelectTrigger id={`${row.date}-start-period`}>
-              <SelectValue placeholder="開始コマ" />
+              <SelectValue placeholder="開始コマ">
+                {row.startPeriod ? `${row.startPeriod}限` : undefined}
+              </SelectValue>
             </SelectTrigger>
             <SelectContent>
               <SelectGroup>
@@ -125,7 +127,9 @@ export function BulkShiftRowLessonFields(props: {
             }}
           >
             <SelectTrigger id={`${row.date}-end-period`}>
-              <SelectValue placeholder="終了コマ" />
+              <SelectValue placeholder="終了コマ">
+                {row.endPeriod ? `${row.endPeriod}限` : undefined}
+              </SelectValue>
             </SelectTrigger>
             <SelectContent>
               <SelectGroup>
