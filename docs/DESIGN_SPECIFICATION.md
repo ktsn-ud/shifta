@@ -191,6 +191,11 @@ Browser (React UI) → Next.js Routes → Prisma ORM → Neon DB
 - `/my`、`/my/shifts/list`、`/my/shifts/bulk` の表示月は `month=YYYY-MM` query param を正本とする。未指定または不正値の場合は現在月を表示する。
 - 月移動は `router.replace` で同 query param を更新し、履歴を増やさない。ダッシュボードからの一括登録、および一括登録完了・キャンセル後のダッシュボード復帰では表示月を引き継ぐ。
 
+### シフト一覧の勤務先・コメント表示
+
+- 一般的な勤務先表示（カレンダーや日別シフト一覧など）は、comment がある場合に `勤務先名 (コメント)` とする。
+- ただし `/my/shifts/list` のテーブルでは、`勤務先` と `コメント` を独立したカラムとして表示する。
+
 ### 計測方針
 
 - `SHIFTA_PERF=1` 時は `request-timing` と `auth-timing` を有効化し、サーバーログと `Server-Timing` ヘッダーの両方に同一ラベルで出力する。
@@ -2410,6 +2415,7 @@ GET /api/payroll/preview-annual?years=YYYY,YYYY
 # 更新履歴（git log -p 確認済み）
 
 | 日時 | 変更概要 | 具体的な変更内容 |
+| 2026-08-17 00:00:00 +0000 | シフト一覧テーブルの勤務先・コメント表示を明確化 | 一般的な勤務先表示は `勤務先名 (コメント)` を維持しつつ、`/my/shifts/list` のテーブルでは勤務先とコメントを独立カラムで表示する例外仕様を追加。 |
 | 2026-08-16 00:00:00 +0000 | シフト交通費と年間支給額プレビューを追加 | `Shift` 単位の交通費（整数円、未入力0、負数・小数不可）を新規・編集・一括登録で扱い、給与を課税、交通費を非課税として月次・年間プレビューへ反映。新規・一括登録では支給年ごとに現在・追加予定・登録後見込の各「課税合計」「非課税込み総支給額」を表示し、`GET /api/payroll/preview-annual?years=...` を追加。実給与登録済みの勤務先×支給月は実給与で置換し、Google Calendar の説明は変更しない。 |
 | 2026-08-12 00:00:00 +0000 | 全体タイポグラフィ仕様を追加 | 本文/UI に `Gen Interface JP`、`h1`/`h2` に `Gen Interface JP Display` を使用し、`gen-interface-jp@0.8.0` の公式 jsDelivr サブセット CSS から通常 400/500/600/700・Display 600 のみを配信する仕様を追加。`Geist Mono` は未使用とし、文字間隔調整は対象外とした。 |
 | 2026-08-11 00:00:00 +0000 | 勤務先 Calendar cleanup の best-effort 残存リスクを明記 | single-user MVP の勤務先削除では、稀な競合・Google Calendar 障害・`after()` 実行消失によりイベントが残り得ること、永続 retry/job を持たないことを仕様として明記。 |
