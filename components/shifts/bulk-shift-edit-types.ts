@@ -1,4 +1,8 @@
 import type { MonthShift } from "@/hooks/use-month-shifts";
+import type {
+  PreviewPayrollRule,
+  PreviewWorkplace,
+} from "@/lib/payroll/preview";
 
 export type TimetableSet = {
   id: string;
@@ -25,4 +29,6 @@ export type BulkShiftEditPageClientProps = {
   initialStartDate: string;
   initialEndDate: string;
   timetableSets: TimetableSet[];
+  previewWorkplaces: PreviewWorkplace[];
+  previewPayrollRules: PreviewPayrollRule[];
 };

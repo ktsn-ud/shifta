@@ -26,6 +26,7 @@ import {
   createDraft,
   draftChanged,
 } from "@/components/shifts/bulk-shift-edit-helpers";
+import { BulkShiftEditPayrollPreview } from "@/components/shifts/bulk-shift-edit-payroll-preview";
 import { BulkShiftEditTable } from "@/components/shifts/bulk-shift-edit-table";
 import { BulkShiftEditToolbar } from "@/components/shifts/bulk-shift-edit-toolbar";
 import type {
@@ -273,7 +274,7 @@ export function BulkShiftEditPageClient(props: BulkShiftEditPageClientProps) {
 
   return (
     <section
-      className="flex flex-col gap-6 p-4 md:p-6"
+      className="flex flex-col gap-6 p-4 pb-32 md:p-6 md:pb-6"
       aria-busy={saving || isRefreshing}
     >
       <BulkShiftEditToolbar
@@ -298,6 +299,14 @@ export function BulkShiftEditPageClient(props: BulkShiftEditPageClientProps) {
         onUpdate={update}
         onTimetableSetChange={updateLessonTimetableSet}
         onStartPeriodChange={updateLessonStartPeriod}
+      />
+      <BulkShiftEditPayrollPreview
+        currentUserId={props.currentUserId}
+        shifts={shifts}
+        drafts={drafts}
+        timetableSets={props.timetableSets}
+        workplaces={props.previewWorkplaces}
+        payrollRules={props.previewPayrollRules}
       />
     </section>
   );

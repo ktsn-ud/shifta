@@ -25,6 +25,11 @@ type PayrollPreviewBaselineQueryInput = {
   months: string[];
 };
 
+type PayrollAnnualPreviewQueryInput = {
+  userId: string;
+  years: number[];
+};
+
 type ActualPayrollQueryInput = {
   userId: string;
   month: string;
@@ -82,6 +87,10 @@ function normalizeMonths(months: string[]): string[] {
   );
 }
 
+function normalizeYears(years: number[]): number[] {
+  return Array.from(new Set(years)).sort((left, right) => left - right);
+}
+
 function normalizeCalendarIds(calendarIds: string[]): string[] {
   const normalizedIds = new Set<string>();
 
@@ -116,6 +125,8 @@ const payrollQueryKeys = {
   actualScope: () => [...payrollQueryKeys.all(), "actual"] as const,
   previewBaselineScope: () =>
     [...payrollQueryKeys.all(), "previewBaseline"] as const,
+  previewAnnualScope: () =>
+    [...payrollQueryKeys.all(), "previewAnnual"] as const,
   detailsScope: () => [...payrollQueryKeys.all(), "details"] as const,
   summary: (input: PayrollSummaryQueryInput) =>
     [...payrollQueryKeys.summaryScope(), input] as const,
@@ -132,6 +143,11 @@ const payrollQueryKeys = {
         userId: input.userId,
         months: normalizeMonths(input.months),
       },
+    ] as const,
+  previewAnnual: (input: PayrollAnnualPreviewQueryInput) =>
+    [
+      ...payrollQueryKeys.previewAnnualScope(),
+      { userId: input.userId, years: normalizeYears(input.years) },
     ] as const,
   detailsMonthly: (input: PayrollDetailsMonthlyQueryInput) =>
     [...payrollQueryKeys.detailsScope(), "monthly", input] as const,

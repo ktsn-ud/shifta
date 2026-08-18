@@ -29,6 +29,10 @@ export async function invalidateAfterShiftMutation(
       refetchType: options?.refetchType,
     }),
     queryClient.invalidateQueries({
+      queryKey: queryKeys.payroll.previewAnnualScope(),
+      refetchType: options?.refetchType,
+    }),
+    queryClient.invalidateQueries({
       queryKey: queryKeys.payroll.detailsScope(),
       refetchType: options?.refetchType,
     }),
@@ -69,6 +73,9 @@ export async function invalidateAfterWorkplaceMutation(
       queryKey: queryKeys.payroll.previewBaselineScope(),
     }),
     queryClient.invalidateQueries({
+      queryKey: queryKeys.payroll.previewAnnualScope(),
+    }),
+    queryClient.invalidateQueries({
       queryKey: queryKeys.payroll.detailsScope(),
     }),
   ]);
@@ -102,6 +109,9 @@ export async function invalidateAfterPayrollRuleMutation(
     }),
     queryClient.invalidateQueries({
       queryKey: queryKeys.payroll.previewBaselineScope(),
+    }),
+    queryClient.invalidateQueries({
+      queryKey: queryKeys.payroll.previewAnnualScope(),
     }),
     queryClient.invalidateQueries({
       queryKey: queryKeys.payroll.detailsScope(),
@@ -143,6 +153,9 @@ export async function invalidateAfterActualPayrollMutation(
     }),
     queryClient.invalidateQueries({
       queryKey: queryKeys.payroll.summaryScope(),
+    }),
+    queryClient.invalidateQueries({
+      queryKey: queryKeys.payroll.previewAnnualScope(),
     }),
     queryClient.invalidateQueries({
       queryKey: queryKeys.payroll.detailsScope(),

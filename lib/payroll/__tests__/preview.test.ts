@@ -218,6 +218,91 @@ describe("calculateShiftPayrollPreview", () => {
     expect(result.unresolvedCount).toBe(1);
   });
 
+  it.each([
+    {
+      description: "日中勤務と同値",
+      startTime: "09:00",
+      endTime: "11:00",
+      breakMinutes: 120,
+    },
+    {
+      description: "日中勤務を超過",
+      startTime: "09:00",
+      endTime: "11:00",
+      breakMinutes: 121,
+    },
+    {
+      description: "日跨ぎ勤務と同値",
+      startTime: "22:00",
+      endTime: "01:00",
+      breakMinutes: 180,
+    },
+    {
+      description: "日跨ぎ勤務を超過",
+      startTime: "22:00",
+      endTime: "01:00",
+      breakMinutes: 181,
+    },
+  ])(
+    "NORMAL の休憩時間が$descriptionなら未計算にする",
+    ({ startTime, endTime, breakMinutes }) => {
+      const result = calculateShiftPayrollPreview({
+        shifts: [
+          {
+            temporaryId: "tmp-break-too-long",
+            workplaceId: "workplace-a",
+            date: "2026-06-10",
+            shiftType: "NORMAL",
+            startTime,
+            endTime,
+            breakMinutes,
+          },
+        ],
+        workplaces,
+        payrollRules,
+        timetableSets: [],
+      });
+
+      expect(result.unresolvedCount).toBe(1);
+      expect(result.items).toEqual([
+        expect.objectContaining({
+          temporaryId: "tmp-break-too-long",
+          status: "invalid",
+          wage: null,
+          message: "休憩時間は勤務時間より短く入力してください。",
+        }),
+      ]);
+    },
+  );
+
+  it("日跨ぎNORMAL勤務では総勤務時間の直前の休憩時間を計算できる", () => {
+    const result = calculateShiftPayrollPreview({
+      shifts: [
+        {
+          temporaryId: "tmp-overnight-break-boundary",
+          workplaceId: "workplace-a",
+          date: "2026-06-10",
+          shiftType: "NORMAL",
+          startTime: "22:00",
+          endTime: "01:00",
+          breakMinutes: 179,
+        },
+      ],
+      workplaces,
+      payrollRules,
+      timetableSets: [],
+    });
+
+    expect(result.unresolvedCount).toBe(0);
+    expect(result.items).toEqual([
+      expect.objectContaining({
+        temporaryId: "tmp-overnight-break-boundary",
+        status: "ready",
+        wage: 17,
+      }),
+    ]);
+  });
+
   it("LESSONで時間割不足なら invalid を返す", () => {
     const result = calculateShiftPayrollPreview({
       shifts: [

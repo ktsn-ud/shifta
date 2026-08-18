@@ -11,6 +11,7 @@ import {
 import { usePayrollPreviewBaselineQuery } from "@/lib/query/queries/payroll";
 import { useQuery } from "@tanstack/react-query";
 import { fetchJson } from "@/lib/query/fetch-json";
+import { queryKeys } from "@/lib/query/query-keys";
 import { payrollAnnualPreviewResponseSchema } from "@/lib/query/dto-schemas/payroll";
 import { toErrorMessage } from "@/lib/messages";
 
@@ -124,7 +125,10 @@ export function useShiftPayrollPreview(input: {
     [previewResult.months],
   );
   const annualQuery = useQuery({
-    queryKey: ["payroll", "previewAnnual", input.userId, years],
+    queryKey: queryKeys.payroll.previewAnnual({
+      userId: input.userId,
+      years,
+    }),
     queryFn: ({ signal }) =>
       fetchJson(`/api/payroll/preview-annual?years=${years.join(",")}`, {
         init: { signal, cache: "no-store" },

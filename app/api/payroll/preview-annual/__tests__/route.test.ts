@@ -99,6 +99,12 @@ describe("GET /api/payroll/preview-annual", () => {
             totalAmount: 132000,
           },
         ],
+        actualPayrollKeys: [
+          {
+            workplaceId: "workplace-1",
+            paymentMonth: "2026-06",
+          },
+        ],
       },
     });
 
@@ -116,5 +122,23 @@ describe("GET /api/payroll/preview-annual", () => {
     expect(response.headers.get("cache-control")).toContain(
       "private, no-store",
     );
+    await expect(response.json()).resolves.toEqual({
+      data: {
+        years: [
+          {
+            year: 2026,
+            taxableAmount: 120000,
+            nonTaxableAmount: 12000,
+            totalAmount: 132000,
+          },
+        ],
+        actualPayrollKeys: [
+          {
+            workplaceId: "workplace-1",
+            paymentMonth: "2026-06",
+          },
+        ],
+      },
+    });
   });
 });

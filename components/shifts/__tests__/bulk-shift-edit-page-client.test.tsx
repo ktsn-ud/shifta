@@ -1,11 +1,22 @@
-import { fireEvent, render, screen, waitFor } from "@testing-library/react";
+import {
+  fireEvent,
+  render,
+  screen,
+  waitFor,
+  within,
+} from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { toast } from "sonner";
 import { BulkShiftEditPageClient } from "@/components/shifts/bulk-shift-edit-page-client";
+import { useBulkShiftEditPayrollPreview } from "@/components/shifts/use-bulk-shift-edit-payroll-preview";
 import { useMonthShifts } from "@/hooks/use-month-shifts";
 import { invalidateAfterShiftMutation } from "@/lib/query/invalidation";
 import { upsertMonthShiftsInCachesOptimistically } from "@/lib/query/optimistic-shifts";
 import { getBrowserQueryClient } from "@/lib/query/query-client";
+
+jest.mock("@/components/shifts/use-bulk-shift-edit-payroll-preview", () => ({
+  useBulkShiftEditPayrollPreview: jest.fn(),
+}));
 
 const replaceMock = jest.fn();
 const useMonthShiftsMock = jest.mocked(useMonthShifts);
@@ -16,6 +27,22 @@ const upsertMonthShiftsInCachesOptimisticallyMock = jest.mocked(
   upsertMonthShiftsInCachesOptimistically,
 );
 const getBrowserQueryClientMock = jest.mocked(getBrowserQueryClient);
+const useBulkShiftEditPayrollPreviewMock = jest.mocked(
+  useBulkShiftEditPayrollPreview,
+);
+
+function emptyPayrollPreview() {
+  return {
+    months: [],
+    years: [],
+    unresolvedCount: 0,
+    isBaselineLoading: false,
+    baselineErrorMessage: null,
+    isAnnualLoading: false,
+    annualErrorMessage: null,
+    isAnnualResponseIncomplete: false,
+  };
+}
 
 jest.mock("next/navigation", () => ({
   useRouter: () => ({ replace: replaceMock }),
@@ -142,6 +169,26 @@ type ShiftInput = {
   isConfirmed?: boolean;
 };
 
+function createPreviewProps(workplaceIds: string[]) {
+  return {
+    previewWorkplaces: workplaceIds.map((id) => ({
+      id,
+      closingDayType: "END_OF_MONTH" as const,
+      closingDay: null,
+      payday: 25,
+    })),
+    previewPayrollRules: workplaceIds.map((workplaceId) => ({
+      workplaceId,
+      startDate: "2020-01-01",
+      endDate: null,
+      baseHourlyWage: 1000,
+      nightPremiumRate: 0,
+      dailyOvertimeThreshold: 8,
+      holidayType: "NONE" as const,
+    })),
+  };
+}
+
 function createShift(input: ShiftInput) {
   const isLesson = input.shiftType === "LESSON";
   return {
@@ -206,6 +253,7 @@ function renderPage(
       initialStartDate="2026-03-01"
       initialEndDate="2026-03-31"
       timetableSets={[]}
+      {...createPreviewProps(shifts.map((shift) => shift.workplaceId))}
     />,
   );
 }
@@ -269,6 +317,30 @@ describe("BulkShiftEditPageClient", () => {
   beforeEach(() => {
     jest.resetAllMocks();
     getBrowserQueryClientMock.mockReturnValue("query-client" as never);
+    useBulkShiftEditPayrollPreviewMock.mockImplementation((input) =>
+      input.beforeShifts.length === 0
+        ? emptyPayrollPreview()
+        : {
+            ...emptyPayrollPreview(),
+            months: [
+              {
+                month: "2026-03",
+                baselineWage: 10000,
+                baselineTransportationAllowance: 0,
+                baselineTotalAmount: 10000,
+                differenceWage: 1000,
+                differenceTransportationAllowance: 480,
+                differenceTotalAmount: 1480,
+                projectedWage: 11000,
+                projectedTransportationAllowance: 480,
+                projectedTotalAmount: 11480,
+                changeCount: 1,
+                unresolvedCount: 0,
+                messages: [],
+              },
+            ],
+          },
+    );
     Object.defineProperty(globalThis, "fetch", {
       configurable: true,
       writable: true,
@@ -329,6 +401,43 @@ describe("BulkShiftEditPageClient", () => {
     expectOnlyControlHighlighted(controls, commentInput);
     fireEvent.change(commentInput, { target: { value: "" } });
     expectOnlyControlHighlighted(controls, null);
+  });
+
+  it("keeps the payroll impact preview through sorting and a failed save, then clears it when the edit is reverted", async () => {
+    const user = userEvent.setup();
+    const fetchMock = globalThis.fetch as jest.Mock;
+    fetchMock.mockResolvedValue({
+      ok: false,
+      json: async () => ({ error: "保存できません" }),
+    });
+    renderPage();
+
+    const preview = screen.getByLabelText("支給額への影響プレビュー");
+    expect(
+      within(preview).getAllByText(
+        "勤務内容を変更すると支給額への影響を確認できます",
+      ),
+    ).not.toHaveLength(0);
+
+    const transportation = screen.getByLabelText("shift-a 交通費");
+    fireEvent.change(transportation, { target: { value: "480" } });
+    expect(within(preview).getByText("2026年3月支給")).toBeInTheDocument();
+    expect(within(preview).getByText("+￥1,480")).toBeInTheDocument();
+
+    fireEvent.change(screen.getByRole("combobox", { name: "並び替え" }), {
+      target: { value: "workplace" },
+    });
+    expect(within(preview).getByText("2026年3月支給")).toBeInTheDocument();
+
+    fireEvent.change(transportation, { target: { value: "0" } });
+    expect(
+      within(preview).queryByText("2026年3月支給"),
+    ).not.toBeInTheDocument();
+
+    fireEvent.change(transportation, { target: { value: "480" } });
+    await user.click(screen.getByRole("button", { name: "変更を保存" }));
+    expect(await screen.findByText("保存できません")).toBeInTheDocument();
+    expect(within(preview).getByText("2026年3月支給")).toBeInTheDocument();
   });
 
   it("keeps an ID-keyed draft and row error after changing sort order", async () => {
@@ -418,6 +527,7 @@ describe("BulkShiftEditPageClient", () => {
         initialStartDate="2026-04-01"
         initialEndDate="2026-04-30"
         timetableSets={[]}
+        {...createPreviewProps(aprilShifts.map((shift) => shift.workplaceId))}
       />,
     );
 
@@ -541,6 +651,7 @@ describe("BulkShiftEditPageClient", () => {
         initialStartDate="2026-03-01"
         initialEndDate="2026-03-31"
         timetableSets={[]}
+        {...createPreviewProps(shifts.map((shift) => shift.workplaceId))}
       />,
     );
     expectOnlyControlHighlighted(
@@ -550,6 +661,11 @@ describe("BulkShiftEditPageClient", () => {
       ],
       null,
     );
+    expect(
+      within(screen.getByLabelText("支給額への影響プレビュー")).getAllByText(
+        "勤務内容を変更すると支給額への影響を確認できます",
+      ),
+    ).not.toHaveLength(0);
   });
 
   it("does not send a PATCH when more than 31 rows have changes", async () => {
@@ -718,6 +834,7 @@ describe("BulkShiftEditPageClient", () => {
             ],
           },
         ]}
+        {...createPreviewProps(["workplace-lesson-highlight"])}
       />,
     );
 
@@ -839,6 +956,7 @@ describe("BulkShiftEditPageClient", () => {
             periods: [],
           },
         ]}
+        {...createPreviewProps(["workplace-lesson"])}
       />,
     );
 
@@ -940,6 +1058,7 @@ describe("BulkShiftEditPageClient", () => {
             ],
           },
         ]}
+        {...createPreviewProps(["workplace-lesson"])}
       />,
     );
 

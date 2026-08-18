@@ -206,6 +206,7 @@ function handleShiftPreviewFetch(input: string): Response | null {
             totalAmount: 110000,
           },
         ],
+        actualPayrollKeys: [],
       },
     });
   }

@@ -1,5 +1,7 @@
 import type { MonthShift } from "@/hooks/use-month-shifts";
 import { resolveLessonTimeRangeFromRows } from "@/lib/shifts/lesson-time-range";
+import type { PreviewShiftInput } from "@/lib/payroll/preview";
+import { dateKeyFromApiDate } from "@/lib/calendar/date";
 import type {
   Draft,
   TimetableSet,
@@ -92,4 +94,63 @@ export function getEndPeriods(
     if (period.period >= minimumPeriod) result.push(period);
   }
   return result;
+}
+
+export function createBulkEditPreviewShiftInputs(
+  shifts: MonthShift[],
+  drafts: Map<string, Draft>,
+): { beforeShifts: PreviewShiftInput[]; afterShifts: PreviewShiftInput[] } {
+  const beforeShifts: PreviewShiftInput[] = [];
+  const afterShifts: PreviewShiftInput[] = [];
+
+  for (const shift of shifts) {
+    const draft = drafts.get(shift.id);
+    if (!draft || !draftChanged(shift, draft)) continue;
+    const common = {
+      temporaryId: shift.id,
+      workplaceId: shift.workplaceId,
+      date: dateKeyFromApiDate(shift.date),
+      shiftType: shift.shiftType,
+    } as const;
+    beforeShifts.push(
+      shift.shiftType === "NORMAL"
+        ? {
+            ...common,
+            startTime: time(shift.startTime),
+            endTime: time(shift.endTime),
+            breakMinutes: shift.breakMinutes,
+            transportationAllowance: shift.transportationAllowance,
+          }
+        : {
+            ...common,
+            lessonRange: {
+              timetableSetId: shift.lessonRange?.timetableSetId,
+              startPeriod: shift.lessonRange?.startPeriod,
+              endPeriod: shift.lessonRange?.endPeriod,
+            },
+            transportationAllowance: shift.transportationAllowance,
+          },
+    );
+    afterShifts.push(
+      shift.shiftType === "NORMAL"
+        ? {
+            ...common,
+            startTime: draft.startTime,
+            endTime: draft.endTime,
+            breakMinutes: Number(draft.breakMinutes),
+            transportationAllowance: Number(draft.transportationAllowance),
+          }
+        : {
+            ...common,
+            lessonRange: {
+              timetableSetId: draft.timetableSetId,
+              startPeriod: Number(draft.startPeriod),
+              endPeriod: Number(draft.endPeriod),
+            },
+            transportationAllowance: Number(draft.transportationAllowance),
+          },
+    );
+  }
+
+  return { beforeShifts, afterShifts };
 }

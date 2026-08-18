@@ -37,7 +37,7 @@ async function BulkShiftEditPageContent({ searchParams }: Props) {
   const month = startOfMonth(parsed ?? new Date());
   const startDate = toDateOnlyString(month);
   const endDate = toDateOnlyString(endOfMonth(month));
-  const [shifts, timetableSets] = await Promise.all([
+  const [shifts, timetableSets, workplaces] = await Promise.all([
     getMonthShifts({
       userId: current.user.id,
       startDate,
@@ -48,6 +48,28 @@ async function BulkShiftEditPageContent({ searchParams }: Props) {
       where: { workplace: { userId: current.user.id } },
       include: { timetables: { orderBy: { period: "asc" } } },
       orderBy: [{ workplaceId: "asc" }, { sortOrder: "asc" }],
+    }),
+    prisma.workplace.findMany({
+      where: { userId: current.user.id },
+      select: {
+        id: true,
+        closingDayType: true,
+        closingDay: true,
+        payday: true,
+        payrollRules: {
+          select: {
+            workplaceId: true,
+            startDate: true,
+            endDate: true,
+            baseHourlyWage: true,
+            holidayAllowanceHourly: true,
+            nightPremiumRate: true,
+            overtimePremiumRate: true,
+            dailyOvertimeThreshold: true,
+            holidayType: true,
+          },
+        },
+      },
     }),
   ]);
   return (
@@ -68,6 +90,25 @@ async function BulkShiftEditPageContent({ searchParams }: Props) {
           endTime: item.endTime.toISOString(),
         })),
       }))}
+      previewWorkplaces={workplaces.map((workplace) => ({
+        id: workplace.id,
+        closingDayType: workplace.closingDayType,
+        closingDay: workplace.closingDay,
+        payday: workplace.payday,
+      }))}
+      previewPayrollRules={workplaces.flatMap((workplace) =>
+        workplace.payrollRules.map((rule) => ({
+          workplaceId: rule.workplaceId,
+          startDate: rule.startDate.toISOString(),
+          endDate: rule.endDate?.toISOString() ?? null,
+          baseHourlyWage: rule.baseHourlyWage.toString(),
+          holidayAllowanceHourly: rule.holidayAllowanceHourly.toString(),
+          nightPremiumRate: rule.nightPremiumRate.toString(),
+          overtimePremiumRate: rule.overtimePremiumRate.toString(),
+          dailyOvertimeThreshold: rule.dailyOvertimeThreshold.toString(),
+          holidayType: rule.holidayType,
+        })),
+      )}
     />
   );
 }

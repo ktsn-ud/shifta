@@ -277,5 +277,11 @@ export const payrollAnnualPreviewResponseSchema: z.ZodType<PayrollAnnualPreviewR
           totalAmount: finiteNumberSchema,
         }),
       ),
+      actualPayrollKeys: z.array(
+        z.strictObject({
+          workplaceId: z.string(),
+          paymentMonth: monthKeySchema,
+        }),
+      ),
     }),
   });
