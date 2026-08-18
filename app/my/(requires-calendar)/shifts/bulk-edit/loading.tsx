@@ -1,5 +1,5 @@
-import { ShiftListPageLoadingSkeleton } from "@/components/shifts/ShiftListLoadingSkeleton";
+import { BulkShiftEditLoadingSkeleton } from "@/components/shifts/BulkShiftEditLoadingSkeleton";
 
 export default function Loading() {
-  return <ShiftListPageLoadingSkeleton />;
+  return <BulkShiftEditLoadingSkeleton />;
 }

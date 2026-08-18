@@ -1,7 +1,7 @@
 import { redirect } from "next/navigation";
 import { Suspense } from "react";
 import { BulkShiftEditPageClient } from "@/components/shifts/bulk-shift-edit-page-client";
-import { ShiftListPageLoadingSkeleton } from "@/components/shifts/ShiftListLoadingSkeleton";
+import { BulkShiftEditLoadingSkeleton } from "@/components/shifts/BulkShiftEditLoadingSkeleton";
 import { redirectToCalendarSetupIfNeeded } from "@/lib/api/calendar-setup-guard";
 import { requireCurrentUser } from "@/lib/api/current-user";
 import {
@@ -21,7 +21,7 @@ type Props = {
 
 export default function BulkShiftEditPage({ searchParams }: Props) {
   return (
-    <Suspense fallback={<ShiftListPageLoadingSkeleton />}>
+    <Suspense fallback={<BulkShiftEditLoadingSkeleton />}>
       <BulkShiftEditPageContent searchParams={searchParams} />
     </Suspense>
   );
