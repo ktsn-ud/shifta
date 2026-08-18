@@ -289,7 +289,9 @@ function DefaultScheduleFields({
             }}
           >
             <SelectTrigger>
-              <SelectValue placeholder="開始コマ" />
+              <SelectValue placeholder="開始コマ">
+                {defaults.startPeriod ? `${defaults.startPeriod}限` : undefined}
+              </SelectValue>
             </SelectTrigger>
             <SelectContent>
               <SelectGroup>
@@ -323,7 +325,9 @@ function DefaultScheduleFields({
             }}
           >
             <SelectTrigger>
-              <SelectValue placeholder="終了コマ" />
+              <SelectValue placeholder="終了コマ">
+                {defaults.endPeriod ? `${defaults.endPeriod}限` : undefined}
+              </SelectValue>
             </SelectTrigger>
             <SelectContent>
               <SelectGroup>

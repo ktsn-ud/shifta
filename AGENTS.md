@@ -78,6 +78,7 @@
 - TypeScript の `any` は原則使わず、型安全を優先する。
 - import は `@/*` エイリアスを優先する。
 - UI と業務ロジックを分離し、計算処理・同期処理・バリデーションは可能な限り `lib/` に置く。
+- Select では保存・API 用の `value`（ID など）とユーザー表示用ラベルを分離し、`SelectValue` には選択中の表示名を `children` として必ず明示する。ID や内部値を表示せず、新規・変更時は選択後に raw ID ではなく表示名が出ることと未選択時の placeholder をテストする。
 - secret、`.env*`、token、API key を編集・表示・ログ出力しない。
 - 依存追加・削除・更新、設定変更、ディレクトリ再編、大規模リファクタは明示指示なしに行わない。
 - Codex 起動直後や依存関係変更後は、必要に応じて `pnpm install` を実行してよい。ただし `pnpm add`、`pnpm remove`、`pnpm update` はエージェント判断で実行しない。
