@@ -29,6 +29,8 @@ import type { MonthShift } from "@/hooks/use-month-shifts";
 import { dateKeyFromApiDate } from "@/lib/calendar/date";
 import { cn } from "@/lib/utils";
 
+const DIRTY_CONTROL_CLASS = "bg-accent/65 disabled:bg-accent/65";
+
 type Props = {
   drafts: Map<string, Draft>;
   errors: Map<string, string>;
@@ -125,20 +127,14 @@ function BulkShiftEditRow({
           </span>
         </div>
       </TableCell>
-      <TableCell
-        className={cn(
-          draftFieldsChanged(
-            shift,
-            draft,
-            shift.shiftType === "NORMAL"
-              ? ["startTime", "endTime"]
-              : ["timetableSetId", "startPeriod", "endPeriod"],
-          ) && "bg-accent/65",
-        )}
-      >
+      <TableCell>
         {shift.shiftType === "NORMAL" ? (
           <div className="flex gap-2">
             <Input
+              className={cn(
+                draftFieldsChanged(shift, draft, ["startTime"]) &&
+                  DIRTY_CONTROL_CLASS,
+              )}
               aria-label={`${shift.id} 開始`}
               type="time"
               value={draft.startTime}
@@ -148,6 +144,10 @@ function BulkShiftEditRow({
               }
             />
             <Input
+              className={cn(
+                draftFieldsChanged(shift, draft, ["endTime"]) &&
+                  DIRTY_CONTROL_CLASS,
+              )}
               aria-label={`${shift.id} 終了`}
               type="time"
               value={draft.endTime}
@@ -168,7 +168,14 @@ function BulkShiftEditRow({
                     onTimetableSetChange(shift.id, value, sets);
                 }}
               >
-                <SelectTrigger size="sm">
+                <SelectTrigger
+                  size="sm"
+                  aria-label="時間割セット"
+                  className={cn(
+                    draftFieldsChanged(shift, draft, ["timetableSetId"]) &&
+                      DIRTY_CONTROL_CLASS,
+                  )}
+                >
                   <SelectValue placeholder="時間割セット" />
                 </SelectTrigger>
                 <SelectContent>
@@ -188,7 +195,14 @@ function BulkShiftEditRow({
                   if (value !== null) onStartPeriodChange(shift.id, value);
                 }}
               >
-                <SelectTrigger size="sm">
+                <SelectTrigger
+                  size="sm"
+                  aria-label="開始コマ"
+                  className={cn(
+                    draftFieldsChanged(shift, draft, ["startPeriod"]) &&
+                      DIRTY_CONTROL_CLASS,
+                  )}
+                >
                   <SelectValue placeholder="開始コマ" />
                 </SelectTrigger>
                 <SelectContent>
@@ -211,7 +225,14 @@ function BulkShiftEditRow({
                   if (value !== null) onUpdate(shift.id, "endPeriod", value);
                 }}
               >
-                <SelectTrigger size="sm">
+                <SelectTrigger
+                  size="sm"
+                  aria-label="終了コマ"
+                  className={cn(
+                    draftFieldsChanged(shift, draft, ["endPeriod"]) &&
+                      DIRTY_CONTROL_CLASS,
+                  )}
+                >
                   <SelectValue placeholder="終了コマ" />
                 </SelectTrigger>
                 <SelectContent>
@@ -237,17 +258,15 @@ function BulkShiftEditRow({
           </div>
         )}
       </TableCell>
-      <TableCell
-        className={cn(
-          shift.shiftType === "NORMAL" &&
-            draftFieldsChanged(shift, draft, ["breakMinutes"]) &&
-            "bg-accent/65",
-        )}
-      >
+      <TableCell>
         {shift.shiftType === "NORMAL" ? (
           <div className="flex items-center gap-1 whitespace-nowrap">
             <Input
-              className="w-20"
+              className={cn(
+                "w-20",
+                draftFieldsChanged(shift, draft, ["breakMinutes"]) &&
+                  DIRTY_CONTROL_CLASS,
+              )}
               aria-label={`${shift.id} 休憩`}
               type="number"
               min="0"
@@ -263,15 +282,14 @@ function BulkShiftEditRow({
           "導出"
         )}
       </TableCell>
-      <TableCell
-        className={cn(
-          draftFieldsChanged(shift, draft, ["transportationAllowance"]) &&
-            "bg-accent/65",
-        )}
-      >
+      <TableCell>
         <div className="flex items-center gap-1 whitespace-nowrap">
           <Input
-            className="w-24"
+            className={cn(
+              "w-24",
+              draftFieldsChanged(shift, draft, ["transportationAllowance"]) &&
+                DIRTY_CONTROL_CLASS,
+            )}
             aria-label={`${shift.id} 交通費`}
             type="number"
             min="0"
@@ -284,13 +302,13 @@ function BulkShiftEditRow({
           <span>円</span>
         </div>
       </TableCell>
-      <TableCell
-        className={cn(
-          draftFieldsChanged(shift, draft, ["comment"]) && "bg-accent/65",
-        )}
-      >
+      <TableCell>
         <div className="flex flex-col gap-1">
           <Input
+            className={cn(
+              draftFieldsChanged(shift, draft, ["comment"]) &&
+                DIRTY_CONTROL_CLASS,
+            )}
             aria-label={`${shift.id} コメント`}
             value={draft.comment}
             disabled={saving}

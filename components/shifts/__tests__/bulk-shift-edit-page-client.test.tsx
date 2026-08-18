@@ -78,6 +78,7 @@ jest.mock("@/components/ui/select", () => {
       return (
         <button
           type="button"
+          data-slot="select-item"
           disabled={context?.disabled}
           onClick={() => context?.onValueChange(value)}
         >
@@ -85,16 +86,39 @@ jest.mock("@/components/ui/select", () => {
         </button>
       );
     },
-    SelectTrigger: ({ children }: { children: React.ReactNode }) => {
+    SelectTrigger: ({
+      children,
+      className,
+      size,
+      disabled,
+      ...buttonProps
+    }: {
+      children: React.ReactNode;
+      className?: string;
+      size?: "sm" | "default";
+      disabled?: boolean;
+    } & React.ButtonHTMLAttributes<HTMLButtonElement>) => {
       const context = React.useContext(SelectContext);
       if (context?.value !== "date" && context?.value !== "workplace") {
-        return null;
+        return (
+          <button
+            type="button"
+            className={className}
+            data-slot="select-trigger"
+            data-size={size}
+            {...buttonProps}
+            disabled={context?.disabled || disabled}
+          >
+            {children}
+          </button>
+        );
       }
 
       const otherOrder = context.value === "date" ? "workplace" : "date";
       return (
         <select
           aria-label="並び替え"
+          className={className}
           value={context.value}
           disabled={context.disabled}
           onChange={(event) => context.onValueChange(event.target.value)}
@@ -194,25 +218,51 @@ function tableCell(element: HTMLElement): HTMLTableCellElement {
   return cell;
 }
 
-function tableRow(element: HTMLElement): HTMLTableRowElement {
-  const row = element.closest("tr");
-  if (!(row instanceof HTMLTableRowElement)) {
-    throw new Error("Expected the control to be inside a table row.");
-  }
-  return row;
-}
-
-function expectOnlyCellHighlighted(
-  row: HTMLTableRowElement,
-  highlighted: HTMLTableCellElement | null,
+function expectOnlyControlHighlighted(
+  controls: HTMLElement[],
+  highlighted: HTMLElement | HTMLElement[] | null,
 ) {
+  const row = controls[0]?.closest("tr");
+  if (!(row instanceof HTMLTableRowElement)) {
+    throw new Error("Expected the controls to be inside a table row.");
+  }
+
   for (const cell of row.querySelectorAll("td")) {
-    if (cell === highlighted) {
-      expect(cell).toHaveClass("bg-accent/65");
+    expect(cell).not.toHaveClass("bg-accent/65");
+  }
+
+  const highlightedControls = highlighted
+    ? Array.isArray(highlighted)
+      ? highlighted
+      : [highlighted]
+    : [];
+  for (const control of controls) {
+    if (highlightedControls.includes(control)) {
+      expect(control).toHaveClass("bg-accent/65");
     } else {
-      expect(cell).not.toHaveClass("bg-accent/65");
+      expect(control).not.toHaveClass("bg-accent/65");
     }
   }
+}
+
+function selectTrigger(name: string): HTMLButtonElement {
+  const trigger = screen
+    .getAllByRole("button", { name })
+    .find((element) => element.dataset.slot === "select-trigger");
+  if (!(trigger instanceof HTMLButtonElement)) {
+    throw new Error(`Expected a select trigger named ${name}.`);
+  }
+  return trigger;
+}
+
+function selectItem(name: string, index = 0): HTMLButtonElement {
+  const item = screen
+    .getAllByRole("button", { name })
+    .filter((element) => element.dataset.slot === "select-item")[index];
+  if (!(item instanceof HTMLButtonElement)) {
+    throw new Error(`Expected select item ${index} named ${name}.`);
+  }
+  return item;
 }
 
 describe("BulkShiftEditPageClient", () => {
@@ -231,7 +281,7 @@ describe("BulkShiftEditPageClient", () => {
     });
   });
 
-  it("highlights only the changed NORMAL field cell and clears the highlight when restored", () => {
+  it("highlights only the changed NORMAL control and clears it when restored", () => {
     renderPage([
       createShift({
         id: "normal-highlight",
@@ -247,36 +297,38 @@ describe("BulkShiftEditPageClient", () => {
       "normal-highlight 交通費",
     );
     const commentInput = screen.getByLabelText("normal-highlight コメント");
-    const row = tableRow(startInput);
-    const timeCell = tableCell(startInput);
-    const breakCell = tableCell(breakInput);
-    const transportationCell = tableCell(transportationInput);
-    const commentCell = tableCell(commentInput);
+    const controls = [
+      startInput,
+      endInput,
+      breakInput,
+      transportationInput,
+      commentInput,
+    ];
 
     fireEvent.change(startInput, { target: { value: "10:00" } });
-    expectOnlyCellHighlighted(row, timeCell);
+    expectOnlyControlHighlighted(controls, startInput);
     fireEvent.change(startInput, { target: { value: "09:00" } });
-    expectOnlyCellHighlighted(row, null);
+    expectOnlyControlHighlighted(controls, null);
 
     fireEvent.change(endInput, { target: { value: "17:00" } });
-    expectOnlyCellHighlighted(row, timeCell);
+    expectOnlyControlHighlighted(controls, endInput);
     fireEvent.change(endInput, { target: { value: "18:00" } });
-    expectOnlyCellHighlighted(row, null);
+    expectOnlyControlHighlighted(controls, null);
 
     fireEvent.change(breakInput, { target: { value: "30" } });
-    expectOnlyCellHighlighted(row, breakCell);
+    expectOnlyControlHighlighted(controls, breakInput);
     fireEvent.change(breakInput, { target: { value: "60" } });
-    expectOnlyCellHighlighted(row, null);
+    expectOnlyControlHighlighted(controls, null);
 
     fireEvent.change(transportationInput, { target: { value: "480" } });
-    expectOnlyCellHighlighted(row, transportationCell);
+    expectOnlyControlHighlighted(controls, transportationInput);
     fireEvent.change(transportationInput, { target: { value: "0" } });
-    expectOnlyCellHighlighted(row, null);
+    expectOnlyControlHighlighted(controls, null);
 
     fireEvent.change(commentInput, { target: { value: "連絡事項" } });
-    expectOnlyCellHighlighted(row, commentCell);
+    expectOnlyControlHighlighted(controls, commentInput);
     fireEvent.change(commentInput, { target: { value: "" } });
-    expectOnlyCellHighlighted(row, null);
+    expectOnlyControlHighlighted(controls, null);
   });
 
   it("keeps an ID-keyed draft and row error after changing sort order", async () => {
@@ -299,8 +351,9 @@ describe("BulkShiftEditPageClient", () => {
     await user.click(screen.getByRole("button", { name: "変更を保存" }));
     expect(await screen.findByText("保存できません")).toBeInTheDocument();
     expect(screen.getByText("変更 1 件")).toBeInTheDocument();
-    expect(tableCell(screen.getByLabelText("shift-a コメント"))).toHaveClass(
-      "bg-accent/65",
+    expectOnlyControlHighlighted(
+      [screen.getByLabelText("shift-a コメント")],
+      screen.getByLabelText("shift-a コメント"),
     );
 
     fireEvent.change(screen.getByRole("combobox", { name: "並び替え" }), {
@@ -315,8 +368,9 @@ describe("BulkShiftEditPageClient", () => {
     );
     expect(screen.getByText("保存できません")).toBeInTheDocument();
     expect(screen.getByText("変更 1 件")).toBeInTheDocument();
-    expect(tableCell(screen.getByLabelText("shift-a コメント"))).toHaveClass(
-      "bg-accent/65",
+    expectOnlyControlHighlighted(
+      [screen.getByLabelText("shift-a コメント")],
+      screen.getByLabelText("shift-a コメント"),
     );
   });
 
@@ -425,11 +479,15 @@ describe("BulkShiftEditPageClient", () => {
     await user.clear(screen.getByLabelText("shift-a 交通費"));
     await user.type(screen.getByLabelText("shift-a 交通費"), "480");
     await user.type(screen.getByLabelText("shift-a コメント"), "更新済み");
-    expect(tableCell(screen.getByLabelText("shift-a 交通費"))).toHaveClass(
-      "bg-accent/65",
-    );
-    expect(tableCell(screen.getByLabelText("shift-a コメント"))).toHaveClass(
-      "bg-accent/65",
+    expectOnlyControlHighlighted(
+      [
+        screen.getByLabelText("shift-a 交通費"),
+        screen.getByLabelText("shift-a コメント"),
+      ],
+      [
+        screen.getByLabelText("shift-a 交通費"),
+        screen.getByLabelText("shift-a コメント"),
+      ],
     );
     await user.click(screen.getByRole("button", { name: "変更を保存" }));
 
@@ -485,12 +543,13 @@ describe("BulkShiftEditPageClient", () => {
         timetableSets={[]}
       />,
     );
-    expect(tableCell(screen.getByLabelText("shift-a 交通費"))).not.toHaveClass(
-      "bg-accent/65",
+    expectOnlyControlHighlighted(
+      [
+        screen.getByLabelText("shift-a 交通費"),
+        screen.getByLabelText("shift-a コメント"),
+      ],
+      null,
     );
-    expect(
-      tableCell(screen.getByLabelText("shift-a コメント")),
-    ).not.toHaveClass("bg-accent/65");
   });
 
   it("does not send a PATCH when more than 31 rows have changes", async () => {
@@ -528,18 +587,24 @@ describe("BulkShiftEditPageClient", () => {
     );
     renderPage();
 
-    await user.type(
-      screen.getByLabelText("shift-a コメント"),
-      "送信中の下書き",
-    );
+    const dirtyCommentInput = screen.getByLabelText("shift-a コメント");
+    const cleanStartInput = screen.getByLabelText("shift-a 開始");
+    await user.type(dirtyCommentInput, "送信中の下書き");
     await user.click(screen.getByRole("button", { name: "変更を保存" }));
 
     await waitFor(() => {
       expect(screen.getByRole("button", { name: "保存中..." })).toBeDisabled();
     });
-    expect(screen.getByLabelText("shift-a コメント")).toBeDisabled();
-    expect(screen.getByLabelText("shift-a コメント")).toHaveValue(
-      "送信中の下書き",
+    expect(dirtyCommentInput).toBeDisabled();
+    expect(dirtyCommentInput).toHaveValue("送信中の下書き");
+    expect(dirtyCommentInput).toHaveClass(
+      "bg-accent/65",
+      "disabled:bg-accent/65",
+    );
+    expect(cleanStartInput).toBeDisabled();
+    expect(cleanStartInput).not.toHaveClass(
+      "bg-accent/65",
+      "disabled:bg-accent/65",
     );
     expect(screen.getByRole("button", { name: "前月" })).toBeDisabled();
     expect(screen.getByRole("button", { name: "翌月" })).toBeDisabled();
@@ -550,10 +615,12 @@ describe("BulkShiftEditPageClient", () => {
       json: async () => ({ error: "保存できません" }),
     } as Response);
     expect(await screen.findByText("保存できません")).toBeInTheDocument();
-    expect(screen.getByLabelText("shift-a コメント")).toHaveValue(
-      "送信中の下書き",
+    expect(dirtyCommentInput).toHaveValue("送信中の下書き");
+    expect(dirtyCommentInput).toBeEnabled();
+    expect(dirtyCommentInput).toHaveClass(
+      "bg-accent/65",
+      "disabled:bg-accent/65",
     );
-    expect(screen.getByLabelText("shift-a コメント")).toBeEnabled();
   });
 
   it("keeps lesson-derived time and break values read-only while allowing shared fields", () => {
@@ -580,7 +647,7 @@ describe("BulkShiftEditPageClient", () => {
     expect(screen.getByText("確定済み")).toBeInTheDocument();
   });
 
-  it("highlights LESSON timetable, transportation, and comment cells independently", () => {
+  it("highlights LESSON controls independently without highlighting derived values", () => {
     const lessonShift = {
       ...createShift({
         id: "lesson-highlight",
@@ -658,34 +725,52 @@ describe("BulkShiftEditPageClient", () => {
       "lesson-highlight 交通費",
     );
     const commentInput = screen.getByLabelText("lesson-highlight コメント");
-    const row = tableRow(transportationInput);
-    const timeCell = tableCell(
-      screen.getByRole("button", { name: "別セット" }),
-    );
-    const transportationCell = tableCell(transportationInput);
-    const commentCell = tableCell(commentInput);
+    const timetableSetTrigger = selectTrigger("時間割セット");
+    const startPeriodTrigger = selectTrigger("開始コマ");
+    const endPeriodTrigger = selectTrigger("終了コマ");
+    const controls = [
+      timetableSetTrigger,
+      startPeriodTrigger,
+      endPeriodTrigger,
+      transportationInput,
+      commentInput,
+    ];
+    const derivedTimeCell = tableCell(screen.getByText(/^導出:/));
     const derivedBreakCell = tableCell(screen.getByText("導出"));
 
     fireEvent.change(transportationInput, { target: { value: "480" } });
-    expectOnlyCellHighlighted(row, transportationCell);
+    expectOnlyControlHighlighted(controls, transportationInput);
     fireEvent.change(transportationInput, { target: { value: "0" } });
-    expectOnlyCellHighlighted(row, null);
+    expectOnlyControlHighlighted(controls, null);
 
     fireEvent.change(commentInput, { target: { value: "連絡事項" } });
-    expectOnlyCellHighlighted(row, commentCell);
+    expectOnlyControlHighlighted(controls, commentInput);
     fireEvent.change(commentInput, { target: { value: "" } });
-    expectOnlyCellHighlighted(row, null);
+    expectOnlyControlHighlighted(controls, null);
 
-    fireEvent.click(screen.getAllByRole("button", { name: "1限" })[1]!);
-    expectOnlyCellHighlighted(row, timeCell);
+    fireEvent.click(selectItem("別セット"));
+    expectOnlyControlHighlighted(controls, [
+      timetableSetTrigger,
+      endPeriodTrigger,
+    ]);
+    expect(derivedTimeCell).not.toHaveClass("bg-accent/65");
     expect(derivedBreakCell).not.toHaveClass("bg-accent/65");
-    fireEvent.click(screen.getAllByRole("button", { name: "2限" })[1]!);
-    expectOnlyCellHighlighted(row, null);
-    expect(derivedBreakCell).not.toHaveClass("bg-accent/65");
+    fireEvent.click(selectItem("通常時間割"));
+    expectOnlyControlHighlighted(controls, endPeriodTrigger);
 
-    fireEvent.click(screen.getByRole("button", { name: "別セット" }));
-    expectOnlyCellHighlighted(row, timeCell);
+    fireEvent.click(selectItem("2限"));
+    expectOnlyControlHighlighted(controls, startPeriodTrigger);
+    expect(derivedTimeCell).not.toHaveClass("bg-accent/65");
     expect(derivedBreakCell).not.toHaveClass("bg-accent/65");
+    fireEvent.click(selectItem("1限"));
+    expectOnlyControlHighlighted(controls, null);
+
+    fireEvent.click(selectItem("1限", 1));
+    expectOnlyControlHighlighted(controls, endPeriodTrigger);
+    expect(derivedTimeCell).not.toHaveClass("bg-accent/65");
+    expect(derivedBreakCell).not.toHaveClass("bg-accent/65");
+    fireEvent.click(selectItem("2限", 1));
+    expectOnlyControlHighlighted(controls, null);
   });
 
   it("limits lesson selections to the workplace timetable periods and immediately derives values after a gap", async () => {
@@ -766,18 +851,15 @@ describe("BulkShiftEditPageClient", () => {
       screen.getByText("導出: 時間割を選択してください"),
     ).toBeInTheDocument();
 
-    const startPeriodButton = screen.getAllByRole("button", {
-      name: "3限",
-    })[0]!;
-    const timeCell = tableCell(startPeriodButton);
+    const startPeriodTrigger = selectTrigger("開始コマ");
     const derivedBreakCell = tableCell(screen.getByText("導出"));
-    await user.click(startPeriodButton);
+    await user.click(selectItem("3限"));
 
     expect(
       screen.getByText("導出: 11:00〜11:50 / 休憩0分"),
     ).toBeInTheDocument();
     expect(screen.getByText("変更 1 件")).toBeInTheDocument();
-    expect(timeCell).toHaveClass("bg-accent/65");
+    expectOnlyControlHighlighted([startPeriodTrigger], startPeriodTrigger);
     expect(derivedBreakCell).not.toHaveClass("bg-accent/65");
   });
 
@@ -867,7 +949,7 @@ describe("BulkShiftEditPageClient", () => {
       await screen.findByText("授業シフトを保存できません"),
     ).toBeInTheDocument();
 
-    await user.click(screen.getByRole("button", { name: "別セット" }));
+    await user.click(selectItem("別セット"));
     expect(
       screen.queryByText("授業シフトを保存できません"),
     ).not.toBeInTheDocument();
@@ -877,7 +959,7 @@ describe("BulkShiftEditPageClient", () => {
       await screen.findByText("授業シフトを保存できません"),
     ).toBeInTheDocument();
 
-    await user.click(screen.getAllByRole("button", { name: "3限" })[0]!);
+    await user.click(selectItem("3限"));
     expect(
       screen.queryByText("授業シフトを保存できません"),
     ).not.toBeInTheDocument();
