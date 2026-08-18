@@ -45,6 +45,7 @@ type MonthShiftDto = {
   startTime: string;
   endTime: string;
   breakMinutes: number;
+  isConfirmed: boolean;
   transportationAllowance: number;
   shiftType: "NORMAL" | "LESSON";
   comment: string | null;
@@ -101,6 +102,7 @@ function toMonthShiftDto(
     startTime: shift.startTime.toISOString(),
     endTime: shift.endTime.toISOString(),
     breakMinutes: shift.breakMinutes,
+    isConfirmed: shift.isConfirmed,
     transportationAllowance: shift.transportationAllowance,
     shiftType: normalizedShiftType,
     comment: shift.comment,

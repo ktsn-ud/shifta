@@ -41,6 +41,8 @@ import {
   type ShiftInput,
 } from "../_shared";
 
+export { PATCH } from "../bulk-edit/route";
+
 export const maxDuration = 60;
 
 const bulkShiftItemSchema = z.strictObject({

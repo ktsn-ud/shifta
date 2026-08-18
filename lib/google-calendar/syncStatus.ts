@@ -803,6 +803,39 @@ export async function syncShiftAfterUpdate(
   return runShiftSync(shiftId, userId, "update");
 }
 
+/**
+ * Synchronizes a bulk edit using the shared bulk queue.  Keeping this separate
+ * from single-shift updates prevents a large table save from bypassing the
+ * instance-wide concurrency cap.
+ */
+export async function syncShiftsAfterBulkUpdate(
+  shiftIds: string[],
+  userId: string,
+): Promise<Array<{ shiftId: string } & SyncResult>> {
+  return mapWithConcurrency(shiftIds, BULK_SYNC_CONCURRENCY, (shiftId) =>
+    withBulkShiftSyncPermit(
+      async () => ({
+        shiftId,
+        ...(await runShiftSync(shiftId, userId, "update")),
+      }),
+      async (error) => {
+        const syncError = resolveBulkSyncError(error);
+        await updateSyncStatus(shiftId, userId, "FAILED", {
+          error: syncError.message,
+        });
+        return {
+          shiftId,
+          ok: false,
+          errorMessage: syncError.message,
+          errorCode: syncError.code,
+          requiresCalendarSetup: syncError.requiresCalendarSetup,
+          requiresSignOut: syncError.requiresSignOut,
+        };
+      },
+    ),
+  );
+}
+
 export async function retryShiftSync(
   shiftId: string,
   userId: string,

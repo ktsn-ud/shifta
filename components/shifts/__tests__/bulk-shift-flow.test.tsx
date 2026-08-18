@@ -1575,6 +1575,7 @@ describe("bulk shift flow integration", () => {
     fireEvent.change(secondEnd, { target: { value: "09:00" } });
 
     await user.click(screen.getByRole("button", { name: "確定" }));
+    await jest.advanceTimersByTimeAsync(0);
 
     await waitFor(() => {
       expect(
@@ -1608,6 +1609,7 @@ describe("bulk shift flow integration", () => {
     ).toBeInTheDocument();
 
     await user.click(screen.getByRole("button", { name: "確定" }));
+    await jest.advanceTimersByTimeAsync(0);
 
     await waitFor(() => {
       expect(

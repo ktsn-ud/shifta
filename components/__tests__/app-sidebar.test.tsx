@@ -204,6 +204,32 @@ describe("AppSidebar", () => {
     expect(
       screen.getByRole("link", { name: "勤務先・ルール" }),
     ).toHaveAttribute("data-prefetch", "false");
+    expect(screen.getByRole("link", { name: "一括編集" })).toHaveAttribute(
+      "href",
+      "/my/shifts/bulk-edit",
+    );
+  });
+
+  it("一括編集ではシフト管理と一括編集を active にする", () => {
+    usePathnameMock.mockReturnValue("/my/shifts/bulk-edit");
+
+    renderWithQueryClient(
+      <AppSidebar
+        user={{
+          name: "Test User",
+          email: "test@example.com",
+        }}
+      />,
+    );
+
+    expect(screen.getByRole("link", { name: "シフト管理" })).toHaveAttribute(
+      "data-active",
+      "true",
+    );
+    expect(screen.getByRole("link", { name: "一括編集" })).toHaveAttribute(
+      "data-active",
+      "true",
+    );
   });
 
   it("hover 時に代表リンクの router.prefetch を呼ぶ", () => {
