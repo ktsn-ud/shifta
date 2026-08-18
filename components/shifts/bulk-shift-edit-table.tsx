@@ -116,7 +116,16 @@ function BulkShiftEditRow({
   return (
     <TableRow>
       <TableCell>{dateKeyFromApiDate(shift.date)}</TableCell>
-      <TableCell>{shift.workplace.name}</TableCell>
+      <TableCell>
+        <div className="flex items-center gap-2">
+          <span
+            aria-hidden
+            className="size-2.5 shrink-0 rounded-full"
+            style={{ backgroundColor: shift.workplace.color }}
+          />
+          <span>{shift.workplace.name}</span>
+        </div>
+      </TableCell>
       <TableCell>
         <div className="flex flex-col gap-1">
           <Badge variant="secondary">
