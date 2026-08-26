@@ -340,11 +340,17 @@ function dateKeyFromDay(day: number): string {
   return `${year}-${String(month).padStart(2, "0")}-${String(day).padStart(2, "0")}`;
 }
 
-function findEnabledDayButton(day: number): HTMLButtonElement {
+function getBulkCalendarGrid(): HTMLElement {
   const calendarGrid = document.getElementById("bulk-calendar-grid");
   if (!calendarGrid) {
     throw new Error("Bulk calendar grid not found");
   }
+
+  return calendarGrid;
+}
+
+function findEnabledDayButton(day: number): HTMLButtonElement {
+  const calendarGrid = getBulkCalendarGrid();
 
   const buttons = within(calendarGrid).getAllByRole("button", {
     name: String(day),
@@ -1438,15 +1444,38 @@ describe("bulk shift flow integration", () => {
     renderBulkShiftForm();
 
     await waitFor(() => {
-      expect(screen.getByText("09:00-10:00 March Event")).toBeInTheDocument();
+      expect(
+        within(getBulkCalendarGrid()).getByText("09:00-10:00 March Event"),
+      ).toBeInTheDocument();
+    });
+
+    await user.click(findEnabledDayButton(20));
+
+    const dateKey = dateKeyFromDay(20);
+    const rowDeleteButton = screen.getByRole("button", {
+      name: `${dateKey}の入力行を削除`,
+    });
+    const row = rowDeleteButton.closest("section");
+    if (!row) {
+      throw new Error("row section not found");
+    }
+
+    fireEvent.change(within(row).getByLabelText("コメント"), {
+      target: { value: "月移動後も保持" },
     });
 
     await user.click(screen.getByRole("button", { name: "次月" }));
 
     expect(replaceMock).toHaveBeenCalledWith("/my/shifts/bulk?month=2026-04");
 
-    expect(screen.getByText("09:00-10:00 March Event")).toBeInTheDocument();
+    expect(
+      within(getBulkCalendarGrid()).getByText("09:00-10:00 March Event"),
+    ).toBeInTheDocument();
     expect(screen.getByText("最新データを更新中...")).toBeInTheDocument();
+    expect(screen.getByText("選択中: 1/31日")).toBeInTheDocument();
+    expect(within(row).getByLabelText("コメント")).toHaveValue(
+      "月移動後も保持",
+    );
 
     resolveAprilResponse(
       jsonResponse({
@@ -1476,11 +1505,17 @@ describe("bulk shift flow integration", () => {
     );
 
     await waitFor(() => {
-      expect(screen.getByText("11:00-12:00 April Event")).toBeInTheDocument();
+      expect(
+        within(getBulkCalendarGrid()).getByText("11:00-12:00 April Event"),
+      ).toBeInTheDocument();
     });
     expect(
-      screen.queryByText("09:00-10:00 March Event"),
+      within(getBulkCalendarGrid()).queryByText("09:00-10:00 March Event"),
     ).not.toBeInTheDocument();
+    expect(screen.getByText("選択中: 1/31日")).toBeInTheDocument();
+    expect(within(row).getByLabelText("コメント")).toHaveValue(
+      "月移動後も保持",
+    );
   });
   it("summarizes invalid rows and focuses the first invalid field", async () => {
     const user = userEvent.setup({

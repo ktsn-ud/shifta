@@ -49,7 +49,7 @@ describe("app/my/(requires-calendar)/shifts/bulk/page", () => {
 
     expect(connectionMock).toHaveBeenCalledTimes(1);
     expect(result.type).toBe(BulkShiftFormLazy);
-    expect(result.key).toBe("2026-12");
+    expect(result.key).toBeNull();
     expect(result.props).toEqual({
       initialMonthInputValue: "2026-12",
       todayDateKey: "2026-07-15",
