@@ -1372,6 +1372,7 @@ describe("bulk shift flow integration", () => {
     });
     const fetchMock = globalThis.fetch as jest.Mock;
 
+    const requestedCalendarMonths: string[] = [];
     let resolveAprilResponse!: (value: Response) => void;
     const aprilResponse = new Promise<Response>((resolve) => {
       resolveAprilResponse = resolve;
@@ -1382,6 +1383,7 @@ describe("bulk shift flow integration", () => {
         if (isCalendarEventsRequest(input, init)) {
           const url = new URL(input, "http://localhost");
           const month = url.searchParams.get("month");
+          requestedCalendarMonths.push(month ?? "");
 
           if (month === "2026-03") {
             return Promise.resolve(
@@ -1466,7 +1468,13 @@ describe("bulk shift flow integration", () => {
 
     await user.click(screen.getByRole("button", { name: "次月" }));
 
-    expect(replaceMock).toHaveBeenCalledWith("/my/shifts/bulk?month=2026-04");
+    expect(requestedCalendarMonths).toContain("2026-04");
+    expect(
+      replaceMock.mock.calls.some(
+        ([href]) =>
+          typeof href === "string" && href.startsWith("/my/shifts/bulk"),
+      ),
+    ).toBe(false);
 
     expect(
       within(getBulkCalendarGrid()).getByText("09:00-10:00 March Event"),
@@ -1517,6 +1525,61 @@ describe("bulk shift flow integration", () => {
       "月移動後も保持",
     );
   });
+
+  it("returns to the requested month when cancelling after moving to the next month", async () => {
+    const user = userEvent.setup({
+      advanceTimers: jest.advanceTimersByTime,
+    });
+    const fetchMock = globalThis.fetch as jest.Mock;
+    const requestedCalendarMonths: string[] = [];
+
+    fetchMock.mockImplementation(
+      (input: string, init?: { method?: string }) => {
+        if (isCalendarEventsRequest(input, init)) {
+          const month = new URL(input, "http://localhost").searchParams.get(
+            "month",
+          );
+          requestedCalendarMonths.push(month ?? "");
+
+          return Promise.resolve(
+            jsonResponse({
+              data: {
+                month: month ?? "2026-03",
+                calendars: [],
+                selectedCalendarIds: [],
+                dates: [],
+              },
+            }),
+          );
+        }
+
+        if (input.startsWith(SHIFT_FORM_BOOTSTRAP_URL)) {
+          return Promise.resolve(createShiftFormBootstrapResponse());
+        }
+
+        throw new Error("Unexpected fetch: " + input);
+      },
+    );
+
+    renderBulkShiftForm();
+
+    await waitFor(() => {
+      expect(
+        screen.getByRole("combobox", { name: "勤務先" }),
+      ).toHaveTextContent("勤務先A");
+    });
+
+    await user.click(screen.getByRole("button", { name: "次月" }));
+
+    await waitFor(() => {
+      expect(requestedCalendarMonths).toContain("2026-04");
+    });
+
+    await user.click(screen.getByRole("button", { name: "キャンセル" }));
+
+    expect(pushMock).toHaveBeenCalledWith("/my?month=2026-04");
+  });
+
   it("summarizes invalid rows and focuses the first invalid field", async () => {
     const user = userEvent.setup({
       advanceTimers: jest.advanceTimersByTime,
