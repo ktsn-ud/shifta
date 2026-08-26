@@ -41,7 +41,6 @@ async function ShiftBulkPageContent({ searchParams }: ShiftBulkPageProps) {
 
   return (
     <BulkShiftFormLazy
-      key={monthValue}
       initialMonthInputValue={monthValue}
       todayDateKey={toDateKey(today)}
     />
