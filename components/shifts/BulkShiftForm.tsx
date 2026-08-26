@@ -1184,9 +1184,6 @@ function useBulkShiftFormController({
       type: "setRequestedMonth",
       requestedMonth,
     });
-    router.replace(
-      `/my/shifts/bulk?month=${toMonthInputValue(requestedMonth)}`,
-    );
   };
 
   const handleToggleCalendarSelection = (

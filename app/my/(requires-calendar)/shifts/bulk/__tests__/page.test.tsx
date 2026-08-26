@@ -17,14 +17,8 @@ type BulkShiftPageElement = ReactElement<
 >;
 
 type BulkShiftPageContentElement = ReactElement<
-  {
-    searchParams?:
-      { month?: string | string[] } | Promise<{ month?: string | string[] }>;
-  },
-  (props: {
-    searchParams?:
-      { month?: string | string[] } | Promise<{ month?: string | string[] }>;
-  }) => Promise<BulkShiftPageElement>
+  Record<string, never>,
+  () => Promise<BulkShiftPageElement>
 >;
 
 describe("app/my/(requires-calendar)/shifts/bulk/page", () => {
@@ -39,30 +33,18 @@ describe("app/my/(requires-calendar)/shifts/bulk/page", () => {
     jest.useRealTimers();
   });
 
-  it("URL の有効な month を一括登録フォームの初期表示月へ渡す", async () => {
-    const page = BulkShiftPage({
-      searchParams: Promise.resolve({ month: "2026-12" }),
-    });
+  it("現在月を一括登録フォームの初期表示月へ渡す", async () => {
+    const page = BulkShiftPage();
     expect(page.type).toBe(Suspense);
     const content = page.props.children as BulkShiftPageContentElement;
-    const result = await content.type(content.props);
+    const result = await content.type();
 
     expect(connectionMock).toHaveBeenCalledTimes(1);
     expect(result.type).toBe(BulkShiftFormLazy);
     expect(result.key).toBeNull();
     expect(result.props).toEqual({
-      initialMonthInputValue: "2026-12",
+      initialMonthInputValue: "2026-07",
       todayDateKey: "2026-07-15",
     });
-  });
-
-  it("不正な month は現在月を初期表示にする", async () => {
-    const page = BulkShiftPage({
-      searchParams: Promise.resolve({ month: "invalid" }),
-    });
-    const content = page.props.children as BulkShiftPageContentElement;
-    const result = await content.type(content.props);
-
-    expect(result.props.initialMonthInputValue).toBe("2026-07");
   });
 });
