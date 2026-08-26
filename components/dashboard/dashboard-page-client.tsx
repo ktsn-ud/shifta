@@ -913,9 +913,7 @@ export function DashboardPageClient({
           handleCreateShift(headerCreateDate);
         }}
         onOpenBulkRegistration={() => {
-          router.push(
-            `/my/shifts/bulk?month=${toMonthInputValue(displayMonth)}`,
-          );
+          router.push("/my/shifts/bulk");
         }}
       />
 

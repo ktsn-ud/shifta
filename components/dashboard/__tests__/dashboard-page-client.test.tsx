@@ -422,7 +422,7 @@ describe("DashboardPageClient", () => {
     });
   });
 
-  it("月移動は URL を置換し、一括登録には表示中の月を引き継ぐ", () => {
+  it("月移動は URL を置換するが、一括登録には月を引き継がない", () => {
     mockedUseMonthShifts.mockImplementation(
       (month) =>
         ({
@@ -454,7 +454,7 @@ describe("DashboardPageClient", () => {
     expect(replaceMock).toHaveBeenCalledWith("/my?month=2026-08");
 
     fireEvent.click(screen.getByRole("button", { name: "一括登録" }));
-    expect(pushMock).toHaveBeenCalledWith("/my/shifts/bulk?month=2026-08");
+    expect(pushMock).toHaveBeenCalledWith("/my/shifts/bulk");
   });
   it("シフトの有無にかかわらず日付クリックで日別モーダルを開く", () => {
     render(
