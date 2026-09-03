@@ -29,7 +29,8 @@ import type { MonthShift } from "@/hooks/use-month-shifts";
 import { dateKeyFromApiDate } from "@/lib/calendar/date";
 import { cn } from "@/lib/utils";
 
-const DIRTY_CONTROL_CLASS = "bg-accent/65! disabled:bg-accent/65!";
+const DIRTY_CONTROL_CLASS =
+  "bg-primary/25! disabled:bg-primary/25! disabled:opacity-100";
 
 type Props = {
   drafts: Map<string, Draft>;
