@@ -58,6 +58,8 @@ jest.mock("@/lib/prisma", () => ({
       createMany: jest.fn(),
       findMany: jest.fn(),
     },
+    timetableSet: { findMany: jest.fn() },
+    timetable: { findMany: jest.fn() },
   },
 }));
 
@@ -69,6 +71,10 @@ const requireOwnedWorkplaceMock = jest.mocked(requireOwnedWorkplace);
 const prismaTransactionMock = jest.mocked(prisma.$transaction);
 const prismaShiftCreateManyMock = jest.mocked(prisma.shift.createMany);
 const prismaShiftFindManyMock = jest.mocked(prisma.shift.findMany);
+const prismaTimetableSetFindManyMock = jest.mocked(
+  prisma.timetableSet.findMany,
+);
+const prismaTimetableFindManyMock = jest.mocked(prisma.timetable.findMany);
 const afterMock = jest.mocked(after);
 
 function createRequest(body: unknown, options?: { origin?: string }): Request {
@@ -101,6 +107,18 @@ function createNormalShifts(count: number) {
     shiftType: "NORMAL",
     startTime: "09:00",
     endTime: "18:00",
+  }));
+}
+
+function createLessonShifts(count: number) {
+  return Array.from({ length: count }, (_, index) => ({
+    date: `2026-03-${String(index + 1).padStart(2, "0")}`,
+    shiftType: "LESSON" as const,
+    lessonRange: {
+      timetableSetId: "timetable-set-1",
+      startPeriod: 1,
+      endPeriod: 2,
+    },
   }));
 }
 
@@ -236,6 +254,23 @@ describe("POST /api/shifts/bulk batch size", () => {
       } as never),
     );
     prismaShiftFindManyMock.mockResolvedValue([]);
+    prismaTimetableSetFindManyMock.mockResolvedValue([
+      { id: "timetable-set-1", workplaceId: "workplace-1" },
+    ] as never);
+    prismaTimetableFindManyMock.mockResolvedValue([
+      {
+        timetableSetId: "timetable-set-1",
+        period: 1,
+        startTime: new Date("1970-01-01T09:00:00.000Z"),
+        endTime: new Date("1970-01-01T09:50:00.000Z"),
+      },
+      {
+        timetableSetId: "timetable-set-1",
+        period: 2,
+        startTime: new Date("1970-01-01T10:00:00.000Z"),
+        endTime: new Date("1970-01-01T10:50:00.000Z"),
+      },
+    ] as never);
   });
 
   it("accepts 31 shifts and schedules the post-create work", async () => {
@@ -257,6 +292,83 @@ describe("POST /api/shifts/bulk batch size", () => {
     });
     expect(prismaTransactionMock).toHaveBeenCalledTimes(1);
     expect(afterMock).toHaveBeenCalledTimes(1);
+  });
+
+  it("resolves 31 LESSON shifts with two timetable reads before one bulk transaction", async () => {
+    const POST = await loadPost();
+    requireOwnedWorkplaceMock.mockResolvedValue({
+      workplace: {
+        id: "workplace-1",
+        type: "CRAM_SCHOOL",
+        closingDayType: "DAY_OF_MONTH",
+        closingDay: 15,
+        payday: 25,
+      },
+    } as Awaited<ReturnType<typeof requireOwnedWorkplace>>);
+
+    const response = await POST(
+      createRequest({
+        workplaceId: "workplace-1",
+        shifts: createLessonShifts(31),
+      }),
+    );
+    if (!response) {
+      throw new Error("bulk shift route did not return a response");
+    }
+
+    expect(response.status).toBe(201);
+    expect(prismaTimetableSetFindManyMock).toHaveBeenCalledTimes(1);
+    expect(prismaTimetableFindManyMock).toHaveBeenCalledTimes(1);
+    expect(prismaTransactionMock).toHaveBeenCalledTimes(1);
+    expect(prismaShiftCreateManyMock).toHaveBeenCalledTimes(1);
+  });
+
+  it("loads timetable rows only for owned LESSON timetable sets", async () => {
+    const POST = await loadPost();
+    requireOwnedWorkplaceMock.mockResolvedValue({
+      workplace: {
+        id: "workplace-1",
+        type: "CRAM_SCHOOL",
+        closingDayType: "DAY_OF_MONTH",
+        closingDay: 15,
+        payday: 25,
+      },
+    } as Awaited<ReturnType<typeof requireOwnedWorkplace>>);
+    const [ownedLesson, foreignLesson] = createLessonShifts(2);
+    if (!ownedLesson || !foreignLesson) {
+      throw new Error("Expected two LESSON fixtures");
+    }
+
+    const response = await POST(
+      createRequest({
+        workplaceId: "workplace-1",
+        shifts: [
+          ownedLesson,
+          {
+            ...foreignLesson,
+            lessonRange: {
+              timetableSetId: "foreign-set",
+              startPeriod: 1,
+              endPeriod: 2,
+            },
+          },
+        ],
+      }),
+    );
+    if (!response) {
+      throw new Error("bulk shift route did not return a response");
+    }
+
+    expect(response.status).toBe(400);
+    expect(prismaTimetableSetFindManyMock).toHaveBeenCalledTimes(1);
+    expect(prismaTimetableFindManyMock).toHaveBeenCalledWith(
+      expect.objectContaining({
+        where: {
+          timetableSetId: { in: ["timetable-set-1"] },
+        },
+      }),
+    );
+    expect(prismaTransactionMock).not.toHaveBeenCalled();
   });
 
   it("defaults omitted or blank transportation allowance and persists a supplied integer allowance", async () => {

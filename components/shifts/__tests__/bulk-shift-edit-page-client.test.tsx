@@ -267,6 +267,34 @@ function tableCell(element: HTMLElement): HTMLTableCellElement {
   return cell;
 }
 
+const DIRTY_CONTROL_CLASS_NAMES = [
+  "bg-primary/25!",
+  "disabled:bg-primary/25!",
+  "disabled:opacity-100",
+] as const;
+
+const DEPRECATED_DIRTY_CONTROL_CLASS_NAMES = [
+  "bg-accent!",
+  "disabled:bg-accent!",
+  "bg-accent/65!",
+  "disabled:bg-accent/65!",
+] as const;
+
+function expectDirtyControlHighlighted(element: HTMLElement) {
+  for (const className of DIRTY_CONTROL_CLASS_NAMES) {
+    expect(element).toHaveClass(className);
+  }
+  for (const className of DEPRECATED_DIRTY_CONTROL_CLASS_NAMES) {
+    expect(element).not.toHaveClass(className);
+  }
+}
+
+function expectNotDirtyControlHighlighted(element: HTMLElement) {
+  for (const className of DIRTY_CONTROL_CLASS_NAMES) {
+    expect(element).not.toHaveClass(className);
+  }
+}
+
 function expectOnlyControlHighlighted(
   controls: HTMLElement[],
   highlighted: HTMLElement | HTMLElement[] | null,
@@ -277,7 +305,7 @@ function expectOnlyControlHighlighted(
   }
 
   for (const cell of row.querySelectorAll("td")) {
-    expect(cell).not.toHaveClass("bg-accent/65");
+    expectNotDirtyControlHighlighted(cell);
   }
 
   const highlightedControls = highlighted
@@ -287,9 +315,9 @@ function expectOnlyControlHighlighted(
     : [];
   for (const control of controls) {
     if (highlightedControls.includes(control)) {
-      expect(control).toHaveClass("bg-accent/65");
+      expectDirtyControlHighlighted(control);
     } else {
-      expect(control).not.toHaveClass("bg-accent/65");
+      expectNotDirtyControlHighlighted(control);
     }
   }
 }
@@ -420,6 +448,37 @@ describe("BulkShiftEditPageClient", () => {
     expectOnlyControlHighlighted(controls, commentInput);
     fireEvent.change(commentInput, { target: { value: "" } });
     expectOnlyControlHighlighted(controls, null);
+  });
+
+  it("keeps a changed NORMAL input highlighted after it loses focus", () => {
+    renderPage([
+      createShift({
+        id: "normal-blur-highlight",
+        date: "2026-03-18T00:00:00.000Z",
+        workplaceName: "勤務先A",
+      }),
+    ]);
+
+    const startInput = screen.getByLabelText("normal-blur-highlight 開始");
+    const endInput = screen.getByLabelText("normal-blur-highlight 終了");
+    const breakInput = screen.getByLabelText("normal-blur-highlight 休憩");
+    const transportationInput = screen.getByLabelText(
+      "normal-blur-highlight 交通費",
+    );
+    const commentInput = screen.getByLabelText(
+      "normal-blur-highlight コメント",
+    );
+
+    startInput.focus();
+    expect(startInput).toHaveFocus();
+    fireEvent.change(startInput, { target: { value: "10:00" } });
+    startInput.blur();
+
+    expect(startInput).not.toHaveFocus();
+    expectOnlyControlHighlighted(
+      [startInput, endInput, breakInput, transportationInput, commentInput],
+      startInput,
+    );
   });
 
   it("keeps the payroll impact preview through sorting and a failed save, then clears it when the edit is reverted", async () => {
@@ -732,15 +791,9 @@ describe("BulkShiftEditPageClient", () => {
     });
     expect(dirtyCommentInput).toBeDisabled();
     expect(dirtyCommentInput).toHaveValue("送信中の下書き");
-    expect(dirtyCommentInput).toHaveClass(
-      "bg-accent/65",
-      "disabled:bg-accent/65",
-    );
+    expectDirtyControlHighlighted(dirtyCommentInput);
     expect(cleanStartInput).toBeDisabled();
-    expect(cleanStartInput).not.toHaveClass(
-      "bg-accent/65",
-      "disabled:bg-accent/65",
-    );
+    expectNotDirtyControlHighlighted(cleanStartInput);
     expect(screen.getByRole("button", { name: "前月" })).toBeDisabled();
     expect(screen.getByRole("button", { name: "翌月" })).toBeDisabled();
     expect(screen.getByRole("combobox", { name: "並び替え" })).toBeDisabled();
@@ -752,10 +805,7 @@ describe("BulkShiftEditPageClient", () => {
     expect(await screen.findByText("保存できません")).toBeInTheDocument();
     expect(dirtyCommentInput).toHaveValue("送信中の下書き");
     expect(dirtyCommentInput).toBeEnabled();
-    expect(dirtyCommentInput).toHaveClass(
-      "bg-accent/65",
-      "disabled:bg-accent/65",
-    );
+    expectDirtyControlHighlighted(dirtyCommentInput);
   });
 
   it("keeps lesson-derived time and break values read-only while allowing shared fields", () => {
@@ -891,22 +941,22 @@ describe("BulkShiftEditPageClient", () => {
       timetableSetTrigger,
       endPeriodTrigger,
     ]);
-    expect(derivedTimeCell).not.toHaveClass("bg-accent/65");
-    expect(derivedBreakCell).not.toHaveClass("bg-accent/65");
+    expectNotDirtyControlHighlighted(derivedTimeCell);
+    expectNotDirtyControlHighlighted(derivedBreakCell);
     fireEvent.click(selectItem("通常時間割"));
     expectOnlyControlHighlighted(controls, endPeriodTrigger);
 
     fireEvent.click(selectItem("2限"));
     expectOnlyControlHighlighted(controls, startPeriodTrigger);
-    expect(derivedTimeCell).not.toHaveClass("bg-accent/65");
-    expect(derivedBreakCell).not.toHaveClass("bg-accent/65");
+    expectNotDirtyControlHighlighted(derivedTimeCell);
+    expectNotDirtyControlHighlighted(derivedBreakCell);
     fireEvent.click(selectItem("1限"));
     expectOnlyControlHighlighted(controls, null);
 
     fireEvent.click(selectItem("1限", 1));
     expectOnlyControlHighlighted(controls, endPeriodTrigger);
-    expect(derivedTimeCell).not.toHaveClass("bg-accent/65");
-    expect(derivedBreakCell).not.toHaveClass("bg-accent/65");
+    expectNotDirtyControlHighlighted(derivedTimeCell);
+    expectNotDirtyControlHighlighted(derivedBreakCell);
     fireEvent.click(selectItem("2限", 1));
     expectOnlyControlHighlighted(controls, null);
   });
@@ -999,7 +1049,7 @@ describe("BulkShiftEditPageClient", () => {
     ).toBeInTheDocument();
     expect(screen.getByText("変更 1 件")).toBeInTheDocument();
     expectOnlyControlHighlighted([startPeriodTrigger], startPeriodTrigger);
-    expect(derivedBreakCell).not.toHaveClass("bg-accent/65");
+    expectNotDirtyControlHighlighted(derivedBreakCell);
   });
 
   it("clears a lesson row's stale error when its timetable set or start period changes", async () => {

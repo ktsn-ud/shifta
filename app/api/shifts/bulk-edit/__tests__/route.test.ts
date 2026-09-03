@@ -38,9 +38,10 @@ jest.mock("@/lib/shifts/month-shifts", () => ({
 jest.mock("@/lib/prisma", () => ({
   prisma: {
     $transaction: jest.fn(),
-    shift: { findMany: jest.fn(), update: jest.fn() },
-    shiftLessonRange: { upsert: jest.fn() },
-    timetableSet: { findFirst: jest.fn() },
+    $queryRaw: jest.fn(),
+    $executeRaw: jest.fn(),
+    shift: { findMany: jest.fn() },
+    timetableSet: { findMany: jest.fn() },
     timetable: { findMany: jest.fn() },
   },
 }));
@@ -54,10 +55,10 @@ const revalidateShiftDomainTagsMock = jest.mocked(revalidateShiftDomainTags);
 const syncShiftsAfterBulkUpdateMock = jest.mocked(syncShiftsAfterBulkUpdate);
 const getMonthShiftsMock = jest.mocked(getMonthShifts);
 const transactionMock = jest.mocked(prisma.$transaction);
+const queryRawMock = jest.mocked(prisma.$queryRaw);
+const executeRawMock = jest.mocked(prisma.$executeRaw);
 const shiftFindManyMock = jest.mocked(prisma.shift.findMany);
-const shiftUpdateMock = jest.mocked(prisma.shift.update);
-const shiftLessonRangeUpsertMock = jest.mocked(prisma.shiftLessonRange.upsert);
-const timetableSetFindFirstMock = jest.mocked(prisma.timetableSet.findFirst);
+const timetableSetFindManyMock = jest.mocked(prisma.timetableSet.findMany);
 const timetableFindManyMock = jest.mocked(prisma.timetable.findMany);
 
 function createRequest(body: unknown, origin = "http://localhost"): Request {
@@ -125,6 +126,49 @@ function existingLessonShift(id: string) {
   };
 }
 
+function mockSuccessfulWrites(
+  updatedShifts: Array<{ id: string; date: Date }>,
+  lessonRangeCount = 0,
+) {
+  queryRawMock.mockResolvedValue(updatedShifts as never);
+  executeRawMock.mockResolvedValue(lessonRangeCount as never);
+}
+
+function returnedShifts(ids: string[], date = "2026-03-18") {
+  return ids.map((id) => ({
+    id,
+    date: new Date(`${date}T00:00:00.000Z`),
+  }));
+}
+
+function getSqlText(sql: unknown): string {
+  if (Array.isArray(sql)) {
+    return sql.join("");
+  }
+
+  if (!sql || typeof sql !== "object" || !("strings" in sql)) {
+    return "";
+  }
+  const strings = (sql as { strings?: unknown }).strings;
+  return Array.isArray(strings) ? strings.join("") : "";
+}
+
+function getSqlValues(sql: unknown): unknown[] {
+  if (!sql || typeof sql !== "object" || !("values" in sql)) {
+    return [];
+  }
+
+  const values = (sql as { values?: unknown }).values;
+  if (!Array.isArray(values)) {
+    return [];
+  }
+
+  return values.flatMap((value) => {
+    const nestedValues = getSqlValues(value);
+    return nestedValues.length > 0 ? nestedValues : [value];
+  });
+}
+
 async function loadPatch() {
   let routeModule: typeof import("@/app/api/shifts/bulk/route");
   await jest.isolateModulesAsync(async () => {
@@ -140,21 +184,24 @@ describe("PATCH /api/shifts/bulk public route", () => {
       user: { id: "user-1" },
     } as Awaited<ReturnType<typeof requireCurrentUser>>);
     consumeBulkShiftEditRateLimitMock.mockReturnValue({ allowed: true });
-    transactionMock.mockResolvedValue([] as never);
-    shiftUpdateMock.mockReturnValue({ operation: "shift-update" } as never);
-    shiftLessonRangeUpsertMock.mockReturnValue({
-      operation: "lesson-range-upsert",
-    } as never);
-    timetableSetFindFirstMock.mockResolvedValue({
-      id: "timetable-set-1",
-    } as never);
+    transactionMock.mockImplementation(async (callback) =>
+      callback({
+        $queryRaw: queryRawMock,
+        $executeRaw: executeRawMock,
+      } as never),
+    );
+    timetableSetFindManyMock.mockResolvedValue([
+      { id: "timetable-set-1", workplaceId: "workplace-1" },
+    ] as never);
     timetableFindManyMock.mockResolvedValue([
       {
+        timetableSetId: "timetable-set-1",
         period: 1,
         startTime: new Date("1970-01-01T09:00:00.000Z"),
         endTime: new Date("1970-01-01T09:50:00.000Z"),
       },
       {
+        timetableSetId: "timetable-set-1",
         period: 2,
         startTime: new Date("1970-01-01T10:00:00.000Z"),
         endTime: new Date("1970-01-01T10:50:00.000Z"),
@@ -248,9 +295,8 @@ describe("PATCH /api/shifts/bulk public route", () => {
       normalEdit(`shift-${index + 1}`),
     );
     const existing = acceptedEdits.map((edit) => existingShift(edit.id));
-    shiftFindManyMock
-      .mockResolvedValueOnce(existing as never)
-      .mockResolvedValueOnce([] as never);
+    shiftFindManyMock.mockResolvedValueOnce(existing as never);
+    mockSuccessfulWrites(returnedShifts(acceptedEdits.map((edit) => edit.id)));
     getMonthShiftsMock.mockResolvedValue([]);
 
     const accepted = await PATCH(createRequest({ shifts: acceptedEdits }));
@@ -269,27 +315,69 @@ describe("PATCH /api/shifts/bulk public route", () => {
     expect(shiftFindManyMock).not.toHaveBeenCalled();
   });
 
-  it("passes every LESSON update and lesson-range upsert to one array transaction", async () => {
+  it.each([15, 31])(
+    "updates %i NORMAL shifts with one parameterized write regardless of batch size",
+    async (count) => {
+      const PATCH = await loadPatch();
+      const edits = Array.from({ length: count }, (_, index) =>
+        normalEdit(`shift-${index + 1}`),
+      );
+      shiftFindManyMock.mockResolvedValueOnce(
+        edits.map((edit) => existingShift(edit.id)) as never,
+      );
+      mockSuccessfulWrites(returnedShifts(edits.map((edit) => edit.id)));
+      getMonthShiftsMock.mockResolvedValue([]);
+
+      const response = await PATCH(createRequest({ shifts: edits }));
+
+      expect(response.status).toBe(200);
+      expect(queryRawMock).toHaveBeenCalledTimes(1);
+      expect(executeRawMock).not.toHaveBeenCalled();
+
+      const query = queryRawMock.mock.calls[0];
+      if (!query) {
+        throw new Error("Expected the bulk shift update query");
+      }
+      expect(getSqlText(query[0])).toContain('UPDATE "Shift"');
+      expect(getSqlText(query[0])).not.toContain("shift-1");
+      expect(getSqlValues(query[1])).toEqual(
+        expect.arrayContaining(["shift-1", "workplace-1", "09:00:00"]),
+      );
+    },
+  );
+
+  it("resolves many LESSON edits with two reads and at most two transaction writes", async () => {
     const PATCH = await loadPatch();
-    const firstUpdate = { operation: "first-shift-update" };
-    const firstLessonRange = { operation: "first-lesson-range-upsert" };
-    const secondUpdate = { operation: "second-shift-update" };
-    const secondLessonRange = { operation: "second-lesson-range-upsert" };
-    shiftUpdateMock
-      .mockReturnValueOnce(firstUpdate as never)
-      .mockReturnValueOnce(secondUpdate as never);
-    shiftLessonRangeUpsertMock
-      .mockReturnValueOnce(firstLessonRange as never)
-      .mockReturnValueOnce(secondLessonRange as never);
-    shiftFindManyMock
-      .mockResolvedValueOnce([
-        existingLessonShift("lesson-1"),
-        existingLessonShift("lesson-2"),
-      ] as never)
-      .mockResolvedValueOnce([
-        { date: new Date("2026-03-18T00:00:00.000Z") },
-        { date: new Date("2026-03-19T00:00:00.000Z") },
-      ] as never);
+    const lessonEdits = Array.from({ length: 14 }, (_, index) =>
+      lessonEdit(`lesson-${index + 1}`),
+    );
+    const edits = [...lessonEdits, normalEdit("normal-1")];
+    shiftFindManyMock.mockResolvedValueOnce([
+      ...lessonEdits.map((edit) => existingLessonShift(edit.id)),
+      existingShift("normal-1"),
+    ] as never);
+    mockSuccessfulWrites(returnedShifts(edits.map((edit) => edit.id)), 14);
+    getMonthShiftsMock.mockResolvedValue([]);
+
+    const response = await PATCH(createRequest({ shifts: edits }));
+
+    expect(response.status).toBe(200);
+    expect(timetableSetFindManyMock).toHaveBeenCalledTimes(1);
+    expect(timetableFindManyMock).toHaveBeenCalledTimes(1);
+    expect(queryRawMock).toHaveBeenCalledTimes(1);
+    expect(executeRawMock).toHaveBeenCalledTimes(1);
+    expect(
+      queryRawMock.mock.calls.length + executeRawMock.mock.calls.length,
+    ).toBe(2);
+  });
+
+  it("writes mixed LESSON edits with one shift update and one lesson-range upsert", async () => {
+    const PATCH = await loadPatch();
+    shiftFindManyMock.mockResolvedValueOnce([
+      existingLessonShift("lesson-1"),
+      existingLessonShift("lesson-2"),
+    ] as never);
+    mockSuccessfulWrites(returnedShifts(["lesson-1", "lesson-2"]), 2);
     getMonthShiftsMock.mockResolvedValue([]);
 
     const response = await PATCH(
@@ -299,12 +387,53 @@ describe("PATCH /api/shifts/bulk public route", () => {
     );
 
     expect(response.status).toBe(200);
-    expect(transactionMock).toHaveBeenCalledWith([
-      firstUpdate,
-      firstLessonRange,
-      secondUpdate,
-      secondLessonRange,
-    ]);
+    expect(transactionMock).toHaveBeenCalledTimes(1);
+    expect(queryRawMock).toHaveBeenCalledTimes(1);
+    expect(executeRawMock).toHaveBeenCalledTimes(1);
+  });
+
+  it("does not schedule side effects when the Shift update count is incomplete", async () => {
+    const PATCH = await loadPatch();
+    shiftFindManyMock.mockResolvedValueOnce([
+      existingShift("shift-1"),
+      existingShift("shift-2"),
+    ] as never);
+    mockSuccessfulWrites(returnedShifts(["shift-1"]));
+
+    const response = await PATCH(
+      createRequest({
+        shifts: [normalEdit("shift-1"), normalEdit("shift-2")],
+      }),
+    );
+
+    expect(response.status).toBe(500);
+    expect(queryRawMock).toHaveBeenCalledTimes(1);
+    expect(executeRawMock).not.toHaveBeenCalled();
+    expect(revalidateShiftDomainTagsMock).not.toHaveBeenCalled();
+    expect(afterMock).not.toHaveBeenCalled();
+    expect(syncShiftsAfterBulkUpdateMock).not.toHaveBeenCalled();
+  });
+
+  it("does not schedule side effects when the LESSON upsert count is incomplete", async () => {
+    const PATCH = await loadPatch();
+    shiftFindManyMock.mockResolvedValueOnce([
+      existingLessonShift("lesson-1"),
+      existingLessonShift("lesson-2"),
+    ] as never);
+    mockSuccessfulWrites(returnedShifts(["lesson-1", "lesson-2"]), 1);
+
+    const response = await PATCH(
+      createRequest({
+        shifts: [lessonEdit("lesson-1"), lessonEdit("lesson-2")],
+      }),
+    );
+
+    expect(response.status).toBe(500);
+    expect(queryRawMock).toHaveBeenCalledTimes(1);
+    expect(executeRawMock).toHaveBeenCalledTimes(1);
+    expect(revalidateShiftDomainTagsMock).not.toHaveBeenCalled();
+    expect(afterMock).not.toHaveBeenCalled();
+    expect(syncShiftsAfterBulkUpdateMock).not.toHaveBeenCalled();
   });
 
   it("returns the first validation error in request order when multiple builds fail", async () => {
@@ -335,7 +464,7 @@ describe("PATCH /api/shifts/bulk public route", () => {
     shiftFindManyMock.mockResolvedValueOnce([
       existingLessonShift("lesson-1"),
     ] as never);
-    timetableSetFindFirstMock.mockRejectedValueOnce(
+    timetableSetFindManyMock.mockRejectedValueOnce(
       new Error("database unavailable"),
     );
 
@@ -390,6 +519,39 @@ describe("PATCH /api/shifts/bulk public route", () => {
     );
   });
 
+  it("loads timetable rows only for LESSON sets confirmed to belong to the workplace", async () => {
+    const PATCH = await loadPatch();
+    const foreignLessonEdit = {
+      ...lessonEdit("lesson-foreign"),
+      lessonRange: {
+        timetableSetId: "foreign-set",
+        startPeriod: 1,
+        endPeriod: 2,
+      },
+    };
+    shiftFindManyMock.mockResolvedValueOnce([
+      existingLessonShift("lesson-owned"),
+      existingLessonShift("lesson-foreign"),
+    ] as never);
+
+    const response = await PATCH(
+      createRequest({
+        shifts: [lessonEdit("lesson-owned"), foreignLessonEdit],
+      }),
+    );
+
+    expect(response.status).toBe(400);
+    expect(timetableSetFindManyMock).toHaveBeenCalledTimes(1);
+    expect(timetableFindManyMock).toHaveBeenCalledWith(
+      expect.objectContaining({
+        where: {
+          timetableSetId: { in: ["timetable-set-1"] },
+        },
+      }),
+    );
+    expect(transactionMock).not.toHaveBeenCalled();
+  });
+
   it("does not schedule sync or cache revalidation when an update transaction fails", async () => {
     const PATCH = await loadPatch();
     shiftFindManyMock.mockResolvedValueOnce([
@@ -409,6 +571,30 @@ describe("PATCH /api/shifts/bulk public route", () => {
     expect(revalidateShiftDomainTagsMock).not.toHaveBeenCalled();
     expect(afterMock).not.toHaveBeenCalled();
     expect(syncShiftsAfterBulkUpdateMock).not.toHaveBeenCalled();
+  });
+
+  it("uses the dates returned by the committed bulk update for cache revalidation and refetch bounds", async () => {
+    const PATCH = await loadPatch();
+    shiftFindManyMock.mockResolvedValueOnce([
+      existingShift("shift-1"),
+    ] as never);
+    mockSuccessfulWrites(returnedShifts(["shift-1"], "2026-04-18"));
+    getMonthShiftsMock.mockResolvedValue([]);
+
+    const response = await PATCH(
+      createRequest({ shifts: [normalEdit("shift-1")] }),
+    );
+
+    expect(response.status).toBe(200);
+    expect(revalidateShiftDomainTagsMock).toHaveBeenCalledWith(
+      expect.objectContaining({ paymentMonthKeys: ["2026-05"] }),
+    );
+    expect(getMonthShiftsMock).toHaveBeenCalledWith({
+      userId: "user-1",
+      startDate: "2026-04-18",
+      endDate: "2026-04-18",
+      includeEstimate: true,
+    });
   });
 
   it("returns updated DTOs with pending sync, revalidates affected caches, and schedules bulk update sync after commit", async () => {
@@ -434,11 +620,10 @@ describe("PATCH /api/shifts/bulk public route", () => {
       },
       lessonRange: null,
     };
-    shiftFindManyMock
-      .mockResolvedValueOnce([existingShift("shift-1")] as never)
-      .mockResolvedValueOnce([
-        { date: new Date("2026-03-18T00:00:00.000Z") },
-      ] as never);
+    shiftFindManyMock.mockResolvedValueOnce([
+      existingShift("shift-1"),
+    ] as never);
+    mockSuccessfulWrites(returnedShifts(["shift-1"]));
     getMonthShiftsMock.mockResolvedValue([updatedDto] as never);
 
     const response = await PATCH(

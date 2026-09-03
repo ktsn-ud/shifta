@@ -117,6 +117,11 @@ export type LessonTimeRangeResolver = (
   lessonRange: z.infer<typeof lessonRangeSchema>,
 ) => Promise<LessonTimeRange>;
 
+type BulkLessonRangeInput = {
+  workplaceId: string;
+  lessonRange: z.infer<typeof lessonRangeSchema>;
+};
+
 function validateShiftInput(input: ShiftInput) {
   if (input.shiftType === "LESSON") {
     if (!input.lessonRange) {
@@ -177,6 +182,111 @@ export function resolveLessonTimeRangeFromRows(
     timetables,
     (message) => new ShiftValidationError(message),
   );
+}
+
+/**
+ * Resolves all lesson ranges in a batch with two reads, regardless of the
+ * number of shifts. Callers still use the regular resolver contract so that
+ * per-shift validation and error handling remain unchanged.
+ */
+export async function createBulkLessonTimeRangeResolver(
+  inputs: BulkLessonRangeInput[],
+): Promise<LessonTimeRangeResolver | undefined> {
+  const requestedSets = Array.from(
+    new Map(
+      inputs.map((input) => [
+        `${input.workplaceId}:${input.lessonRange.timetableSetId}`,
+        {
+          workplaceId: input.workplaceId,
+          timetableSetId: input.lessonRange.timetableSetId,
+        },
+      ]),
+    ).values(),
+  );
+
+  if (requestedSets.length === 0) {
+    return undefined;
+  }
+
+  const ownedSets = await prisma.timetableSet.findMany({
+    where: {
+      OR: requestedSets.map((set) => ({
+        id: set.timetableSetId,
+        workplaceId: set.workplaceId,
+      })),
+    },
+    select: {
+      id: true,
+      workplaceId: true,
+    },
+  });
+
+  const ownedSetKeys = new Set(
+    ownedSets.map((set) => `${set.workplaceId}:${set.id}`),
+  );
+  const ownedSetIds = new Set(ownedSets.map((set) => set.id));
+  const timetableRows = await prisma.timetable.findMany({
+    where: {
+      timetableSetId: {
+        in: Array.from(ownedSetIds),
+      },
+    },
+    select: {
+      timetableSetId: true,
+      period: true,
+      startTime: true,
+      endTime: true,
+    },
+    orderBy: [{ timetableSetId: "asc" }, { period: "asc" }],
+  });
+  const periodMapBySetId = new Map<
+    string,
+    Map<number, { period: number; startTime: Date; endTime: Date }>
+  >();
+
+  for (const row of timetableRows) {
+    if (!ownedSetIds.has(row.timetableSetId)) {
+      continue;
+    }
+
+    const periods = periodMapBySetId.get(row.timetableSetId) ?? new Map();
+    periods.set(row.period, {
+      period: row.period,
+      startTime: row.startTime,
+      endTime: row.endTime,
+    });
+    periodMapBySetId.set(row.timetableSetId, periods);
+  }
+
+  return async (workplaceId, lessonRange) => {
+    if (!ownedSetKeys.has(`${workplaceId}:${lessonRange.timetableSetId}`)) {
+      throw new ShiftValidationError("選択した時間割セットが見つかりません");
+    }
+
+    const periodMap = periodMapBySetId.get(lessonRange.timetableSetId);
+    if (!periodMap) {
+      throw new ShiftValidationError("指定コマ範囲の時間割が不足しています");
+    }
+
+    const timetables: Array<{
+      period: number;
+      startTime: Date;
+      endTime: Date;
+    }> = [];
+    for (
+      let period = lessonRange.startPeriod;
+      period <= lessonRange.endPeriod;
+      period += 1
+    ) {
+      const row = periodMap.get(period);
+      if (!row) {
+        throw new ShiftValidationError("指定コマ範囲の時間割が不足しています");
+      }
+      timetables.push(row);
+    }
+
+    return resolveLessonTimeRangeFromRows(lessonRange, timetables);
+  };
 }
 
 function validateBuiltBreakMinutes(input: {
