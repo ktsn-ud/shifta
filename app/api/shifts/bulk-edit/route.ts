@@ -1,3 +1,4 @@
+import { randomUUID } from "node:crypto";
 import { after } from "next/server";
 import { z } from "zod";
 import { requireCurrentUser } from "@/lib/api/current-user";
@@ -12,9 +13,11 @@ import { syncShiftsAfterBulkUpdate } from "@/lib/google-calendar/syncStatus";
 import { buildPendingSyncResponse } from "@/lib/google-calendar/sync-response";
 import { resolveAffectedPaymentMonthKeys } from "@/lib/payroll/affected-payment-month";
 import { prisma } from "@/lib/prisma";
+import { Prisma } from "@/lib/generated/prisma/client";
 import { getMonthShifts } from "@/lib/shifts/month-shifts";
 import {
   buildShiftData,
+  createBulkLessonTimeRangeResolver,
   lessonRangeSchema,
   shiftCommentSchema,
   ShiftValidationError,
@@ -62,6 +65,13 @@ const bulkEditSchema = z.strictObject({
 });
 
 type BulkEdit = z.infer<typeof bulkEditSchema>["shifts"][number];
+
+function formatTimeValue(value: Date): string {
+  return `${value.getUTCHours().toString().padStart(2, "0")}:${value
+    .getUTCMinutes()
+    .toString()
+    .padStart(2, "0")}:${value.getUTCSeconds().toString().padStart(2, "0")}`;
+}
 
 export async function PATCH(request: Request) {
   const csrfError = verifyMutationRequest(request);
@@ -138,11 +148,34 @@ export async function PATCH(request: Request) {
       existing.push(shift);
     }
 
+    for (const shift of existing) {
+      const edit = editsById.get(shift.id);
+      if (!edit || edit.shiftType !== shift.shiftType) {
+        return jsonError("シフト種別は変更できません", 400, {
+          shiftId: shift.id,
+        });
+      }
+    }
+
+    const lessonTimeRangeResolver = await createBulkLessonTimeRangeResolver(
+      existing.flatMap((shift) => {
+        const edit = editsById.get(shift.id);
+        return edit?.shiftType === "LESSON"
+          ? [
+              {
+                workplaceId: shift.workplaceId,
+                lessonRange: edit.lessonRange,
+              },
+            ]
+          : [];
+      }),
+    );
+
     const buildResults = await Promise.allSettled(
       existing.map(async (shift) => {
         const edit = editsById.get(shift.id);
-        if (!edit || edit.shiftType !== shift.shiftType) {
-          throw new ShiftValidationError("シフト種別は変更できません");
+        if (!edit) {
+          throw new Error("更新内容が見つかりません");
         }
         return buildShiftData(
           edit.shiftType === "NORMAL"
@@ -166,6 +199,7 @@ export async function PATCH(request: Request) {
                 comment: edit.comment,
               },
           shift.workplace.type,
+          { lessonTimeRangeResolver },
         );
       }),
     );
@@ -185,30 +219,129 @@ export async function PATCH(request: Request) {
       builtById.set(existing[index].id, result.value);
     }
 
-    const updates = existing.flatMap((shift) => {
+    const updateRows = existing.map((shift) => {
       const built = builtById.get(shift.id);
       if (!built) {
         throw new Error("更新内容が見つかりません");
       }
-      const update = prisma.shift.update({
-        where: { id: shift.id },
-        data: built.shiftData,
-      });
-      return built.lessonRange
-        ? [
-            update,
-            prisma.shiftLessonRange.upsert({
-              where: { shiftId: shift.id },
-              update: built.lessonRange,
-              create: { shiftId: shift.id, ...built.lessonRange },
-            }),
-          ]
-        : [update];
+      return {
+        id: shift.id,
+        workplaceId: shift.workplaceId,
+        startTime: formatTimeValue(built.shiftData.startTime),
+        endTime: formatTimeValue(built.shiftData.endTime),
+        breakMinutes: built.shiftData.breakMinutes,
+        transportationAllowance: built.shiftData.transportationAllowance,
+        shiftType: built.shiftData.shiftType,
+        comment: built.shiftData.comment,
+        lessonRange: built.lessonRange,
+      };
     });
-    await prisma.$transaction(updates);
+    const lessonRangeRows = updateRows.flatMap((row) =>
+      row.lessonRange
+        ? [
+            {
+              id: randomUUID(),
+              shiftId: row.id,
+              ...row.lessonRange,
+            },
+          ]
+        : [],
+    );
+
+    const updatedShifts = await prisma.$transaction(async (tx) => {
+      const updatedShiftRows = await tx.$queryRaw<
+        Array<{ id: string; date: Date }>
+      >`
+        UPDATE "Shift" AS target
+        SET
+          "startTime" = updates."startTime",
+          "endTime" = updates."endTime",
+          "breakMinutes" = updates."breakMinutes",
+          "transportationAllowance" = updates."transportationAllowance",
+          "shiftType" = updates."shiftType",
+          "comment" = updates."comment"
+        FROM (
+          VALUES ${Prisma.join(
+            updateRows.map(
+              (row) => Prisma.sql`(
+                CAST(${row.id} AS text),
+                CAST(${row.workplaceId} AS text),
+                CAST(${row.startTime} AS time),
+                CAST(${row.endTime} AS time),
+                CAST(${row.breakMinutes} AS integer),
+                CAST(${row.transportationAllowance} AS integer),
+                CAST(${row.shiftType} AS "ShiftType"),
+                CAST(${row.comment} AS varchar(100))
+              )`,
+            ),
+          )}
+        ) AS updates(
+          "id",
+          "workplaceId",
+          "startTime",
+          "endTime",
+          "breakMinutes",
+          "transportationAllowance",
+          "shiftType",
+          "comment"
+        )
+        WHERE target."id" = updates."id"
+          AND target."workplaceId" = updates."workplaceId"
+        RETURNING target."id", target."date"
+      `;
+
+      if (updatedShiftRows.length !== updateRows.length) {
+        throw new Error("更新対象のシフト件数が一致しません");
+      }
+
+      if (lessonRangeRows.length > 0) {
+        const upsertedLessonRangeCount = await tx.$executeRaw`
+          INSERT INTO "ShiftLessonRange" (
+            "id",
+            "shiftId",
+            "timetableSetId",
+            "startPeriod",
+            "endPeriod"
+          )
+          VALUES ${Prisma.join(
+            lessonRangeRows.map(
+              (row) => Prisma.sql`(
+                CAST(${row.id} AS text),
+                CAST(${row.shiftId} AS text),
+                CAST(${row.timetableSetId} AS text),
+                CAST(${row.startPeriod} AS integer),
+                CAST(${row.endPeriod} AS integer)
+              )`,
+            ),
+          )}
+          ON CONFLICT ("shiftId") DO UPDATE
+          SET
+            "timetableSetId" = EXCLUDED."timetableSetId",
+            "startPeriod" = EXCLUDED."startPeriod",
+            "endPeriod" = EXCLUDED."endPeriod"
+        `;
+
+        if (upsertedLessonRangeCount !== lessonRangeRows.length) {
+          throw new Error("授業コマ範囲の更新件数が一致しません");
+        }
+      }
+
+      return updatedShiftRows;
+    });
+
+    const updatedDateById = new Map(
+      updatedShifts.map((shift) => [shift.id, shift.date]),
+    );
+    const updated = existing.map((shift) => {
+      const date = updatedDateById.get(shift.id);
+      if (!date) {
+        throw new Error("更新後のシフト日付が見つかりません");
+      }
+      return { date, workplace: shift.workplace };
+    });
 
     const paymentMonthKeys = resolveAffectedPaymentMonthKeys(
-      existing.map((shift) => ({
+      updated.map((shift) => ({
         date: shift.date,
         payrollCycle: shift.workplace,
       })),
@@ -219,10 +352,6 @@ export async function PATCH(request: Request) {
       ...(paymentMonthKeys ? { paymentMonthKeys } : {}),
     });
 
-    const updated = await prisma.shift.findMany({
-      where: { id: { in: shiftIds } },
-      select: { date: true },
-    });
     const dates = updated.map((shift) => shift.date.toISOString().slice(0, 10));
     const data =
       dates.length > 0
