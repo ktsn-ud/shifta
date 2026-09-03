@@ -267,6 +267,17 @@ function tableCell(element: HTMLElement): HTMLTableCellElement {
   return cell;
 }
 
+const DIRTY_CONTROL_CLASS_NAMES = [
+  "bg-accent/65!",
+  "disabled:bg-accent/65!",
+] as const;
+
+function expectNotDirtyControlHighlighted(element: HTMLElement) {
+  for (const className of DIRTY_CONTROL_CLASS_NAMES) {
+    expect(element).not.toHaveClass(className);
+  }
+}
+
 function expectOnlyControlHighlighted(
   controls: HTMLElement[],
   highlighted: HTMLElement | HTMLElement[] | null,
@@ -277,7 +288,7 @@ function expectOnlyControlHighlighted(
   }
 
   for (const cell of row.querySelectorAll("td")) {
-    expect(cell).not.toHaveClass("bg-accent/65");
+    expectNotDirtyControlHighlighted(cell);
   }
 
   const highlightedControls = highlighted
@@ -287,9 +298,9 @@ function expectOnlyControlHighlighted(
     : [];
   for (const control of controls) {
     if (highlightedControls.includes(control)) {
-      expect(control).toHaveClass("bg-accent/65");
+      expect(control).toHaveClass(...DIRTY_CONTROL_CLASS_NAMES);
     } else {
-      expect(control).not.toHaveClass("bg-accent/65");
+      expectNotDirtyControlHighlighted(control);
     }
   }
 }
@@ -733,14 +744,11 @@ describe("BulkShiftEditPageClient", () => {
     expect(dirtyCommentInput).toBeDisabled();
     expect(dirtyCommentInput).toHaveValue("送信中の下書き");
     expect(dirtyCommentInput).toHaveClass(
-      "bg-accent/65",
-      "disabled:bg-accent/65",
+      "bg-accent/65!",
+      "disabled:bg-accent/65!",
     );
     expect(cleanStartInput).toBeDisabled();
-    expect(cleanStartInput).not.toHaveClass(
-      "bg-accent/65",
-      "disabled:bg-accent/65",
-    );
+    expectNotDirtyControlHighlighted(cleanStartInput);
     expect(screen.getByRole("button", { name: "前月" })).toBeDisabled();
     expect(screen.getByRole("button", { name: "翌月" })).toBeDisabled();
     expect(screen.getByRole("combobox", { name: "並び替え" })).toBeDisabled();
@@ -753,8 +761,8 @@ describe("BulkShiftEditPageClient", () => {
     expect(dirtyCommentInput).toHaveValue("送信中の下書き");
     expect(dirtyCommentInput).toBeEnabled();
     expect(dirtyCommentInput).toHaveClass(
-      "bg-accent/65",
-      "disabled:bg-accent/65",
+      "bg-accent/65!",
+      "disabled:bg-accent/65!",
     );
   });
 
@@ -891,22 +899,22 @@ describe("BulkShiftEditPageClient", () => {
       timetableSetTrigger,
       endPeriodTrigger,
     ]);
-    expect(derivedTimeCell).not.toHaveClass("bg-accent/65");
-    expect(derivedBreakCell).not.toHaveClass("bg-accent/65");
+    expectNotDirtyControlHighlighted(derivedTimeCell);
+    expectNotDirtyControlHighlighted(derivedBreakCell);
     fireEvent.click(selectItem("通常時間割"));
     expectOnlyControlHighlighted(controls, endPeriodTrigger);
 
     fireEvent.click(selectItem("2限"));
     expectOnlyControlHighlighted(controls, startPeriodTrigger);
-    expect(derivedTimeCell).not.toHaveClass("bg-accent/65");
-    expect(derivedBreakCell).not.toHaveClass("bg-accent/65");
+    expectNotDirtyControlHighlighted(derivedTimeCell);
+    expectNotDirtyControlHighlighted(derivedBreakCell);
     fireEvent.click(selectItem("1限"));
     expectOnlyControlHighlighted(controls, null);
 
     fireEvent.click(selectItem("1限", 1));
     expectOnlyControlHighlighted(controls, endPeriodTrigger);
-    expect(derivedTimeCell).not.toHaveClass("bg-accent/65");
-    expect(derivedBreakCell).not.toHaveClass("bg-accent/65");
+    expectNotDirtyControlHighlighted(derivedTimeCell);
+    expectNotDirtyControlHighlighted(derivedBreakCell);
     fireEvent.click(selectItem("2限", 1));
     expectOnlyControlHighlighted(controls, null);
   });
@@ -999,7 +1007,7 @@ describe("BulkShiftEditPageClient", () => {
     ).toBeInTheDocument();
     expect(screen.getByText("変更 1 件")).toBeInTheDocument();
     expectOnlyControlHighlighted([startPeriodTrigger], startPeriodTrigger);
-    expect(derivedBreakCell).not.toHaveClass("bg-accent/65");
+    expectNotDirtyControlHighlighted(derivedBreakCell);
   });
 
   it("clears a lesson row's stale error when its timetable set or start period changes", async () => {
