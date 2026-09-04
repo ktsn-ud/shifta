@@ -107,6 +107,67 @@ describe("useMonthShifts", () => {
     expect(fetchMock).not.toHaveBeenCalled();
   });
 
+  it("refetchOnMount: always では古い初期データを primary と推定の最新値へ置き換える", async () => {
+    const queryClient = createQueryClient();
+    const fetchMock = global.fetch as jest.Mock;
+    const initialShifts = [
+      createMonthShift({ comment: "古い SSR データ", estimatedPay: 1000 }),
+    ];
+    const primaryShift = createMonthShift({
+      comment: "primary の最新データ",
+      estimatedPay: 2000,
+    });
+    const estimatedShift = createMonthShift({
+      comment: "推定の最新データ",
+      estimatedPay: 3000,
+    });
+    fetchMock.mockImplementation((input: RequestInfo | URL) =>
+      Promise.resolve(
+        createMockResponse({
+          data: String(input).includes("includeEstimate=true")
+            ? [estimatedShift]
+            : [primaryShift],
+        }),
+      ),
+    );
+
+    const { result } = renderHook(
+      () =>
+        useMonthShifts(new Date("2026-06-01T00:00:00.000Z"), {
+          cacheUserKey: "user-1",
+          initialShifts,
+          initialStartDate: "2026-06-01",
+          initialEndDate: "2026-06-30",
+          deferEstimate: true,
+          refetchOnMount: "always",
+        }),
+      {
+        wrapper: createWrapper(queryClient),
+      },
+    );
+
+    await waitFor(() => {
+      expect(fetchMock).toHaveBeenCalledTimes(2);
+    });
+
+    await waitFor(() => {
+      expect(result.current.shifts).toEqual([
+        {
+          ...primaryShift,
+          isConfirmed: false,
+          estimatedPay: 3000,
+        },
+      ]);
+    });
+
+    expect(fetchMock.mock.calls.map(([url]) => String(url))).toEqual(
+      expect.arrayContaining([
+        expect.stringContaining("includeEstimate=false"),
+        expect.stringContaining("includeEstimate=true"),
+      ]),
+    );
+  });
+
   it("後追い推定取得がAbortErrorで中断されてもコンソールエラーを出さない", async () => {
     const queryClient = createQueryClient();
     const fetchMock = global.fetch as jest.Mock;

@@ -816,6 +816,7 @@ export function DashboardPageClient({
     initialShifts: initialMonthShifts,
     initialStartDate: initialMonthStartDate,
     initialEndDate: initialMonthEndDate,
+    refetchOnMount: "always",
     deferEstimate: true,
   });
 
@@ -862,6 +863,7 @@ export function DashboardPageClient({
       initialNextPaymentAmount?.month === nextPaymentMonthValue
         ? initialNextPaymentAmount
         : undefined,
+    refetchOnMount: "always",
   });
   const unconfirmedShiftCountQuery = useUnconfirmedShiftCountQuery({
     userId: currentUserId,
