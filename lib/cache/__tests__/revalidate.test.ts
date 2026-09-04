@@ -26,19 +26,19 @@ describe("cache revalidation", () => {
 
     expect(revalidateTagMock.mock.calls).toEqual(
       expect.arrayContaining([
-        ["user:user-1:shifts", "max"],
-        ["user:user-1:actual-payroll", "max"],
-        ["user:user-1:payroll-snapshot:2026-03", "max"],
-        ["user:user-1:payroll-snapshot:2026-04", "max"],
-        ["user:user-1:summary", "max"],
-        ["user:user-1:payroll-details", "max"],
-        ["user:user-1:workplaces", "max"],
-        ["workplace:workplace-1:detail", "max"],
+        ["user:user-1:shifts", { expire: 0 }],
+        ["user:user-1:actual-payroll", { expire: 0 }],
+        ["user:user-1:payroll-snapshot:2026-03", { expire: 0 }],
+        ["user:user-1:payroll-snapshot:2026-04", { expire: 0 }],
+        ["user:user-1:summary", { expire: 0 }],
+        ["user:user-1:payroll-details", { expire: 0 }],
+        ["user:user-1:workplaces", { expire: 0 }],
+        ["workplace:workplace-1:detail", { expire: 0 }],
       ]),
     );
     expect(revalidateTagMock).not.toHaveBeenCalledWith(
       "user:user-1:payroll-snapshot",
-      "max",
+      { expire: 0 },
     );
     expect(revalidateTagMock).toHaveBeenCalledTimes(8);
   });
@@ -51,7 +51,7 @@ describe("cache revalidation", () => {
 
     expect(revalidateTagMock).toHaveBeenCalledWith(
       "user:user-1:payroll-snapshot",
-      "max",
+      { expire: 0 },
     );
   });
 

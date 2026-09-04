@@ -14,7 +14,7 @@ import { buildPendingSyncResponse } from "@/lib/google-calendar/sync-response";
 import { resolveAffectedPaymentMonthKeys } from "@/lib/payroll/affected-payment-month";
 import { prisma } from "@/lib/prisma";
 import { Prisma } from "@/lib/generated/prisma/client";
-import { getMonthShifts } from "@/lib/shifts/month-shifts";
+import { getMonthShiftsDirect } from "@/lib/shifts/month-shifts";
 import {
   buildShiftData,
   createBulkLessonTimeRangeResolver,
@@ -356,7 +356,7 @@ export async function PATCH(request: Request) {
     const data =
       dates.length > 0
         ? (
-            await getMonthShifts({
+            await getMonthShiftsDirect({
               userId: current.user.id,
               startDate: dates.reduce((left, right) =>
                 left < right ? left : right,
