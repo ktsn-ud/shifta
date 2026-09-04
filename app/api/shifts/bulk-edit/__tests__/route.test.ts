@@ -4,7 +4,10 @@ import { consumeBulkShiftEditRateLimit } from "@/lib/api/bulk-shift-rate-limit";
 import { revalidateShiftDomainTags } from "@/lib/cache/revalidate";
 import { syncShiftsAfterBulkUpdate } from "@/lib/google-calendar/syncStatus";
 import { prisma } from "@/lib/prisma";
-import { getMonthShifts } from "@/lib/shifts/month-shifts";
+import {
+  getMonthShifts,
+  getMonthShiftsDirect,
+} from "@/lib/shifts/month-shifts";
 
 jest.mock("next/server", () => ({
   after: jest.fn(),
@@ -34,6 +37,7 @@ jest.mock("@/lib/google-calendar/syncStatus", () => ({
 }));
 jest.mock("@/lib/shifts/month-shifts", () => ({
   getMonthShifts: jest.fn(),
+  getMonthShiftsDirect: jest.fn(),
 }));
 jest.mock("@/lib/prisma", () => ({
   prisma: {
@@ -54,6 +58,7 @@ const consumeBulkShiftEditRateLimitMock = jest.mocked(
 const revalidateShiftDomainTagsMock = jest.mocked(revalidateShiftDomainTags);
 const syncShiftsAfterBulkUpdateMock = jest.mocked(syncShiftsAfterBulkUpdate);
 const getMonthShiftsMock = jest.mocked(getMonthShifts);
+const getMonthShiftsDirectMock = jest.mocked(getMonthShiftsDirect);
 const transactionMock = jest.mocked(prisma.$transaction);
 const queryRawMock = jest.mocked(prisma.$queryRaw);
 const executeRawMock = jest.mocked(prisma.$executeRaw);
@@ -297,7 +302,7 @@ describe("PATCH /api/shifts/bulk public route", () => {
     const existing = acceptedEdits.map((edit) => existingShift(edit.id));
     shiftFindManyMock.mockResolvedValueOnce(existing as never);
     mockSuccessfulWrites(returnedShifts(acceptedEdits.map((edit) => edit.id)));
-    getMonthShiftsMock.mockResolvedValue([]);
+    getMonthShiftsDirectMock.mockResolvedValue([]);
 
     const accepted = await PATCH(createRequest({ shifts: acceptedEdits }));
     expect(accepted.status).toBe(200);
@@ -326,7 +331,7 @@ describe("PATCH /api/shifts/bulk public route", () => {
         edits.map((edit) => existingShift(edit.id)) as never,
       );
       mockSuccessfulWrites(returnedShifts(edits.map((edit) => edit.id)));
-      getMonthShiftsMock.mockResolvedValue([]);
+      getMonthShiftsDirectMock.mockResolvedValue([]);
 
       const response = await PATCH(createRequest({ shifts: edits }));
 
@@ -357,7 +362,7 @@ describe("PATCH /api/shifts/bulk public route", () => {
       existingShift("normal-1"),
     ] as never);
     mockSuccessfulWrites(returnedShifts(edits.map((edit) => edit.id)), 14);
-    getMonthShiftsMock.mockResolvedValue([]);
+    getMonthShiftsDirectMock.mockResolvedValue([]);
 
     const response = await PATCH(createRequest({ shifts: edits }));
 
@@ -378,7 +383,7 @@ describe("PATCH /api/shifts/bulk public route", () => {
       existingLessonShift("lesson-2"),
     ] as never);
     mockSuccessfulWrites(returnedShifts(["lesson-1", "lesson-2"]), 2);
-    getMonthShiftsMock.mockResolvedValue([]);
+    getMonthShiftsDirectMock.mockResolvedValue([]);
 
     const response = await PATCH(
       createRequest({
@@ -579,7 +584,7 @@ describe("PATCH /api/shifts/bulk public route", () => {
       existingShift("shift-1"),
     ] as never);
     mockSuccessfulWrites(returnedShifts(["shift-1"], "2026-04-18"));
-    getMonthShiftsMock.mockResolvedValue([]);
+    getMonthShiftsDirectMock.mockResolvedValue([]);
 
     const response = await PATCH(
       createRequest({ shifts: [normalEdit("shift-1")] }),
@@ -589,12 +594,13 @@ describe("PATCH /api/shifts/bulk public route", () => {
     expect(revalidateShiftDomainTagsMock).toHaveBeenCalledWith(
       expect.objectContaining({ paymentMonthKeys: ["2026-05"] }),
     );
-    expect(getMonthShiftsMock).toHaveBeenCalledWith({
+    expect(getMonthShiftsDirectMock).toHaveBeenCalledWith({
       userId: "user-1",
       startDate: "2026-04-18",
       endDate: "2026-04-18",
       includeEstimate: true,
     });
+    expect(getMonthShiftsMock).not.toHaveBeenCalled();
   });
 
   it("returns updated DTOs with pending sync, revalidates affected caches, and schedules bulk update sync after commit", async () => {
@@ -624,7 +630,7 @@ describe("PATCH /api/shifts/bulk public route", () => {
       existingShift("shift-1"),
     ] as never);
     mockSuccessfulWrites(returnedShifts(["shift-1"]));
-    getMonthShiftsMock.mockResolvedValue([updatedDto] as never);
+    getMonthShiftsDirectMock.mockResolvedValue([updatedDto] as never);
 
     const response = await PATCH(
       createRequest({ shifts: [normalEdit("shift-1")] }),
@@ -637,6 +643,13 @@ describe("PATCH /api/shifts/bulk public route", () => {
       syncStatus: "pending",
       sync: { status: "pending" },
     });
+    expect(getMonthShiftsDirectMock).toHaveBeenCalledWith({
+      userId: "user-1",
+      startDate: "2026-03-18",
+      endDate: "2026-03-18",
+      includeEstimate: true,
+    });
+    expect(getMonthShiftsMock).not.toHaveBeenCalled();
     expect(revalidateShiftDomainTagsMock).toHaveBeenCalledWith(
       expect.objectContaining({
         userId: "user-1",

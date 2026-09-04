@@ -73,6 +73,7 @@ type UseMonthShiftsOptions = {
   initialStartDate?: string;
   initialEndDate?: string;
   deferEstimate?: boolean;
+  refetchOnMount?: boolean | "always";
 };
 
 const MONTH_SHIFTS_STALE_TIME_MS = 60 * 1000;
@@ -271,6 +272,7 @@ export function useMonthShifts(month: Date, options: UseMonthShiftsOptions) {
     initialStartDate,
     initialEndDate,
     deferEstimate = false,
+    refetchOnMount,
   } = options;
   const queryClient = useQueryClient();
 
@@ -325,6 +327,7 @@ export function useMonthShifts(month: Date, options: UseMonthShiftsOptions) {
     placeholderData: (previousData) => previousData,
     staleTime: MONTH_SHIFTS_STALE_TIME_MS,
     gcTime: MONTH_SHIFTS_GC_TIME_MS,
+    ...(refetchOnMount === undefined ? {} : { refetchOnMount }),
   });
 
   const {
@@ -350,6 +353,7 @@ export function useMonthShifts(month: Date, options: UseMonthShiftsOptions) {
     placeholderData: (previousData) => previousData,
     staleTime: MONTH_SHIFTS_STALE_TIME_MS,
     gcTime: MONTH_SHIFTS_GC_TIME_MS,
+    ...(refetchOnMount === undefined ? {} : { refetchOnMount }),
   });
 
   const shifts = useMemo(() => {

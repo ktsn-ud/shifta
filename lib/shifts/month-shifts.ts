@@ -158,6 +158,26 @@ export async function getMonthShifts(
   );
 }
 
+export async function getMonthShiftsDirect(
+  params: MonthShiftQueryParams,
+): Promise<MonthShiftDto[]> {
+  const normalizedWorkplaceIds = params.workplaceIds
+    ? Array.from(new Set(params.workplaceIds))
+    : null;
+
+  if (normalizedWorkplaceIds && normalizedWorkplaceIds.length === 0) {
+    return [];
+  }
+
+  return loadMonthShiftsFromDatabase(
+    params.userId,
+    params.startDate,
+    params.endDate,
+    params.includeEstimate,
+    normalizedWorkplaceIds,
+  );
+}
+
 const loadCachedMonthShifts = cache(
   async (
     userId: string,
@@ -190,6 +210,22 @@ async function loadCachedMonthShiftsEntry(
 
   const workplaceIds =
     workplaceIdsSignature.length > 0 ? workplaceIdsSignature.split(",") : null;
+  return loadMonthShiftsFromDatabase(
+    userId,
+    startDate,
+    endDate,
+    includeEstimate,
+    workplaceIds,
+  );
+}
+
+async function loadMonthShiftsFromDatabase(
+  userId: string,
+  startDate: string,
+  endDate: string,
+  includeEstimate: boolean,
+  workplaceIds: string[] | null,
+): Promise<MonthShiftDto[]> {
   const timing = createRequestTiming("shifts:getMonthShifts");
 
   try {
