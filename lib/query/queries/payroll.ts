@@ -264,8 +264,9 @@ export function usePayrollSummaryAmountQuery(input: {
   month: string;
   enabled?: boolean;
   initialData?: PayrollSummaryAmountResult;
+  refetchOnMount?: boolean | "always";
 }) {
-  const { enabled = true, initialData, month, userId } = input;
+  const { enabled = true, initialData, month, refetchOnMount, userId } = input;
 
   return useQuery({
     queryKey: queryKeys.payroll.summaryAmount({ userId, month }),
@@ -285,6 +286,7 @@ export function usePayrollSummaryAmountQuery(input: {
     placeholderData: (previousData) => previousData,
     staleTime: PAYROLL_STALE_TIME_MS,
     gcTime: PAYROLL_GC_TIME_MS,
+    ...(refetchOnMount === undefined ? {} : { refetchOnMount }),
   });
 }
 

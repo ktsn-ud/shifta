@@ -479,6 +479,36 @@ describe("給与クエリの fetchJson 境界", () => {
     });
   });
 
+  it("refetchOnMount: always では古い初期支給額をマウント時に最新値へ置き換える", async () => {
+    const queryClient = createQueryClient();
+    const fetchMock = global.fetch as jest.Mock;
+    const initialData = { month: "2026-01", totalWage: 1200 };
+    const refreshedData = { month: "2026-01", totalWage: 4800 };
+    fetchMock.mockResolvedValue(createMockResponse(refreshedData));
+
+    const { result } = renderHook(
+      () =>
+        usePayrollSummaryAmountQuery({
+          userId: "user-1",
+          month: "2026-01",
+          initialData,
+          refetchOnMount: "always",
+        }),
+      {
+        wrapper: createWrapper(queryClient),
+      },
+    );
+
+    await waitFor(() => {
+      expect(result.current.data).toEqual(refreshedData);
+    });
+
+    expect(fetchMock).toHaveBeenCalledWith(
+      "/api/payroll/summary-amount?month=2026-01",
+      expect.objectContaining({ cache: "no-store" }),
+    );
+  });
+
   const requestedValueMismatchCases = [
     {
       name: "年次サマリーのレスポンス年",

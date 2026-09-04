@@ -117,8 +117,8 @@ Browser (React UI) → Next.js Routes → Prisma ORM → Neon DB
 - `parseJsonBody` を利用するすべての更新リクエスト（Route Handler と Server Action）は、JSON 本文を 1 MiB（UTF-8 バイト数）までに制限する。上限を超える有効な `Content-Length` は本文読取前に、ヘッダー未指定・不正・chunked の本文はストリーム読取中に拒否し、いずれも `413` と `{ "error": "リクエスト本文が大きすぎます" }` を `private, no-store` で返す。JSON 構文・UTF-8・スキーマの既存エラー契約（400）は維持する。
 - `/my`・`/my/shifts/list` の初期月次シフト取得は `lib/shifts/month-shifts.ts` の共通 DAL で取得し、初回表示時の重複 fetch を避ける。
 - 勤務先・給与ルール・時間割の参照系は、ユーザーと関連 ID をキーにした serializable DTO を Server Cache（`cacheLife("max")` + tags）へ保存する。GET API は `private, no-store` のまま、このキャッシュ済み DAL を呼び出す。
-- 勤務先・給与ルール・時間割の作成/更新/削除は公開 Mutation REST Route を持たず、共通認証・既存 Zod 検証・所有確認を行う Server Action 経由で実行する。DB 更新後は `updateTag` で勤務先および給与関連タグを即時無効化する。
-- Mutation 後のクライアント整合性は、既存の React Query ドメイン単位 invalidation と Undo / Google Calendar 同期契約を維持する。Route core の `revalidateTag` は更新経路では使用しない。
+- 勤務先・給与ルール・時間割の作成/更新/削除は公開 Mutation REST Route を持たず、共通認証・既存 Zod 検証・所有確認を行う Server Action 経由で実行する。DB 更新後は `updateTag` で勤務先および給与関連タグを即時無効化する。シフト更新の Route Handler では、DB 更新後に `revalidateTag(tag, { expire: 0 })` を使用して関連タグを即時失効させる。
+- Mutation 後のクライアント整合性は、既存の React Query ドメイン単位 invalidation と Undo / Google Calendar 同期契約を維持する。シフト一括編集などの更新後にダッシュボードへアプリ内遷移する場合は、Server Cache の即時失効に加えて、ダッシュボードの月次シフト・給与 query を画面マウント時に再取得し、Router Cache の古い prefetch や SSR の `initialData` が残っていても最新値へ補正する。
 
 ### クライアント側（React Query）
 
@@ -2450,6 +2450,7 @@ GET /api/payroll/preview-annual?years=YYYY,YYYY
 # 更新履歴（git log -p 確認済み）
 
 | 日時 | 変更概要 | 具体的な変更内容 |
+| 2026-09-03 00:00:00 +0000 | 更新後のキャッシュ整合性契約を明確化 | Server Action の更新後は `updateTag`、シフト更新 Route Handler の更新後は `revalidateTag(tag, { expire: 0 })` で関連 Server Cache を即時失効させる方針を明記。一括編集後にダッシュボードへアプリ内遷移する場合は、クライアント query のマウント時再取得で古い prefetch / `initialData` を補正する仕様を追記。 |
 | 2026-08-26 00:00:00 +0000 | 一括登録の月表示状態と編集中状態を明確化 | SCR_014 の表示月は URL query ではなくフォーム内部 state で管理し、初期表示・再読み込みは現在月から開始する仕様を追記。前月/翌月移動は URL を変えず、カレンダー表示月と Google Calendar API の取得対象月だけを変更し、選択日・日付別の編集中行入力・既定値を、リセット・キャンセル・登録成功まで保持する。ダッシュボードからの導線は query なしとし、完了・キャンセル後の `/my?month=...` 復帰は維持する。 |
 | 2026-08-18 00:00:00 +0000 | 一括登録・一括編集の給与プレビューを初期最小化 | PC/スマホの全ブレークポイントで、一括登録は追加予定額合計、一括編集は差分合計の要約を残した初期最小化表示とし、操作による詳細開閉、`aria-expanded`/`aria-controls`、キーボード操作、ページ再訪時の初期状態リセットを仕様化。単件の新規・編集は従来挙動を維持する。 |
 | 2026-08-18 00:00:00 +0000 | 一括編集の支給額差分プレビューを追加 | SCR_019 に、変更行の保存前後を比較する支給月別・年次の支給額影響プレビューを追加。年次は実給与優先とし、`preview-annual` が返す実給与登録済み勤務先×支給月を差分加算から除外する。 |

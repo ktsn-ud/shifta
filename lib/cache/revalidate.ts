@@ -19,6 +19,12 @@ function revalidateTags(tags: string[]): void {
   }
 }
 
+function expireTags(tags: string[]): void {
+  for (const tag of new Set(tags)) {
+    revalidateTag(tag, { expire: 0 });
+  }
+}
+
 export function revalidateShiftSyncTags(input: { userId: string }): void {
   revalidateTags([userShiftsTag(input.userId)]);
 }
@@ -79,7 +85,7 @@ export function revalidateShiftDomainTags(input: {
     tags.push(workplaceDetailTag(workplaceId));
   }
 
-  revalidateTags(tags);
+  expireTags(tags);
 }
 
 export function revalidateActualPayrollDomainTags(input: {

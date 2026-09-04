@@ -3,7 +3,7 @@ import { act, fireEvent, render, screen, within } from "@testing-library/react";
 import { toast } from "sonner";
 import { DashboardPageClient } from "@/components/dashboard/dashboard-page-client";
 import { useGoogleTokenExpiredSignOut } from "@/hooks/use-google-token-expired-signout";
-import { useMonthShifts } from "@/hooks/use-month-shifts";
+import { type MonthShift, useMonthShifts } from "@/hooks/use-month-shifts";
 import { getBrowserQueryClient } from "@/lib/query/query-client";
 import { usePayrollSummaryAmountQuery } from "@/lib/query/queries/payroll";
 import { useUnconfirmedShiftCountQuery } from "@/lib/query/queries/shift-confirmation";
@@ -374,6 +374,7 @@ describe("DashboardPageClient", () => {
       userId: "user-1",
       month: "2026-08",
       initialData: undefined,
+      refetchOnMount: "always",
     });
 
     const nextPaymentCard = screen
@@ -419,6 +420,46 @@ describe("DashboardPageClient", () => {
       userId: "user-1",
       month: "2026-08",
       initialData: initialNextPaymentAmount,
+      refetchOnMount: "always",
+    });
+  });
+
+  it("古い SSR payload を受け取っても、シフトと翌月支給額をマウント時に再取得する", () => {
+    const initialMonthShifts: MonthShift[] = [];
+    const initialNextPaymentAmount = {
+      month: "2026-08",
+      totalWage: 123456,
+    };
+
+    render(
+      <DashboardPageClient
+        currentUserId="user-1"
+        initialMonthShifts={initialMonthShifts}
+        initialMonthStartDate="2026-07-01"
+        initialMonthEndDate="2026-07-31"
+        initialUnconfirmedShiftCount={0}
+        initialUnconfirmedShiftCountVersion="dashboard-count-v1"
+        initialNextPaymentAmount={initialNextPaymentAmount}
+        todayDate="2026-07-15"
+      />,
+    );
+
+    expect(mockedUseMonthShifts).toHaveBeenCalledWith(
+      expect.any(Date),
+      expect.objectContaining({
+        cacheUserKey: "user-1",
+        initialShifts: initialMonthShifts,
+        initialStartDate: "2026-07-01",
+        initialEndDate: "2026-07-31",
+        deferEstimate: true,
+        refetchOnMount: "always",
+      }),
+    );
+    expect(mockedUsePayrollSummaryAmountQuery).toHaveBeenCalledWith({
+      userId: "user-1",
+      month: "2026-08",
+      initialData: initialNextPaymentAmount,
+      refetchOnMount: "always",
     });
   });
 
