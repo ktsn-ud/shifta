@@ -279,7 +279,7 @@ describe("major flow integration", () => {
     expect(payload).not.toHaveProperty("initialPayrollRule");
   });
 
-  it("creates a LESSON shift", async () => {
+  it("defaults a new cram-school shift to LESSON and lets the user switch to NORMAL", async () => {
     const user = userEvent.setup({
       advanceTimers: jest.advanceTimersByTime,
     });
@@ -384,13 +384,29 @@ describe("major flow integration", () => {
       expect(screen.getByRole("button", { name: "登録" })).toBeEnabled();
     });
 
-    const lessonRadioInput = document.getElementById("shift-type-lesson");
-    if (!lessonRadioInput) {
-      throw new Error("LESSON radio input not found");
-    }
-    fireEvent.click(lessonRadioInput);
+    const lessonRadio = screen.getByRole("radio", { name: "授業" });
+    const normalRadio = screen.getByRole("radio", { name: "事務" });
+
+    expect(lessonRadio).toBeChecked();
+    expect(normalRadio).not.toBeChecked();
+    expect(screen.getByLabelText("時間割セット")).toBeInTheDocument();
+    expect(screen.queryByLabelText("開始時刻")).not.toBeInTheDocument();
+
+    await user.click(normalRadio);
 
     await waitFor(() => {
+      expect(normalRadio).toBeChecked();
+    });
+
+    expect(lessonRadio).not.toBeChecked();
+    expect(screen.getByLabelText("開始時刻")).toBeInTheDocument();
+    expect(screen.getByLabelText("終了時刻")).toBeInTheDocument();
+    expect(screen.queryByLabelText("時間割セット")).not.toBeInTheDocument();
+
+    await user.click(lessonRadio);
+
+    await waitFor(() => {
+      expect(lessonRadio).toBeChecked();
       expect(screen.getAllByRole("combobox").length).toBeGreaterThanOrEqual(3);
     });
 
