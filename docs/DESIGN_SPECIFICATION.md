@@ -288,24 +288,26 @@ Browser (React UI) → Next.js Routes → Prisma ORM → Neon DB
 
 **ルール選択ロジック**: UI の適用開始日から適用終了日（この日まで）までを有効期間とする。内部では適用終了日の翌日を排他境界として保持し、`startDate ≤ shift.date < endDate` を満たすルール中、`startDate` が最新（最大）のものを選択する。該当期間のルールが複数保存されている場合も、`startDate` 降順で最初に見つかった 1 件を採用する。作成・更新時に重複候補がある場合、API は保存を継続したうえで warning を返す。
 
-| 属性                   | 型     | 説明                                                                                            |
-| ---------------------- | ------ | ----------------------------------------------------------------------------------------------- |
-| id                     | UUID   | ルールの一意識別子                                                                              |
-| workplaceId            | UUID   | 勤務先ID（外部キー）                                                                            |
-| startDate              | date   | ルール適用開始日                                                                                |
-| endDate                | date?  | 内部用の排他終了日。UI では前日を「適用終了日（この日まで）」として表示し、NULLの場合は現在有効 |
-| baseHourlyWage         | number | 基本時給（円、小数2位まで。NORMAL/LESSON型用）                                                  |
-| holidayAllowanceHourly | number | 休日手当（円/時の加算手当。デフォルト0）                                                        |
-| nightPremiumRate       | number | 深夜割増率（例：0.25 = 25%）                                                                    |
-| dailyOvertimeThreshold | number | 1日の所定時間（超過分が残業対象）                                                               |
-| overtimePremiumRate    | number | 残業割増率（将来拡張。例：0.25 = 25%）                                                          |
-| holidayType            | enum   | 休日判定タイプ                                                                                  |
+| 属性                     | 型      | 説明                                                                                               |
+| ------------------------ | ------- | -------------------------------------------------------------------------------------------------- |
+| id                       | UUID    | ルールの一意識別子                                                                                 |
+| workplaceId              | UUID    | 勤務先ID（外部キー）                                                                               |
+| startDate                | date    | ルール適用開始日                                                                                   |
+| endDate                  | date?   | 内部用の排他終了日。UI では前日を「適用終了日（この日まで）」として表示し、NULLの場合は現在有効    |
+| baseHourlyWage           | number  | 基本時給（円、小数2位まで。GENERAL の NORMAL / CRAM_SCHOOL の LESSON 用）                          |
+| administrativeHourlyWage | number? | 事務時給（円単位の正整数。CRAM_SCHOOL の NORMAL 型用。未設定時は baseHourlyWage にフォールバック） |
+| holidayAllowanceHourly   | number  | 休日手当（円/時の加算手当。デフォルト0）                                                           |
+| nightPremiumRate         | number  | 深夜割増率（例：0.25 = 25%）                                                                       |
+| dailyOvertimeThreshold   | number  | 1日の所定時間（超過分が残業対象）                                                                  |
+| overtimePremiumRate      | number  | 残業割増率（将来拡張。例：0.25 = 25%）                                                             |
+| holidayType              | enum    | 休日判定タイプ                                                                                     |
 
 **制約条件**
 
 - 適用期間の重複は保存可能だが、重複候補がある場合は API warning で通知する
 - endDate は NULLか startDate より後
 - baseHourlyWage > 0
+- administrativeHourlyWage は NULL または正の整数（円）
 - nightPremiumRate ≥ 0
 - overtimePremiumRate ≥ 0
 - dailyOvertimeThreshold > 0（時間、実数可）
@@ -326,8 +328,15 @@ Browser (React UI) → Next.js Routes → Prisma ORM → Neon DB
 
 勤務先「塾B」（CRAM_SCHOOL）:
 
-- Rule 1: 2026-01-01 ～ 2026-03-31、baseHourlyWage=1100、nightPremiumRate=0.0
-- Rule 2: 2026-04-01 ～ NULL、baseHourlyWage=1200、nightPremiumRate=0.0
+- Rule 1: 2026-01-01 ～ 2026-03-31、baseHourlyWage=1100、administrativeHourlyWage=NULL、nightPremiumRate=0.0
+- Rule 2: 2026-04-01 ～ NULL、baseHourlyWage=1200、administrativeHourlyWage=1250、nightPremiumRate=0.0
+
+塾の単価選択:
+
+- CRAM_SCHOOL の LESSON（授業）は `baseHourlyWage` を使用する。
+- CRAM_SCHOOL の NORMAL（事務・会議・準備など）は `administrativeHourlyWage ?? baseHourlyWage` を使用する。
+- 既存の給与ルールは事務時給をバックフィルせず、NULL の場合は `baseHourlyWage` にフォールバックする。
+- 休日手当・深夜割増などの共通設定は、選択した単価に適用する。授業・事務の単価は同一 PayrollRule の適用期間で管理する。
 
 ---
 
@@ -432,7 +441,7 @@ Browser (React UI) → Next.js Routes → Prisma ORM → Neon DB
 **NORMAL型（塾での会議・事務作業など授業以外の業務）の特徴**
 
 - ユーザーが時刻を手入力
-- 時給で給与計算される（PayrollRule の baseHourlyWage を使用）
+- 時給で給与計算される（CRAM_SCHOOL の `administrativeHourlyWage`、未設定時は `baseHourlyWage` を使用）
 
 | 属性                    | 型       | 説明                                             |
 | ----------------------- | -------- | ------------------------------------------------ |
@@ -1208,21 +1217,23 @@ H_total = (19:50 - 16:30) = 3時間20分 = 3.33時間
 
 **フォーム定義**
 
-| フィールド      | 型     | 必須 | 仕様                                                      |
-| --------------- | ------ | ---- | --------------------------------------------------------- |
-| 開始日          | DATE   | ○    | YYYY-MM-DD 形式                                           |
-| 終了日          | DATE   | ~    | 空白 = 現在有効; NULLの場合、開始日より後                 |
-| 基本時給        | NUMBER | ○    | 全勤務先共通; 正の実数; 小数2位まで                       |
-| 休日手当(円/時) | NUMBER | ~    | 全勤務先共通; 0以上; 未入力時は 0                         |
-| 深夜割増率      | NUMBER | ○    | 全勤務先共通; 0以上; 例：0.25                             |
-| 残業割増率      | NUMBER | ○    | 全勤務先共通; 0以上; 将来拡張（現時点の給与計算では保留） |
-| 1日所定時間     | NUMBER | ○    | 全勤務先共通; 正の実数; 例：8.0                           |
-| 休日判定        | RADIO  | ○    | 全勤務先共通; NONE / WEEKEND / HOLIDAY / WEEKEND_HOLIDAY  |
+| フィールド      | 型     | 必須 | 仕様                                                                 |
+| --------------- | ------ | ---- | -------------------------------------------------------------------- |
+| 開始日          | DATE   | ○    | YYYY-MM-DD 形式                                                      |
+| 終了日          | DATE   | ~    | 空白 = 現在有効; NULLの場合、開始日より後                            |
+| 基本時給        | NUMBER | ○    | 全勤務先共通; 正の実数; 小数2位まで                                  |
+| 事務時給        | NUMBER | ~    | CRAM_SCHOOL のみ; 円単位の正整数; 未入力時は基本時給へフォールバック |
+| 休日手当(円/時) | NUMBER | ~    | 全勤務先共通; 0以上; 未入力時は 0                                    |
+| 深夜割増率      | NUMBER | ○    | 全勤務先共通; 0以上; 例：0.25                                        |
+| 残業割増率      | NUMBER | ○    | 全勤務先共通; 0以上; 将来拡張（現時点の給与計算では保留）            |
+| 1日所定時間     | NUMBER | ○    | 全勤務先共通; 正の実数; 例：8.0                                      |
+| 休日判定        | RADIO  | ○    | 全勤務先共通; NONE / WEEKEND / HOLIDAY / WEEKEND_HOLIDAY             |
 
 **説明**
 
-- **勤務先タイプに関わらず同じ入力項目を使用する**
-  - `基本時給`、`休日手当(円/時)`、`深夜割増率`、`残業割増率`、`1日所定時間`、`休日判定` を共通で入力する
+- **勤務先タイプに関わらず共通項目を使用する**
+  - `基本時給`、`休日手当(円/時)`、`深夜割増率`、`残業割増率`、`1日所定時間`、`休日判定` を入力する
+  - CRAM_SCHOOL では授業に使う `基本時給` に加え、任意の `事務時給` を入力できる。未入力の場合は `基本時給` を使用する
   - 深夜時間帯は `22:00-05:00` 固定のため入力項目は持たない
   - CRAM_SCHOOL型でも通常シフトと同様に時給・割増設定を使用する
 
@@ -2014,15 +2025,16 @@ H_total = (19:50 - 16:30) = 3時間20分 = 3.33時間
 
 #### 5.2 時給の選択
 
-- 常に `baseHourlyWage` を基本単価として使用する。
+- `GENERAL` の NORMAL と `CRAM_SCHOOL` の LESSON は `baseHourlyWage` を基本単価として使用する。
+- `CRAM_SCHOOL` の NORMAL（事務・会議・準備など）は `administrativeHourlyWage ?? baseHourlyWage` を基本単価として使用する。
 - `holidayAllowanceHourly` は休日時間に対する独立した加算手当（円/時）として使用する。
 
 #### 5.3 金額内訳（1シフト）
 
-- `基本勤務金額` = `H_base × baseHourlyWage`
+- `基本勤務金額` = `H_base × 選択単価`
 - `休日勤務金額` = `H_holiday × holidayAllowanceHourly`（`holidayAllowanceHourly` による独立加算）
-- `深夜勤務金額` = `H_night × baseHourlyWage × (1 + nightPremiumRate)`
-- 表示上の深夜勤務式は「深夜時間 × 深夜時給（割増込）」とし、深夜時給は `baseHourlyWage × (1 + nightPremiumRate)` で求める。
+- `深夜勤務金額` = `H_night × 選択単価 × (1 + nightPremiumRate)`
+- 表示上の深夜勤務式は「深夜時間 × 選択単価（割増込）」とし、深夜時給は `選択単価 × (1 + nightPremiumRate)` で求める。
 - `残業金額` = `0`（`H_overtime` は参考表示のみ。総額に加算しない）
 - `シフト合計` = `round(基本勤務金額) + round(休日勤務金額) + round(深夜勤務金額)`
 
@@ -2448,6 +2460,8 @@ GET /api/payroll/preview-annual?years=YYYY,YYYY
 ---
 
 # 更新履歴（git log -p 確認済み）
+
+| 2026-09-19 00:00:00 +0000 | 塾の事務時給を復活 | `PayrollRule` に nullable な `administrativeHourlyWage` を追加し、CRAM_SCHOOL の NORMAL（事務・会議・準備など）は事務時給、未設定時は基本時給へフォールバックする仕様を追加。LESSON と GENERAL の NORMAL は基本時給を維持し、給与ルール画面の塾固有入力、共通割増設定、既存データをバックフィルしない方針を明記。 |
 
 | 日時 | 変更概要 | 具体的な変更内容 |
 | 2026-09-03 00:00:00 +0000 | 更新後のキャッシュ整合性契約を明確化 | Server Action の更新後は `updateTag`、シフト更新 Route Handler の更新後は `revalidateTag(tag, { expire: 0 })` で関連 Server Cache を即時失効させる方針を明記。一括編集後にダッシュボードへアプリ内遷移する場合は、クライアント query のマウント時再取得で古い prefetch / `initialData` を補正する仕様を追記。 |

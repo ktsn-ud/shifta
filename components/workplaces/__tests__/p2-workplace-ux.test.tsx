@@ -333,12 +333,18 @@ describe("勤務先管理のP2 UX", () => {
     fireEvent.change(screen.getByLabelText("適用開始日"), {
       target: { value: "2026-07-01" },
     });
+    fireEvent.change(screen.getByLabelText("事務時給（任意）"), {
+      target: { value: "900" },
+    });
     fireEvent.click(screen.getByRole("button", { name: "作成" }));
 
     await waitFor(() => {
       expect(createPayrollRuleActionMock).toHaveBeenCalledWith(
         "workplace-1",
-        expect.objectContaining({ startDate: "2026-07-01" }),
+        expect.objectContaining({
+          startDate: "2026-07-01",
+          administrativeHourlyWage: 900,
+        }),
       );
       expect(pushMock).toHaveBeenCalledWith(
         "/my/workplaces/workplace-1/payroll-rules",
@@ -378,6 +384,53 @@ describe("勤務先管理のP2 UX", () => {
       );
     });
   });
+
+  it("塾では授業時給と任意の事務時給を表示し、一般勤務先では事務時給を表示しない", () => {
+    const cramSchoolForm = render(
+      <PayrollRuleForm mode="create" workplaceId="workplace-1" />,
+    );
+
+    expect(screen.getByLabelText("授業時給")).toBeInTheDocument();
+    expect(screen.getByLabelText("事務時給（任意）")).toBeInTheDocument();
+    expect(
+      screen.getByText("空欄の場合は授業時給を使用します。"),
+    ).toBeInTheDocument();
+    cramSchoolForm.unmount();
+
+    mockedUseWorkplaceDetailQuery.mockReturnValue({
+      data: {
+        id: "workplace-1",
+        name: "コンビニA",
+        type: "GENERAL",
+        color: "#3366FF",
+      },
+      isLoading: false,
+      isFetching: false,
+      error: null,
+    } as unknown as ReturnType<typeof useWorkplaceDetailQuery>);
+
+    render(<PayrollRuleForm mode="create" workplaceId="workplace-1" />);
+
+    expect(screen.getByLabelText("基本時給")).toBeInTheDocument();
+    expect(screen.queryByLabelText("事務時給（任意）")).not.toBeInTheDocument();
+  });
+
+  it.each(["0", "-1", "900.5"])(
+    "事務時給 %s を送信せずに検証エラーを表示する",
+    (administrativeHourlyWage) => {
+      render(<PayrollRuleForm mode="create" workplaceId="workplace-1" />);
+
+      fireEvent.change(screen.getByLabelText("適用開始日"), {
+        target: { value: "2026-07-01" },
+      });
+      fireEvent.change(screen.getByLabelText("事務時給（任意）"), {
+        target: { value: administrativeHourlyWage },
+      });
+      fireEvent.click(screen.getByRole("button", { name: "作成" }));
+
+      expect(createPayrollRuleActionMock).not.toHaveBeenCalled();
+    },
+  );
 
   it("各フォームは error union を受けた場合に遷移せず、既存のエラー表示を維持する", async () => {
     createWorkplaceActionMock.mockResolvedValue({
@@ -522,6 +575,7 @@ describe("勤務先管理のP2 UX", () => {
       startDate: "2026-07-01",
       endDate: "2026-08-01",
       baseHourlyWage: 1200,
+      administrativeHourlyWage: null,
       holidayAllowanceHourly: 0,
       nightPremiumRate: 0.25,
       overtimePremiumRate: 0.25,

@@ -5,12 +5,14 @@ import { MAX_TRANSPORTATION_ALLOWANCE } from "@/lib/shifts/transportation-allowa
 const workplaces = [
   {
     id: "workplace-a",
+    type: "GENERAL" as const,
     closingDayType: "END_OF_MONTH" as const,
     closingDay: null,
     payday: 25,
   },
   {
     id: "workplace-b",
+    type: "CRAM_SCHOOL" as const,
     closingDayType: "DAY_OF_MONTH" as const,
     closingDay: 15,
     payday: 25,

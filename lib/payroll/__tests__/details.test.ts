@@ -22,6 +22,7 @@ jest.mock("@/lib/payroll/snapshot", () => {
 });
 
 import {
+  getPayrollDetailsMonthlyForUser,
   getPayrollDetailsWorkplaceYearlyForUser,
   summarizeWorkplacePayrollDetailsByPeriod,
 } from "@/lib/payroll/details";
@@ -68,6 +69,7 @@ function createRule(overrides: Partial<PayrollRule> = {}): PayrollRule {
     startDate: date("2026-01-01"),
     endDate: null,
     baseHourlyWage: new Prisma.Decimal(1100),
+    administrativeHourlyWage: null,
     holidayAllowanceHourly: new Prisma.Decimal(1500),
     nightPremiumRate: new Prisma.Decimal(0.25),
     overtimePremiumRate: new Prisma.Decimal(0.5),
@@ -194,6 +196,7 @@ function createYearlyDetailsSnapshot(monthDates: Date[]): PayrollSnapshot {
         id: "workplace-1",
         name: "勤務先A",
         color: "#3366FF",
+        type: "GENERAL",
         closingDayType: "END_OF_MONTH",
         closingDay: null,
         payday: 25,
@@ -248,6 +251,48 @@ function createYearlyDetailsSnapshot(monthDates: Date[]): PayrollSnapshot {
         },
       ]),
     ),
+  };
+}
+
+function createCramSchoolDetailsSnapshot(monthDates: Date[]): PayrollSnapshot {
+  const snapshot = createYearlyDetailsSnapshot(monthDates);
+  const administrativeShift = {
+    ...createShift({
+      id: "cram-administrative-shift",
+      date: date("2026-01-15"),
+      startTime: time("09:00"),
+      endTime: time("11:00"),
+      breakMinutes: 0,
+    }),
+    workplaceType: "CRAM_SCHOOL" as const,
+  };
+
+  return {
+    ...snapshot,
+    workplaces: [
+      {
+        ...snapshot.workplaces[0]!,
+        type: "CRAM_SCHOOL",
+      },
+    ],
+    shiftsByWorkplace: new Map([["workplace-1", [administrativeShift]]]),
+    rulesByWorkplace: new Map([
+      [
+        "workplace-1",
+        [
+          createRule({
+            baseHourlyWage: new Prisma.Decimal(1200),
+            administrativeHourlyWage: 900,
+            holidayAllowanceHourly: new Prisma.Decimal(0),
+            nightPremiumRate: new Prisma.Decimal(0),
+            overtimePremiumRate: new Prisma.Decimal(0),
+            dailyOvertimeThreshold: new Prisma.Decimal(8),
+            holidayType: "NONE",
+          }),
+        ],
+      ],
+    ]),
+    actualPayrollByWorkplaceMonth: new Map(),
   };
 }
 
@@ -322,5 +367,25 @@ describe("payroll details yearly service", () => {
       totalWorkplaceCount: 12,
       isPartial: false,
     });
+  });
+
+  it("snapshot経由の塾NORMALシフトには設定済み事務時給を適用する", async () => {
+    loadPayrollSnapshotMock.mockImplementation(async ({ monthDates }) =>
+      createCramSchoolDetailsSnapshot(monthDates),
+    );
+
+    const result = await getPayrollDetailsMonthlyForUser(
+      "user-1",
+      date("2026-01-01"),
+    );
+
+    expect(result.byWorkplace).toEqual([
+      expect.objectContaining({
+        workplaceId: "workplace-1",
+        totalWage: 1800,
+        baseWage: 1800,
+        effectiveBaseHourlyWage: 900,
+      }),
+    ]);
   });
 });

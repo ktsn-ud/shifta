@@ -58,6 +58,7 @@ type PayrollRule = {
   startDate: string;
   endDate: string | null;
   baseHourlyWage: NumericValue;
+  administrativeHourlyWage: NumericValue | null;
   holidayAllowanceHourly: NumericValue;
   nightPremiumRate: NumericValue;
   overtimePremiumRate: NumericValue;
@@ -137,7 +138,10 @@ export function PayrollRuleList({
   });
   const rulesQuery = useWorkplacePayrollRulesQuery({
     workplaceId,
-    initialData: initialRules,
+    initialData: initialRules?.map((rule) => ({
+      ...rule,
+      administrativeHourlyWage: toNumber(rule.administrativeHourlyWage),
+    })),
   });
   const workplace = workplaceQuery.data ?? null;
   const rules = useMemo(() => rulesQuery.data ?? [], [rulesQuery.data]);
@@ -257,7 +261,14 @@ export function PayrollRuleList({
                 <TableHeader>
                   <TableRow>
                     <TableHead>適用期間（終了日を含む）</TableHead>
-                    <TableHead>基本時給</TableHead>
+                    <TableHead>
+                      {workplace?.type === "CRAM_SCHOOL"
+                        ? "授業時給"
+                        : "基本時給"}
+                    </TableHead>
+                    {workplace?.type === "CRAM_SCHOOL" ? (
+                      <TableHead>事務時給</TableHead>
+                    ) : null}
                     <TableHead>深夜割増率</TableHead>
                     <TableHead>休日手当(円/時)</TableHead>
                     <TableHead>所定時間外割増率</TableHead>
@@ -267,7 +278,10 @@ export function PayrollRuleList({
                 <TableBody>
                   {rules.length === 0 ? (
                     <TableRow>
-                      <TableCell colSpan={6} className="py-8 text-center">
+                      <TableCell
+                        colSpan={workplace?.type === "CRAM_SCHOOL" ? 7 : 6}
+                        className="py-8 text-center"
+                      >
                         <div className="mx-auto flex max-w-md flex-col items-center gap-3">
                           <p className="font-medium">給与ルールがありません</p>
                           <p className="text-sm text-muted-foreground">
@@ -292,6 +306,13 @@ export function PayrollRuleList({
                         <TableCell>
                           {formatCurrency(rule.baseHourlyWage)}
                         </TableCell>
+                        {workplace?.type === "CRAM_SCHOOL" ? (
+                          <TableCell>
+                            {rule.administrativeHourlyWage === null
+                              ? `${formatCurrency(rule.baseHourlyWage)}（授業時給）`
+                              : formatCurrency(rule.administrativeHourlyWage)}
+                          </TableCell>
+                        ) : null}
                         <TableCell>
                           {formatRate(rule.nightPremiumRate)}
                         </TableCell>

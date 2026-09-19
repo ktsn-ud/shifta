@@ -38,6 +38,7 @@ function createRule(overrides: Partial<PayrollRule> = {}): PayrollRule {
     startDate: date("2026-01-01"),
     endDate: null,
     baseHourlyWage: new Prisma.Decimal(1100),
+    administrativeHourlyWage: null,
     holidayAllowanceHourly: new Prisma.Decimal(300),
     nightPremiumRate: new Prisma.Decimal(0.25),
     overtimePremiumRate: new Prisma.Decimal(0.25),

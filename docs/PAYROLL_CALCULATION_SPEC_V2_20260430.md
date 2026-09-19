@@ -30,6 +30,12 @@
 
 これらの和が総支給額である。
 
+### 単価の選択
+
+- GENERAL の NORMAL と CRAM_SCHOOL の LESSON は `baseHourlyWage` を使用する。
+- CRAM_SCHOOL の NORMAL は `administrativeHourlyWage ?? baseHourlyWage` を使用する。
+- 休日手当・深夜割増などの共通設定は、選択した単価に適用する。授業給と事務給は同一 `PayrollRule` の適用期間で管理する。
+
 ### 丸め処理
 
 上で述べた3つの各支給項目ごとに、1円未満を四捨五入する。
@@ -38,7 +44,8 @@
 
 以下、`PayrollRule` モデルについて。
 
-- `baseHourlyWage`: 基本給
+- `baseHourlyWage`: 基本給。GENERAL の NORMAL と CRAM_SCHOOL の LESSON で使用する。
+- `administrativeHourlyWage`: 事務給。nullable。円単位の正整数。CRAM_SCHOOL の NORMAL（事務・会議・準備など）で使用し、NULL の場合は `baseHourlyWage` にフォールバックする。既存データのバックフィルは行わない。
 - `holidayHourlyWage`: 廃止
   - 代わりに休日手当（加算手当）を表すカラムを新規に作成。これのデフォルト値は 0 でよい。
 - `nightMultiplier`: 深夜割増率

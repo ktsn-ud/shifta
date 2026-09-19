@@ -158,6 +158,7 @@ describe("GET /api/shifts/form-bootstrap", () => {
         startDate: new Date("2026-01-01T00:00:00.000Z"),
         endDate: null,
         baseHourlyWage: 1200,
+        administrativeHourlyWage: null,
         holidayAllowanceHourly: 0,
         nightPremiumRate: 0.25,
         overtimePremiumRate: 0.25,

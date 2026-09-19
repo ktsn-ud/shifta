@@ -5,6 +5,7 @@ import {
   parseTimeOnly,
 } from "@/lib/api/date-time";
 import { calculateShiftWage } from "@/lib/payroll/calculateShiftWage";
+import { resolveHourlyWage } from "@/lib/payroll/hourly-wage";
 import { resolvePaymentMonthForShiftDate } from "@/lib/payroll/pay-period";
 import {
   calculateGrossMinutes,
@@ -19,6 +20,7 @@ type PreviewStatus = "ready" | "incomplete" | "missing-rule" | "invalid";
 
 export type PreviewWorkplace = {
   id: string;
+  type: "GENERAL" | "CRAM_SCHOOL";
   closingDayType: "DAY_OF_MONTH" | "END_OF_MONTH";
   closingDay: number | null;
   payday: number;
@@ -29,6 +31,7 @@ export type PreviewPayrollRule = {
   startDate: string | Date;
   endDate: string | Date | null;
   baseHourlyWage: number | string;
+  administrativeHourlyWage?: number | null;
   holidayAllowanceHourly?: number | string;
   nightPremiumRate: number | string;
   overtimePremiumRate?: number | string;
@@ -93,6 +96,7 @@ type NormalizedPreviewPayrollRule = {
   startDate: Date;
   endDate: Date | null;
   baseHourlyWage: number | string;
+  administrativeHourlyWage?: number | null;
   holidayAllowanceHourly?: number | string;
   nightPremiumRate: number | string;
   overtimePremiumRate?: number | string;
@@ -162,6 +166,7 @@ function toNormalizedRule(
     startDate,
     endDate,
     baseHourlyWage: rule.baseHourlyWage,
+    administrativeHourlyWage: rule.administrativeHourlyWage,
     holidayAllowanceHourly: rule.holidayAllowanceHourly,
     nightPremiumRate: rule.nightPremiumRate,
     overtimePremiumRate: rule.overtimePremiumRate,
@@ -564,7 +569,11 @@ export function calculateShiftPayrollPreview(input: {
         breakMinutes: resolvedTime.value.breakMinutes,
       },
       {
-        baseHourlyWage: rule.baseHourlyWage,
+        baseHourlyWage: resolveHourlyWage(
+          workplace.type,
+          shift.shiftType,
+          rule,
+        ),
         holidayAllowanceHourly: rule.holidayAllowanceHourly,
         nightPremiumRate: rule.nightPremiumRate,
         overtimePremiumRate: rule.overtimePremiumRate,

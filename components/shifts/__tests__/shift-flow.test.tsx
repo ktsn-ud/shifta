@@ -153,6 +153,7 @@ function createShiftFormBootstrapResponse(input?: {
           startDate: "2026-01-01",
           endDate: null,
           baseHourlyWage: 1200,
+          administrativeHourlyWage: null,
           holidayAllowanceHourly: 0,
           nightPremiumRate: 0.25,
           overtimePremiumRate: 0.25,

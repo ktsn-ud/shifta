@@ -53,6 +53,7 @@ async function BulkShiftEditPageContent({ searchParams }: Props) {
       where: { userId: current.user.id },
       select: {
         id: true,
+        type: true,
         closingDayType: true,
         closingDay: true,
         payday: true,
@@ -62,6 +63,7 @@ async function BulkShiftEditPageContent({ searchParams }: Props) {
             startDate: true,
             endDate: true,
             baseHourlyWage: true,
+            administrativeHourlyWage: true,
             holidayAllowanceHourly: true,
             nightPremiumRate: true,
             overtimePremiumRate: true,
@@ -92,6 +94,7 @@ async function BulkShiftEditPageContent({ searchParams }: Props) {
       }))}
       previewWorkplaces={workplaces.map((workplace) => ({
         id: workplace.id,
+        type: workplace.type,
         closingDayType: workplace.closingDayType,
         closingDay: workplace.closingDay,
         payday: workplace.payday,
@@ -102,6 +105,7 @@ async function BulkShiftEditPageContent({ searchParams }: Props) {
           startDate: rule.startDate.toISOString(),
           endDate: rule.endDate?.toISOString() ?? null,
           baseHourlyWage: rule.baseHourlyWage.toString(),
+          administrativeHourlyWage: rule.administrativeHourlyWage,
           holidayAllowanceHourly: rule.holidayAllowanceHourly.toString(),
           nightPremiumRate: rule.nightPremiumRate.toString(),
           overtimePremiumRate: rule.overtimePremiumRate.toString(),

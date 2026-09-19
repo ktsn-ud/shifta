@@ -59,6 +59,7 @@ describe("createBulkEditPreviewShiftInputs", () => {
         workplaces: [
           {
             id: "workplace-1",
+            type: "GENERAL",
             closingDayType: "END_OF_MONTH",
             closingDay: null,
             payday: 25,
@@ -70,6 +71,7 @@ describe("createBulkEditPreviewShiftInputs", () => {
             startDate: "2020-01-01",
             endDate: null,
             baseHourlyWage: 1000,
+            administrativeHourlyWage: null,
             nightPremiumRate: 0,
             dailyOvertimeThreshold: 8,
             holidayType: "NONE",

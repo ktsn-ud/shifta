@@ -4,17 +4,20 @@ import {
 } from "@/lib/actions/workplace-core/payroll-rule-utils";
 
 function normalizeRule(overrides: Record<string, unknown> = {}) {
-  return normalizePayrollRule({
-    startDate: "2026-04-01",
-    endDate: "2026-05-01",
-    baseHourlyWage: 1200,
-    holidayAllowanceHourly: 0,
-    nightPremiumRate: 0.25,
-    overtimePremiumRate: 0.5,
-    dailyOvertimeThreshold: 8,
-    holidayType: "WEEKEND",
-    ...overrides,
-  });
+  return normalizePayrollRule(
+    {
+      startDate: "2026-04-01",
+      endDate: "2026-05-01",
+      baseHourlyWage: 1200,
+      holidayAllowanceHourly: 0,
+      nightPremiumRate: 0.25,
+      overtimePremiumRate: 0.5,
+      dailyOvertimeThreshold: 8,
+      holidayType: "WEEKEND",
+      ...overrides,
+    },
+    "GENERAL",
+  );
 }
 
 describe("payroll rule utility boundaries", () => {

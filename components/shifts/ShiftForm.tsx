@@ -533,12 +533,12 @@ function normalizeShiftForm(
   }
 
   let nextForm = form;
-  if (
+  const didResolveFallbackWorkplace =
     options.workplaces.length > 0 &&
     options.workplaces.some(
       (workplace) => workplace.id === nextForm.workplaceId,
-    ) === false
-  ) {
+    ) === false;
+  if (didResolveFallbackWorkplace) {
     nextForm = {
       ...nextForm,
       workplaceId: resolveFallbackWorkplaceId(
@@ -575,7 +575,11 @@ function normalizeShiftForm(
     };
   }
 
-  if (options.mode === "create" && nextForm.shiftType !== "LESSON") {
+  if (
+    options.mode === "create" &&
+    didResolveFallbackWorkplace &&
+    nextForm.shiftType !== "LESSON"
+  ) {
     nextForm = {
       ...nextForm,
       shiftType: "LESSON",
@@ -731,6 +735,7 @@ function useShiftFormPreviewInputs(params: {
     return [
       {
         id: workplacePayrollCycleData.id,
+        type: workplacePayrollCycleData.type,
         closingDayType: workplacePayrollCycleData.closingDayType,
         closingDay: workplacePayrollCycleData.closingDay,
         payday: workplacePayrollCycleData.payday,

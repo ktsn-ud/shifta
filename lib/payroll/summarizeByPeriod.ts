@@ -8,15 +8,20 @@ import {
   calculateShiftWage,
   type PayrollResult,
 } from "@/lib/payroll/calculateShiftWage";
+import {
+  resolveHourlyWage,
+  type PayrollWorkplaceType,
+} from "@/lib/payroll/hourly-wage";
 import { roundHours } from "@/lib/payroll/numeric";
 
 export type ShiftWithSummaryRelations = Shift & {
   lessonRange: ShiftLessonRange | null;
-  workplace: Pick<Workplace, "id" | "name" | "color">;
+  workplace: Pick<Workplace, "id" | "name" | "color" | "type">;
 };
 
 export type ShiftForPayrollCalculation = Shift & {
   lessonRange: ShiftLessonRange | null;
+  workplaceType?: PayrollWorkplaceType;
 };
 
 export type PayrollRulesByWorkplace = ReadonlyMap<string, PayrollRule[]>;
@@ -88,17 +93,22 @@ export function findApplicablePayrollRule(
 export function calculateShiftPayrollResultByRule(
   shift: ShiftForPayrollCalculation,
   rule: PayrollRule,
+  workplaceType: PayrollWorkplaceType = shift.workplaceType ?? "GENERAL",
 ): PayrollResult {
   if (shift.shiftType === "LESSON" && !shift.lessonRange) {
     throw new Error(`LESSON型のコマ範囲が見つかりません: shiftId=${shift.id}`);
   }
 
-  return calculateShiftWage(shift, rule);
+  return calculateShiftWage(shift, {
+    ...rule,
+    baseHourlyWage: resolveHourlyWage(workplaceType, shift.shiftType, rule),
+  });
 }
 
 export function calculateShiftPayrollResult(
   shift: ShiftForPayrollCalculation,
   rulesByWorkplace: PayrollRulesByWorkplace,
+  workplaceType: PayrollWorkplaceType = shift.workplaceType ?? "GENERAL",
 ): PayrollResult {
   const rule = findApplicablePayrollRule(
     rulesByWorkplace,
@@ -109,7 +119,7 @@ export function calculateShiftPayrollResult(
     throw new Error(`該当する給与ルールが見つかりません: shiftId=${shift.id}`);
   }
 
-  return calculateShiftPayrollResultByRule(shift, rule);
+  return calculateShiftPayrollResultByRule(shift, rule, workplaceType);
 }
 
 export function summarizeByPeriod(
@@ -131,7 +141,11 @@ export function summarizeByPeriod(
       continue;
     }
 
-    const result = calculateShiftPayrollResult(shift, rulesByWorkplace);
+    const result = calculateShiftPayrollResult(
+      shift,
+      rulesByWorkplace,
+      shift.workplace.type,
+    );
 
     totalWage += result.totalWage;
     totalWorkHours += result.workHours;

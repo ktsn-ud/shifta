@@ -36,6 +36,7 @@ import {
   useWorkplacePayrollRuleDetailQuery,
 } from "@/lib/query/queries/workplaces";
 import { toUserFacingMessage } from "@/lib/user-facing-error";
+import { MAX_ADMINISTRATIVE_HOURLY_WAGE } from "@/lib/payroll/numeric";
 
 type HolidayType = "NONE" | "WEEKEND" | "HOLIDAY" | "WEEKEND_HOLIDAY";
 type PayrollRuleFormMode = "create" | "edit";
@@ -50,6 +51,7 @@ type FormValues = {
   startDate: string;
   endDate: string;
   baseHourlyWage: string;
+  administrativeHourlyWage: string;
   holidayAllowanceHourly: string;
   nightPremiumRate: string;
   overtimePremiumRate: string;
@@ -110,7 +112,9 @@ type PayrollRuleDateFieldsProps = Pick<
 type PayrollRuleValueFieldsProps = Pick<
   PayrollRuleEditorController,
   "values" | "errors" | "updateField"
->;
+> & {
+  workplaceType?: WorkplaceDetailItem["type"];
+};
 
 type PayrollRuleHolidayTypeFieldProps = Pick<
   PayrollRuleEditorController,
@@ -121,6 +125,7 @@ const FORM_VALUE_KEYS = [
   "startDate",
   "endDate",
   "baseHourlyWage",
+  "administrativeHourlyWage",
   "holidayAllowanceHourly",
   "nightPremiumRate",
   "overtimePremiumRate",
@@ -186,6 +191,7 @@ function createInitialPayrollRuleValues(): FormValues {
     startDate: "",
     endDate: "",
     baseHourlyWage: "1000",
+    administrativeHourlyWage: "",
     holidayAllowanceHourly: "0",
     nightPremiumRate: "0.25",
     overtimePremiumRate: "0.25",
@@ -203,6 +209,10 @@ function createFormValuesFromPayrollRule(
       ? shiftDateKeyByDays(dateKeyFromApiDate(rule.endDate), -1)
       : "",
     baseHourlyWage: toNumberString(rule.baseHourlyWage),
+    administrativeHourlyWage:
+      rule.administrativeHourlyWage === null
+        ? ""
+        : toNumberString(rule.administrativeHourlyWage),
     holidayAllowanceHourly: toNumberString(rule.holidayAllowanceHourly),
     nightPremiumRate: toNumberString(rule.nightPremiumRate),
     overtimePremiumRate: toNumberString(rule.overtimePremiumRate),
@@ -282,6 +292,19 @@ function validate(values: FormValues): FormErrors {
     errors.baseHourlyWage = "基本時給は必須です。";
   } else if (baseHourlyWage <= 0) {
     errors.baseHourlyWage = "基本時給は正の数で入力してください。";
+  }
+
+  if (values.administrativeHourlyWage) {
+    const administrativeHourlyWage = Number(values.administrativeHourlyWage);
+    if (
+      Number.isFinite(administrativeHourlyWage) === false ||
+      Number.isInteger(administrativeHourlyWage) === false ||
+      administrativeHourlyWage > MAX_ADMINISTRATIVE_HOURLY_WAGE ||
+      administrativeHourlyWage <= 0
+    ) {
+      errors.administrativeHourlyWage =
+        "事務時給は円単位の正の整数（上限2,147,483,647円）で入力してください。";
+    }
   }
 
   if (values.holidayAllowanceHourly) {
@@ -420,11 +443,14 @@ function PayrollRuleValueFields({
   values,
   errors,
   updateField,
+  workplaceType,
 }: PayrollRuleValueFieldsProps) {
   return (
     <>
       <Field data-invalid={Boolean(errors.baseHourlyWage)}>
-        <FieldLabel htmlFor="base-hourly-wage">基本時給</FieldLabel>
+        <FieldLabel htmlFor="base-hourly-wage">
+          {workplaceType === "CRAM_SCHOOL" ? "授業時給" : "基本時給"}
+        </FieldLabel>
         <FieldContent>
           <div className="flex items-center gap-2">
             <Input
@@ -445,6 +471,39 @@ function PayrollRuleValueFields({
           <FormErrorMessage message={errors.baseHourlyWage} />
         </FieldContent>
       </Field>
+
+      {workplaceType === "CRAM_SCHOOL" ? (
+        <Field data-invalid={Boolean(errors.administrativeHourlyWage)}>
+          <FieldLabel htmlFor="administrative-hourly-wage">
+            事務時給（任意）
+          </FieldLabel>
+          <FieldContent>
+            <div className="flex items-center gap-2">
+              <Input
+                id="administrative-hourly-wage"
+                type="number"
+                min="1"
+                step="1"
+                value={values.administrativeHourlyWage}
+                onChange={(event) =>
+                  updateField(
+                    "administrativeHourlyWage",
+                    event.currentTarget.value,
+                  )
+                }
+                className="max-w-24"
+              />
+              <span className="shrink-0 text-sm text-muted-foreground">
+                円/時
+              </span>
+            </div>
+            <FieldDescription>
+              空欄の場合は授業時給を使用します。
+            </FieldDescription>
+            <FormErrorMessage message={errors.administrativeHourlyWage} />
+          </FieldContent>
+        </Field>
+      ) : null}
 
       <Field data-invalid={Boolean(errors.nightPremiumRate)}>
         <FieldLabel htmlFor="night-premium-rate">深夜割増率</FieldLabel>
@@ -654,6 +713,9 @@ function usePayrollRuleEditorController({
         ? shiftDateKeyByDays(state.values.endDate, 1)
         : null,
       baseHourlyWage: Number(state.values.baseHourlyWage),
+      administrativeHourlyWage: state.values.administrativeHourlyWage
+        ? Number(state.values.administrativeHourlyWage)
+        : null,
       holidayAllowanceHourly: state.values.holidayAllowanceHourly
         ? Number(state.values.holidayAllowanceHourly)
         : 0,
@@ -841,6 +903,7 @@ function PayrollRuleEditorForm({
             values={controller.values}
             errors={controller.errors}
             updateField={controller.updateField}
+            workplaceType={workplace?.type}
           />
 
           <PayrollRuleHolidayTypeField

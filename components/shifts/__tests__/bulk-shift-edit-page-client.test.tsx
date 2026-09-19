@@ -174,6 +174,7 @@ function createPreviewProps(workplaceIds: string[]) {
   return {
     previewWorkplaces: workplaceIds.map((id) => ({
       id,
+      type: "GENERAL" as const,
       closingDayType: "END_OF_MONTH" as const,
       closingDay: null,
       payday: 25,
@@ -183,6 +184,7 @@ function createPreviewProps(workplaceIds: string[]) {
       startDate: "2020-01-01",
       endDate: null,
       baseHourlyWage: 1000,
+      administrativeHourlyWage: null,
       nightPremiumRate: 0,
       dailyOvertimeThreshold: 8,
       holidayType: "NONE" as const,

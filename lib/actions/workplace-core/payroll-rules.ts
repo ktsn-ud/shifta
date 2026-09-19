@@ -9,6 +9,7 @@ import { prisma } from "@/lib/prisma";
 import { jsonNoStore } from "@/lib/api/cache-control";
 import { buildSuccessSyncResponse } from "@/lib/google-calendar/sync-response";
 import { getCachedPayrollRulesForWorkplace } from "@/lib/cache/workplace-read-cache";
+import { MAX_ADMINISTRATIVE_HOURLY_WAGE } from "@/lib/payroll/numeric";
 import {
   buildOverlappingPayrollRuleWhere,
   normalizePayrollRule,
@@ -26,6 +27,16 @@ const payrollRuleSchema = z.strictObject({
     .nullable()
     .optional(),
   baseHourlyWage: z.coerce.number().positive(),
+  administrativeHourlyWage: z.preprocess(
+    (value) => (value === "" ? null : value),
+    z.coerce
+      .number()
+      .positive()
+      .int("円単位の整数で入力してください")
+      .max(MAX_ADMINISTRATIVE_HOURLY_WAGE, "事務時給が上限を超えています")
+      .nullable()
+      .optional(),
+  ),
   holidayAllowanceHourly: z.coerce.number().min(0).optional().default(0),
   nightPremiumRate: z.coerce.number().min(0),
   overtimePremiumRate: z.coerce.number().min(0),
@@ -77,7 +88,10 @@ export async function createPayrollRuleRouteAction(
 
     let normalized: NormalizedPayrollRule;
     try {
-      normalized = normalizePayrollRule(body.data);
+      normalized = normalizePayrollRule(
+        body.data,
+        workplaceResult.workplace.type,
+      );
     } catch (error) {
       if (error instanceof Error && error.message === "DATE_RANGE_INVALID") {
         return jsonError(
@@ -130,6 +144,7 @@ export async function createPayrollRuleRouteAction(
             startDate: normalized.startDate,
             endDate: normalized.endDate,
             baseHourlyWage: normalized.baseHourlyWage.toString(),
+            administrativeHourlyWage: normalized.administrativeHourlyWage,
             holidayAllowanceHourly:
               normalized.holidayAllowanceHourly.toString(),
             nightPremiumRate: normalized.nightPremiumRate.toString(),
