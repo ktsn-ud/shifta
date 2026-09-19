@@ -303,7 +303,11 @@ async function loadMonthShiftsFromDatabase(
         result.set(
           shift.id,
           selectedRule
-            ? calculateShiftPayrollResultByRule(shift, selectedRule).totalWage
+            ? calculateShiftPayrollResultByRule(
+                shift,
+                selectedRule,
+                shift.workplace.type,
+              ).totalWage
             : null,
         );
       }

@@ -23,3 +23,5 @@ export function roundCurrency(value: number): number {
 export function roundHours(value: number): number {
   return Math.round(value * 100) / 100;
 }
+
+export const MAX_ADMINISTRATIVE_HOURLY_WAGE = 2_147_483_647;

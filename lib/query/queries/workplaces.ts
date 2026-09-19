@@ -40,6 +40,7 @@ export type PayrollRuleListItem = {
   startDate: string;
   endDate: string | null;
   baseHourlyWage: number | string;
+  administrativeHourlyWage: number | null;
   holidayAllowanceHourly: number | string;
   nightPremiumRate: number | string;
   overtimePremiumRate: number | string;
@@ -175,6 +176,8 @@ function isPayrollRuleListItem(value: unknown): value is PayrollRuleListItem {
     (typeof value.endDate === "string" || value.endDate === null) &&
     (typeof value.baseHourlyWage === "number" ||
       typeof value.baseHourlyWage === "string") &&
+    (typeof value.administrativeHourlyWage === "number" ||
+      value.administrativeHourlyWage === null) &&
     (typeof value.holidayAllowanceHourly === "number" ||
       typeof value.holidayAllowanceHourly === "string") &&
     (typeof value.nightPremiumRate === "number" ||
@@ -198,6 +201,8 @@ function isPayrollRuleDetailItem(
     (typeof value.endDate === "string" || value.endDate === null) &&
     (typeof value.baseHourlyWage === "number" ||
       typeof value.baseHourlyWage === "string") &&
+    (typeof value.administrativeHourlyWage === "number" ||
+      value.administrativeHourlyWage === null) &&
     (typeof value.holidayAllowanceHourly === "number" ||
       typeof value.holidayAllowanceHourly === "string" ||
       value.holidayAllowanceHourly === null) &&

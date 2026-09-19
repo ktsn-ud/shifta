@@ -1,4 +1,4 @@
-import type { PayrollRule, Prisma } from "@/lib/generated/prisma/client";
+import type { PayrollRule } from "@/lib/generated/prisma/client";
 import {
   buildWorkplaceMonthKey,
   createPayrollDisplayValue,
@@ -13,6 +13,7 @@ import {
   roundCurrency,
   roundHours,
 } from "@/lib/payroll/numeric";
+import { resolveHourlyWage } from "@/lib/payroll/hourly-wage";
 import {
   calculateShiftPayrollResultByRule,
   findApplicablePayrollRule,
@@ -24,13 +25,10 @@ import { createPayrollPeriodSummaryGetter } from "@/lib/payroll/period-summary";
 import {
   loadPayrollSnapshot,
   toPayrollPeriodMapKey,
+  type PayrollSnapshotShift,
 } from "@/lib/payroll/snapshot";
 
-type ShiftWithPayrollRelations = Prisma.ShiftGetPayload<{
-  include: {
-    lessonRange: true;
-  };
-}>;
+type ShiftWithPayrollRelations = PayrollSnapshotShift;
 
 type PayrollBreakdownAccumulator = {
   shiftCount: number;
@@ -295,8 +293,18 @@ function summarizeWorkplaceByPeriod(
       );
     }
 
-    const result = calculateShiftPayrollResultByRule(shift, rule);
-    const baseHourlyWage = decimalToNumber(rule.baseHourlyWage);
+    const result = calculateShiftPayrollResultByRule(
+      shift,
+      rule,
+      shift.workplaceType ?? "GENERAL",
+    );
+    const baseHourlyWage = decimalToNumber(
+      resolveHourlyWage(
+        shift.workplaceType ?? "GENERAL",
+        shift.shiftType,
+        rule,
+      ),
+    );
     const holidayAllowanceHourly = decimalToNumber(rule.holidayAllowanceHourly);
 
     summary.totalWorkHours += result.workHours;

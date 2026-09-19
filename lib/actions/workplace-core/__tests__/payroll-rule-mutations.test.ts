@@ -91,6 +91,7 @@ function payrollRule(id = ruleId) {
     startDate: new Date("2026-04-01T00:00:00.000Z"),
     endDate: null,
     baseHourlyWage: "1200",
+    administrativeHourlyWage: null,
     holidayAllowanceHourly: "100",
     nightPremiumRate: "0.25",
     overtimePremiumRate: "0.5",
@@ -230,6 +231,26 @@ describe("payroll rule core mutations", () => {
       payrollRuleInput({ endDate: "2026-04-01" }),
       "endDate は startDate より後の日付にしてください",
     ],
+    [
+      "a non-integer administrative hourly wage",
+      payrollRuleInput({ administrativeHourlyWage: 900.5 }),
+      "入力値が不正です",
+    ],
+    [
+      "a non-positive administrative hourly wage",
+      payrollRuleInput({ administrativeHourlyWage: 0 }),
+      "入力値が不正です",
+    ],
+    [
+      "a negative administrative hourly wage",
+      payrollRuleInput({ administrativeHourlyWage: -1 }),
+      "入力値が不正です",
+    ],
+    [
+      "an administrative hourly wage above the INTEGER maximum",
+      payrollRuleInput({ administrativeHourlyWage: 2_147_483_648 }),
+      "入力値が不正です",
+    ],
   ])("rejects %s before starting a transaction", async (_, input, error) => {
     const response = requireResponse(
       await createPayrollRuleRouteAction(createRequest(input), {
@@ -242,79 +263,113 @@ describe("payroll rule core mutations", () => {
     expect(prismaTransactionMock).not.toHaveBeenCalled();
   });
 
-  it("uses its transaction client to close an open rule and create the requested DTO", async () => {
+  it.each([900, 2_147_483_647])(
+    "uses its transaction client to create a CRAM_SCHOOL administrative hourly wage of %i",
+    async (administrativeHourlyWage) => {
+      const tx = createTransactionClient();
+      const input = payrollRuleInput({
+        endDate: "2026-05-01",
+        administrativeHourlyWage,
+      });
+      const createdRule = {
+        ...payrollRule(),
+        endDate: new Date("2026-05-01T00:00:00.000Z"),
+        administrativeHourlyWage,
+      };
+      requireOwnedWorkplaceMock.mockResolvedValue({
+        workplace: { type: "CRAM_SCHOOL" },
+      } as Awaited<ReturnType<typeof requireOwnedWorkplace>>);
+      prismaTransactionMock.mockImplementation(async (callback) =>
+        callback(tx as never),
+      );
+      tx.payrollRule.findFirst.mockResolvedValue({
+        id: "open-rule",
+      });
+      tx.payrollRule.findMany.mockResolvedValue([
+        { id: "overlap-a" },
+        { id: "overlap-b" },
+      ]);
+      tx.payrollRule.create.mockResolvedValue(createdRule);
+
+      const response = requireResponse(
+        await createPayrollRuleRouteAction(createRequest(input), {
+          params: Promise.resolve({ workplaceId }),
+        }),
+      );
+
+      expect(response.status).toBe(201);
+      await expect(payload(response)).resolves.toEqual({
+        data: {
+          ...payrollRuleDto(),
+          endDate: "2026-05-01T00:00:00.000Z",
+          administrativeHourlyWage,
+        },
+        sync: {
+          status: "success",
+          ok: true,
+          pending: false,
+          errorMessage: null,
+          errorCode: null,
+          requiresCalendarSetup: false,
+          requiresSignOut: false,
+        },
+        warning: {
+          message: "同一勤務先内で適用期間が重複しています",
+          overlappingRuleIds: ["overlap-a", "overlap-b"],
+        },
+      });
+      expect(prismaTransactionMock).toHaveBeenCalledTimes(1);
+      expect(tx.payrollRule.update).toHaveBeenCalledWith({
+        where: { id: "open-rule" },
+        data: { endDate: new Date("2026-04-01T00:00:00.000Z") },
+      });
+      expect(tx.payrollRule.create).toHaveBeenCalledWith({
+        data: expect.objectContaining({
+          workplaceId,
+          startDate: new Date("2026-04-01T00:00:00.000Z"),
+          endDate: new Date("2026-05-01T00:00:00.000Z"),
+          baseHourlyWage: "1200",
+          administrativeHourlyWage,
+        }),
+      });
+      expect(tx.payrollRule.findMany).toHaveBeenCalledWith({
+        where: {
+          workplaceId,
+          startDate: { lt: new Date("2026-05-01T00:00:00.000Z") },
+          OR: [
+            { endDate: null },
+            { endDate: { gt: new Date("2026-04-01T00:00:00.000Z") } },
+          ],
+        },
+        select: { id: true },
+      });
+      expect(payrollRuleUpdateMock).not.toHaveBeenCalled();
+      expect(payrollRuleCreateMock).not.toHaveBeenCalled();
+      expect(payrollRuleFindFirstMock).not.toHaveBeenCalled();
+      expect(payrollRuleFindManyMock).not.toHaveBeenCalled();
+    },
+  );
+
+  it("GENERAL勤務先の作成では送信された事務時給をnullへ正規化する", async () => {
     const tx = createTransactionClient();
-    const input = payrollRuleInput({ endDate: "2026-05-01" });
-    const createdRule = {
-      ...payrollRule(),
-      endDate: new Date("2026-05-01T00:00:00.000Z"),
-    };
     prismaTransactionMock.mockImplementation(async (callback) =>
       callback(tx as never),
     );
-    tx.payrollRule.findFirst.mockResolvedValue({
-      id: "open-rule",
-    });
-    tx.payrollRule.findMany.mockResolvedValue([
-      { id: "overlap-a" },
-      { id: "overlap-b" },
-    ]);
-    tx.payrollRule.create.mockResolvedValue(createdRule);
+    tx.payrollRule.findFirst.mockResolvedValue(null);
+    tx.payrollRule.findMany.mockResolvedValue([]);
+    tx.payrollRule.create.mockResolvedValue(payrollRule());
 
     const response = requireResponse(
-      await createPayrollRuleRouteAction(createRequest(input), {
-        params: Promise.resolve({ workplaceId }),
-      }),
+      await createPayrollRuleRouteAction(
+        createRequest(payrollRuleInput({ administrativeHourlyWage: 1 })),
+        { params: Promise.resolve({ workplaceId }) },
+      ),
     );
 
     expect(response.status).toBe(201);
-    await expect(payload(response)).resolves.toEqual({
-      data: {
-        ...payrollRuleDto(),
-        endDate: "2026-05-01T00:00:00.000Z",
-      },
-      sync: {
-        status: "success",
-        ok: true,
-        pending: false,
-        errorMessage: null,
-        errorCode: null,
-        requiresCalendarSetup: false,
-        requiresSignOut: false,
-      },
-      warning: {
-        message: "同一勤務先内で適用期間が重複しています",
-        overlappingRuleIds: ["overlap-a", "overlap-b"],
-      },
-    });
-    expect(prismaTransactionMock).toHaveBeenCalledTimes(1);
-    expect(tx.payrollRule.update).toHaveBeenCalledWith({
-      where: { id: "open-rule" },
-      data: { endDate: new Date("2026-04-01T00:00:00.000Z") },
-    });
     expect(tx.payrollRule.create).toHaveBeenCalledWith({
-      data: expect.objectContaining({
-        workplaceId,
-        startDate: new Date("2026-04-01T00:00:00.000Z"),
-        endDate: new Date("2026-05-01T00:00:00.000Z"),
-        baseHourlyWage: "1200",
-      }),
+      data: expect.objectContaining({ administrativeHourlyWage: null }),
     });
-    expect(tx.payrollRule.findMany).toHaveBeenCalledWith({
-      where: {
-        workplaceId,
-        startDate: { lt: new Date("2026-05-01T00:00:00.000Z") },
-        OR: [
-          { endDate: null },
-          { endDate: { gt: new Date("2026-04-01T00:00:00.000Z") } },
-        ],
-      },
-      select: { id: true },
-    });
-    expect(payrollRuleUpdateMock).not.toHaveBeenCalled();
-    expect(payrollRuleCreateMock).not.toHaveBeenCalled();
-    expect(payrollRuleFindFirstMock).not.toHaveBeenCalled();
-    expect(payrollRuleFindManyMock).not.toHaveBeenCalled();
   });
 
   it("returns a server error when a transactional rule create fails", async () => {
@@ -390,11 +445,14 @@ describe("payroll rule core mutations", () => {
     },
   );
 
-  it("uses exclusive overlap predicates when updating a bounded rule", async () => {
+  it("GENERAL勤務先の更新では事務時給をnullへ正規化し、排他期間条件を使う", async () => {
     payrollRuleFindFirstMock.mockResolvedValue(payrollRule() as never);
     payrollRuleFindManyMock.mockResolvedValue([{ id: "other-rule" }] as never);
     payrollRuleUpdateMock.mockResolvedValue(payrollRule() as never);
-    const input = payrollRuleInput({ endDate: "2026-05-01" });
+    const input = payrollRuleInput({
+      endDate: "2026-05-01",
+      administrativeHourlyWage: 900,
+    });
 
     const response = requireResponse(
       await updatePayrollRuleRouteAction(createRequest(input), createContext()),
@@ -424,6 +482,7 @@ describe("payroll rule core mutations", () => {
       data: expect.objectContaining({
         endDate: new Date("2026-05-01T00:00:00.000Z"),
         dailyOvertimeThreshold: "8",
+        administrativeHourlyWage: null,
       }),
     });
   });

@@ -735,6 +735,7 @@ function useShiftFormPreviewInputs(params: {
     return [
       {
         id: workplacePayrollCycleData.id,
+        type: workplacePayrollCycleData.type,
         closingDayType: workplacePayrollCycleData.closingDayType,
         closingDay: workplacePayrollCycleData.closingDay,
         payday: workplacePayrollCycleData.payday,

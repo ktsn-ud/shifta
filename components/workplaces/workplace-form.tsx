@@ -27,6 +27,7 @@ import {
   useWorkplaceEditDetailQuery,
 } from "@/lib/query/queries/workplaces";
 import { toUserFacingMessage } from "@/lib/user-facing-error";
+import { MAX_ADMINISTRATIVE_HOURLY_WAGE } from "@/lib/payroll/numeric";
 import { useResetOnRouteHidden } from "@/hooks/use-reset-on-route-hidden";
 import {
   createWorkplaceAction,
@@ -65,6 +66,7 @@ type InitialRuleValues = {
   startDate: string;
   endDate: string;
   baseHourlyWage: string;
+  administrativeHourlyWage: string;
   holidayAllowanceHourly: string;
   nightPremiumRate: string;
   overtimePremiumRate: string;
@@ -141,6 +143,7 @@ type InitialPayrollRuleFieldsSectionProps = {
     | "startDate"
     | "endDate"
     | "baseHourlyWage"
+    | "administrativeHourlyWage"
     | "nightPremiumRate"
     | "holidayAllowanceHourly"
     | "overtimePremiumRate"
@@ -148,6 +151,7 @@ type InitialPayrollRuleFieldsSectionProps = {
     | "holidayType"
   >;
   onChange: WorkplaceInitialRuleValueChange;
+  workplaceType: WorkplaceType;
 };
 
 type WorkplaceEditorActionsProps = {
@@ -174,6 +178,7 @@ function createInitialRuleValues(startDate: string): InitialRuleValues {
     startDate,
     endDate: "",
     baseHourlyWage: "1000",
+    administrativeHourlyWage: "",
     holidayAllowanceHourly: "0",
     nightPremiumRate: "0.25",
     overtimePremiumRate: "0.25",
@@ -290,6 +295,24 @@ function validate(
     errors.baseHourlyWage = "基本時給は必須です。";
   } else if (baseHourlyWage <= 0) {
     errors.baseHourlyWage = "基本時給は正の数で入力してください。";
+  }
+
+  if (
+    values.type === "CRAM_SCHOOL" &&
+    initialRuleValues.administrativeHourlyWage
+  ) {
+    const administrativeHourlyWage = Number(
+      initialRuleValues.administrativeHourlyWage,
+    );
+    if (
+      Number.isFinite(administrativeHourlyWage) === false ||
+      Number.isInteger(administrativeHourlyWage) === false ||
+      administrativeHourlyWage > MAX_ADMINISTRATIVE_HOURLY_WAGE ||
+      administrativeHourlyWage <= 0
+    ) {
+      errors.administrativeHourlyWage =
+        "事務時給は円単位の正の整数（上限2,147,483,647円）で入力してください。";
+    }
   }
 
   if (initialRuleValues.holidayAllowanceHourly) {
@@ -658,6 +681,7 @@ function InitialPayrollRuleFieldsSection({
   values,
   errors,
   onChange,
+  workplaceType,
 }: InitialPayrollRuleFieldsSectionProps) {
   return (
     <>
@@ -700,7 +724,7 @@ function InitialPayrollRuleFieldsSection({
 
       <Field data-invalid={Boolean(errors.baseHourlyWage)}>
         <FieldLabel htmlFor="initial-rule-base-hourly-wage">
-          基本時給
+          {workplaceType === "CRAM_SCHOOL" ? "授業時給" : "基本時給"}
         </FieldLabel>
         <FieldContent>
           <div className="flex items-center gap-2">
@@ -722,6 +746,38 @@ function InitialPayrollRuleFieldsSection({
           <FormErrorMessage message={errors.baseHourlyWage} />
         </FieldContent>
       </Field>
+
+      {workplaceType === "CRAM_SCHOOL" ? (
+        <Field data-invalid={Boolean(errors.administrativeHourlyWage)}>
+          <FieldLabel htmlFor="initial-rule-administrative-hourly-wage">
+            事務時給（任意）
+          </FieldLabel>
+          <FieldContent>
+            <div className="flex items-center gap-2">
+              <Input
+                id="initial-rule-administrative-hourly-wage"
+                type="number"
+                min="1"
+                step="1"
+                value={values.administrativeHourlyWage}
+                onChange={(event) => {
+                  onChange({
+                    administrativeHourlyWage: event.currentTarget.value,
+                  });
+                }}
+                className="max-w-20"
+              />
+              <span className="shrink-0 text-sm text-muted-foreground">
+                円/時
+              </span>
+            </div>
+            <FieldDescription>
+              空欄の場合は授業時給を使用します。
+            </FieldDescription>
+            <FormErrorMessage message={errors.administrativeHourlyWage} />
+          </FieldContent>
+        </Field>
+      ) : null}
 
       <Field data-invalid={Boolean(errors.nightPremiumRate)}>
         <FieldLabel htmlFor="initial-rule-night-multiplier">
@@ -991,6 +1047,7 @@ function WorkplaceEditorForm({
           startDate: string;
           endDate: string | null;
           baseHourlyWage: number;
+          administrativeHourlyWage?: number | null;
           holidayAllowanceHourly: number;
           nightPremiumRate: number;
           overtimePremiumRate: number;
@@ -1014,6 +1071,14 @@ function WorkplaceEditorForm({
           startDate: initialRuleValues.startDate,
           endDate: initialRuleValues.endDate ? initialRuleValues.endDate : null,
           baseHourlyWage: Number(initialRuleValues.baseHourlyWage),
+          ...(values.type === "CRAM_SCHOOL"
+            ? {
+                administrativeHourlyWage:
+                  initialRuleValues.administrativeHourlyWage
+                    ? Number(initialRuleValues.administrativeHourlyWage)
+                    : null,
+              }
+            : {}),
           holidayAllowanceHourly: initialRuleValues.holidayAllowanceHourly
             ? Number(initialRuleValues.holidayAllowanceHourly)
             : 0,
@@ -1189,6 +1254,7 @@ function WorkplaceEditorForm({
                     startDate: errors.startDate,
                     endDate: errors.endDate,
                     baseHourlyWage: errors.baseHourlyWage,
+                    administrativeHourlyWage: errors.administrativeHourlyWage,
                     nightPremiumRate: errors.nightPremiumRate,
                     holidayAllowanceHourly: errors.holidayAllowanceHourly,
                     overtimePremiumRate: errors.overtimePremiumRate,
@@ -1196,6 +1262,7 @@ function WorkplaceEditorForm({
                     holidayType: errors.holidayType,
                   }}
                   onChange={handleInitialRuleValueChange}
+                  workplaceType={values.type}
                 />
               ) : null}
             </>

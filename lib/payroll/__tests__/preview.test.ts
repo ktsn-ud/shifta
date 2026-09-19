@@ -4,12 +4,14 @@ describe("calculateShiftPayrollPreview", () => {
   const workplaces = [
     {
       id: "workplace-a",
+      type: "CRAM_SCHOOL" as const,
       closingDayType: "END_OF_MONTH" as const,
       closingDay: null,
       payday: 25,
     },
     {
       id: "workplace-b",
+      type: "GENERAL" as const,
       closingDayType: "DAY_OF_MONTH" as const,
       closingDay: 15,
       payday: 25,
@@ -149,6 +151,56 @@ describe("calculateShiftPayrollPreview", () => {
       }),
     ]);
   });
+
+  it.each([
+    {
+      description: "設定済みの事務時給",
+      administrativeHourlyWage: 800,
+      expectedWage: 2200,
+    },
+    {
+      description: "未設定時の授業時給フォールバック",
+      administrativeHourlyWage: null,
+      expectedWage: 3200,
+    },
+  ])(
+    "塾NORMALの$descriptionに共通の休日・深夜割増を適用する",
+    ({ administrativeHourlyWage, expectedWage }) => {
+      const result = calculateShiftPayrollPreview({
+        shifts: [
+          {
+            temporaryId: "tmp-cram-administrative",
+            workplaceId: "workplace-a",
+            date: "2026-06-14",
+            shiftType: "NORMAL",
+            startTime: "22:00",
+            endTime: "00:00",
+            breakMinutes: 0,
+          },
+        ],
+        workplaces,
+        payrollRules: [
+          {
+            ...payrollRules[0],
+            baseHourlyWage: 1200,
+            administrativeHourlyWage,
+            holidayAllowanceHourly: 100,
+            nightPremiumRate: 0.25,
+            holidayType: "WEEKEND" as const,
+          },
+        ],
+        timetableSets: [],
+      });
+
+      expect(result.items).toEqual([
+        expect.objectContaining({
+          temporaryId: "tmp-cram-administrative",
+          status: "ready",
+          wage: expectedWage,
+        }),
+      ]);
+    },
+  );
 
   it("給与ルールが見つからない場合は missing-rule を返す", () => {
     const result = calculateShiftPayrollPreview({

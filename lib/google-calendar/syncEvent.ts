@@ -198,6 +198,7 @@ function formatCurrency(value: number | null): string {
 
 async function estimateShiftWageForEvent(
   shift: ShiftWithLessonRange,
+  workplaceType: Workplace["type"],
   payrollRulesByWorkplaceId?: ReadonlyMap<string, PayrollRule[]>,
 ): Promise<number | null> {
   const rulesByWorkplace =
@@ -222,7 +223,8 @@ async function estimateShiftWageForEvent(
     return null;
   }
 
-  return calculateShiftPayrollResultByRule(shift, selectedRule).totalWage;
+  return calculateShiftPayrollResultByRule(shift, selectedRule, workplaceType)
+    .totalWage;
 }
 
 async function buildEventDescription(
@@ -232,6 +234,7 @@ async function buildEventDescription(
 ): Promise<string> {
   const estimatedWage = await estimateShiftWageForEvent(
     shift,
+    workplace.type,
     payrollRulesByWorkplaceId,
   );
 

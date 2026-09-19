@@ -5,6 +5,7 @@ type PayrollRuleInput = {
   startDate: string;
   endDate?: string | null;
   baseHourlyWage: number;
+  administrativeHourlyWage?: number | null;
   holidayAllowanceHourly: number;
   nightPremiumRate: number;
   overtimePremiumRate: number;
@@ -16,6 +17,7 @@ export type NormalizedPayrollRule = {
   startDate: Date;
   endDate: Date | null;
   baseHourlyWage: number;
+  administrativeHourlyWage: number | null;
   holidayAllowanceHourly: number;
   nightPremiumRate: number;
   overtimePremiumRate: number;
@@ -25,6 +27,7 @@ export type NormalizedPayrollRule = {
 
 export function normalizePayrollRule(
   input: PayrollRuleInput,
+  workplaceType: "GENERAL" | "CRAM_SCHOOL",
 ): NormalizedPayrollRule {
   const startDate = parseDateOnly(input.startDate);
   const endDate = input.endDate ? parseDateOnly(input.endDate) : null;
@@ -33,7 +36,15 @@ export function normalizePayrollRule(
     throw new Error("DATE_RANGE_INVALID");
   }
 
-  return { ...input, startDate, endDate };
+  return {
+    ...input,
+    administrativeHourlyWage:
+      workplaceType === "CRAM_SCHOOL"
+        ? (input.administrativeHourlyWage ?? null)
+        : null,
+    startDate,
+    endDate,
+  };
 }
 
 export function buildOverlappingPayrollRuleWhere(

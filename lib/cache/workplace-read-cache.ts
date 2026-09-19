@@ -14,6 +14,7 @@ export type CachedPayrollRule = {
   startDate: string;
   endDate: string | null;
   baseHourlyWage: string;
+  administrativeHourlyWage: number | null;
   holidayAllowanceHourly: string;
   nightPremiumRate: string;
   overtimePremiumRate: string;
@@ -56,6 +57,7 @@ function serializeCachedPayrollRule(rule: {
   startDate: Date;
   endDate: Date | null;
   baseHourlyWage: { toString(): string };
+  administrativeHourlyWage: number | null;
   holidayAllowanceHourly: { toString(): string };
   nightPremiumRate: { toString(): string };
   overtimePremiumRate: { toString(): string };
@@ -68,6 +70,7 @@ function serializeCachedPayrollRule(rule: {
     startDate: rule.startDate.toISOString(),
     endDate: rule.endDate?.toISOString() ?? null,
     baseHourlyWage: rule.baseHourlyWage.toString(),
+    administrativeHourlyWage: rule.administrativeHourlyWage,
     holidayAllowanceHourly: rule.holidayAllowanceHourly.toString(),
     nightPremiumRate: rule.nightPremiumRate.toString(),
     overtimePremiumRate: rule.overtimePremiumRate.toString(),

@@ -31,6 +31,7 @@ export type PayrollSnapshotWorkplace = {
   id: string;
   name: string;
   color: string;
+  type: "GENERAL" | "CRAM_SCHOOL";
   closingDayType: ClosingDayType;
   closingDay: number | null;
   payday: number;
@@ -40,7 +41,9 @@ export type PayrollSnapshotShift = Prisma.ShiftGetPayload<{
   include: {
     lessonRange: true;
   };
-}>;
+}> & {
+  workplaceType?: "GENERAL" | "CRAM_SCHOOL";
+};
 
 export type PayrollSnapshot = {
   workplaces: PayrollSnapshotWorkplace[];
@@ -95,6 +98,7 @@ type SerializedPayrollRule = {
   startDate: string;
   endDate: string | null;
   baseHourlyWage: string;
+  administrativeHourlyWage: number | null;
   holidayAllowanceHourly: string;
   nightPremiumRate: string;
   overtimePremiumRate: string;
@@ -212,6 +216,7 @@ function toSerializedPayrollRule(rule: {
   startDate: Date;
   endDate: Date | null;
   baseHourlyWage: { toString(): string };
+  administrativeHourlyWage: number | null;
   holidayAllowanceHourly: { toString(): string };
   nightPremiumRate: { toString(): string };
   overtimePremiumRate: { toString(): string };
@@ -224,6 +229,7 @@ function toSerializedPayrollRule(rule: {
     startDate: rule.startDate.toISOString(),
     endDate: rule.endDate?.toISOString() ?? null,
     baseHourlyWage: rule.baseHourlyWage.toString(),
+    administrativeHourlyWage: rule.administrativeHourlyWage,
     holidayAllowanceHourly: rule.holidayAllowanceHourly.toString(),
     nightPremiumRate: rule.nightPremiumRate.toString(),
     overtimePremiumRate: rule.overtimePremiumRate.toString(),
@@ -241,6 +247,7 @@ function fromSerializedPayrollRule(
     startDate: new Date(rule.startDate),
     endDate: rule.endDate ? new Date(rule.endDate) : null,
     baseHourlyWage: new Prisma.Decimal(rule.baseHourlyWage),
+    administrativeHourlyWage: rule.administrativeHourlyWage,
     holidayAllowanceHourly: new Prisma.Decimal(rule.holidayAllowanceHourly),
     nightPremiumRate: new Prisma.Decimal(rule.nightPremiumRate),
     overtimePremiumRate: new Prisma.Decimal(rule.overtimePremiumRate),
@@ -287,7 +294,13 @@ function serializeSnapshot(
 function deserializeSnapshot(
   snapshot: SerializedPayrollSnapshot,
 ): PayrollSnapshot {
-  const shifts = snapshot.shifts.map(fromSerializedShift);
+  const workplaceTypeById = new Map(
+    snapshot.workplaces.map((workplace) => [workplace.id, workplace.type]),
+  );
+  const shifts = snapshot.shifts.map((shift) => ({
+    ...fromSerializedShift(shift),
+    workplaceType: workplaceTypeById.get(shift.workplaceId) ?? "GENERAL",
+  }));
   const payrollRules = snapshot.payrollRules.map(fromSerializedPayrollRule);
 
   return {
@@ -325,6 +338,7 @@ async function loadPayrollSnapshotSource(params: {
           id: true,
           name: true,
           color: true,
+          type: true,
           closingDayType: true,
           closingDay: true,
           payday: true,

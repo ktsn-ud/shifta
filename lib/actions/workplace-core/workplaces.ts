@@ -9,6 +9,7 @@ import { jsonNoStore } from "@/lib/api/cache-control";
 import { buildSuccessSyncResponse } from "@/lib/google-calendar/sync-response";
 import { createRequestTiming } from "@/lib/perf/request-timing";
 import { getCachedWorkplaces } from "@/lib/cache/workplace-read-cache";
+import { MAX_ADMINISTRATIVE_HOURLY_WAGE } from "@/lib/payroll/numeric";
 
 const colorRegex = /^#[0-9A-Fa-f]{6}$/;
 const PAYROLL_DAY_MIN = 1;
@@ -36,6 +37,16 @@ const createInitialPayrollRuleSchema = z.strictObject({
     .nullable()
     .optional(),
   baseHourlyWage: z.coerce.number().positive(),
+  administrativeHourlyWage: z.preprocess(
+    (value) => (value === "" ? null : value),
+    z.coerce
+      .number()
+      .positive()
+      .int("円単位の整数で入力してください")
+      .max(MAX_ADMINISTRATIVE_HOURLY_WAGE, "事務時給が上限を超えています")
+      .nullable()
+      .optional(),
+  ),
   holidayAllowanceHourly: z.coerce.number().min(0).optional().default(0),
   nightPremiumRate: z.coerce.number().min(0),
   overtimePremiumRate: z.coerce.number().min(0),
@@ -89,6 +100,7 @@ type NormalizedInitialPayrollRule = {
   startDate: Date;
   endDate: Date | null;
   baseHourlyWage: number;
+  administrativeHourlyWage: number | null;
   holidayAllowanceHourly: number;
   nightPremiumRate: number;
   overtimePremiumRate: number;
@@ -98,6 +110,7 @@ type NormalizedInitialPayrollRule = {
 
 function normalizeInitialPayrollRule(
   input: z.infer<typeof createInitialPayrollRuleSchema>,
+  workplaceType: "GENERAL" | "CRAM_SCHOOL",
 ): NormalizedInitialPayrollRule {
   const startDate = parseDateOnly(input.startDate);
   const endDate = input.endDate ? parseDateOnly(input.endDate) : null;
@@ -110,6 +123,10 @@ function normalizeInitialPayrollRule(
     startDate,
     endDate,
     baseHourlyWage: input.baseHourlyWage,
+    administrativeHourlyWage:
+      workplaceType === "CRAM_SCHOOL"
+        ? (input.administrativeHourlyWage ?? null)
+        : null,
     holidayAllowanceHourly: input.holidayAllowanceHourly,
     nightPremiumRate: input.nightPremiumRate,
     overtimePremiumRate: input.overtimePremiumRate,
@@ -146,6 +163,7 @@ export async function createWorkplaceRouteAction(request: Request) {
       try {
         normalizedInitialRule = normalizeInitialPayrollRule(
           body.data.initialPayrollRule,
+          body.data.type,
         );
       } catch (error) {
         if (error instanceof Error && error.message === "DATE_RANGE_INVALID") {
@@ -191,6 +209,8 @@ export async function createWorkplaceRouteAction(request: Request) {
             startDate: normalizedInitialRule.startDate,
             endDate: normalizedInitialRule.endDate,
             baseHourlyWage: normalizedInitialRule.baseHourlyWage.toString(),
+            administrativeHourlyWage:
+              normalizedInitialRule.administrativeHourlyWage,
             holidayAllowanceHourly:
               normalizedInitialRule.holidayAllowanceHourly.toString(),
             nightPremiumRate: normalizedInitialRule.nightPremiumRate.toString(),
